@@ -91,6 +91,7 @@ task service_interrupt;
         ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], return_addr[11:8]};
         psw[2:0] <= psw[2:0] + 1'b1; // Move Stack Pointer
         pc <= vector;                // Jump to ISR
+        #10 display_read_status(ir,pc[7:0], {psw[7:4], return_addr[11:8]},return_addr[7:0],vector);
     end
 endtask
 
@@ -643,7 +644,7 @@ task execute_instruction;
                     cycle_2 <= 1'b1;
                 end else begin
                     //ram_preop <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    //psw[2:0] <= psw[2:0] - 1'b1;
+                    psw[2:0] <= psw[2:0] - 1'b1;
                     pc[7:0] <= ram[{psw[2:0], 1'b0} + 6'h08];
                     retmem1 <= {psw[2:0], 1'b0} + 6'h08;
                     rmem_dat <= ram[{psw[2:0], 1'b0} + 6'h08];
@@ -653,7 +654,7 @@ task execute_instruction;
                     rmem_dat2 <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
                     //psw[2:0] <= psw[2:0] - 1'b1;
                     #10 display_read_status(ir,rmem_dat,rmem_dat2,psw,pc);
-                    psw[2:0] <= psw[2:0] - 1'b1;
+                    //psw[2:0] <= psw[2:0] - 1'b1;
                     irq_in_progress <= 1'b0;
                     cycle_2 <= 1'b0;
                 end
@@ -801,10 +802,10 @@ task execute_instruction;
 
 
             // --- Status Selection ---
-            8'hE5: begin psw[4] <= 1'b0; pc <= pc + 1'b1; end // SEL MB0 [cite: 174, 175]
-            8'hF5: begin psw[4] <= 1'b1; pc <= pc + 1'b1; end // SEL MB1[cite: 172, 173]
-            8'hC5: begin mb_latch <= 1'b0; pc <= pc + 1'b1; end // SEL RB0 [cite: 176, 177]
-            8'hD5: begin mb_latch <= 1'b1; pc <= pc + 1'b1; end // SEL RB1 [cite: 178, 179]
+            8'hE5: begin mb_latch <= 1'b0; pc <= pc + 1'b1; end // SEL MB0 [cite: 174, 175]
+            8'hF5: begin mb_latch <= 1'b1; pc <= pc + 1'b1; end // SEL MB1[cite: 172, 173]
+            8'hC5: begin psw[4] <= 1'b0;; pc <= pc + 1'b1; end // SEL RB0 [cite: 176, 177]
+            8'hD5: begin psw[4] <= 1'b1; pc <= pc + 1'b1; end // SEL RB1 [cite: 178, 179]
 
             8'h57: begin // DA A (Decimal Adjust Accumulator)
                 acc_preop <= acc;
