@@ -1,0 +1,4 @@
+srec_cat 89KLR_951.bin -binary -o 89KLR_951.hex  -intel
+srec_cat 87KLR_951.bin -binary -o 87KLR_951.hex  -intel
+python3  hex2mem48.py  89KLR_951.hex 89KLR_951.mem
+python3  hex2mem48.py  87KLR_951.hex 87KLR_951.mem

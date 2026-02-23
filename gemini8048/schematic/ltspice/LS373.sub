@@ -1,0 +1,181 @@
+* ===========================================================
+*  Behavioral SPICE Model: 74LS373
+*  Octal D-Type Transparent Latch with 3-State Outputs
+*
+*  Based on: TI SN74LS373 Datasheet (SDLS067)
+*            Signetics / Motorola / Fairchild 74LS373
+*  Model type: Analog Behavioral Model (ABM) for LTspice
+*
+*  FUNCTION SUMMARY:
+*   - 8 D-type transparent latches (D0–D7 → Q0–Q7)
+*   - LE (Pin 11): Latch Enable, active HIGH
+*       LE=1 → transparent (Q follows D)
+*       LE=0 → latched (Q holds last state)
+*   - /OE (Pin 1): Output Enable, active LOW
+*       /OE=0 → outputs driven
+*       /OE=1 → outputs tri-state (high-Z, ~1MΩ)
+*
+*  TIMING (typical 74LS373 at 5V, 25°C):
+*   tPHL/tPLH (D to Q, transparent): 18ns
+*   tPHL/tPLH (LE edge to Q):        18ns
+*   tPZL/tPZH (OE enable):           20ns
+*   tPLZ/tPHZ (OE disable):          20ns
+*
+*  PORT ORDER (SpiceOrder = DIP pin number):
+*   /OE  Q0  D0  D1  Q1  Q2  D2  D3  Q3  GND
+*   LE   Q4  D4  D5  Q5  Q6  D6  D7  Q7  VCC
+* ===========================================================
+
+.SUBCKT LS373
++ OE_N Q0 D0 D1 Q1 Q2 D2 D3 Q3 GND
++ LE   Q4 D4 D5 Q5 Q6 D6 D7 Q7 VCC
+
+*------------------------------------------------------------
+* PARAMETERS
+*------------------------------------------------------------
+.PARAM VIH=2.0       ; TTL input HIGH threshold
+.PARAM VHIGH=3.4     ; LS TTL output HIGH (typ at 4mA load)
+.PARAM VLOW=0.25     ; LS TTL output LOW  (typ at 8mA load)
+.PARAM RON=35        ; Output driver on-resistance (ohm)
+.PARAM ROFFHZ=1MEG   ; Tri-state high-Z resistance
+.PARAM TPD=18N       ; Propagation delay D→Q
+.PARAM TPOE=20N      ; OE enable/disable delay
+.PARAM VCC_NOM=5     ; Nominal supply
+
+*------------------------------------------------------------
+* SECTION 1: LATCH ENABLE SIGNAL CONDITIONING
+*   LE is active HIGH. RC delay models propagation time.
+*------------------------------------------------------------
+RLE_D LE NLE_D 500
+CLE_D NLE_D GND 36P       ; RC ≈ TPD (18ns)
+
+* Latch enable logic level (0 or 1)
+BLE_LVL NLE_LVL GND V= (V(NLE_D) > {VIH} ? 1 : 0)
+
+*------------------------------------------------------------
+* SECTION 2: OE SIGNAL CONDITIONING
+*   /OE is active LOW. RC delay models tri-state switching.
+*------------------------------------------------------------
+ROE_D OE_N NOE_D 500
+COE_D NOE_D GND 40P        ; RC ≈ TPOE (20ns)
+
+* Output enable: 1 = outputs active, 0 = tri-state
+BOE_EN NOE_EN GND V= (V(NOE_D) < {VIH} ? 1 : 0)
+
+*------------------------------------------------------------
+* SECTION 3: 8 TRANSPARENT LATCHES
+*   When LE=1: NH_x tracks D_x (transparent mode)
+*   When LE=0: NH_x is held (latched mode)
+*   Implemented as RC hold circuits + B-source mux.
+*   The RC time constant is intentionally long (>>sim time)
+*   to hold data; B-source drives the node when LE=1.
+*
+*   Each latch cell:
+*     BDRV_x: drives the hold cap when LE=1
+*     RHOLD_x + CHOLD_x: sample-and-hold cell
+*     BLVL_x: internal logic-level node (0 or 1)
+*------------------------------------------------------------
+
+* --- Bit 0 ---
+BDRV_0 ND0_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D0)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_0))
+RDRV_0 ND0_DRV NH_0 200
+CHOLD_0 NH_0 GND 100P
+BLVL_0 NL_0 GND V= (V(NH_0) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 1 ---
+BDRV_1 ND1_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D1)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_1))
+RDRV_1 ND1_DRV NH_1 200
+CHOLD_1 NH_1 GND 100P
+BLVL_1 NL_1 GND V= (V(NH_1) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 2 ---
+BDRV_2 ND2_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D2)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_2))
+RDRV_2 ND2_DRV NH_2 200
+CHOLD_2 NH_2 GND 100P
+BLVL_2 NL_2 GND V= (V(NH_2) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 3 ---
+BDRV_3 ND3_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D3)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_3))
+RDRV_3 ND3_DRV NH_3 200
+CHOLD_3 NH_3 GND 100P
+BLVL_3 NL_3 GND V= (V(NH_3) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 4 ---
+BDRV_4 ND4_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D4)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_4))
+RDRV_4 ND4_DRV NH_4 200
+CHOLD_4 NH_4 GND 100P
+BLVL_4 NL_4 GND V= (V(NH_4) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 5 ---
+BDRV_5 ND5_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D5)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_5))
+RDRV_5 ND5_DRV NH_5 200
+CHOLD_5 NH_5 GND 100P
+BLVL_5 NL_5 GND V= (V(NH_5) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 6 ---
+BDRV_6 ND6_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D6)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_6))
+RDRV_6 ND6_DRV NH_6 200
+CHOLD_6 NH_6 GND 100P
+BLVL_6 NL_6 GND V= (V(NH_6) > {VHIGH}/2 ? 1 : 0)
+
+* --- Bit 7 ---
+BDRV_7 ND7_DRV GND V= (V(NLE_LVL)>0.5 ? (V(D7)>{VIH} ? {VHIGH} : {VLOW}) : V(NH_7))
+RDRV_7 ND7_DRV NH_7 200
+CHOLD_7 NH_7 GND 100P
+BLVL_7 NL_7 GND V= (V(NH_7) > {VHIGH}/2 ? 1 : 0)
+
+*------------------------------------------------------------
+* SECTION 4: TRI-STATE OUTPUT DRIVERS
+*   /OE=0 (NOE_EN=1) → drive output at VHIGH or VLOW via RON
+*   /OE=1 (NOE_EN=0) → disconnect via ROFFHZ (high-Z)
+*   B-source current: I = (Vsource - Vout) / R_selected
+*------------------------------------------------------------
+BQ0 NL_0 Q0  I= (V(NOE_EN)>0.5 ? (V(NL_0)-V(Q0))/{RON} : (V(NL_0)-V(Q0))/{ROFFHZ})
+BQ1 NL_1 Q1  I= (V(NOE_EN)>0.5 ? (V(NL_1)-V(Q1))/{RON} : (V(NL_1)-V(Q1))/{ROFFHZ})
+BQ2 NL_2 Q2  I= (V(NOE_EN)>0.5 ? (V(NL_2)-V(Q2))/{RON} : (V(NL_2)-V(Q2))/{ROFFHZ})
+BQ3 NL_3 Q3  I= (V(NOE_EN)>0.5 ? (V(NL_3)-V(Q3))/{RON} : (V(NL_3)-V(Q3))/{ROFFHZ})
+BQ4 NL_4 Q4  I= (V(NOE_EN)>0.5 ? (V(NL_4)-V(Q4))/{RON} : (V(NL_4)-V(Q4))/{ROFFHZ})
+BQ5 NL_5 Q5  I= (V(NOE_EN)>0.5 ? (V(NL_5)-V(Q5))/{RON} : (V(NL_5)-V(Q5))/{ROFFHZ})
+BQ6 NL_6 Q6  I= (V(NOE_EN)>0.5 ? (V(NL_6)-V(Q6))/{RON} : (V(NL_6)-V(Q6))/{ROFFHZ})
+BQ7 NL_7 Q7  I= (V(NOE_EN)>0.5 ? (V(NL_7)-V(Q7))/{RON} : (V(NL_7)-V(Q7))/{ROFFHZ})
+
+*------------------------------------------------------------
+* SECTION 5: POWER SUPPLY LOADING
+*   Quiescent: ICC typ 17mA @ 5V → ~294Ω
+*   Output loading accounted for in RON above
+*------------------------------------------------------------
+RVCC_Q VCC GND 294
+
+*------------------------------------------------------------
+.ENDS LS373
+* ===========================================================
+* END OF MODEL
+*
+* INSTALLATION:
+*   LTspice\lib\sub\LS373.sub
+*   LTspice\lib\sym\LS373.asy
+*
+* TYPICAL USAGE:
+*   .lib LS373.sub
+*   Add to .tran with timestep <= 1ns for timing accuracy
+*
+* SIMULATION TIPS:
+*   - Drive LE with PULSE(0 5 0 1n 1n 50n 100n)
+*   - Drive /OE LOW (tie to GND) for always-enabled outputs
+*   - D inputs: use PULSE or PWL sources
+*   - Probe Q0–Q7 to verify transparent and latch behaviour
+*   - Use .tran 0 500n 0 0.5n for clean waveforms
+*
+* TRUTH TABLE:
+*   /OE  LE  |  Qn
+*   ----------------------------------------
+*    H   X   |  High-Z  (tri-state)
+*    L   H   |  Qn = Dn (transparent)
+*    L   L   |  Qn = held (latched)
+*
+* LIMITATIONS:
+*   - Latch hold uses RC approximation (not a true SR cell)
+*   - Tri-state uses 1MΩ, not true open-circuit
+*   - No power-on reset / undefined state modelling
+*   - Supply noise / ground bounce not modelled
+* ===========================================================

@@ -1,0 +1,1967 @@
+;
+;  D48 V3.4.1 8048 Disassembly of 89KLR_951.bin
+;  2026/02/08 09:34
+;
+	org	0
+;
+	strt	t		; 0000 - 55	U
+	jmp	X0077		; 0001 - 04 77	.w
+;
+	sel	rb0		; 0003 - c5	E
+	dis	i		; 0004 - 15	.
+	jmp	X030e		; 0005 - 64 0e	d.
+;
+	sel	rb0		; 0007 - c5	E
+	mov	@r0,a		; 0008 - a0	 
+	mov	a,r7		; 0009 - ff	.
+	mov	t,a		; 000a - 62	b
+	djnz	r6,X0010	; 000b - ee 10	n.
+	inc	r6		; 000d - 1e	.
+	inc	r6		; 000e - 1e	.
+	stop	tcnt		; 000f - 65	e
+X0010:	jnt1	X001a		; 0010 - 46 1a	F.
+	en	i		; 0012 - 05	.
+	djnz	r3,X001a	; 0013 - eb 1a	k.
+	inc	r3		; 0015 - 1b	.
+	anl	p2,#0bfh	; 0016 - 9a bf	.?
+	orl	p2,#80h		; 0018 - 8a 80	..
+X001a:	djnz	r2,X0036	; 001a - ea 36	j6
+	mov	r0,#26h		; 001c - b8 26	8&
+	mov	a,@r0		; 001e - f0	p
+	inc	a		; 001f - 17	.
+	mov	r2,a		; 0020 - aa	*
+	mov	a,r7		; 0021 - ff	.
+	rrc	a		; 0022 - 67	g
+X0023:	xch	a,r2		; 0023 - 2a	*
+	rlc	a		; 0024 - f7	w
+	xch	a,r2		; 0025 - 2a	*
+	rrc	a		; 0026 - 67	g
+	jnc	X0023		; 0027 - e6 23	f#
+X0029:	djnz	r2,X0029	; 0029 - ea 29	j)
+	orl	p2,#40h		; 002b - 8a 40	.@
+	anl	p2,#7fh		; 002d - 9a 7f	..
+	djnz	r5,X0032	; 002f - ed 32	m2
+	inc	r5		; 0031 - 1d	.
+X0032:	mov	r0,#38h		; 0032 - b8 38	88
+	jmp	X005e		; 0034 - 04 5e	.^
+;
+X0036:	djnz	r5,X0063	; 0036 - ed 63	mc
+	mov	r0,#40h		; 0038 - b8 40	8@
+	mov	a,r7		; 003a - ff	.
+	inc	@r0		; 003b - 10	.
+	jb1	X003f		; 003c - 32 3f	2?
+	inc	@r0		; 003e - 10	.
+X003f:	mov	a,@r0		; 003f - f0	p
+	inc	r0		; 0040 - 18	.
+	jb2	X004e		; 0041 - 52 4e	RN
+	mov	a,@r0		; 0043 - f0	p
+	jz	X004a		; 0044 - c6 4a	FJ
+	anl	p1,#0efh	; 0046 - 99 ef	.o
+	jmp	X0054		; 0048 - 04 54	.T
+;
+X004a:	dec	r0		; 004a - c8	H
+	mov	@r0,#0ffh	; 004b - b0 ff	0.
+	inc	r0		; 004d - 18	.
+X004e:	mov	a,@r0		; 004e - f0	p
+	cpl	a		; 004f - 37	7
+	add	a,#0c1h		; 0050 - 03 c1	.A
+	orl	p1,#10h		; 0052 - 89 10	..
+X0054:	mov	r5,a		; 0054 - ad	-
+	dec	r0		; 0055 - c8	H
+	mov	a,@r0		; 0056 - f0	p
+	swap	a		; 0057 - 47	G
+	xchd	a,@r0		; 0058 - 30	0
+	anl	a,#77h		; 0059 - 53 77	Sw
+	mov	@r0,a		; 005b - a0	 
+	mov	r0,#38h		; 005c - b8 38	88
+X005e:	djnz	r4,X0061	; 005e - ec 61	la
+	inc	r4		; 0060 - 1c	.
+X0061:	mov	a,@r0		; 0061 - f0	p
+	retr			; 0062 - 93	.
+;
+X0063:	djnz	r4,X0061	; 0063 - ec 61	la
+	orl	p1,#80h		; 0065 - 89 80	..
+	mov	r0,#2ch		; 0067 - b8 2c	8,
+	mov	a,@r0		; 0069 - f0	p
+	inc	@r0		; 006a - 10	.
+	mov	r4,#2		; 006b - bc 02	<.
+	call	X040b		; 006d - 94 0b	..
+	mov	r0,#38h		; 006f - b8 38	88
+	mov	a,@r0		; 0071 - f0	p
+	retr			; 0072 - 93	.
+;
+X0073:	anl	p2,#47h		; 0073 - 9a 47	.G
+	jmp	X007b		; 0075 - 04 7b	.{
+;
+X0077:	jnt1	X0073		; 0077 - 46 73	Fs
+	anl	p2,#87h		; 0079 - 9a 87	..
+X007b:	mov	r0,#25h		; 007b - b8 25	8%
+	mov	r1,#21h		; 007d - b9 21	9!
+	mov	a,@r1		; 007f - f1	q
+	mov	@r0,a		; 0080 - a0	 
+	inc	r0		; 0081 - 18	.
+	dec	r1		; 0082 - c9	I
+	mov	a,@r1		; 0083 - f1	q
+	mov	@r0,a		; 0084 - a0	 
+	mov	r0,#28h		; 0085 - b8 28	8(
+	mov	a,@r0		; 0087 - f0	p
+	mov	@r1,a		; 0088 - a1	!
+	inc	r0		; 0089 - 18	.
+	inc	r1		; 008a - 19	.
+	mov	a,@r0		; 008b - f0	p
+	mov	@r1,a		; 008c - a1	!
+	mov	r0,#38h		; 008d - b8 38	88
+	mov	a,#0fch		; 008f - 23 fc	#|
+	mov	t,a		; 0091 - 62	b
+	mov	r2,a		; 0092 - aa	*
+	inc	r5		; 0093 - 1d	.
+	mov	r1,#40h		; 0094 - b9 40	9@
+	mov	a,@r1		; 0096 - f1	q
+	djnz	r5,X009c	; 0097 - ed 9c	m.
+	inc	r5		; 0099 - 1d	.
+	swap	a		; 009a - 47	G
+	xchd	a,@r1		; 009b - 31	1
+X009c:	jb2	X00a0		; 009c - 52 a0	R 
+	anl	p1,#0efh	; 009e - 99 ef	.o
+X00a0:	call	X0325		; 00a0 - 74 25	t%
+	en	tcnti		; 00a2 - 25	%
+	mov	r1,#3ch		; 00a3 - b9 3c	9<
+	movx	a,@r1		; 00a5 - 81	.
+	xch	a,@r1		; 00a6 - 21	!
+	inc	r1		; 00a7 - 19	.
+	mov	@r1,a		; 00a8 - a1	!
+	mov	r1,#3eh		; 00a9 - b9 3e	9>
+	mov	a,@r1		; 00ab - f1	q
+	cpl	a		; 00ac - 37	7
+	mov	r1,#3ah		; 00ad - b9 3a	9:
+	add	a,@r1		; 00af - 61	a
+	jc	X00b4		; 00b0 - f6 b4	v4
+	anl	p1,#0dfh	; 00b2 - 99 df	._
+X00b4:	mov	r1,#24h		; 00b4 - b9 24	9$
+	clr	a		; 00b6 - 27	'
+	xch	a,r6		; 00b7 - 2e	.
+	cpl	a		; 00b8 - 37	7
+	mov	@r1,a		; 00b9 - a1	!
+	mov	a,@r1		; 00ba - f1	q
+	add	a,#1ah		; 00bb - 03 1a	..
+	jnc	X00cf		; 00bd - e6 cf	fO
+	mov	a,r7		; 00bf - ff	.
+	clr	c		; 00c0 - 97	.
+	rlc	a		; 00c1 - f7	w
+	mov	r7,a		; 00c2 - af	/
+	inc	r1		; 00c3 - 19	.
+X00c4:	mov	a,@r1		; 00c4 - f1	q
+	clr	c		; 00c5 - 97	.
+	rrc	a		; 00c6 - 67	g
+	mov	@r1,a		; 00c7 - a1	!
+	dec	r1		; 00c8 - c9	I
+	mov	a,r1		; 00c9 - f9	y
+	cpl	a		; 00ca - 37	7
+	jb4	X00c4		; 00cb - 92 c4	.D
+	call	X0325		; 00cd - 74 25	t%
+X00cf:	mov	r1,#24h		; 00cf - b9 24	9$
+	mov	a,@r1		; 00d1 - f1	q
+	add	a,#92h		; 00d2 - 03 92	..
+	cpl	f1		; 00d4 - b5	5
+	jc	X00ef		; 00d5 - f6 ef	vo
+	add	a,#41h		; 00d7 - 03 41	.A
+	jc	X00dc		; 00d9 - f6 dc	v\
+	cpl	f1		; 00db - b5	5
+X00dc:	mov	a,r7		; 00dc - ff	.
+	jb1	X00ef		; 00dd - 32 ef	2o
+	clr	c		; 00df - 97	.
+	cpl	c		; 00e0 - a7	'
+	rrc	a		; 00e1 - 67	g
+	mov	r7,a		; 00e2 - af	/
+	inc	r1		; 00e3 - 19	.
+X00e4:	mov	a,@r1		; 00e4 - f1	q
+	clr	c		; 00e5 - 97	.
+	rlc	a		; 00e6 - f7	w
+	mov	@r1,a		; 00e7 - a1	!
+	dec	r1		; 00e8 - c9	I
+	mov	a,r1		; 00e9 - f9	y
+	cpl	a		; 00ea - 37	7
+	jb4	X00e4		; 00eb - 92 e4	.d
+	call	X0325		; 00ed - 74 25	t%
+X00ef:	mov	r1,#31h		; 00ef - b9 31	91
+	inc	@r1		; 00f1 - 11	.
+	jmp	X0102		; 00f2 - 24 02	$.
+;
+	org	0feh
+;
+	movp	a,@a		; 00fe - a3	#
+	ret			; 00ff - 83	.
+;
+	org	101h
+;
+X0101:	inc	@r1		; 0101 - 11	.
+X0102:	mov	r1,#2ch		; 0102 - b9 2c	9,
+	mov	a,@r1		; 0104 - f1	q
+	anl	a,#7		; 0105 - 53 07	S.
+	jnz	X0101		; 0107 - 96 01	..
+	mov	r1,#33h		; 0109 - b9 33	93
+	mov	a,@r1		; 010b - f1	q
+	jz	X0137		; 010c - c6 37	F7
+	mov	a,r7		; 010e - ff	.
+	jb1	X0135		; 010f - 32 35	25
+	mov	r1,#2ch		; 0111 - b9 2c	9,
+	mov	a,@r1		; 0113 - f1	q
+	jb7	X0137		; 0114 - f2 37	r7
+	mov	r1,#32h		; 0116 - b9 32	92
+	jnz	X0127		; 0118 - 96 27	.'
+	mov	a,@r1		; 011a - f1	q
+	jnz	X0125		; 011b - 96 25	.%
+	inc	r1		; 011d - 19	.
+	mov	a,@r1		; 011e - f1	q
+	dec	r1		; 011f - c9	I
+	add	a,#0a8h		; 0120 - 03 a8	.(
+	swap	a		; 0122 - 47	G
+X0123:	add	a,#19h		; 0123 - 03 19	..
+X0125:	dec	a		; 0125 - 07	.
+	mov	@r1,a		; 0126 - a1	!
+X0127:	mov	a,@r1		; 0127 - f1	q
+	anl	a,#0fh		; 0128 - 53 0f	S.
+	jnz	X0131		; 012a - 96 31	.1
+	mov	a,@r1		; 012c - f1	q
+	swap	a		; 012d - 47	G
+	jb3	X0123		; 012e - 72 23	r#
+	mov	@r1,a		; 0130 - a1	!
+X0131:	add	a,#0fdh		; 0131 - 03 fd	.}
+	jnc	X0137		; 0133 - e6 37	f7
+X0135:	orl	p2,#10h		; 0135 - 8a 10	..
+X0137:	mov	r1,#27h		; 0137 - b9 27	9'
+	mov	a,r1		; 0139 - f9	y
+	xch	a,@r1		; 013a - 21	!
+	add	a,#0d9h		; 013b - 03 d9	.Y
+	jnz	X0146		; 013d - 96 46	.F
+	mov	a,r7		; 013f - ff	.
+X0140:	clr	c		; 0140 - 97	.
+	rlc	a		; 0141 - f7	w
+	jc	X0140		; 0142 - f6 40	v@
+	jz	X0148		; 0144 - c6 48	FH
+X0146:	mov	r7,#0f0h	; 0146 - bf f0	?p
+X0148:	sel	rb1		; 0148 - d5	U
+	mov	r1,#24h		; 0149 - b9 24	9$
+	mov	a,@r1		; 014b - f1	q
+	mov	r6,a		; 014c - ae	.
+	sel	rb0		; 014d - c5	E
+	mov	a,r7		; 014e - ff	.
+	jb2	X01b1		; 014f - 52 b1	R1
+	jb3	X016a		; 0151 - 72 6a	rj
+	orl	p2,#10h		; 0153 - 8a 10	..
+	mov	r1,#7fh		; 0155 - b9 7f	9.
+	mov	@r1,#2fh	; 0157 - b1 2f	1/
+	dec	r1		; 0159 - c9	I
+	mov	@r1,#46h	; 015a - b1 46	1F
+	dec	r1		; 015c - c9	I
+	mov	@r1,#31h	; 015d - b1 31	11
+	dec	r1		; 015f - c9	I
+	mov	@r1,#34h	; 0160 - b1 34	14
+X0162:	dec	r1		; 0162 - c9	I
+	mov	@r1,#0		; 0163 - b1 00	1.
+	mov	a,r1		; 0165 - f9	y
+	xrl	a,#28h		; 0166 - d3 28	S(
+	jnz	X0162		; 0168 - 96 62	.b
+X016a:	mov	a,#0ffh		; 016a - 23 ff	#.
+	orl	p1,#10h		; 016c - 89 10	..
+	mov	r1,#2eh		; 016e - b9 2e	9.
+	mov	@r1,a		; 0170 - a1	!
+	mov	r1,#30h		; 0171 - b9 30	90
+	mov	@r1,a		; 0173 - a1	!
+	mov	r1,#34h		; 0174 - b9 34	94
+	mov	@r1,#6		; 0176 - b1 06	1.
+	inc	r1		; 0178 - 19	.
+	mov	@r1,a		; 0179 - a1	!
+	inc	r1		; 017a - 19	.
+	mov	@r1,a		; 017b - a1	!
+	mov	r1,#39h		; 017c - b9 39	99
+	mov	@r1,#0c8h	; 017e - b1 c8	1H
+	mov	a,#77h		; 0180 - 23 77	#w
+	mov	r1,#3bh		; 0182 - b9 3b	9;
+	mov	@r1,a		; 0184 - a1	!
+	mov	r1,#3ch		; 0185 - b9 3c	9<
+	mov	@r1,a		; 0187 - a1	!
+	inc	r1		; 0188 - 19	.
+	mov	@r1,a		; 0189 - a1	!
+	inc	r1		; 018a - 19	.
+	mov	@r1,a		; 018b - a1	!
+	mov	r1,#2ch		; 018c - b9 2c	9,
+	mov	@r1,#0		; 018e - b1 00	1.
+	mov	r1,#2ah		; 0190 - b9 2a	9*
+	mov	@r1,#3fh	; 0192 - b1 3f	1?
+	inc	r1		; 0194 - 19	.
+	mov	@r1,#1bh	; 0195 - b1 1b	1.
+	mov	r1,#22h		; 0197 - b9 22	9"
+	mov	@r1,#0ah	; 0199 - b1 0a	1.
+	inc	r1		; 019b - 19	.
+	mov	@r1,#2		; 019c - b1 02	1.
+	clr	a		; 019e - 27	'
+	mov	r2,a		; 019f - aa	*
+	mov	r3,a		; 01a0 - ab	+
+	dis	i		; 01a1 - 15	.
+	sel	rb1		; 01a2 - d5	U
+	call	X0336		; 01a3 - 74 36	t6
+X01a5:	orl	p2,#40h		; 01a5 - 8a 40	.@
+	anl	p2,#7fh		; 01a7 - 9a 7f	..
+X01a9:	jnt1	X01a5		; 01a9 - 46 a5	F%
+	anl	p2,#0bfh	; 01ab - 9a bf	.?
+	orl	p2,#80h		; 01ad - 8a 80	..
+	jmp	X01a9		; 01af - 24 a9	$)
+;
+X01b1:	sel	rb1		; 01b1 - d5	U
+	mov	r1,#73h		; 01b2 - b9 73	9s
+	mov	a,@r1		; 01b4 - f1	q
+	mov	r1,#3fh		; 01b5 - b9 3f	9?
+	add	a,@r1		; 01b7 - 61	a
+	mov	r3,a		; 01b8 - ab	+
+	call	X0300		; 01b9 - 74 00	t.
+	clr	c		; 01bb - 97	.
+	rrc	a		; 01bc - 67	g
+	mov	r1,#29h		; 01bd - b9 29	9)
+	mov	@r1,a		; 01bf - a1	!
+	mov	a,r3		; 01c0 - fb	{
+	rrc	a		; 01c1 - 67	g
+	swap	a		; 01c2 - 47	G
+	anl	a,#0fh		; 01c3 - 53 0f	S.
+	dec	r1		; 01c5 - c9	I
+	mov	@r1,a		; 01c6 - a1	!
+	jmp	X0200		; 01c7 - 44 00	D.
+;
+	org	1feh
+;
+	movp	a,@a		; 01fe - a3	#
+	ret			; 01ff - 83	.
+;
+X0200:	mov	r1,#33h		; 0200 - b9 33	93
+	mov	a,@r1		; 0202 - f1	q
+	add	a,#0eeh		; 0203 - 03 ee	.n
+	jnc	X0215		; 0205 - e6 15	f.
+	add	a,#0ech		; 0207 - 03 ec	.l
+	jc	X0215		; 0209 - f6 15	v.
+	mov	r0,#73h		; 020b - b8 73	8s
+	mov	@r0,#2dh	; 020d - b0 2d	0-
+	mov	r0,#31h		; 020f - b8 31	81
+	mov	@r0,#2		; 0211 - b0 02	0.
+	jmp	X0248		; 0213 - 44 48	DH
+;
+X0215:	mov	r0,#44h		; 0215 - b8 44	8D
+	mov	a,#0e4h		; 0217 - 23 e4	#d
+	add	a,@r0		; 0219 - 60	`
+	jc	X022f		; 021a - f6 2f	v/
+	mov	r0,#2fh		; 021c - b8 2f	8/
+	mov	a,#89h		; 021e - 23 89	#.
+	add	a,@r0		; 0220 - 60	`
+	mov	r2,#22h		; 0221 - ba 22	:"
+	jc	X022a		; 0223 - f6 2a	v*
+	dec	r2		; 0225 - ca	J
+	mov	a,#0fah		; 0226 - 23 fa	#z
+	add	a,@r0		; 0228 - 60	`
+	cpl	c		; 0229 - a7	'
+X022a:	inc	r0		; 022a - 18	.
+	call	X032a		; 022b - 74 2a	t*
+	jmp	X0248		; 022d - 44 48	DH
+;
+X022f:	mov	a,@r1		; 022f - f1	q
+	xrl	a,#41h		; 0230 - d3 41	SA
+	jz	X0248		; 0232 - c6 48	FH
+	mov	r0,#43h		; 0234 - b8 43	8C
+	mov	a,@r0		; 0236 - f0	p
+	cpl	a		; 0237 - 37	7
+	add	a,#18h		; 0238 - 03 18	..
+	jc	X0248		; 023a - f6 48	vH
+	mov	r0,#52h		; 023c - b8 52	8R
+	mov	a,@r0		; 023e - f0	p
+	add	a,#0bfh		; 023f - 03 bf	.?
+	cpl	c		; 0241 - a7	'
+	mov	r2,#33h		; 0242 - ba 33	:3
+	mov	r0,#30h		; 0244 - b8 30	80
+	call	X032a		; 0246 - 74 2a	t*
+X0248:	mov	r0,#2eh		; 0248 - b8 2e	8.
+	mov	a,@r0		; 024a - f0	p
+	add	a,#72h		; 024b - 03 72	.r
+	jc	X0251		; 024d - f6 51	vQ
+	mov	@r1,#12h	; 024f - b1 12	1.
+X0251:	mov	a,@r0		; 0251 - f0	p
+	add	a,#6bh		; 0252 - 03 6b	.k
+	jnc	X025f		; 0254 - e6 5f	f_
+	mov	a,@r1		; 0256 - f1	q
+	xrl	a,#12h		; 0257 - d3 12	S.
+	jnz	X025f		; 0259 - 96 5f	._
+	mov	@r1,a		; 025b - a1	!
+	mov	r0,#3ah		; 025c - b8 3a	8:
+	mov	@r0,a		; 025e - a0	 
+X025f:	mov	r0,#41h		; 025f - b8 41	8A
+	mov	a,@r0		; 0261 - f0	p
+	clr	c		; 0262 - 97	.
+	jnz	X0267		; 0263 - 96 67	.g
+	call	X02b6		; 0265 - 54 b6	T6
+X0267:	mov	r0,#60h		; 0267 - b8 60	8`
+	mov	a,@r0		; 0269 - f0	p
+	mov	r2,#32h		; 026a - ba 32	:2
+	jb7	X0280		; 026c - f2 80	r.
+	mov	r0,#44h		; 026e - b8 44	8D
+	mov	a,@r0		; 0270 - f0	p
+	add	a,#0dbh		; 0271 - 03 db	.[
+	jnc	X0277		; 0273 - e6 77	fw
+	call	X02b6		; 0275 - 54 b6	T6
+X0277:	mov	r0,#60h		; 0277 - b8 60	8`
+	mov	a,@r0		; 0279 - f0	p
+	dec	r2		; 027a - ca	J
+	cpl	a		; 027b - 37	7
+	add	a,#20h		; 027c - 03 20	. 
+	jc	X0282		; 027e - f6 82	v.
+X0280:	add	a,#20h		; 0280 - 03 20	. 
+X0282:	cpl	c		; 0282 - a7	'
+	mov	r0,#6ch		; 0283 - b8 6c	8l
+	mov	a,@r0		; 0285 - f0	p
+	jnz	X028e		; 0286 - 96 8e	..
+	mov	r0,#35h		; 0288 - b8 35	85
+	mov	a,#64h		; 028a - 23 64	#d
+	call	X032c		; 028c - 74 2c	t,
+X028e:	mov	r0,#3ch		; 028e - b8 3c	8<
+	mov	a,#0f4h		; 0290 - 23 f4	#t
+	add	a,@r0		; 0292 - 60	`
+	cpl	c		; 0293 - a7	'
+	mov	r2,#41h		; 0294 - ba 41	:A
+	jc	X029d		; 0296 - f6 9d	v.
+	mov	a,#24h		; 0298 - 23 24	#$
+	add	a,@r0		; 029a - 60	`
+	inc	r2		; 029b - 1a	.
+	mov	a,@r0		; 029c - f0	p
+X029d:	mov	@r0,a		; 029d - a0	 
+	mov	r0,#36h		; 029e - b8 36	86
+	call	X032a		; 02a0 - 74 2a	t*
+	sel	mb1		; 02a2 - f5	u
+	call	X0d00		; 02a3 - b4 00	4.
+	sel	mb0		; 02a5 - e5	e
+	call	X0336		; 02a6 - 74 36	t6
+	mov	r1,#17h		; 02a8 - b9 17	9.
+	mov	@r1,#8		; 02aa - b1 08	1.
+	dec	r1		; 02ac - c9	I
+	clr	a		; 02ad - 27	'
+	xch	a,@r1		; 02ae - 21	!
+	jb0	X02b4		; 02af - 12 b4	.4
+	dec	a		; 02b1 - 07	.
+	dec	a		; 02b2 - 07	.
+	xchd	a,@r1		; 02b3 - 31	1
+X02b4:	sel	mb1		; 02b4 - f5	u
+	ret			; 02b5 - 83	.
+;
+X02b6:	mov	r0,#35h		; 02b6 - b8 35	85
+	mov	@r0,#64h	; 02b8 - b0 64	0d
+	ret			; 02ba - 83	.
+;
+	org	2feh
+;
+	movp	a,@a		; 02fe - a3	#
+	ret			; 02ff - 83	.
+;
+X0300:	mov	r5,#9		; 0300 - bd 09	=.
+	clr	c		; 0302 - 97	.
+	clr	a		; 0303 - 27	'
+X0304:	rrc	a		; 0304 - 67	g
+	xch	a,r3		; 0305 - 2b	+
+	rrc	a		; 0306 - 67	g
+	xch	a,r3		; 0307 - 2b	+
+	jnc	X030b		; 0308 - e6 0b	f.
+	add	a,r6		; 030a - 6e	n
+X030b:	djnz	r5,X0304	; 030b - ed 04	m.
+	ret			; 030d - 83	.
+;
+X030e:	mov	@r0,a		; 030e - a0	 
+	mov	r0,#25h		; 030f - b8 25	8%
+	mov	a,@r0		; 0311 - f0	p
+	inc	a		; 0312 - 17	.
+	mov	r2,a		; 0313 - aa	*
+	mov	r0,#21h		; 0314 - b8 21	8!
+	mov	a,@r0		; 0316 - f0	p
+	inc	a		; 0317 - 17	.
+	mov	r3,a		; 0318 - ab	+
+	mov	a,r7		; 0319 - ff	.
+	swap	a		; 031a - 47	G
+	cpl	a		; 031b - 37	7
+	add	a,#0ah		; 031c - 03 0a	..
+	mov	r0,a		; 031e - a8	(
+X031f:	djnz	r0,X031f	; 031f - e8 1f	h.
+	mov	r0,#38h		; 0321 - b8 38	88
+	mov	a,@r0		; 0323 - f0	p
+	retr			; 0324 - 93	.
+;
+X0325:	mov	r1,#22h		; 0325 - b9 22	9"
+	mov	a,@r1		; 0327 - f1	q
+	mov	r4,a		; 0328 - ac	,
+	ret			; 0329 - 83	.
+;
+X032a:	mov	a,#3ch		; 032a - 23 3c	#<
+X032c:	xch	a,@r0		; 032c - 20	 
+	jnc	X0331		; 032d - e6 31	f1
+	dec	a		; 032f - 07	.
+	mov	@r0,a		; 0330 - a0	 
+X0331:	jnz	X0335		; 0331 - 96 35	.5
+	mov	a,r2		; 0333 - fa	z
+	mov	@r1,a		; 0334 - a1	!
+X0335:	ret			; 0335 - 83	.
+;
+X0336:	mov	r0,#80h		; 0336 - b8 80	8.
+	mov	r2,#8		; 0338 - ba 08	:.
+	movx	a,@r0		; 033a - 80	.
+	jb5	X0353		; 033b - b2 53	2S
+	mov	r2,#4		; 033d - ba 04	:.
+X033f:	dec	r0		; 033f - c8	H
+	xch	a,@r0		; 0340 - 20	 
+	swap	a		; 0341 - 47	G
+	xch	a,@r0		; 0342 - 20	 
+	xchd	a,@r0		; 0343 - 30	0
+	djnz	r2,X033f	; 0344 - ea 3f	j?
+	jb6	X0352		; 0346 - d2 52	RR
+	jb7	X0352		; 0348 - f2 52	rR
+	inc	r0		; 034a - 18	.
+	mov	@r0,#0		; 034b - b0 00	0.
+	inc	r0		; 034d - 18	.
+	mov	a,@r0		; 034e - f0	p
+	anl	a,#0fh		; 034f - 53 0f	S.
+	mov	@r0,a		; 0351 - a0	 
+X0352:	ret			; 0352 - 83	.
+;
+X0353:	clr	f0		; 0353 - 85	.
+	jb7	X0357		; 0354 - f2 57	rW
+	cpl	f0		; 0356 - 95	.
+X0357:	mov	r3,#7fh		; 0357 - bb 7f	;.
+	jb6	X0368		; 0359 - d2 68	Rh
+	jb7	X0381		; 035b - f2 81	r.
+	mov	r1,#2ch		; 035d - b9 2c	9,
+	mov	a,@r1		; 035f - f1	q
+	dec	a		; 0360 - 07	.
+	rl	a		; 0361 - e7	g
+	swap	a		; 0362 - 47	G
+	anl	a,#3		; 0363 - 53 03	S.
+	add	a,r3		; 0365 - 6b	k
+	mov	r3,a		; 0366 - ab	+
+	clr	f0		; 0367 - 85	.
+X0368:	dec	r0		; 0368 - c8	H
+	mov	a,r0		; 0369 - f8	x
+	jb2	X037e		; 036a - 52 7e	R~
+	add	a,#82h		; 036c - 03 82	..
+	movp	a,@a		; 036e - a3	#
+	mov	r3,#7fh		; 036f - bb 7f	;.
+	mov	r1,a		; 0371 - a9	)
+	jf0	X0375		; 0372 - b6 75	6u
+	mov	a,@r1		; 0374 - f1	q
+X0375:	mov	r4,a		; 0375 - ac	,
+	mov	a,r3		; 0376 - fb	{
+	add	a,r2		; 0377 - 6a	j
+	mov	r1,a		; 0378 - a9	)
+	mov	a,r4		; 0379 - fc	|
+	movx	@r1,a		; 037a - 91	.
+	djnz	r2,X0368	; 037b - ea 68	jh
+	ret			; 037d - 83	.
+;
+X037e:	mov	a,@r0		; 037e - f0	p
+	jmp	X0b71		; 037f - 64 71	dq
+;
+X0381:	mov	r1,#7dh		; 0381 - b9 7d	9}
+	mov	a,@r1		; 0383 - f1	q
+	jnz	X039d		; 0384 - 96 9d	..
+	clr	f0		; 0386 - 85	.
+	cpl	f0		; 0387 - 95	.
+	call	X0368		; 0388 - 74 68	th
+	call	X0390		; 038a - 74 90	t.
+	mov	r0,#7ch		; 038c - b8 7c	8|
+	mov	@r0,a		; 038e - a0	 
+	ret			; 038f - 83	.
+;
+X0390:	call	X0392		; 0390 - 74 92	t.
+X0392:	mov	r0,#7eh		; 0392 - b8 7e	8~
+	mov	r1,#0dh		; 0394 - b9 0d	9.
+	mov	a,@r0		; 0396 - f0	p
+	xchd	a,@r1		; 0397 - 31	1
+	inc	r0		; 0398 - 18	.
+	dec	r1		; 0399 - c9	I
+	mov	a,@r0		; 039a - f0	p
+	mov	@r1,#0feh	; 039b - b1 fe	1~
+X039d:	ret			; 039d - 83	.
+;
+	org	3fah
+;
+	anl	a,#60h		; 03fa - 53 60	S`
+	add	a,r0		; 03fc - 68	h
+	orl	a,@r1		; 03fd - 41	A
+	movp	a,@a		; 03fe - a3	#
+	jmp	X040e		; 03ff - 84 0e	..
+;
+	movd	p4,a		; 0401 - 3c	<
+	movd	p4,a		; 0402 - 3c	<
+	movd	p4,a		; 0403 - 3c	<
+	clr	a		; 0404 - 27	'
+	orl	a,r4		; 0405 - 4c	L
+	orld	p4,a		; 0406 - 8c	.
+	anl	bus,#99h	; 0407 - 98 99	..
+	orld	p7,a		; 0409 - 8f	.
+	nop			; 040a - 00	.
+X040b:	anl	a,#7		; 040b - 53 07	S.
+	jmpp	@a		; 040d - b3	3
+;
+X040e:	anl	p1,#0f7h	; 040e - 99 f7	.w
+	mov	a,@r0		; 0410 - f0	p
+	dec	a		; 0411 - 07	.
+	jz	X041c		; 0412 - c6 1c	F.
+	anl	p1,#0f3h	; 0414 - 99 f3	.s
+	jb4	X041a		; 0416 - 92 1a	..
+	anl	p1,#0f5h	; 0418 - 99 f5	.u
+X041a:	jb3	X041e		; 041a - 72 1e	r.
+X041c:	anl	p1,#0f6h	; 041c - 99 f6	.v
+X041e:	orl	p2,#20h		; 041e - 8a 20	. 
+	orl	p1,#8		; 0420 - 89 08	..
+	anl	p1,#0f5h	; 0422 - 99 f5	.u
+	orl	p1,#5		; 0424 - 89 05	..
+	ret			; 0426 - 83	.
+;
+	mov	r0,#23h		; 0427 - b8 23	8#
+	mov	a,@r0		; 0429 - f0	p
+	mov	r4,a		; 042a - ac	,
+	mov	r0,#2fh		; 042b - b8 2f	8/
+	mov	a,@r0		; 042d - f0	p
+	add	a,#0c0h		; 042e - 03 c0	.@
+	mov	r0,#31h		; 0430 - b8 31	81
+	jc	X0446		; 0432 - f6 46	vF
+	mov	a,@r0		; 0434 - f0	p
+	jb2	X0438		; 0435 - 52 38	R8
+	ret			; 0437 - 83	.
+;
+X0438:	anl	a,#7		; 0438 - 53 07	S.
+	mov	@r0,a		; 043a - a0	 
+	ret			; 043b - 83	.
+;
+	add	a,#7		; 043c - 03 07	..
+	movp	a,@a		; 043e - a3	#
+	mov	r0,#2fh		; 043f - b8 2f	8/
+	add	a,@r0		; 0441 - 60	`
+	jc	X044b		; 0442 - f6 4b	vK
+	mov	r0,#31h		; 0444 - b8 31	81
+X0446:	mov	a,@r0		; 0446 - f0	p
+	jnz	X044b		; 0447 - 96 4b	.K
+	anl	p1,#7fh		; 0449 - 99 7f	..
+X044b:	ret			; 044b - 83	.
+;
+	movx	a,@r0		; 044c - 80	.
+	orl	p1,#8		; 044d - 89 08	..
+	anl	p1,#0f4h	; 044f - 99 f4	.t
+	xch	a,@r0		; 0451 - 20	 
+	jb4	X0480		; 0452 - 92 80	..
+	jb3	X047b		; 0454 - 72 7b	r{
+	xch	a,@r0		; 0456 - 20	 
+	mov	r1,a		; 0457 - a9	)
+	mov	a,@r0		; 0458 - f0	p
+	xrl	a,#6		; 0459 - d3 06	S.
+	mov	r0,#2fh		; 045b - b8 2f	8/
+	jz	X0476		; 045d - c6 76	Fv
+	mov	a,#0c0h		; 045f - 23 c0	#@
+	add	a,r1		; 0461 - 69	i
+	jnc	X0478		; 0462 - e6 78	fx
+	mov	a,r1		; 0464 - f9	y
+	mov	@r0,a		; 0465 - a0	 
+	mov	r1,#34h		; 0466 - b9 34	94
+	mov	a,@r1		; 0468 - f1	q
+	add	a,#0fah		; 0469 - 03 fa	.z
+	jz	X0475		; 046b - c6 75	Fu
+	cpl	a		; 046d - 37	7
+	jz	X0472		; 046e - c6 72	Fr
+	mov	a,#0fch		; 0470 - 23 fc	#|
+X0472:	add	a,#69h		; 0472 - 03 69	.i
+	mov	@r0,a		; 0474 - a0	 
+X0475:	ret			; 0475 - 83	.
+;
+X0476:	mov	r0,#2dh		; 0476 - b8 2d	8-
+X0478:	mov	a,r1		; 0478 - f9	y
+	mov	@r0,a		; 0479 - a0	 
+	ret			; 047a - 83	.
+;
+X047b:	xch	a,@r0		; 047b - 20	 
+	mov	r0,#2eh		; 047c - b8 2e	8.
+	mov	@r0,a		; 047e - a0	 
+	ret			; 047f - 83	.
+;
+X0480:	jb3	X0487		; 0480 - 72 87	r.
+	xch	a,@r0		; 0482 - 20	 
+	mov	r0,#6fh		; 0483 - b8 6f	8o
+	nop			; 0485 - 00	.
+	ret			; 0486 - 83	.
+;
+X0487:	xch	a,@r0		; 0487 - 20	 
+	mov	r0,#39h		; 0488 - b8 39	89
+	mov	@r0,a		; 048a - a0	 
+	ret			; 048b - 83	.
+;
+	movx	a,@r0		; 048c - 80	.
+	orl	p1,#8		; 048d - 89 08	..
+	anl	p1,#0f7h	; 048f - 99 f7	.w
+	orl	p1,#7		; 0491 - 89 07	..
+	mov	r0,#46h		; 0493 - b8 46	8F
+	cpl	a		; 0495 - 37	7
+	mov	@r0,a		; 0496 - a0	 
+	ret			; 0497 - 83	.
+;
+	mov	r0,#52h		; 0498 - b8 52	8R
+	movx	a,@r0		; 049a - 80	.
+	add	a,#0ah		; 049b - 03 0a	..
+	mov	r4,a		; 049d - ac	,
+	cpl	a		; 049e - 37	7
+	add	a,@r0		; 049f - 60	`
+	mov	r0,#6ch		; 04a0 - b8 6c	8l
+	orl	p1,#8		; 04a2 - 89 08	..
+	anl	p1,#0f7h	; 04a4 - 99 f7	.w
+	jnc	X04b1		; 04a6 - e6 b1	f1
+X04a8:	mov	@r0,#0		; 04a8 - b0 00	0.
+	mov	r0,#52h		; 04aa - b8 52	8R
+	mov	a,r4		; 04ac - fc	|
+	mov	@r0,a		; 04ad - a0	 
+	mov	r4,#0ffh	; 04ae - bc ff	<.
+	ret			; 04b0 - 83	.
+;
+X04b1:	inc	@r0		; 04b1 - 10	.
+	mov	a,@r0		; 04b2 - f0	p
+	jb2	X04a8		; 04b3 - 52 a8	R(
+	mov	r4,#0ffh	; 04b5 - bc ff	<.
+	ret			; 04b7 - 83	.
+;
+	org	4feh
+;
+	movp	a,@a		; 04fe - a3	#
+	ret			; 04ff - 83	.
+;
+	org	5feh
+;
+	movp	a,@a		; 05fe - a3	#
+	ret			; 05ff - 83	.
+;
+	org	6feh
+;
+	movp	a,@a		; 06fe - a3	#
+	ret			; 06ff - 83	.
+;
+	org	7feh
+;
+	movp	a,@a		; 07fe - a3	#
+	ret			; 07ff - 83	.
+;
+	call	X0a0f		; 0800 - 54 0f	T.
+	call	X0a8d		; 0802 - 54 8d	T.
+X0804:	call	X0a57		; 0804 - 54 57	TW
+	call	X0a82		; 0806 - 54 82	T.
+	nop			; 0808 - 00	.
+;
+	org	80ah
+;
+	call	X0a9e		; 080a - 54 9e	T.
+X080c:	call	X0900		; 080c - 34 00	4.
+	nop			; 080e - 00	.
+;
+	org	810h
+;
+	call	X0812		; 0810 - 14 12	..
+X0812:	jmp	X0812		; 0812 - 04 12	..
+;
+	org	8b9h
+;
+X08b9:	nop			; 08b9 - 00	.
+;
+	org	8feh
+;
+	movp	a,@a		; 08fe - a3	#
+	ret			; 08ff - 83	.
+;
+X0900:	mov	r1,#44h		; 0900 - b9 44	9D
+	mov	a,@r1		; 0902 - f1	q
+	rl	a		; 0903 - e7	g
+	swap	a		; 0904 - 47	G
+	anl	a,#7		; 0905 - 53 07	S.
+	inc	a		; 0907 - 17	.
+	mov	r5,a		; 0908 - ad	-
+	mov	r2,#25h		; 0909 - ba 25	:%
+X090b:	mov	a,r2		; 090b - fa	z
+	movp	a,@a		; 090c - a3	#
+	jz	X0919		; 090d - c6 19	F.
+X090f:	mov	r1,a		; 090f - a9	)
+	mov	a,r2		; 0910 - fa	z
+	add	a,#9		; 0911 - 03 09	..
+	xch	a,r2		; 0913 - 2a	*
+	add	a,r5		; 0914 - 6d	m
+	movp	a,@a		; 0915 - a3	#
+	mov	@r1,a		; 0916 - a1	!
+	jmp	X090b		; 0917 - 24 0b	$.
+;
+X0919:	mov	r1,#43h		; 0919 - b9 43	9C
+	mov	a,@r1		; 091b - f1	q
+	anl	a,#18h		; 091c - 53 18	S.
+	add	a,r2		; 091e - 6a	j
+	add	a,r5		; 091f - 6d	m
+	movp	a,@a		; 0920 - a3	#
+	mov	r1,#6bh		; 0921 - b9 6b	9k
+	mov	@r1,a		; 0923 - a1	!
+X0924:	ret			; 0924 - 83	.
+;
+	xch	a,r2		; 0925 - 2a	*
+	X0c9b			; 0926 - 9b	.
+	X0c95			; 0927 - 9b	.
+	cpl	f0		; 0928 - 95	.
+	jb4	X0991		; 0929 - 92 91	..
+	orl	p2,#83h		; 092b - 8a 83	..
+	addc	a,r7		; 092d - 7f	.
+	xch	a,r3		; 092e - 2b	+
+	movd	p5,a		; 092f - 3d	=
+	xchd	a,@r1		; 0930 - 31	1
+	xchd	a,@r0		; 0931 - 30	0
+	xchd	a,@r0		; 0932 - 30	0
+	xchd	a,@r0		; 0933 - 30	0
+	xchd	a,@r0		; 0934 - 30	0
+	xchd	a,@r0		; 0935 - 30	0
+	cpl	a		; 0936 - 37	7
+	swap	a		; 0937 - 47	G
+	jmp	X0a44		; 0938 - 44 44	DD
+;
+	strt	t		; 093a - 55	U
+	X0b66			; 093b - 66	f
+	X0b66			; 093c - 66	f
+	X0b66			; 093d - 66	f
+	X0b66			; 093e - 66	f
+	X0b4a			; 093f - 66	f
+	orl	a,r2		; 0940 - 4a	J
+	jmp	X0b50		; 0941 - 64 50	dP
+;
+	movd	p6,a		; 0943 - 3e	>
+	jb1	X0924		; 0944 - 32 24	2$
+	inc	r4		; 0946 - 1c	.
+	call	X080c		; 0947 - 14 0c	..
+	anl	a,@r0		; 0949 - 50	P
+	en	tcnti		; 094a - 25	%
+	inc	r7		; 094b - 1f	.
+X094c:	inc	r4		; 094c - 1c	.
+	inc	r1		; 094d - 19	.
+	dis	i		; 094e - 15	.
+	jb0	X090f		; 094f - 12 0f	..
+	movd	a,p4		; 0951 - 0c	.
+	orl	a,r6		; 0952 - 4e	N
+	addc	a,r5		; 0953 - 7d	}
+	jmp	X0b51		; 0954 - 64 51	dQ
+;
+	jmp	X0a38		; 0956 - 44 38	D8
+;
+	xch	a,r3		; 0958 - 2b	+
+	inc	r7		; 0959 - 1f	.
+	inc	r1		; 095a - 19	.
+	orl	a,r3		; 095b - 4b	K
+	jb0	X0912		; 095c - 12 12	..
+	jb0	X0912		; 095e - 12 12	..
+	jb0	X0912		; 0960 - 12 12	..
+	jb0	X0912		; 0962 - 12 12	..
+	orl	a,r0		; 0964 - 48	H
+	xch	a,r0		; 0965 - 28	(
+X0966:	xch	a,r0		; 0966 - 28	(
+	xch	a,r0		; 0967 - 28	(
+	xch	a,r0		; 0968 - 28	(
+	xch	a,r3		; 0969 - 2b	+
+	xch	a,r3		; 096a - 2b	+
+	xch	a,r3		; 096b - 2b	+
+	call	X094c		; 096c - 34 4c	4L
+	movx	a,@r0		; 096e - 80	.
+	movx	a,@r0		; 096f - 80	.
+	movx	a,@r0		; 0970 - 80	.
+	movx	a,@r0		; 0971 - 80	.
+	movx	a,@r0		; 0972 - 80	.
+	movx	a,@r0		; 0973 - 80	.
+	movx	a,@r0		; 0974 - 80	.
+	movx	a,@r0		; 0975 - 80	.
+	movd	p6,a		; 0976 - 3e	>
+	mov	a,t		; 0977 - 42	B
+	mov	a,t		; 0978 - 42	B
+	mov	a,t		; 0979 - 42	B
+	mov	a,t		; 097a - 42	B
+	mov	a,t		; 097b - 42	B
+	mov	a,t		; 097c - 42	B
+	mov	a,t		; 097d - 42	B
+	mov	a,t		; 097e - 42	B
+	strt	cnt		; 097f - 45	E
+	in	a,p2		; 0980 - 0a	.
+	in	a,p2		; 0981 - 0a	.
+	in	a,p2		; 0982 - 0a	.
+	in	a,p2		; 0983 - 0a	.
+	in	a,p2		; 0984 - 0a	.
+	in	a,p2		; 0985 - 0a	.
+	in	a,p2		; 0986 - 0a	.
+	in	a,p2		; 0987 - 0a	.
+	add	a,r1		; 0988 - 69	i
+	jmp	X0804		; 0989 - 04 04	..
+;
+	jmp	X0804		; 098b - 04 04	..
+;
+	jmp	X0804		; 098d - 04 04	..
+;
+	jmp	X0804		; 098f - 04 04	..
+;
+X0991:	nop			; 0991 - 00	.
+	djnz	r1,X09e9	; 0992 - e9 e9	ii
+	jnc	X09e6		; 0994 - e6 e6	ff
+	djnz	r2,X09e7	; 0996 - ea e7	jg
+	movp3	a,@a		; 0998 - e3	c
+	movp3	a,@a		; 0999 - e3	c
+	dec	r1		; 099a - c9	I
+	mov	r1,a		; 099b - a9	)
+	X0d86			; 099c - a6	&
+	jni	X098a		; 099d - 86 8a	..
+	cpl	c		; 099f - a7	'
+	X0ee3			; 09a0 - c3	C
+	movp3	a,@a		; 09a1 - e3	c
+	mov	r1,a		; 09a2 - a9	)
+	orl	p1,#86h		; 09a3 - 89 86	..
+	X0b6a			; 09a5 - 66	f
+	add	a,r2		; 09a6 - 6a	j
+	rrc	a		; 09a7 - 67	g
+	ret			; 09a8 - 83	.
+;
+	movp3	a,@a		; 09a9 - e3	c
+	dec	r1		; 09aa - c9	I
+	mov	r1,a		; 09ab - a9	)
+	jni	X0966		; 09ac - 86 66	.f
+	add	a,r2		; 09ae - 6a	j
+	rrc	a		; 09af - 67	g
+	movp	a,@a		; 09b0 - a3	#
+	movp3	a,@a		; 09b1 - e3	c
+	nop			; 09b2 - 00	.
+;
+	org	9e6h
+;
+X09e6:	nop			; 09e6 - 00	.
+X09e7:	nop			; 09e7 - 00	.
+;
+	org	9e9h
+;
+X09e9:	nop			; 09e9 - 00	.
+;
+	org	9feh
+;
+	movp	a,@a		; 09fe - a3	#
+	ret			; 09ff - 83	.
+;
+	idl			; 0a00 - 01	.
+	idl			; 0a01 - 01	.
+	outl	bus,a		; 0a02 - 02	.
+	idl			; 0a03 - 01	.
+	idl			; 0a04 - 01	.
+	outl	bus,a		; 0a05 - 02	.
+	outl	bus,a		; 0a06 - 02	.
+	outl	bus,a		; 0a07 - 02	.
+	outl	bus,a		; 0a08 - 02	.
+	outl	bus,a		; 0a09 - 02	.
+	add	a,#3		; 0a0a - 03 03	..
+	add	a,#4		; 0a0c - 03 04	..
+	jmp	X08b9		; 0a0e - 04 b9	.9
+;
+	movd	p4,a		; 0a10 - 3c	<
+	mov	a,@r1		; 0a11 - f1	q
+	cpl	a		; 0a12 - 37	7
+	inc	r1		; 0a13 - 19	.
+	add	a,@r1		; 0a14 - 61	a
+	mov	r1,#3fh		; 0a15 - b9 3f	9?
+	jc	X0a1f		; 0a17 - f6 1f	v.
+	add	a,#6		; 0a19 - 03 06	..
+	jc	X0a1f		; 0a1b - f6 1f	v.
+	mov	@r1,#0bh	; 0a1d - b1 0b	1.
+X0a1f:	mov	a,@r1		; 0a1f - f1	q
+	jz	X0a23		; 0a20 - c6 23	F#
+	dec	a		; 0a22 - 07	.
+X0a23:	anl	a,#0fh		; 0a23 - 53 0f	S.
+	mov	@r1,a		; 0a25 - a1	!
+	mov	r1,#3ch		; 0a26 - b9 3c	9<
+	mov	a,@r1		; 0a28 - f1	q
+	mov	r6,a		; 0a29 - ae	.
+	dec	r1		; 0a2a - c9	I
+	mov	a,@r1		; 0a2b - f1	q
+	mov	r3,a		; 0a2c - ab	+
+	sel	mb0		; 0a2d - e5	e
+	call	X0300		; 0a2e - 74 00	t.
+	sel	mb1		; 0a30 - f5	u
+	dec	r1		; 0a31 - c9	I
+	mov	@r1,a		; 0a32 - a1	!
+	add	a,#0cbh		; 0a33 - 03 cb	.K
+	jc	X0a38		; 0a35 - f6 38	v8
+	clr	a		; 0a37 - 27	'
+X0a38:	mov	r1,#43h		; 0a38 - b9 43	9C
+	mov	@r1,a		; 0a3a - a1	!
+	mov	a,#0e3h		; 0a3b - 23 e3	#c
+	add	a,@r1		; 0a3d - 61	a
+	jnc	X0a42		; 0a3e - e6 42	fB
+	mov	@r1,#1ch	; 0a40 - b1 1c	1.
+X0a42:	mov	r1,#39h		; 0a42 - b9 39	99
+X0a44:	mov	a,@r1		; 0a44 - f1	q
+	mov	r6,a		; 0a45 - ae	.
+	mov	r1,#3bh		; 0a46 - b9 3b	9;
+	mov	a,@r1		; 0a48 - f1	q
+	mov	r3,a		; 0a49 - ab	+
+	sel	mb0		; 0a4a - e5	e
+	call	X0300		; 0a4b - 74 00	t.
+	sel	mb1		; 0a4d - f5	u
+	add	a,#0a3h		; 0a4e - 03 a3	.#
+	jz	X0a56		; 0a50 - c6 56	FV
+	cpl	a		; 0a52 - 37	7
+	inc	a		; 0a53 - 17	.
+	add	a,@r1		; 0a54 - 61	a
+	mov	@r1,a		; 0a55 - a1	!
+X0a56:	ret			; 0a56 - 83	.
+;
+X0a57:	mov	r1,#44h		; 0a57 - b9 44	9D
+	mov	r0,#24h		; 0a59 - b8 24	8$
+	mov	r6,#0		; 0a5b - be 00	>.
+	mov	a,@r0		; 0a5d - f0	p
+	cpl	a		; 0a5e - 37	7
+	mov	r4,a		; 0a5f - ac	,
+	sel	rb0		; 0a60 - c5	E
+	mov	a,r7		; 0a61 - ff	.
+	sel	rb1		; 0a62 - d5	U
+	cpl	a		; 0a63 - 37	7
+	jb1	X0a7c		; 0a64 - 32 7c	2|
+	cpl	a		; 0a66 - 37	7
+	add	a,#38h		; 0a67 - 03 38	.8
+	add	a,r4		; 0a69 - 6c	l
+	mov	r4,a		; 0a6a - ac	,
+	jc	X0a77		; 0a6b - f6 77	vw
+X0a6d:	inc	r6		; 0a6d - 1e	.
+	mov	a,r6		; 0a6e - fe	~
+	rrc	a		; 0a6f - 67	g
+	clr	c		; 0a70 - 97	.
+	rrc	a		; 0a71 - 67	g
+	movp	a,@a		; 0a72 - a3	#
+	add	a,r4		; 0a73 - 6c	l
+	mov	r4,a		; 0a74 - ac	,
+	jnc	X0a6d		; 0a75 - e6 6d	fm
+X0a77:	mov	a,#0c4h		; 0a77 - 23 c4	#D
+	add	a,r6		; 0a79 - 6e	n
+	jnc	X0a7f		; 0a7a - e6 7f	f.
+X0a7c:	mov	r6,#3ch		; 0a7c - be 3c	><
+	clr	a		; 0a7e - 27	'
+X0a7f:	xch	a,r6		; 0a7f - 2e	.
+	mov	@r1,a		; 0a80 - a1	!
+	ret			; 0a81 - 83	.
+;
+X0a82:	mov	r0,#43h		; 0a82 - b8 43	8C
+	mov	r1,#44h		; 0a84 - b9 44	9D
+	clr	f1		; 0a86 - a5	%
+	call	X0c80		; 0a87 - 94 80	..
+	mov	r1,#68h		; 0a89 - b9 68	9h
+	mov	@r1,a		; 0a8b - a1	!
+	ret			; 0a8c - 83	.
+;
+X0a8d:	mov	r0,#43h		; 0a8d - b8 43	8C
+	mov	r1,#44h		; 0a8f - b9 44	9D
+	clr	f1		; 0a91 - a5	%
+	cpl	f1		; 0a92 - b5	5
+	call	X0c80		; 0a93 - 94 80	..
+	cpl	a		; 0a95 - 37	7
+	mov	r1,#57h		; 0a96 - b9 57	9W
+	add	a,@r1		; 0a98 - 61	a
+	cpl	a		; 0a99 - 37	7
+	mov	r1,#51h		; 0a9a - b9 51	9Q
+	mov	@r1,a		; 0a9c - a1	!
+	ret			; 0a9d - 83	.
+;
+X0a9e:	mov	r0,#2ah		; 0a9e - b8 2a	8*
+	mov	r1,#22h		; 0aa0 - b9 22	9"
+	call	X0b80		; 0aa2 - 74 80	t.
+	mov	@r1,a		; 0aa4 - a1	!
+	mov	r0,#2bh		; 0aa5 - b8 2b	8+
+	inc	r1		; 0aa7 - 19	.
+	call	X0b80		; 0aa8 - 74 80	t.
+	add	a,#0f8h		; 0aaa - 03 f8	.x
+	mov	@r1,a		; 0aac - a1	!
+	ret			; 0aad - 83	.
+;
+	org	0afeh
+;
+	movp	a,@a		; 0afe - a3	#
+	ret			; 0aff - 83	.
+;
+	jnt0	X0b26		; 0b00 - 26 26	&&
+	jnt0	X0b26		; 0b02 - 26 26	&&
+	jnt0	X0b26		; 0b04 - 26 26	&&
+	jnt0	X0b26		; 0b06 - 26 26	&&
+	jnt0	X0b26		; 0b08 - 26 26	&&
+	jnt0	X0b26		; 0b0a - 26 26	&&
+	jnt0	X0b26		; 0b0c - 26 26	&&
+	jnt0	X0b26		; 0b0e - 26 26	&&
+	xchd	a,@r0		; 0b10 - 30	0
+	xchd	a,@r0		; 0b11 - 30	0
+	xchd	a,@r0		; 0b12 - 30	0
+	jt0	X0b36		; 0b13 - 36 36	66
+	outl	p1,a		; 0b15 - 39	9
+	outl	p1,a		; 0b16 - 39	9
+	outl	p1,a		; 0b17 - 39	9
+	outl	p1,a		; 0b18 - 39	9
+	outl	p1,a		; 0b19 - 39	9
+	outl	p1,a		; 0b1a - 39	9
+	outl	p1,a		; 0b1b - 39	9
+	outl	p1,a		; 0b1c - 39	9
+	outl	p1,a		; 0b1d - 39	9
+	outl	p1,a		; 0b1e - 39	9
+	outl	p1,a		; 0b1f - 39	9
+	outl	p2,a		; 0b20 - 3a	:
+	outl	p2,a		; 0b21 - 3a	:
+	movd	p5,a		; 0b22 - 3d	=
+	orl	a,#45h		; 0b23 - 43 45	CE
+	orl	a,r1		; 0b25 - 49	I
+X0b26:	orl	a,r1		; 0b26 - 49	I
+	orl	a,r4		; 0b27 - 4c	L
+	orl	a,r4		; 0b28 - 4c	L
+	orl	a,r4		; 0b29 - 4c	L
+	orl	a,r4		; 0b2a - 4c	L
+	orl	a,r4		; 0b2b - 4c	L
+	orl	a,r4		; 0b2c - 4c	L
+	orl	a,r4		; 0b2d - 4c	L
+	orl	a,r4		; 0b2e - 4c	L
+	orl	a,r4		; 0b2f - 4c	L
+	anl	a,@r1		; 0b30 - 51	Q
+	anl	a,@r1		; 0b31 - 51	Q
+	anl	a,@r1		; 0b32 - 51	Q
+	call	X0a5a		; 0b33 - 54 5a	TZ
+	add	a,@r0		; 0b35 - 60	`
+X0b36:	jmp	X0b68		; 0b36 - 64 68	dh
+;
+	add	a,r2		; 0b38 - 6a	j
+	add	a,r4		; 0b39 - 6c	l
+	add	a,r5		; 0b3a - 6d	m
+	X0b73			; 0b3b - 73	s
+	X0b73			; 0b3c - 73	s
+	X0b73			; 0b3d - 73	s
+	X0b73			; 0b3e - 73	s
+	X0b73			; 0b3f - 73	s
+	X0b73			; 0b40 - 73	s
+	X0b73			; 0b41 - 73	s
+	X0b77			; 0b42 - 73	s
+	rr	a		; 0b43 - 77	w
+	addc	a,r3		; 0b44 - 7b	{
+	addc	a,r7		; 0b45 - 7f	.
+	ret			; 0b46 - 83	.
+;
+	jni	X0b8a		; 0b47 - 86 8a	..
+	orld	p6,a		; 0b49 - 8e	.
+X0b4a:	jb4	X0b9a		; 0b4a - 92 9a	..
+	anl	p2,#9ah		; 0b4c - 9a 9a	..
+	anl	p2,#9ah		; 0b4e - 9a 9a	..
+X0b50:	jnz	X0b92		; 0b50 - 96 92	..
+	orld	p6,a		; 0b52 - 8e	.
+	jb4	X0b96		; 0b53 - 92 96	..
+	anld	p5,a		; 0b55 - 9d	.
+	mov	@r1,a		; 0b56 - a1	!
+	clr	f1		; 0b57 - a5	%
+	mov	r1,a		; 0b58 - a9	)
+	mov	r5,a		; 0b59 - ad	-
+	jf0	X0bbf		; 0b5a - b6 bf	6?
+	mov	r7,#0bfh	; 0b5c - bf bf	??
+	mov	r7,#0bfh	; 0b5e - bf bf	??
+	jnz	X0b92		; 0b60 - 96 92	..
+	orld	p6,a		; 0b62 - 8e	.
+	jb4	X0b96		; 0b63 - 92 96	..
+	anld	p5,a		; 0b65 - 9d	.
+X0b66:	mov	@r1,a		; 0b66 - a1	!
+	clr	f1		; 0b67 - a5	%
+X0b68:	mov	r1,a		; 0b68 - a9	)
+	mov	r5,a		; 0b69 - ad	-
+X0b6a:	jf0	X0bbf		; 0b6a - b6 bf	6?
+	mov	r7,#0bfh	; 0b6c - bf bf	??
+	mov	r7,#0bfh	; 0b6e - bf bf	??
+	jnz	X0b92		; 0b70 - 96 92	..
+	orld	p6,a		; 0b72 - 8e	.
+X0b73:	jb4	X0b96		; 0b73 - 92 96	..
+	anld	p5,a		; 0b75 - 9d	.
+	mov	@r1,a		; 0b76 - a1	!
+X0b77:	clr	f1		; 0b77 - a5	%
+	mov	r1,a		; 0b78 - a9	)
+	mov	r5,a		; 0b79 - ad	-
+	jf0	X0bbf		; 0b7a - b6 bf	6?
+	mov	r7,#0bfh	; 0b7c - bf bf	??
+	mov	r7,#0bfh	; 0b7e - bf bf	??
+X0b80:	mov	a,@r0		; 0b80 - f0	p
+	mov	r3,a		; 0b81 - ab	+
+	mov	r0,#24h		; 0b82 - b8 24	8$
+	mov	a,@r0		; 0b84 - f0	p
+	mov	r6,a		; 0b85 - ae	.
+	sel	mb0		; 0b86 - e5	e
+	call	X0300		; 0b87 - 74 00	t.
+	sel	mb1		; 0b89 - f5	u
+X0b8a:	ret			; 0b8a - 83	.
+;
+X0b8b:	jmp	X0cfe		; 0b8b - 84 fe	.~
+;
+	org	0b92h
+;
+X0b92:	nop			; 0b92 - 00	.
+;
+	org	0b96h
+;
+X0b96:	nop			; 0b96 - 00	.
+;
+	org	0b9ah
+;
+X0b9a:	nop			; 0b9a - 00	.
+;
+	org	0bbfh
+;
+X0bbf:	nop			; 0bbf - 00	.
+;
+	org	0bfch
+;
+X0bfc:	jf1	X0b8b		; 0bfc - 76 8b	v.
+	movp	a,@a		; 0bfe - a3	#
+	ret			; 0bff - 83	.
+;
+	anl	bus,#98h	; 0c00 - 98 98	..
+	anl	bus,#96h	; 0c02 - 98 96	..
+	jnz	X0c96		; 0c04 - 96 96	..
+	call	X0c94		; 0c06 - 94 94	..
+	call	X0c92		; 0c08 - 94 92	..
+	jb4	X0c91		; 0c0a - 92 91	..
+	movx	@r1,a		; 0c0c - 91	.
+	movx	@r0,a		; 0c0d - 90	.
+	orld	p5,a		; 0c0e - 8d	.
+	orl	p1,#9eh		; 0c0f - 89 9e	..
+	anld	p6,a		; 0c11 - 9e	.
+	anld	p6,a		; 0c12 - 9e	.
+	anld	p6,a		; 0c13 - 9e	.
+	anld	p6,a		; 0c14 - 9e	.
+	anld	p6,a		; 0c15 - 9e	.
+	anld	p6,a		; 0c16 - 9e	.
+	anld	p6,a		; 0c17 - 9e	.
+	anld	p6,a		; 0c18 - 9e	.
+	anld	p5,a		; 0c19 - 9d	.
+	anld	p5,a		; 0c1a - 9d	.
+	anl	p2,#97h		; 0c1b - 9a 97	..
+	movx	@r1,a		; 0c1d - 91	.
+	orld	p5,a		; 0c1e - 8d	.
+	X0ca5			; 0c1f - 8b	.
+	clr	f1		; 0c20 - a5	%
+	clr	f1		; 0c21 - a5	%
+	clr	f1		; 0c22 - a5	%
+	X0da7			; 0c23 - a6	&
+	cpl	c		; 0c24 - a7	'
+	cpl	c		; 0c25 - a7	'
+	cpl	c		; 0c26 - a7	'
+	mov	r2,a		; 0c27 - aa	*
+	mov	r2,a		; 0c28 - aa	*
+	cpl	c		; 0c29 - a7	'
+	cpl	c		; 0c2a - a7	'
+	jmp	X0d9d		; 0c2b - a4 9d	$.
+;
+	call	X0c8d		; 0c2d - 94 8d	..
+	X0cab			; 0c2f - 8b	.
+	mov	r3,a		; 0c30 - ab	+
+	mov	r3,a		; 0c31 - ab	+
+	mov	r3,a		; 0c32 - ab	+
+	mov	r6,a		; 0c33 - ae	.
+	mov	r7,a		; 0c34 - af	/
+	mov	@r0,#0b1h	; 0c35 - b0 b1	01
+	call	X0db4		; 0c37 - b4 b4	44
+	call	X0db4		; 0c39 - b4 b4	44
+	mov	@r1,#0aah	; 0c3b - b1 aa	1*
+	anld	p7,a		; 0c3d - 9f	.
+	orld	p6,a		; 0c3e - 8e	.
+	orld	p5,a		; 0c3f - 8d	.
+	call	X0db4		; 0c40 - b4 b4	44
+	jf0	X0cb8		; 0c42 - b6 b8	68
+	mov	r2,#0bch	; 0c44 - ba bc	:<
+	mov	r7,#0c1h	; 0c46 - bf c1	?A
+	X0ec1			; 0c48 - c1	A
+	X0ec1			; 0c49 - c1	A
+	X0ec1			; 0c4a - c1	A
+	X0ebe			; 0c4b - c1	A
+	mov	r6,#0abh	; 0c4c - be ab	>+
+	movx	@r1,a		; 0c4e - 91	.
+	orld	p7,a		; 0c4f - 8f	.
+	X0ece			; 0c50 - c2	B
+	dec	r6		; 0c51 - ce	N
+	dec	r6		; 0c52 - ce	N
+	dec	r6		; 0c53 - ce	N
+	dec	r6		; 0c54 - ce	N
+	dec	r6		; 0c55 - ce	N
+	xrl	a,@r0		; 0c56 - d0	P
+	dec	r6		; 0c57 - ce	N
+	dec	r6		; 0c58 - ce	N
+	dec	r6		; 0c59 - ce	N
+	dec	r6		; 0c5a - ce	N
+	dec	r6		; 0c5b - ce	N
+	dec	r6		; 0c5c - ce	N
+	call	X0d98		; 0c5d - b4 98	4.
+	movx	@r1,a		; 0c5f - 91	.
+	X0ece			; 0c60 - c2	B
+	dec	r6		; 0c61 - ce	N
+	dec	r6		; 0c62 - ce	N
+	dec	r6		; 0c63 - ce	N
+	dec	r6		; 0c64 - ce	N
+	dec	r6		; 0c65 - ce	N
+	xrl	a,@r0		; 0c66 - d0	P
+	dec	r6		; 0c67 - ce	N
+	dec	r6		; 0c68 - ce	N
+	dec	r6		; 0c69 - ce	N
+	dec	r6		; 0c6a - ce	N
+	dec	r6		; 0c6b - ce	N
+	dec	r6		; 0c6c - ce	N
+	call	X0d98		; 0c6d - b4 98	4.
+	movx	@r1,a		; 0c6f - 91	.
+	X0ece			; 0c70 - c2	B
+	dec	r6		; 0c71 - ce	N
+	dec	r6		; 0c72 - ce	N
+	dec	r6		; 0c73 - ce	N
+	dec	r6		; 0c74 - ce	N
+	dec	r6		; 0c75 - ce	N
+	xrl	a,@r0		; 0c76 - d0	P
+	dec	r6		; 0c77 - ce	N
+	dec	r6		; 0c78 - ce	N
+	dec	r6		; 0c79 - ce	N
+	dec	r6		; 0c7a - ce	N
+	dec	r6		; 0c7b - ce	N
+	dec	r6		; 0c7c - ce	N
+	call	X0d98		; 0c7d - b4 98	4.
+	movx	@r1,a		; 0c7f - 91	.
+X0c80:	mov	a,@r1		; 0c80 - f1	q
+	rrc	a		; 0c81 - 67	g
+	rrc	a		; 0c82 - 67	g
+	anl	a,#0fh		; 0c83 - 53 0f	S.
+	mov	r2,a		; 0c85 - aa	*
+	mov	a,@r0		; 0c86 - f0	p
+	rlc	a		; 0c87 - f7	w
+	rlc	a		; 0c88 - f7	w
+	anl	a,#0f0h		; 0c89 - 53 f0	Sp
+	add	a,r2		; 0c8b - 6a	j
+	mov	r2,a		; 0c8c - aa	*
+X0c8d:	mov	a,@r0		; 0c8d - f0	p
+	anl	a,#3		; 0c8e - 53 03	S.
+	inc	a		; 0c90 - 17	.
+X0c91:	dec	r0		; 0c91 - c8	H
+X0c92:	mov	@r0,a		; 0c92 - a0	 
+	clr	a		; 0c93 - 27	'
+X0c94:	mov	r5,a		; 0c94 - ad	-
+X0c95:	mov	r7,a		; 0c95 - af	/
+X0c96:	mov	r4,#4		; 0c96 - bc 04	<.
+X0c98:	mov	a,r4		; 0c98 - fc	|
+	cpl	a		; 0c99 - 37	7
+	add	a,@r0		; 0c9a - 60	`
+X0c9b:	mov	a,r2		; 0c9b - fa	z
+	jnc	X0ca0		; 0c9c - e6 a0	f 
+	add	a,#10h		; 0c9e - 03 10	..
+X0ca0:	mov	r3,a		; 0ca0 - ab	+
+	call	X0bfc		; 0ca1 - 74 fc	t|
+	add	a,r5		; 0ca3 - 6d	m
+	mov	r5,a		; 0ca4 - ad	-
+X0ca5:	jnc	X0ca8		; 0ca5 - e6 a8	f(
+	inc	r7		; 0ca7 - 1f	.
+X0ca8:	mov	a,@r1		; 0ca8 - f1	q
+	rrc	a		; 0ca9 - 67	g
+	mov	a,r3		; 0caa - fb	{
+X0cab:	jnc	X0cae		; 0cab - e6 ae	f.
+	inc	a		; 0cad - 17	.
+X0cae:	call	X0bfc		; 0cae - 74 fc	t|
+	add	a,r5		; 0cb0 - 6d	m
+	mov	r5,a		; 0cb1 - ad	-
+	jnc	X0cb5		; 0cb2 - e6 b5	f5
+	inc	r7		; 0cb4 - 1f	.
+X0cb5:	mov	a,@r1		; 0cb5 - f1	q
+	inc	r3		; 0cb6 - 1b	.
+	jb1	X0cba		; 0cb7 - 32 ba	2:
+	dec	r3		; 0cb9 - cb	K
+X0cba:	mov	a,r3		; 0cba - fb	{
+	call	X0bfc		; 0cbb - 74 fc	t|
+	add	a,r5		; 0cbd - 6d	m
+	mov	r5,a		; 0cbe - ad	-
+	jnc	X0cc2		; 0cbf - e6 c2	fB
+	inc	r7		; 0cc1 - 1f	.
+X0cc2:	mov	a,r3		; 0cc2 - fb	{
+	call	X0bfc		; 0cc3 - 74 fc	t|
+	add	a,r5		; 0cc5 - 6d	m
+	mov	r5,a		; 0cc6 - ad	-
+	jnc	X0cca		; 0cc7 - e6 ca	fJ
+	inc	r7		; 0cc9 - 1f	.
+X0cca:	djnz	r4,X0c98	; 0cca - ec 98	l.
+	mov	a,r7		; 0ccc - ff	.
+	anl	a,#0fh		; 0ccd - 53 0f	S.
+	xch	a,r5		; 0ccf - 2d	-
+	mov	r0,#1dh		; 0cd0 - b8 1d	8.
+	xchd	a,@r0		; 0cd2 - 30	0
+	swap	a		; 0cd3 - 47	G
+	ret			; 0cd4 - 83	.
+;
+	org	0cfeh
+;
+X0cfe:	movp	a,@a		; 0cfe - a3	#
+	ret			; 0cff - 83	.
+;
+X0d00:	mov	r0,#7ah		; 0d00 - b8 7a	8z
+	mov	r1,#45h		; 0d02 - b9 45	9E
+	mov	a,@r1		; 0d04 - f1	q
+	cpl	a		; 0d05 - 37	7
+	add	a,@r0		; 0d06 - 60	`
+	jc	X0d0b		; 0d07 - f6 0b	v.
+	mov	a,@r1		; 0d09 - f1	q
+	mov	@r0,a		; 0d0a - a0	 
+X0d0b:	mov	r1,#47h		; 0d0b - b9 47	9G
+	mov	r2,#0		; 0d0d - ba 00	:.
+	mov	a,@r0		; 0d0f - f0	p
+	mov	r0,a		; 0d10 - a8	(
+	mov	r4,a		; 0d11 - ac	,
+	rlc	a		; 0d12 - f7	w
+	call	X0fc1		; 0d13 - f4 c1	tA
+	call	X0fc1		; 0d15 - f4 c1	tA
+	call	X0fbd		; 0d17 - f4 bd	t=
+	call	X0fbd		; 0d19 - f4 bd	t=
+	mov	a,@r1		; 0d1b - f1	q
+	swap	a		; 0d1c - 47	G
+	xchd	a,@r1		; 0d1d - 31	1
+	dec	r1		; 0d1e - c9	I
+	mov	a,@r1		; 0d1f - f1	q
+	cpl	a		; 0d20 - 37	7
+	add	a,r4		; 0d21 - 6c	l
+	jc	X0d29		; 0d22 - f6 29	v)
+	mov	r2,#9		; 0d24 - ba 09	:.
+	mov	a,@r1		; 0d26 - f1	q
+	rrc	a		; 0d27 - 67	g
+	mov	@r1,a		; 0d28 - a1	!
+X0d29:	mov	r0,#73h		; 0d29 - b8 73	8s
+	mov	r1,#49h		; 0d2b - b9 49	9I
+	mov	r3,#4		; 0d2d - bb 04	;.
+	clr	f0		; 0d2f - 85	.
+	cpl	f0		; 0d30 - 95	.
+	call	X0f98		; 0d31 - f4 98	t.
+	mov	r0,#6fh		; 0d33 - b8 6f	8o
+	mov	r3,#4		; 0d35 - bb 04	;.
+X0d37:	inc	r0		; 0d37 - 18	.
+	xch	a,@r0		; 0d38 - 20	 
+	djnz	r3,X0d37	; 0d39 - eb 37	k7
+	mov	r1,#3ah		; 0d3b - b9 3a	9:
+	mov	a,@r1		; 0d3d - f1	q
+	mov	r5,a		; 0d3e - ad	-
+	add	a,#0f0h		; 0d3f - 03 f0	.p
+	jc	X0d4b		; 0d41 - f6 4b	vK
+	mov	r1,#33h		; 0d43 - b9 33	93
+	mov	a,@r1		; 0d45 - f1	q
+	add	a,#0efh		; 0d46 - 03 ef	.o
+	jnz	X0d4b		; 0d48 - 96 4b	.K
+	mov	@r1,a		; 0d4a - a1	!
+X0d4b:	mov	r1,#48h		; 0d4b - b9 48	9H
+	mov	a,@r1		; 0d4d - f1	q
+	cpl	a		; 0d4e - 37	7
+	add	a,r5		; 0d4f - 6d	m
+	mov	r1,#31h		; 0d50 - b9 31	91
+	mov	a,@r1		; 0d52 - f1	q
+	mov	r7,a		; 0d53 - af	/
+	djnz	r7,X0d74	; 0d54 - ef 74	ot
+	mov	@r1,#2		; 0d56 - b1 02	1.
+	inc	r2		; 0d58 - 1a	.
+	mov	a,#6		; 0d59 - 23 06	#.
+	mov	r0,#34h		; 0d5b - b8 34	84
+	xch	a,@r0		; 0d5d - 20	 
+	djnz	r2,X0d62	; 0d5e - ea 62	jb
+	dec	a		; 0d60 - 07	.
+	mov	@r0,a		; 0d61 - a0	 
+X0d62:	jnz	X0d68		; 0d62 - 96 68	.h
+	mov	r1,#33h		; 0d64 - b9 33	93
+	mov	@r1,#23h	; 0d66 - b1 23	1#
+X0d68:	mov	r0,#7bh		; 0d68 - b8 7b	8{
+	mov	a,@r0		; 0d6a - f0	p
+	mov	r3,a		; 0d6b - ab	+
+	dec	r0		; 0d6c - c8	H
+	mov	a,@r0		; 0d6d - f0	p
+	mov	r6,#74h		; 0d6e - be 74	>t
+	call	X0fab		; 0d70 - f4 ab	t+
+	jmp	X0d89		; 0d72 - a4 89	$.
+;
+X0d74:	clr	a		; 0d74 - 27	'
+	jnc	X0d7e		; 0d75 - e6 7e	f~
+	mov	a,r2		; 0d77 - fa	z
+	jz	X0d7c		; 0d78 - c6 7c	F|
+	anl	p1,#0bfh	; 0d7a - 99 bf	.?
+X0d7c:	mov	a,@r0		; 0d7c - f0	p
+	add	a,r2		; 0d7d - 6a	j
+X0d7e:	mov	@r0,a		; 0d7e - a0	 
+	mov	r0,#7ah		; 0d7f - b8 7a	8z
+	mov	r1,#46h		; 0d81 - b9 46	9F
+	mov	r6,#74h		; 0d83 - be 74	>t
+	mov	r7,#4		; 0d85 - bf 04	?.
+	call	X0fa9		; 0d87 - f4 a9	t)
+X0d89:	mov	r0,#5eh		; 0d89 - b8 5e	8^
+	mov	r1,#73h		; 0d8b - b9 73	9s
+	mov	r6,#58h		; 0d8d - be 58	>X
+	mov	r7,#4		; 0d8f - bf 04	?.
+	call	X0fa9		; 0d91 - f4 a9	t)
+	mov	r0,#57h		; 0d93 - b8 57	8W
+	mov	r1,#2ch		; 0d95 - b9 2c	9,
+	mov	a,@r1		; 0d97 - f1	q
+X0d98:	anl	a,#38h		; 0d98 - 53 38	S8
+	mov	r4,a		; 0d9a - ac	,
+	jnz	X0da5		; 0d9b - 96 a5	.%
+X0d9d:	mov	r1,#4fh		; 0d9d - b9 4f	9O
+	mov	r3,#1		; 0d9f - bb 01	;.
+	cpl	f0		; 0da1 - 95	.
+	call	X0f98		; 0da2 - f4 98	t.
+	mov	@r0,a		; 0da4 - a0	 
+X0da5:	mov	r1,#4ch		; 0da5 - b9 4c	9L
+X0da7:	mov	a,@r1		; 0da7 - f1	q
+	swap	a		; 0da8 - 47	G
+	cpl	a		; 0da9 - 37	7
+	mov	r2,a		; 0daa - aa	*
+	orl	a,#0f0h		; 0dab - 43 f0	Cp
+	inc	a		; 0dad - 17	.
+	mov	r1,#58h		; 0dae - b9 58	9X
+	add	a,@r1		; 0db0 - 61	a
+	jnc	X0dba		; 0db1 - e6 ba	f:
+	jnz	X0dba		; 0db3 - 96 ba	.:
+	inc	r1		; 0db5 - 19	.
+	mov	a,r2		; 0db6 - fa	z
+	orl	a,#0fh		; 0db7 - 43 0f	C.
+	add	a,@r1		; 0db9 - 61	a
+X0dba:	mov	r1,#4dh		; 0dba - b9 4d	9M
+	mov	a,@r1		; 0dbc - f1	q
+	jf0	X0dc0		; 0dbd - b6 c0	6@
+	inc	@r1		; 0dbf - 11	.
+X0dc0:	jnz	X0dce		; 0dc0 - 96 ce	.N
+	mov	@r1,a		; 0dc2 - a1	!
+	jnc	X0dce		; 0dc3 - e6 ce	fN
+	mov	a,@r0		; 0dc5 - f0	p
+	add	a,#5		; 0dc6 - 03 05	..
+	mov	@r0,a		; 0dc8 - a0	 
+	inc	r1		; 0dc9 - 19	.
+	mov	a,@r1		; 0dca - f1	q
+	cpl	a		; 0dcb - 37	7
+	dec	r1		; 0dcc - c9	I
+	mov	@r1,a		; 0dcd - a1	!
+X0dce:	mov	r2,#4dh		; 0dce - ba 4d	:M
+	mov	a,@r0		; 0dd0 - f0	p
+	cpl	a		; 0dd1 - 37	7
+	add	a,r2		; 0dd2 - 6a	j
+	jc	X0dd7		; 0dd3 - f6 d7	vW
+	mov	a,r2		; 0dd5 - fa	z
+	mov	@r0,a		; 0dd6 - a0	 
+X0dd7:	mov	r0,#6bh		; 0dd7 - b8 6b	8k
+	mov	a,r4		; 0dd9 - fc	|
+	clr	f0		; 0dda - 85	.
+	cpl	f0		; 0ddb - 95	.
+	jmp	X0e00		; 0ddc - c4 00	D.
+;
+X0dde:	mov	a,@r0		; 0dde - f0	p
+	anl	a,#3		; 0ddf - 53 03	S.
+	add	a,#1		; 0de1 - 03 01	..
+	mov	r6,a		; 0de3 - ae	.
+	mov	r7,a		; 0de4 - af	/
+	mov	r0,#53h		; 0de5 - b8 53	8S
+	mov	r1,#55h		; 0de7 - b9 55	9U
+	call	X0df1		; 0de9 - b4 f1	4q
+	mov	a,r6		; 0deb - fe	~
+	mov	r7,a		; 0dec - af	/
+	mov	r0,#55h		; 0ded - b8 55	8U
+	mov	r1,#51h		; 0def - b9 51	9Q
+X0df1:	call	X0e08		; 0df1 - d4 08	T.
+	mov	@r0,a		; 0df3 - a0	 
+	inc	r0		; 0df4 - 18	.
+	xch	a,r3		; 0df5 - 2b	+
+	mov	@r0,a		; 0df6 - a0	 
+	ret			; 0df7 - 83	.
+;
+	org	0dfeh
+;
+	movp	a,@a		; 0dfe - a3	#
+	ret			; 0dff - 83	.
+;
+X0e00:	jb4	X0e82		; 0e00 - 92 82	..
+	jb3	X0e30		; 0e02 - 72 30	r0
+	nop			; 0e04 - 00	.
+;
+	org	0e06h
+;
+	jmp	X0dde		; 0e06 - a4 de	$^
+;
+X0e08:	mov	a,r7		; 0e08 - ff	.
+	mov	r4,a		; 0e09 - ac	,
+	mov	a,@r0		; 0e0a - f0	p
+	mov	r2,a		; 0e0b - aa	*
+	inc	r0		; 0e0c - 18	.
+	mov	a,@r0		; 0e0d - f0	p
+	mov	r3,a		; 0e0e - ab	+
+	call	X0fcb		; 0e0f - f4 cb	tK
+	mov	a,r4		; 0e11 - fc	|
+	mov	r7,a		; 0e12 - af	/
+	mov	a,r3		; 0e13 - fb	{
+	cpl	a		; 0e14 - 37	7
+	add	a,#1		; 0e15 - 03 01	..
+	mov	r5,a		; 0e17 - ad	-
+	mov	a,r2		; 0e18 - fa	z
+	cpl	a		; 0e19 - 37	7
+	addc	a,#0		; 0e1a - 13 00	..
+	mov	r4,a		; 0e1c - ac	,
+	mov	a,@r1		; 0e1d - f1	q
+	mov	r2,a		; 0e1e - aa	*
+	mov	r3,#0		; 0e1f - bb 00	;.
+	call	X0fcb		; 0e21 - f4 cb	tK
+	mov	a,@r0		; 0e23 - f0	p
+	add	a,r5		; 0e24 - 6d	m
+	mov	r5,a		; 0e25 - ad	-
+	dec	r0		; 0e26 - c8	H
+	mov	a,@r0		; 0e27 - f0	p
+	addc	a,r4		; 0e28 - 7c	|
+	mov	r4,a		; 0e29 - ac	,
+	mov	a,r5		; 0e2a - fd	}
+	add	a,r3		; 0e2b - 6b	k
+	mov	r3,a		; 0e2c - ab	+
+	mov	a,r4		; 0e2d - fc	|
+	addc	a,r2		; 0e2e - 7a	z
+	ret			; 0e2f - 83	.
+;
+X0e30:	mov	r1,#52h		; 0e30 - b9 52	9R
+	mov	a,@r1		; 0e32 - f1	q
+	cpl	a		; 0e33 - 37	7
+	dec	r1		; 0e34 - c9	I
+	add	a,@r1		; 0e35 - 61	a
+	mov	r1,#64h		; 0e36 - b9 64	9d
+	jnc	X0e56		; 0e38 - e6 56	fV
+	mov	r2,a		; 0e3a - aa	*
+	cpl	a		; 0e3b - 37	7
+	add	a,@r1		; 0e3c - 61	a
+	mov	a,@r1		; 0e3d - f1	q
+	jnz	X0e47		; 0e3e - 96 47	.G
+	inc	r1		; 0e40 - 19	.
+	mov	a,@r1		; 0e41 - f1	q
+	dec	r1		; 0e42 - c9	I
+	jnz	X0e4b		; 0e43 - 96 4b	.K
+	mov	a,r2		; 0e45 - fa	z
+	mov	@r1,a		; 0e46 - a1	!
+X0e47:	mov	a,r2		; 0e47 - fa	z
+	jc	X0e4b		; 0e48 - f6 4b	vK
+	mov	@r1,a		; 0e4a - a1	!
+X0e4b:	clr	c		; 0e4b - 97	.
+	rlc	a		; 0e4c - f7	w
+	jc	X0e58		; 0e4d - f6 58	vX
+	rlc	a		; 0e4f - f7	w
+	jc	X0e58		; 0e50 - f6 58	vX
+	cpl	a		; 0e52 - 37	7
+	add	a,@r1		; 0e53 - 61	a
+	jnc	X0e58		; 0e54 - e6 58	fX
+X0e56:	mov	@r1,#0		; 0e56 - b1 00	1.
+X0e58:	mov	a,@r1		; 0e58 - f1	q
+	jz	X0e73		; 0e59 - c6 73	Fs
+	mov	r0,#6bh		; 0e5b - b8 6b	8k
+	mov	a,@r0		; 0e5d - f0	p
+	rr	a		; 0e5e - 77	w
+	rr	a		; 0e5f - 77	w
+	anl	a,#3		; 0e60 - 53 03	S.
+	add	a,#1		; 0e62 - 03 01	..
+	mov	r7,a		; 0e64 - af	/
+	mov	r0,#65h		; 0e65 - b8 65	8e
+	mov	a,@r0		; 0e67 - f0	p
+	cpl	a		; 0e68 - 37	7
+	inc	a		; 0e69 - 17	.
+	add	a,@r1		; 0e6a - 61	a
+	clr	c		; 0e6b - 97	.
+	rrc	a		; 0e6c - 67	g
+	clr	c		; 0e6d - 97	.
+X0e6e:	rlc	a		; 0e6e - f7	w
+	jb7	X0e7e		; 0e6f - f2 7e	r~
+	djnz	r7,X0e6e	; 0e71 - ef 6e	on
+X0e73:	add	a,#80h		; 0e73 - 03 80	..
+	mov	r0,#62h		; 0e75 - b8 62	8b
+	mov	@r0,a		; 0e77 - a0	 
+	mov	r7,#6		; 0e78 - bf 06	?.
+	mov	r0,#65h		; 0e7a - b8 65	8e
+	jmp	X0df1		; 0e7c - a4 f1	$q
+;
+X0e7e:	mov	a,#7fh		; 0e7e - 23 7f	#.
+	jmp	X0e73		; 0e80 - c4 73	Ds
+;
+X0e82:	jb3	X0ef6		; 0e82 - 72 f6	rv
+	mov	r1,#52h		; 0e84 - b9 52	9R
+	mov	a,@r1		; 0e86 - f1	q
+	cpl	a		; 0e87 - 37	7
+	inc	r1		; 0e88 - 19	.
+	add	a,@r1		; 0e89 - 61	a
+	mov	r4,a		; 0e8a - ac	,
+	jc	X0e8f		; 0e8b - f6 8f	v.
+	cpl	f0		; 0e8d - 95	.
+	cpl	a		; 0e8e - 37	7
+X0e8f:	add	a,#0fch		; 0e8f - 03 fc	.|
+	mov	r1,#6ah		; 0e91 - b9 6a	9j
+	mov	r0,#61h		; 0e93 - b8 61	8a
+	jc	X0e9b		; 0e95 - f6 9b	v.
+	mov	a,@r1		; 0e97 - f1	q
+	inc	@r1		; 0e98 - 11	.
+	jnz	X0ed0		; 0e99 - 96 d0	.P
+X0e9b:	dec	r1		; 0e9b - c9	I
+	mov	a,@r1		; 0e9c - f1	q
+	cpl	a		; 0e9d - 37	7
+	inc	r1		; 0e9e - 19	.
+	mov	@r1,a		; 0e9f - a1	!
+	inc	@r0		; 0ea0 - 10	.
+	jf0	X0ea7		; 0ea1 - b6 a7	6'
+	mov	a,@r0		; 0ea3 - f0	p
+	add	a,#0feh		; 0ea4 - 03 fe	.~
+	mov	@r0,a		; 0ea6 - a0	 
+X0ea7:	mov	r1,#62h		; 0ea7 - b9 62	9b
+	mov	a,@r1		; 0ea9 - f1	q
+	add	a,#60h		; 0eaa - 03 60	.`
+	jnc	X0eb0		; 0eac - e6 b0	f0
+	mov	@r0,#80h	; 0eae - b0 80	0.
+X0eb0:	mov	a,#0bbh		; 0eb0 - 23 bb	#;
+	mov	r3,a		; 0eb2 - ab	+
+	cpl	a		; 0eb3 - 37	7
+	add	a,@r0		; 0eb4 - 60	`
+	jc	X0ebe		; 0eb5 - f6 be	v>
+	mov	a,#44h		; 0eb7 - 23 44	#D
+	mov	r3,a		; 0eb9 - ab	+
+	cpl	a		; 0eba - 37	7
+	add	a,@r0		; 0ebb - 60	`
+	jc	X0ed0		; 0ebc - f6 d0	vP
+X0ebe:	mov	r1,#67h		; 0ebe - b9 67	9g
+	mov	a,@r1		; 0ec0 - f1	q
+X0ec1:	jnz	X0ec5		; 0ec1 - 96 c5	.E
+	clr	c		; 0ec3 - 97	.
+	cpl	c		; 0ec4 - a7	'
+X0ec5:	cpl	a		; 0ec5 - 37	7
+	jz	X0ec9		; 0ec6 - c6 c9	FI
+	inc	@r1		; 0ec8 - 11	.
+X0ec9:	jc	X0ece		; 0ec9 - f6 ce	vN
+	cpl	a		; 0ecb - 37	7
+	dec	a		; 0ecc - 07	.
+	mov	@r1,a		; 0ecd - a1	!
+X0ece:	mov	a,r3		; 0ece - fb	{
+	mov	@r0,a		; 0ecf - a0	 
+X0ed0:	mov	r1,#6bh		; 0ed0 - b9 6b	9k
+	mov	a,@r1		; 0ed2 - f1	q
+	jb4	X0ed9		; 0ed3 - 92 d9	.Y
+	mov	a,r4		; 0ed5 - fc	|
+	clr	c		; 0ed6 - 97	.
+	rrc	a		; 0ed7 - 67	g
+	mov	r4,a		; 0ed8 - ac	,
+X0ed9:	mov	a,r4		; 0ed9 - fc	|
+	clr	c		; 0eda - 97	.
+	rlc	a		; 0edb - f7	w
+	mov	r4,a		; 0edc - ac	,
+	jb7	X0ee5		; 0edd - f2 e5	re
+	add	a,#0c0h		; 0edf - 03 c0	.@
+	jnc	X0ee5		; 0ee1 - e6 e5	fe
+X0ee3:	mov	r4,#40h		; 0ee3 - bc 40	<@
+X0ee5:	mov	a,r4		; 0ee5 - fc	|
+	mov	r1,#60h		; 0ee6 - b9 60	9`
+	mov	@r1,a		; 0ee8 - a1	!
+	add	a,@r0		; 0ee9 - 60	`
+	inc	r0		; 0eea - 18	.
+	add	a,@r0		; 0eeb - 60	`
+	inc	r0		; 0eec - 18	.
+	jnc	X0ef1		; 0eed - e6 f1	fq
+	jb7	X0ef3		; 0eef - f2 f3	rs
+X0ef1:	mov	@r0,a		; 0ef1 - a0	 
+	ret			; 0ef2 - 83	.
+;
+X0ef3:	mov	@r0,#7fh	; 0ef3 - b0 7f	0.
+	ret			; 0ef5 - 83	.
+;
+X0ef6:	jmp	X0f00		; 0ef6 - e4 00	d.
+;
+	org	0efeh
+;
+	movp	a,@a		; 0efe - a3	#
+	ret			; 0eff - 83	.
+;
+X0f00:	mov	r1,#63h		; 0f00 - b9 63	9c
+	mov	a,@r1		; 0f02 - f1	q
+	mov	r6,a		; 0f03 - ae	.
+	cpl	a		; 0f04 - 37	7
+	jb7	X0f0a		; 0f05 - f2 0a	r.
+	inc	a		; 0f07 - 17	.
+	mov	r6,a		; 0f08 - ae	.
+	cpl	f0		; 0f09 - 95	.
+X0f0a:	mov	a,@r0		; 0f0a - f0	p
+	orl	a,#1fh		; 0f0b - 43 1f	C.
+	mov	r3,a		; 0f0d - ab	+
+	sel	mb0		; 0f0e - e5	e
+	call	X0300		; 0f0f - 74 00	t.
+	sel	mb1		; 0f11 - f5	u
+	mov	r3,#0b1h	; 0f12 - bb b1	;1
+	jf0	X0f19		; 0f14 - b6 19	6.
+	cpl	a		; 0f16 - 37	7
+	mov	r3,#0		; 0f17 - bb 00	;.
+X0f19:	mov	r4,a		; 0f19 - ac	,
+	mov	r1,#67h		; 0f1a - b9 67	9g
+	mov	a,@r1		; 0f1c - f1	q
+	clr	c		; 0f1d - 97	.
+	rlc	a		; 0f1e - f7	w
+	mov	r1,#68h		; 0f1f - b9 68	9h
+	add	a,@r1		; 0f21 - 61	a
+	mov	r1,#6fh		; 0f22 - b9 6f	9o
+	mov	@r1,a		; 0f24 - a1	!
+	add	a,r4		; 0f25 - 6c	l
+	mov	r4,a		; 0f26 - ac	,
+	jf0	X0f2a		; 0f27 - b6 2a	6*
+	cpl	c		; 0f29 - a7	'
+X0f2a:	jc	X0f33		; 0f2a - f6 33	v3
+	cpl	a		; 0f2c - 37	7
+	add	a,r3		; 0f2d - 6b	k
+	jf0	X0f31		; 0f2e - b6 31	61
+	cpl	c		; 0f30 - a7	'
+X0f31:	jc	X0f3f		; 0f31 - f6 3f	v?
+X0f33:	mov	a,r3		; 0f33 - fb	{
+	mov	r4,a		; 0f34 - ac	,
+	mov	r1,#67h		; 0f35 - b9 67	9g
+	mov	a,@r1		; 0f37 - f1	q
+	dec	a		; 0f38 - 07	.
+	dec	a		; 0f39 - 07	.
+	jb7	X0f3e		; 0f3a - f2 3e	r>
+	add	a,#4		; 0f3c - 03 04	..
+X0f3e:	mov	@r1,a		; 0f3e - a1	!
+X0f3f:	mov	r2,#22h		; 0f3f - ba 22	:"
+	call	X0fd5		; 0f41 - f4 d5	tU
+X0f43:	mov	r1,#43h		; 0f43 - b9 43	9C
+	mov	a,@r1		; 0f45 - f1	q
+	jz	X0f81		; 0f46 - c6 81	F.
+	add	a,#0ffh		; 0f48 - 03 ff	..
+	jc	X0f4f		; 0f4a - f6 4f	vO
+	mov	a,@r0		; 0f4c - f0	p
+	jz	X0f81		; 0f4d - c6 81	F.
+X0f4f:	inc	r1		; 0f4f - 19	.
+	mov	a,@r1		; 0f50 - f1	q
+	add	a,#0c4h		; 0f51 - 03 c4	.D
+	jc	X0f81		; 0f53 - f6 81	v.
+	add	a,#0		; 0f55 - 03 00	..
+	jnc	X0f5c		; 0f57 - e6 5c	f\
+	mov	a,@r0		; 0f59 - f0	p
+	jz	X0f81		; 0f5a - c6 81	F.
+X0f5c:	mov	r1,#4bh		; 0f5c - b9 4b	9K
+	mov	a,@r1		; 0f5e - f1	q
+	mov	r2,a		; 0f5f - aa	*
+	mov	r1,#33h		; 0f60 - b9 33	93
+	mov	a,@r1		; 0f62 - f1	q
+	jz	X0f69		; 0f63 - c6 69	Fi
+	add	a,#0efh		; 0f65 - 03 ef	.o
+	jnz	X0f81		; 0f67 - 96 81	..
+X0f69:	mov	a,r4		; 0f69 - fc	|
+X0f6a:	mov	@r0,a		; 0f6a - a0	 
+	mov	r0,#6fh		; 0f6b - b8 6f	8o
+	mov	r4,#4		; 0f6d - bc 04	<.
+X0f6f:	inc	r0		; 0f6f - 18	.
+	mov	a,@r0		; 0f70 - f0	p
+	cpl	a		; 0f71 - 37	7
+	add	a,r2		; 0f72 - 6a	j
+	jc	X0f7e		; 0f73 - f6 7e	v~
+	mov	a,r2		; 0f75 - fa	z
+	mov	@r0,a		; 0f76 - a0	 
+	mov	r1,#33h		; 0f77 - b9 33	93
+	mov	a,@r1		; 0f79 - f1	q
+	jnz	X0f7e		; 0f7a - 96 7e	.~
+	nop			; 0f7c - 00	.
+;
+	org	0f7eh
+;
+X0f7e:	djnz	r4,X0f6f	; 0f7e - ec 6f	lo
+	ret			; 0f80 - 83	.
+;
+X0f81:	clr	a		; 0f81 - 27	'
+	mov	r3,#10h		; 0f82 - bb 10	;.
+	mov	r1,#57h		; 0f84 - b9 57	9W
+X0f86:	mov	@r1,a		; 0f86 - a1	!
+	inc	r1		; 0f87 - 19	.
+	djnz	r3,X0f86	; 0f88 - eb 86	k.
+	mov	@r1,#80h	; 0f8a - b1 80	1.
+	mov	r1,#61h		; 0f8c - b9 61	9a
+	mov	@r1,#80h	; 0f8e - b1 80	1.
+	mov	r1,#52h		; 0f90 - b9 52	9R
+	mov	a,@r1		; 0f92 - f1	q
+	inc	r1		; 0f93 - 19	.
+	mov	@r1,a		; 0f94 - a1	!
+	clr	a		; 0f95 - 27	'
+	jmp	X0f6a		; 0f96 - e4 6a	dj
+;
+X0f98:	inc	@r1		; 0f98 - 11	.
+	mov	a,@r1		; 0f99 - f1	q
+	jnz	X0fa1		; 0f9a - 96 a1	.!
+	inc	r1		; 0f9c - 19	.
+	mov	a,@r1		; 0f9d - f1	q
+	cpl	a		; 0f9e - 37	7
+	dec	r1		; 0f9f - c9	I
+	mov	@r1,a		; 0fa0 - a1	!
+X0fa1:	add	a,r3		; 0fa1 - 6b	k
+	mov	a,@r0		; 0fa2 - f0	p
+	jnc	X0fa8		; 0fa3 - e6 a8	f(
+	jz	X0fa8		; 0fa5 - c6 a8	F(
+	dec	a		; 0fa7 - 07	.
+X0fa8:	ret			; 0fa8 - 83	.
+;
+X0fa9:	call	X0e08		; 0fa9 - d4 08	T.
+X0fab:	call	X0fb0		; 0fab - f4 b0	t0
+	call	X0fb0		; 0fad - f4 b0	t0
+	ret			; 0faf - 83	.
+;
+X0fb0:	xch	a,r6		; 0fb0 - 2e	.
+	mov	r0,a		; 0fb1 - a8	(
+	xch	a,r6		; 0fb2 - 2e	.
+	xch	a,r3		; 0fb3 - 2b	+
+	mov	r7,#4		; 0fb4 - bf 04	?.
+X0fb6:	xch	a,@r0		; 0fb6 - 20	 
+	inc	r0		; 0fb7 - 18	.
+	xch	a,@r0		; 0fb8 - 20	 
+	inc	r0		; 0fb9 - 18	.
+	djnz	r7,X0fb6	; 0fba - ef b6	o6
+	ret			; 0fbc - 83	.
+;
+X0fbd:	mov	a,r0		; 0fbd - f8	x
+	clr	c		; 0fbe - 97	.
+	rrc	a		; 0fbf - 67	g
+	mov	r0,a		; 0fc0 - a8	(
+X0fc1:	xch	a,@r1		; 0fc1 - 21	!
+	rlc	a		; 0fc2 - f7	w
+	xch	a,@r1		; 0fc3 - 21	!
+	jnc	X0fc9		; 0fc4 - e6 c9	fI
+	add	a,r4		; 0fc6 - 6c	l
+	xch	a,r4		; 0fc7 - 2c	,
+	ret			; 0fc8 - 83	.
+;
+X0fc9:	mov	a,r0		; 0fc9 - f8	x
+	ret			; 0fca - 83	.
+;
+X0fcb:	mov	a,r2		; 0fcb - fa	z
+	clr	c		; 0fcc - 97	.
+	rrc	a		; 0fcd - 67	g
+	mov	r2,a		; 0fce - aa	*
+	mov	a,r3		; 0fcf - fb	{
+	rrc	a		; 0fd0 - 67	g
+	mov	r3,a		; 0fd1 - ab	+
+	djnz	r7,X0fcb	; 0fd2 - ef cb	oK
+	ret			; 0fd4 - 83	.
+;
+X0fd5:	mov	r0,#41h		; 0fd5 - b8 41	8A
+	mov	a,r4		; 0fd7 - fc	|
+	add	a,#40h		; 0fd8 - 03 40	.@
+	jnc	X0fde		; 0fda - e6 de	f^
+	mov	r4,#0bfh	; 0fdc - bc bf	<?
+X0fde:	ret			; 0fde - 83	.
+;
+	org	0ff5h
+;
+	jb1	X0f32		; 0ff5 - 32 32	22
+	jb1	X0f43		; 0ff7 - 32 43	2C
+	orl	a,#43h		; 0ff9 - 43 43	CC
+	jb1	X0f32		; 0ffb - 32 32	22
+	jb1	X0f20		; 0ffd - 32 20	2 
+	inc	a		; 0fff - 17	.
+;
+;	Miscellaneous equates
+;
+;  These are addresses referenced in the code but
+;  which are in the middle of a multibyte instruction
+;  or are addresses outside the initialized space
+;
+X0912	equ	912h
+X098a	equ	98ah
+X0a0f	equ	0a0fh
+X0a5a	equ	0a5ah
+X0b51	equ	0b51h
+X0b71	equ	0b71h
+X0cb8	equ	0cb8h
+X0d86	equ	0d86h
+X0db4	equ	0db4h
+X0f20	equ	0f20h
+X0f32	equ	0f32h
+;
+	end
+;
+

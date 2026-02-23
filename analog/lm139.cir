@@ -1,0 +1,29 @@
+*-----------------------------------------------------------------------------
+* connections: non-inverting input
+* | inverting input
+* | | positive power supply
+* | | | negative power supply
+* | | | | open collector output
+* | | | | |
+.subckt LM139 1 2 3 4 5
+*
+f1 9 3 v1 1
+iee 3 7 dc 100.0E-6
+vi1 21 1 dc .75
+vi2 22 2 dc .75
+q1 9 21 7 qin
+q2 8 22 7 qin
+q3 9 8 4 qmo
+q4 8 8 4 qmi
+.model qin PNP(Is=800.0E-18 Bf=2.000E3)
+.model qmi NPN(Is=800.0E-18 Bf=1002)
+.model qmo NPN(Is=800.0E-18 Bf=1000 Cjc=1E-15 Tr=475.4E-9)
+e1 10 4 9 4 1
+v1 10 11 dc 0
+q5 5 11 4 qoc
+.model qoc NPN(Is=800.0E-18 Bf=20.69E3 Cjc=1E-15 Tf=3.540E-9 Tr=472.8E-9)
+dp 4 3 dx
+rp 3 4 37.50E3
+.model dx D(Is=800.0E-18 Rs=1)
+*
+.ends

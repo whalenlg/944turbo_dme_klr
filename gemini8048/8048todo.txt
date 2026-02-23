@@ -1,0 +1,12 @@
+
+
+Timer verifcation
+
+
+Cleanup rdata , wdata and addresses
+
+Fake WN, RN pulses.
+
+
+Cleanup debug messages, read and write cycles
+

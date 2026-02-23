@@ -1,0 +1,99 @@
+KLR	CPU	Name
+9	39/T1	Ignition In
+24		Trigger
+13		Knock Sensor In
+		Battery Voltage In
+21		TPS Power Supply
+22		TPS Angle In
+N/A		Pressure In
+16	38/P2.7	Ignition Out
+2		Cycling Valve out
+18		Full Load Signal Out
+3		LED Blink Out
+15		Knocking YES/NO Out
+		Integrator Reset Out
+5		Boost Gauge Out
+1		Diagnostic
+
+
+
+
+
+T0 - R962 - R658
+
+
+
+Conn1 - d654 - conn5
+        t653 - conn2
+             -  r666
+             - b52 - cpu 31 (p14)
+              - pin25 of CPU (PROG)++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+             - r665 (open?)
+
+XXX Conn3 - B35 - b103 - cpu pin 38 (P27)
+
+Xxx Conn4 b102 - b50 - cpu35 (p2.4)
+
+                  - r652 - VCC
+
+Conn6 - bus91 - ? - 
+Xxx Conn7 - bus100 - cpu 33 (p1.6)
+Conn8 - bus92 - GND
+Conn9 - LM2902 pins 3 and 4
+       - c252 - 2902 pin 11
+              - B86
+              - b105
+Conn10 - b87 - b94 - GND
+Conn11 - b94 gnd
+Conn12 - bus 93 ??
+Conn13 - bus 88 - r452 -adc
+Conn14 - bus 95 - add 26
+Conn15 - r955 -adc 1
+Conn16 - r 956 - pin 28
+Conn17 - bus 79 - bus 80 - add 28 (conn 21?)
+
+
+Conn18 - b212 - lm2091 pin11 - AGND
+              - bus 76
+Conn19 - r264 - r251 - 2902 pin 10 
+                        3903 pin 5
+
+Conn20 - cd40105 pin 10
+Conn21 - bus 79
+Conn22 - c465
+       -cd40105 pin 11
+Conn23 - b30 - ???
+XXXConn24 - b200/b201/b202/b210 - r963 - cpu 6 (INT)
+
+
+       
+
+P2.7 Ignition output
+P2.6.ignition output inversed,
+P2.5//knock sensor integrator reset 
+P2,4//  ?? and LED
+P2,3// ?? and LED
+P2.2
+P2.1
+P2,0
+
+
+P1.7 - fake knock
+P1.6
+P1.5 - full load
+p1.4 - cycling valve pwm enable
+p1.3.  add ALE
+p1.2   adc address 2
+P1.1.  adc address 1
+P1.0 - adc address 0
+
+ADC
+7. TPS angle
+6
+5
+4
+3
+2
+1
+0
+

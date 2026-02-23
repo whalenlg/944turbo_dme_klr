@@ -1,0 +1,33 @@
+* CA139EX Quad Comparator (behavior modeled after LM339)
+* Pin order MUST match your custom .asy symbol
+* 1 OUT2
+* 2 OUT1
+* 3 V+
+* 4 IN1-
+* 5 IN1+
+* 6 IN2-
+* 7 IN2+
+* 8 IN3-
+* 9 IN3+
+* 10 IN4-
+* 11 IN4+
+* 12 GND
+* 13 OUT4
+* 14 OUT3
+
+.SUBCKT CA139EX  OUT2 OUT1 VCC IN1M IN1P IN2M IN2P IN3M IN3P IN4M IN4P GND OUT4 OUT3
+
+* Comparator 1
+XU1 IN1P IN1M OUT1 LM339_COMP
+* Comparator 2
+XU2 IN2P IN2M OUT2 LM339_COMP
+* Comparator 3
+XU3 IN3P IN3M OUT3 LM339_COMP
+* Comparator 4
+XU4 IN4P IN4M OUT4 LM339_COMP
+
+* Open-collector pull transistor model (same as LTspice LM339)
+.model LM339_COMP COMP( voh=5 vol=0.2 )
+
+.ENDS CA139EX
+

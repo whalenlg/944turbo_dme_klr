@@ -1,0 +1,6 @@
+bench/verilog/i8048_tb.v
+bench/verilog/adc_8090.v
+bench/verilog/var_timing_gen.v
+bench/verilog/vcd.v
+rtl/verilog/i8048_top.v
+rtl/verilog/i8048_core.v

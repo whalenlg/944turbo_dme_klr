@@ -1,0 +1,256 @@
+﻿'h00,NOP
+Illegal
+OUTL BUS,A
+ADD A, #data
+JMP Page+0x0
+EN I
+Unknown
+DEC A
+INS A, BUS
+OUTL P1,A
+OUTL P2,A
+OUTL P3,A
+MOVD A,P4
+MOVD A,P5
+MOVD A,P6
+MOVD A,P7
+INC @R0
+INC @R1
+JB0
+ADDC A, #data
+CALL Page+0x0
+DIS I
+JTF
+INC A
+INC R0
+INC R1
+INC R2
+INC R3
+INC R4
+INC R5
+INC R6
+INC R7
+XCH A,@R0
+XCH A,@R1
+Unknown
+MOV A, #data
+JMP Page+0x1
+EN TCNTI
+JNT0
+RR A
+XCH A,R0
+XCH A,Rr
+XCH A,R2
+XCH A,R3
+XCH A,R4
+XCH A,R5
+XCH A,R6
+XCH A,R7
+XCHD A, @01
+XCHD A, @R1
+JB1
+Unknown
+CALL Page+0x1
+Illegal
+JT0
+XCH A, R7
+OUTL BUS,A
+OUTL P1,A
+OUTL P2,A
+OUTL P3,A
+MOVD P4, A
+MOVD P5, A
+MOVD P6, A
+MOVD P7, A
+ORL A, @R0
+ORL A, @R1
+MOV A, T
+ORL A, #data
+JMP Page+0x2
+STRT CNT
+JNT1
+SWAP A
+ORL A, R0
+ORL A, R1
+ORL A, R2
+ORL A, R3
+ORL A, R4
+ORL A, R5
+ORL A, R6
+ORL A, R7
+ANL A, @R0
+ANL A, @Ra
+JB2
+ANL A, #data
+CALL Page+0x2
+STRT T
+JT1
+DA A
+ANL A, R0
+ANL A, R1
+ANL A, R2
+ANL A, R3
+ANL A, R4
+ANL A, R5
+ANL A, R6
+ANL A, R7
+ADD A,@R0
+ADD A,@R1
+MOV T, A
+Unknown
+JMP Page+0x3
+STOP TCNT
+Unknown
+RRC A
+ADD A, R0
+ADD A, R1
+ADD A, R2
+ADD A, R3
+ADD A, R4
+ADD A, R5
+ADD A, R6
+ADD A, R7
+ADDC A, @R0
+ADDC A, @R1
+JB3
+'h73
+CALL Page+0x3
+ENT0 CLK
+JF1 addr
+RR A
+ADDC A, R0
+ADDC A, R1
+ADDC A, R2
+ADDC A, R3
+ADDC A, R4
+ADDC A, R5
+ADDC A, R6
+ADDC A, R7
+MOVX A, @R0
+MOVX A, @R1
+Illegal
+RET
+JMP Page+0x4
+CLR F1
+JNI Address
+'h87.Illegal
+ORL BUS, #data
+ORL P1, #data
+ORL P2, #data
+ORL P3, #data
+ORLD P0, A
+ORLD P1, A
+ORLD P2, A
+ORLD P4, A
+MOVX @R0, A
+MOVX @R1, A
+JB4
+RETR
+CALL Page+0x4
+CPL F0
+JNZ
+CLR C
+ANL BUS, #data
+ANL P1, #data
+ANL P2, #data
+,ANL P3, #data
+ANLD P0, A
+ANLD P1, A
+ANLD P2, A
+ANLD P3, A
+MOV @R0, A
+MOV @R1, A
+Unknown
+MOVP A,@A
+JMP Page+0x5
+:Unknown
+CLR F1
+CPL C
+MOV R0, A
+MOV R1, A
+MOV R2, A
+MOV R3, A
+MOV R4, A
+MOV R5, A
+MOV R6, A
+MOV R7, A
+MOV @R0, #data
+MOV @R1, #data
+JB5
+JMPP @A
+CALL Page+0x5
+CPL F1
+JF0
+Illegal
+MOV R0, #data
+MOV R1, #data
+MOV R2, #data
+MOV R3, #data
+MOV R4, #data
+MOV R5, #data
+MOV R6, #data
+MOV R7, #data
+Illegal
+Illegal
+Illegal
+Illegal
+JMP Page+0x6
+SEL RB0
+JZ
+MOV A,PSW
+DEC R0
+DEC R1
+DEC R2
+DEC R3
+DEC R4
+DEC R5
+DEC R6
+DEC R7
+XRL A, @R0
+XRL A, @R1
+JB6
+XRL A, #data
+CALL Page+0x6
+SEL RB1
+Unknown
+MOV PSW, A
+XRL A,R0
+XRL A,R1
+XRL A,R2
+XRL A,R3
+XRL A,R4
+XRL A,R5
+XRL A,R6
+XRL A,R7
+Illegal
+Illegal
+Illegal
+MOVP3 A, @A
+JMP Page+0x7
+SEL MB0
+JNC
+RL A
+DJNZ R0, address
+DJNZ R1, address
+DJNZ R2, address
+DJNZ R3, address
+DJNZ R4, address
+DJNZ R5, address
+DJNZ R6, address
+DJNZ R7, address
+MOV A, @R0
+MOV A, @R1
+JB7
+Unknown
+CALL Page+0x7
+SEL MB1
+JC
+RLC A
+MOV A, R0
+MOV A, R1
+MOV A, R2
+MOV A, R3
+MOV A, R4
+MOV A, R5
+MOV A, R6
+MOV A, R7

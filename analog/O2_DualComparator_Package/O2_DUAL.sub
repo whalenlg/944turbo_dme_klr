@@ -1,0 +1,62 @@
+* O2_DUAL component-level subckt (LM339-like behavior via current-sink)
+* Pins: SENSOR VLOGIC V12 GND OUT_TOP OUT_BOT
+* - SENSOR : Engine O2 sensor analog node (input)
+* - VLOGIC: logic/pull-up rail (e.g. 5V) used for reference dividers and pull-ups
+* - V12    : 12V power rail (not used internally in this simplified model but available)
+* - GND    : ground
+* - OUT_TOP: open-collector style output node for top comparator (connect external pull-up to VLOGIC)
+* - OUT_BOT: open-collector style output node for bottom comparator (connect external pull-up to VLOGIC)
+*
+* This subckt reproduces the resistor/cap networks for both comparators and uses
+* voltage-controlled current sources to emulate the LM339 open-collector sinks:
+* when SENSOR > REF the corresponding G-source will sink ~1mA to GND,
+* letting the external pull-up drive OUT node HIGH/LOW as appropriate.
+*
+* NOTE: This is a component-level behavioral model intended to emulate the
+* resistor networks and switching behavior shown in your schematic. It is
+* not a transistor-level LM339 model.
+*
+.SUBCKT O2_DUAL SENSOR VLOGIC V12 GND OUT_TOP OUT_BOT
+
+************************
+* TOP COMPARATOR NETWORK
+************************
+* Reference divider (VLOGIC -> R39 -> REF_TOP -> R43 -> GND)
+R39_REF_TOP VLOGIC REF_TOP 5.11k
+R43_REF_TOP REF_TOP GND 1k
+
+* Small series/input network from SENSOR to comparator input node (as in schematic)
+R801_SENSOR SENSOR NIN_TOP 1k
+R805_TOP NIN_TOP CTOP_IN 560
+R803_SERIES CTOP_IN CTOP_SER 27
+C803_CT CTOP_SER GND 27p
+
+* Hysteresis feedback from OUT_TOP into REF_TOP (via large R)
+RFB_TOP OUT_TOP REF_TOP 1Meg
+
+* Comparison behavior: if SENSOR node voltage > REF_TOP then sink current at OUT_TOP
+G_SINK_TOP OUT_TOP GND VALUE={IF(V(SENSOR,REF_TOP) > 0, -1e-3, 0)}
+
+*************************
+* BOTTOM COMPARATOR NETWORK
+*************************
+* Reference divider (VLOGIC -> R35 -> REF_BOT -> R37 -> GND)
+R35_REF_BOT VLOGIC REF_BOT 36.3k
+R37_REF_BOT REF_BOT GND 1.96k
+
+* Small series/input network from SENSOR to comparator input node (as in schematic)
+R801b_SENSOR SENSOR NIN_BOT 1k
+R815_BOT NIN_BOT CTBOT_IN 560
+R804_SERIES CTBOT_IN CTBOT_SER 27
+C802_CT CTBOT_SER GND 10n
+
+* Hysteresis feedback from OUT_BOT into REF_BOT (via large R)
+RFB_BOT OUT_BOT REF_BOT 1Meg
+
+* Comparison behavior: if SENSOR node voltage > REF_BOT then sink current at OUT_BOT
+G_SINK_BOT OUT_BOT GND VALUE={IF(V(SENSOR,REF_BOT) > 0, -1e-3, 0)}
+
+* Make sure unused rails are referenced to avoid floating nodes
+R_dummy1 V12 GND 1Meg
+
+.ENDS O2_DUAL

@@ -1,0 +1,5 @@
+rm sim/*.out
+rm logs/8051tb.log
+iverilog -f sourcelist -I rtl -s tb -o sim/8051tb.out
+pushd sim; ./8051tb.out > ../logs/8051tb.log; popd
+gtkwave logs/951dme.vcd&

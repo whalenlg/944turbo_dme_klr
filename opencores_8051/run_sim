@@ -1,0 +1,18 @@
+iverilog -o ../../tmp/opencores_8051/oc8051.vvp  -f files -I rtl/verilog -I bench/verilog -s oc8051_tb
+#python3 ../disassemble/csv2veriloghex.py ../disassemble/test_../../tmp/opencores_8051.csv ../disassemble/test_sim.hex 
+source  ../8051_Debug/bin/activate
+python3 ../disassemble/xlsx2veriloghex.py ../disassemble/disassemble2.xlsx ../disassemble/test_sim.hex 
+python3 ../disassemble/xlsxmembyte2veriloghex.py ../disassemble/disassemble2.xlsx ../disassemble/memory_byte_map.hex
+python3 ../disassemble/xlsxmembit2veriloghex.py ../disassemble/disassemble2.xlsx ../disassemble/memory_bit_map.hex
+python3 ../disassemble/xlsxinstr2veriloghex.py ../disassemble/disassemble2.xlsx 
+mv asm_instr.hex ../disassemble
+mv asm_opcode_ins.hex ../disassemble
+mv asm_operands_numeric.hex ../disassemble
+mv asm_operands.hex ../disassemble
+vvp ../../tmp/opencores_8051/oc8051.vvp > ../../tmp/opencores_8051/951dme.log
+mv xram_out.hex ../../tmp/opencores_8051
+mv rom_out.hex ../../tmp/opencores_8051
+mv ram_out.hex ../../tmp/opencores_8051
+mv 951dme.vcd ../../tmp/opencores_8051
+cat ../../tmp/opencores_8051/951dme.log | grep -v "^\t" | grep -v "^label" > ../../tmp/opencores_8051/debug1.log
+cat ../../tmp/opencores_8051/debug1.log | python3 dedupe.py > ../.,/tmp/opencores_8051/951_dedupe.log

@@ -1,0 +1,209 @@
+* ===========================================================
+*  Behavioral SPICE Model: TI ADC0809
+*  8-bit Successive Approximation ADC with 8-Channel MUX
+*
+*  Based on: TI Datasheet SNAS535H (Oct 1999, Rev Mar 2013)
+*  Model type: Analog Behavioral Model (ABM) for LTspice
+*
+*  NOTES:
+*  - Models the analog MUX, SAR conversion, and tri-state
+*    output bus with realistic timing.
+*  - Does NOT model internal SAR clock or quantisation noise
+*    (these are not simulatable in standard SPICE transient).
+*  - Conversion timing governed by CLK frequency and internal
+*    counter. EOC goes low at START↑, high after 8 clocks.
+*  - Output bus is tri-state: high-Z when OE=0.
+*  - VREF+ and VREF- set the full-scale range.
+*  - All digital I/O is TTL-compatible (VIH=2V, VOH=3.8V).
+*
+*  PORT ORDER (matches .asy SpiceOrder):
+*   IN0  IN1  IN5  IN6  IN7  START  EOC  D0  OE  CLK
+*   VCC  VREF+ GND  D7  D6  D5  D4  D3  D2  D1
+*   VREF-  IN3  IN4  ADDA  ADDB  ADDC  ALE  IN2
+*
+*  Symbol pin connections (left-to-right, matches ADC0809.asy):
+*   Analog inputs: IN0-IN7
+*   Control:       START, ALE, ADDA, ADDB, ADDC, CLK, OE
+*   Digital out:   D0-D7
+*   Status:        EOC
+*   Power:         VCC, GND, VREF+, VREF-
+* ===========================================================
+
+.SUBCKT ADC0809
++ IN0 IN1 IN2 IN3 IN4 IN5 IN6 IN7
++ START ALE ADDA ADDB ADDC CLK OE
++ D7 D6 D5 D4 D3 D2 D1 D0
++ EOC
++ VCC GND VREF_P VREF_N
+
+*------------------------------------------------------------
+* PARAMETERS
+*------------------------------------------------------------
+.PARAM VHIGH=3.8     ; TTL output HIGH voltage
+.PARAM VLOW=0.1      ; TTL output LOW voltage
+.PARAM VIH=2.0       ; TTL input threshold HIGH
+.PARAM RON=50        ; Output driver on-resistance (ohm)
+.PARAM ROUT_HZ=1MEG  ; Tri-state off-resistance (ohm)
+.PARAM TPROP=200N    ; Propagation delay (200ns typical)
+.PARAM TCONV=100U    ; Conversion time @ 640kHz CLK (100us)
+
+*------------------------------------------------------------
+* SECTION 1: 8-CHANNEL ANALOG MULTIPLEXER
+*   Select active channel based on ADDA, ADDB, ADDC
+*   MUX output = VMUX node
+*   Address decoded: CH = A + 2*B + 4*C
+*------------------------------------------------------------
+
+* Channel select decode — produce 0..7 as voltage
+BADDR NADDR GND V=
++ (V(ADDA)>{VIH} ? 1 : 0) +
++ (V(ADDB)>{VIH} ? 2 : 0) +
++ (V(ADDC)>{VIH} ? 4 : 0)
+
+* MUX output: select the appropriate analog input
+BMUX VMUX GND V=
++ (V(NADDR)<0.5 ? V(IN0) :
++  V(NADDR)<1.5 ? V(IN1) :
++  V(NADDR)<2.5 ? V(IN2) :
++  V(NADDR)<3.5 ? V(IN3) :
++  V(NADDR)<4.5 ? V(IN4) :
++  V(NADDR)<5.5 ? V(IN5) :
++  V(NADDR)<6.5 ? V(IN6) :
++                 V(IN7))
+
+*------------------------------------------------------------
+* SECTION 2: ALE LATCH
+*   Address is latched on rising edge of ALE.
+*   Modeled as a sample-and-hold on NADDR via RC.
+*   (Exact edge-latch not possible in pure SPICE;
+*    this RC approximation is standard practice.)
+*------------------------------------------------------------
+RALE_IN NADDR NADDR_L 1
+CALE_L  NADDR_L GND 10N
+
+* Latched MUX — re-mux on latched address
+BMUX_L VMUX_L GND V=
++ (V(NADDR_L)<0.5 ? V(IN0) :
++  V(NADDR_L)<1.5 ? V(IN1) :
++  V(NADDR_L)<2.5 ? V(IN2) :
++  V(NADDR_L)<3.5 ? V(IN3) :
++  V(NADDR_L)<4.5 ? V(IN4) :
++  V(NADDR_L)<5.5 ? V(IN5) :
++  V(NADDR_L)<6.5 ? V(IN6) :
++                   V(IN7))
+
+*------------------------------------------------------------
+* SECTION 3: ANALOG INPUT LOADING
+*   Each analog input presents ~2.5kΩ to GND (datasheet typ.)
+*   Only the selected channel is loaded (approximated as
+*   constant load on VMUX_L for simplicity).
+*------------------------------------------------------------
+RIN_LOAD VMUX_L GND 2.5K
+
+*------------------------------------------------------------
+* SECTION 4: SAR CONVERSION
+*   Normalize the selected input to 0..255 (8-bit)
+*   VRESULT = round( (VIN - VREF-) / (VREF+ - VREF-) * 255 )
+*   Clamp to [0, 255].
+*   Conversion triggered by START rising edge (modeled via RC).
+*------------------------------------------------------------
+
+* Normalised conversion result (0–255 as a voltage in volts)
+BCONV NRESULT GND V=
++ int( ( LIMIT(V(VMUX_L), V(VREF_N), V(VREF_P)) - V(VREF_N) ) /
++      ( V(VREF_P) - V(VREF_N) + 1N ) * 255 + 0.5 )
+
+* START pulse detector — RC integrator tracks START rising edge
+RSTART_D START NSTART_RC 1K
+CSTART_D NSTART_RC GND 1N
+
+* Conversion-in-progress flag (NCIP goes high on START↑, decays after TCONV)
+BCIP NCIP GND V= (V(NSTART_RC) > {VIH} ? 1 : 0)
+
+* Held result — output freezes during conversion, updates when done
+* (Approximated: result updates at START rising edge after RC delay)
+RRESULT_H NRESULT NHELD 10
+CRESULT_H NHELD GND 1N
+
+*------------------------------------------------------------
+* SECTION 5: EOC (End Of Conversion) OUTPUT
+*   EOC goes LOW when START goes HIGH (conversion starts)
+*   EOC goes HIGH after conversion completes (~100us @ 640kHz)
+*   Modeled as START pulse filtered through a delay RC.
+*------------------------------------------------------------
+REOC1 NSTART_RC NEOC_DEL 1K
+CEOC_DEL NEOC_DEL GND {TCONV/1K}   ; RC ≈ TCONV
+
+* EOC output: LOW during conversion, HIGH when done
+* Active LOW while NSTART_RC high, restored after delay
+BEOC_DRV NEOC_DRV GND V=
++ (V(NSTART_RC) > {VIH} && V(NEOC_DEL) < {VIH} ? {VLOW} : {VHIGH})
+
+REOC_OUT NEOC_DRV EOC {RON}
+
+*------------------------------------------------------------
+* SECTION 6: 8-BIT TRI-STATE OUTPUT BUS
+*   Outputs are enabled when OE is HIGH (active HIGH in 0809)
+*   When OE=0, outputs are high-impedance.
+*   Each bit extracted from NHELD integer value.
+*
+*   Bit weights: D7=MSB=128, D6=64 ... D0=LSB=1
+*------------------------------------------------------------
+
+* Intermediate bit nodes (logic level, before tri-state)
+BB7 NB7 GND V= (int(V(NHELD)) & 128 ? {VHIGH} : {VLOW})
+BB6 NB6 GND V= (int(V(NHELD)) &  64 ? {VHIGH} : {VLOW})
+BB5 NB5 GND V= (int(V(NHELD)) &  32 ? {VHIGH} : {VLOW})
+BB4 NB4 GND V= (int(V(NHELD)) &  16 ? {VHIGH} : {VLOW})
+BB3 NB3 GND V= (int(V(NHELD)) &   8 ? {VHIGH} : {VLOW})
+BB2 NB2 GND V= (int(V(NHELD)) &   4 ? {VHIGH} : {VLOW})
+BB1 NB1 GND V= (int(V(NHELD)) &   2 ? {VHIGH} : {VLOW})
+BB0 NB0 GND V= (int(V(NHELD)) &   1 ? {VHIGH} : {VLOW})
+
+* Tri-state drivers: OE HIGH → drive output; OE LOW → high-Z (1MΩ)
+* Implemented as voltage-controlled resistors switching between RON and ROUT_HZ
+
+BD7 NB7 D7  I= (V(OE)>{VIH} ? (V(NB7)-V(D7))/{RON}  : (V(NB7)-V(D7))/{ROUT_HZ})
+BD6 NB6 D6  I= (V(OE)>{VIH} ? (V(NB6)-V(D6))/{RON}  : (V(NB6)-V(D6))/{ROUT_HZ})
+BD5 NB5 D5  I= (V(OE)>{VIH} ? (V(NB5)-V(D5))/{RON}  : (V(NB5)-V(D5))/{ROUT_HZ})
+BD4 NB4 D4  I= (V(OE)>{VIH} ? (V(NB4)-V(D4))/{RON}  : (V(NB4)-V(D4))/{ROUT_HZ})
+BD3 NB3 D3  I= (V(OE)>{VIH} ? (V(NB3)-V(D3))/{RON}  : (V(NB3)-V(D3))/{ROUT_HZ})
+BD2 NB2 D2  I= (V(OE)>{VIH} ? (V(NB2)-V(D2))/{RON}  : (V(NB2)-V(D2))/{ROUT_HZ})
+BD1 NB1 D1  I= (V(OE)>{VIH} ? (V(NB1)-V(D1))/{RON}  : (V(NB1)-V(D1))/{ROUT_HZ})
+BD0 NB0 D0  I= (V(OE)>{VIH} ? (V(NB0)-V(D0))/{RON}  : (V(NB0)-V(D0))/{ROUT_HZ})
+
+*------------------------------------------------------------
+* SECTION 7: POWER SUPPLY LOADING
+*   Quiescent current ~3mA typical at VCC=5V (15mW / 5V)
+*------------------------------------------------------------
+RVCC_LOAD VCC GND 1.67K
+
+*------------------------------------------------------------
+.ENDS ADC0809
+* ===========================================================
+* END OF MODEL
+*
+* INSTALLATION:
+*   Copy ADC0809.sub to:
+*     LTspice\lib\sub\ADC0809.sub
+*   Copy ADC0809.asy to:
+*     LTspice\lib\sym\ADC0809.asy  (or a sub-folder)
+*
+* USAGE IN SCHEMATIC:
+*   Place symbol, connect all pins.
+*   Add to .tran netlist:
+*     .lib ADC0809.sub
+*
+* SIMULATION TIPS:
+*   - Use .tran with timestep ≤ TCONV/20 for best results
+*   - Drive START with a pulse: PULSE(0 5 10u 10n 10n 1u 200u)
+*   - Drive CLK with PULSE(0 5 0 10n 10n 780n 1.5625u) for 640kHz
+*   - Set VREF+=5V, VREF-=0V for 0–5V full-scale range
+*   - Read D7(MSB)..D0(LSB) after EOC goes HIGH
+*
+* LIMITATIONS:
+*   - SAR bit-by-bit conversion not modeled (instantaneous after delay)
+*   - ALE edge-latching approximated with RC (not a true D-latch)
+*   - No metastability, offset error, or gain error modeling
+*   - Tri-state uses finite impedance (1MΩ), not true open-circuit
+* ===========================================================

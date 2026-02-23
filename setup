@@ -1,0 +1,7 @@
+export PATH=/opt/iverilog/bin:$PATH
+#export PATH=/opt/homebrew/Cellar/gtkwave/3.3.121/bin:$PATH
+export PATH=/Users/Mike/coding_projects/944/DME_sim/gtkwave:$PATH
+export IVERILOG_VPI_MODULE_PATH=/opt/iverilog/lib
+export IVERILOG_DUMPER=fst
+source 8051venv/bin/activate
+export PATH=$PATH:/Users/Mike/coding_projects/944/DME_sim
