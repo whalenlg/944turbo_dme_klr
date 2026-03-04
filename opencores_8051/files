@@ -1,5 +1,6 @@
 common/generic_memories/rtl/verilog/generic_dpram.v
 bench/verilog/oc8051_tb.v
+bench/verilog/oc8051_opcode_regression_tb.v
 bench/verilog/adc_delay.v
 bench/verilog/interrupt_gen.v
 bench/verilog/var_interrupt_gen.v
@@ -12,6 +13,7 @@ bench/verilog/oc8051_xram.v
 bench/verilog/oc8051_xrom.v
 rtl/verilog/AC97Controller.v
 rtl/verilog/mmc_boot_defines.v
+rtl/verilog/oc8051_defines.v
 rtl/verilog/mmc_boot_prescaler.v
 rtl/verilog/mmc_cmd_select.v
 rtl/verilog/mux4to1.v

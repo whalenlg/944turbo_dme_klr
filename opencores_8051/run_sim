@@ -1,3 +1,6 @@
+iverilog -o ../../tmp/opencores_8051/oc8051_sim.vvp -f files -I rtl/verilog -I bench/verilog -s oc8051_regression_tb
+vvp ../../tmp/opencores_8051/oc8051_sim.vvp 
+
 iverilog -o ../../tmp/opencores_8051/oc8051.vvp  -f files -I rtl/verilog -I bench/verilog -s oc8051_tb
 #python3 ../disassemble/csv2veriloghex.py ../disassemble/test_../../tmp/opencores_8051.csv ../disassemble/test_sim.hex 
 source  ../8051_Debug/bin/activate
