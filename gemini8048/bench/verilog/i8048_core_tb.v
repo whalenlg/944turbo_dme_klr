@@ -694,6 +694,7 @@ module i8048_core_tb;
         clock_cycles(2); check_acc(8'h55, "MOVP A,@A: ROM[0x020]=0x55");
         clock_cycles(2); // MOV A,#0x03
         clock_cycles(2); check_acc(8'hDD, "MOVP3 A,@A: ROM[0x303]=0xDD");
+        clock_cycles(1);
 
         // =====================================================================
         $display("\n--- Group 29: OUTL BUS,A / OUTL P1,A / OUTL P2,A ---");
@@ -701,9 +702,10 @@ module i8048_core_tb;
         rom[0] = 8'h23; rom[1] = 8'hCA;  // MOV A,#0xCA
         rom[2] = 8'h02;                   // OUTL BUS,A
         rom[3] = 8'h23; rom[4] = 8'h12;  // MOV A,#0x12
-        rom[5] = 8'h39;                   // OUTL P1,A
+        rom[5] = 8'h3A;                   // OUTL P1,A
         rom[6] = 8'h23; rom[7] = 8'h34;  // MOV A,#0x34
-        rom[8] = 8'h3A;                   // OUTL P2,A
+        rom[8] = 8'h3B;                   // OUTL P2,A
+        //clock_cycles(2); clock_cycles(1); // OUTL BUS
         clock_cycles(2); clock_cycles(1); // OUTL BUS
         // bus_out checked via module output
         test_num = test_num + 1;
@@ -716,15 +718,15 @@ module i8048_core_tb;
         end
         clock_cycles(2); clock_cycles(1); check_port(0, 8'h12, "OUTL P1,A");
         clock_cycles(2); clock_cycles(1); check_port(1, 8'h34, "OUTL P2,A");
-
+        clock_cycles(1);
         // =====================================================================
         $display("\n--- Group 30: IN A,P1 / IN A,P2 ---");
         fill_nop(); hard_reset();
         // Pre-load ports by first writing them
         rom[0] = 8'h23; rom[1] = 8'hBB;  // MOV A,#0xBB
-        rom[2] = 8'h39;                   // OUTL P1,A  (P1=0xBB)
+        rom[2] = 8'h3A;                   // OUTL P1,A  (P1=0xBB)
         rom[3] = 8'h23; rom[4] = 8'hCC;  // MOV A,#0xCC
-        rom[5] = 8'h3A;                   // OUTL P2,A  (P2=0xCC)
+        rom[5] = 8'h3B;                   // OUTL P2,A  (P2=0xCC)
         rom[6] = 8'h27;                   // CLR A
         rom[7] = 8'h09;                   // IN A,P1 -> 0xBB
         rom[8] = 8'h27;                   // CLR A
@@ -750,9 +752,9 @@ module i8048_core_tb;
         // Switch to bank 1, write 0x55 into R0 (addr 0x18)
         // Switch back, verify R0 in bank 0 is still 0xAA
         rom[0] = 8'hB8; rom[1] = 8'hAA;  // MOV R0,#0xAA (bank0, addr 0x00)
-        rom[2] = 8'hF5;                   // SEL RB1
+        rom[2] = 8'hD5;                   // SEL RB1
         rom[3] = 8'hB8; rom[4] = 8'h55;  // MOV R0,#0x55 (bank1, addr 0x18)
-        rom[5] = 8'hE5;                   // SEL RB0
+        rom[5] = 8'hC5;                   // SEL RB0
         // Now R0 in bank0 should still be 0xAA
         clock_cycles(2); // MOV R0,#0xAA bank0
         clock_cycles(1); // SEL RB1

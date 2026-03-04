@@ -16,7 +16,7 @@ module i8048_core (
     reg [7:0] timer_val;
     reg [4:0] prescaler;
     reg [7:0] rmem_dat, rmem_dat2, wmem_dat, wmem_dat2,acc_preop,ram_preop,timer_preop,bus_preop;
-    reg [11:0] next_pc;
+    reg [11:0] next_pc,pc_orig;
     // --- Helpers ---
     reg [2:0] sp;
     wire       bs = psw[4];        
@@ -53,6 +53,7 @@ wire is_2_cycle =
     (ir == 8'h61)      ||
     (ir == 8'h03)      ||
     (ir == 8'hB6)      ||
+    (ir == 8'h76)      ||
     (ir == 8'h83)      ||
     (ir == 8'h93)      ||
     (ir == 8'h53)      ||
@@ -70,14 +71,15 @@ initial
 
 // Task to display bus and memory status
 task display_read_status;
+    input[11:0] pc; 
     input[7:0] instr;
     input [7:0] data_old;
     input [7:0] data_read;
     input [7:0] data_out;
     input [11:0] address;
     begin
-        $display("\t\t\t\tOpCode: %h | Instr: %s | Addr: %h | OldVal: %h | ReadVal: %h | ResultVal: %h",
-                 instr,opinstr[instr],address, data_old, data_read, data_out);
+        $display("\t\t\t\tPC: %h | OpCode: %h | Instr: %s | Addr: %h | OldVal: %h | ReadVal: %h | ResultVal: %h",
+                 pc,instr,opinstr[instr],address, data_old, data_read, data_out);
     end
 endtask
 
@@ -91,7 +93,6 @@ task service_interrupt;
         ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], return_addr[11:8]};
         psw[2:0] <= psw[2:0] + 1'b1; // Move Stack Pointer
         pc <= vector;                // Jump to ISR
-        #10 display_read_status(ir,pc[7:0], {psw[7:4], return_addr[11:8]},return_addr[7:0],vector);
     end
 endtask
 
@@ -193,7 +194,7 @@ task execute_instruction;
                     acc_preop <= acc;
                     {psw[7], acc} <= acc + rom_data;
                     psw[6] <= (acc[3:0] + rom_data[3:0] > 4'hF);
-                    #10 display_read_status(ir,acc_preop,rom_data,acc,pc);
+                    #10 display_read_status(pc,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -201,20 +202,20 @@ task execute_instruction;
             8'h07: begin // DEC A [cite: 108]
                 acc_preop <= acc;
                 acc <= acc - 1'b1;
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'h17: begin // INC A [cite: 1, 2]
                 acc_preop <= acc;
                 acc <= acc + 1'b1; 
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1; 
             end
 
             8'h27: begin // CLR A
                 acc_preop <= acc;
                 acc <= 8'h00;     // Set all bits to 0
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc  <= pc + 1'b1; // Advance to next instruction
             end
 
@@ -231,7 +232,7 @@ task execute_instruction;
                 acc_preop <= acc;
                     acc_preop <= acc;
                     acc <= acc | rom_data;
-                    #10 display_read_status(ir,acc_preop,rom_data,acc,pc);
+                    #10 display_read_status(pc,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -239,7 +240,7 @@ task execute_instruction;
             8'h47: begin // SWAP A [cite: 114]
                 acc_preop <= acc;
                 acc <= {acc[3:0], acc[7:4]};
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'h53: begin // ANL A, #data [cite: 161, 165]
@@ -249,7 +250,7 @@ task execute_instruction;
                     cycle_2 <= 1'b1;
                 end else begin
                     acc <= acc & rom_data;
-                    #10 display_read_status(ir,acc_preop,rom_data,acc,pc);
+                    #10 display_read_status(pc,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -258,13 +259,13 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc <= {psw[7], acc[7:1]};
                 psw[7] <= acc[0];
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'h77: begin // RR A [cite: 150]
                 acc_preop <= acc;
                 acc <= {acc[0], acc[7:1]};
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'hD3: begin // XRL A, #data [cite: 169, 171]
@@ -274,7 +275,7 @@ task execute_instruction;
                     cycle_2 <= 1'b1;
                 end else begin
                     acc <= acc ^ rom_data;
-                    #10 display_read_status(ir,acc_preop,rom_data,acc,pc);
+                    #10 display_read_status(pc,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -283,7 +284,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc <= {acc[6:0], psw[7]}; 
                 psw[7] <= acc[7];
-                #10 display_read_status(ir,acc_preop,8'hXX,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
 
@@ -296,19 +297,20 @@ task execute_instruction;
             8'hE7: begin // RL A
                 acc_preop <= acc;
                 acc <= {acc[6:0], acc[7]};
-                #10 display_read_status(ir, acc_preop, 8'hXX, acc, 12'hACC);
+                #10 display_read_status(pc,ir, acc_preop, 8'hXX, acc, 12'hACC);
                 pc <= pc + 1'b1;
             end
 
             // --- Register & Internal RAM ---
             8'h23: begin // MOV A, #data [cite: 3, 5]
                 if (!cycle_2) begin 
+                    pc_orig <= pc;
                     pc <= pc + 1'b1;
                     cycle_2 <= 1; 
                     acc_preop <= acc;
                 end else begin 
                     acc <= rom_data; 
-                    #10 display_read_status(ir,acc_preop,rom_data,acc,pc);
+                    #10 display_read_status(pc_orig,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1; 
                     cycle_2 <= 0; 
                 end
@@ -316,27 +318,27 @@ task execute_instruction;
             8'h42: begin // MOV A, T [cite: 97]
                 acc_preop <= acc;
                 acc <= timer_val; 
-                #10 display_read_status(ir,acc_preop,timer_val,acc,12'hACC);
+                #10 display_read_status(pc,ir,acc_preop,timer_val,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'h62: begin // MOV T, A [cite: 96]
                 timer_preop = timer_val;
                 timer_val <= acc; 
-                #10 display_read_status(ir,timer_preop,acc,timer_val,12'hACC);
+                #10 display_read_status(pc,ir,timer_preop,acc,timer_val,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'hA0, 8'hA1: begin // MOV @Ri, A [cite: 8]
                 ram_preop <= ram[ptr_addr];
                 ram[ptr_addr] <= acc;
                 wmem_dat <= ram[ptr_addr];
-                #10 display_read_status(ir,ram_preop,acc,wmem_dat,ptr_addr);
+                #10 display_read_status(pc,ir,ram_preop,acc,wmem_dat,ptr_addr);
                 pc <= pc + 1'b1;
             end
             8'hA8, 8'hA9, 8'hAA, 8'hAB, 8'hAC, 8'hAD, 8'hAE, 8'hAF: begin // MOV Rn, A [cite: 5, 6]
                 ram_preop <= ram[rn_addr];
                 ram[rn_addr] <= acc;
                 wmem_dat <= ram[rn_addr];
-                #10 display_read_status(ir,ram_preop,acc,wmem_dat,rn_addr);
+                #10 display_read_status(pc,ir,ram_preop,acc,wmem_dat,rn_addr);
                 pc <= pc + 1'b1;
             end
             8'hB0, 8'hB1: begin // MOV @Ri, #data [cite: 9, 11]
@@ -347,7 +349,7 @@ task execute_instruction;
                     ram_preop <= ram[ptr_addr];
                     ram[ptr_addr] <= rom_data;
                     wmem_dat <= ram[ptr_addr];
-                    #10 display_read_status(ir,ram_preop,acc,wmem_dat,ptr_addr);
+                    #10 display_read_status(pc,ir,ram_preop,acc,wmem_dat,ptr_addr);
                     pc <= pc + 1'b1; 
                     cycle_2 <= 0;
                 end
@@ -356,14 +358,14 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc <= ram[ptr_addr];
                 rmem_dat <= ram[ptr_addr];
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,ptr_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ptr_addr);
                 pc <= pc + 1'b1;
             end
             8'hF8, 8'hF9, 8'hFA, 8'hFB, 8'hFC, 8'hFD, 8'hFE, 8'hFF: begin // MOV A, Rn [cite: 6, 7]
                 acc_preop <= acc;
                 acc <= ram[rn_addr];
                 rmem_dat <= ram[rn_addr];
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,rn_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,rn_addr);
                 pc <= pc + 1'b1; 
             end
 
@@ -380,16 +382,16 @@ task execute_instruction;
                 rmem_dat <= ram[ptr_addr];
                 ram[ptr_addr] <= acc;
                 wmem_dat <= ram[ptr_addr];
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,ptr_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ptr_addr);
                 pc <= pc + 1'b1;
             end
-            8'b00101???,8'b00111???: begin // XCH A, Rn [cite: 136, 138]
+            8'b00101???: begin // XCH A, Rn [cite: 136, 138]
                 acc_preop <= acc;
                 acc <= ram[rn_addr];
                 rmem_dat <= ram[rn_addr];
                 ram[rn_addr] <= acc;
                 wmem_dat <= ram[rn_addr];
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,rn_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,rn_addr);
                 pc <= pc + 1'b1;
             end
             8'b0011000?: begin // XCHD A, @Ri [cite: 115]
@@ -398,7 +400,7 @@ task execute_instruction;
                 rmem_dat <= ram[ri_addr];
                 ram[ri_addr][3:0] <= acc[3:0];
                 wmem_dat <= ram[ri_addr];
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,ri_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ri_addr);
                 pc <= pc + 1'b1;
             end
             8'b0110000?: begin // ADD A, @Ri [cite: 132, 135]
@@ -406,7 +408,7 @@ task execute_instruction;
                 {psw[7], acc} <= acc + ram[ptr_addr];
                 rmem_dat <= ram[ptr_addr];
                 psw[6] <= (acc[3:0] + ram[ptr_addr][3:0] > 4'hF);
-                #10 display_read_status(ir,acc_preop,rmem_dat,acc,ptr_addr);
+                #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ptr_addr);
                 pc <= pc + 1'b1;
             end
             8'b10111???: begin // MOV Rn, #data [cite: 92, 95]
@@ -416,7 +418,7 @@ task execute_instruction;
                 end else begin 
                     ram_preop <= ram[rn_addr];
                     ram[rn_addr] <= rom_data;
-                    #10 display_read_status(ir,ram_preop,rom_data,ram[rn_addr] ,rn_addr);
+                    #10 display_read_status(pc,ir,ram_preop,rom_data,ram[rn_addr] ,rn_addr);
                     pc <= pc + 1'b1; 
                     cycle_2 <= 0;
                 end
@@ -431,21 +433,21 @@ task execute_instruction;
                 ram_preop <= ram[ptr_addr];
                 ram[ptr_addr] <= ram[ptr_addr] + 1'b1;
                 wmem_dat <= ram[ptr_addr];
-                #10 display_read_status(ir, ram_preop, 8'hXX, ram[ptr_addr], ptr_addr);
+                #10 display_read_status(pc,ir, ram_preop, 8'hXX, ram[ptr_addr], ptr_addr);
                 pc <= pc + 1'b1;
             end
             8'b00011???: begin // INC Rn [cite: 106]
                 ram_preop <= ram[rn_addr];
                 ram[rn_addr] <= ram[rn_addr] + 1'b1;
                 wmem_dat <= ram[rn_addr];
-                #10 display_read_status(ir,ram_preop,8'hXX,ram[rn_addr],rn_addr);
+                #10 display_read_status(pc,ir,ram_preop,8'hXX,ram[rn_addr],rn_addr);
                 pc <= pc + 1'b1;
             end
             8'b11001???: begin // DEC Rn [cite: 107]
                 ram_preop <= ram[rn_addr];
                 ram[rn_addr] <= ram[rn_addr] - 1'b1;
                 wmem_dat <= ram[rn_addr];
-                #10 display_read_status(ir,ram_preop,8'hXX,ram[rn_addr],rn_addr);
+                #10 display_read_status(pc,ir,ram_preop,8'hXX,ram[rn_addr],rn_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -455,7 +457,7 @@ task execute_instruction;
                 acc <= bus_in;
                 bus_addr <= ram[(psw[4] ? 5'h18 : 5'h00) + ir[0]];
                 bus_out <= bus_addr;
-                #10 display_read_status(ir,bus_preop,acc,bus_out,bus_addr);
+                #10 display_read_status(pc,ir,bus_preop,acc,bus_out,bus_addr);
                 pc <= pc + 1'b1;
             end
             8'h90, 8'h91: begin // MOVX @Ri, A [cite: 18, 25]
@@ -470,7 +472,7 @@ task execute_instruction;
                     ale <= 1'b0;
                     bus_out <= acc;
                     wr_n <= 1'b0;
-                    #10 display_read_status(ir,bus_preop,acc,bus_out,bus_addr);
+                    #10 display_read_status(pc,ir,bus_preop,acc,bus_out,bus_addr);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -487,7 +489,7 @@ task execute_instruction;
                     // This data becomes the new low 8 bits of the PC
                     pc[7:0]  <= rom_data; 
                     // Note: PC[11:8] remains unchanged (it jumps within the page)
-                    #10 display_read_status(ir,acc,rom_data,8'hXX,pc);
+                    #10 display_read_status(pc,ir,acc,rom_data,8'hXX,pc);
                     //pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -548,6 +550,10 @@ task execute_instruction;
             8'hB6: begin // JF0 [cite: 45, 46]
                 if (!cycle_2) begin pc <= pc + 1'b1; cycle_2 <= 1; end
                 else begin if (psw[5]) pc[7:0] <= rom_data; else pc <= pc + 1'b1; cycle_2 <= 0; end
+            end
+            8'h76: begin // JF1
+                if (!cycle_2) begin pc <= pc + 1'b1; cycle_2 <= 1; end
+                else begin if (f1) pc[7:0] <= rom_data; else pc <= pc + 1'b1; cycle_2 <= 0; end
             end
             8'hC6: begin // JZ [cite: 53, 54]
                 if (!cycle_2) begin 
@@ -620,7 +626,7 @@ task execute_instruction;
                     ram[{(psw[2:0]), 1'b0} + 6'h08] <= next_pc[7:0];
                     ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], next_pc[11:8]};
                     pc <= {mb_latch, ir[7:5], rom_data[7:0]};
-                    #10 display_read_status(ir,wmem_dat,wmem_dat2,8'hXX,pc);
+                    #10 display_read_status(pc,ir,wmem_dat,wmem_dat2,8'hXX,pc);
                     cycle_2 <= 1'b0;
                 end
             end
@@ -635,7 +641,7 @@ task execute_instruction;
                     retmem2 <= {psw[2:0], 1'b1} + 6'h08;
                     rmem_dat2 <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
                     psw[2:0] <= psw[2:0] - 1'b1;
-                    #10 display_read_status(ir,rmem_dat,rmem_dat2,psw,pc);
+                    #10 display_read_status(pc,ir,rmem_dat,rmem_dat2,psw,pc);
                     cycle_2 <= 1'b0;
                 end
             end
@@ -644,7 +650,7 @@ task execute_instruction;
                     cycle_2 <= 1'b1;
                 end else begin
                     //ram_preop <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    psw[2:0] <= psw[2:0] - 1'b1;
+                    //psw[2:0] <= psw[2:0] - 1'b1;
                     pc[7:0] <= ram[{psw[2:0], 1'b0} + 6'h08];
                     retmem1 <= {psw[2:0], 1'b0} + 6'h08;
                     rmem_dat <= ram[{psw[2:0], 1'b0} + 6'h08];
@@ -653,8 +659,8 @@ task execute_instruction;
                     retmem2 <= {psw[2:0], 1'b1} + 6'h08;
                     rmem_dat2 <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
                     //psw[2:0] <= psw[2:0] - 1'b1;
-                    #10 display_read_status(ir,rmem_dat,rmem_dat2,psw,pc);
-                    //psw[2:0] <= psw[2:0] - 1'b1;
+                    #10 display_read_status(pc,ir,rmem_dat,rmem_dat2,psw,pc);
+                    psw[2:0] <= psw[2:0] - 1'b1;
                     irq_in_progress <= 1'b0;
                     cycle_2 <= 1'b0;
                 end
@@ -669,7 +675,7 @@ task execute_instruction;
                 end else begin
                     acc_preop <= acc;
                     acc <= rom_data;
-                    #10 display_read_status(ir, acc_preop, rom_data, acc, {pc[11:8], acc});
+                    #10 display_read_status(pc,ir, acc_preop, rom_data, acc, {pc[11:8], acc});
                     pc <= pc + 1'b1;
                     cycle_2 <= 0;
                 end
@@ -684,7 +690,7 @@ task execute_instruction;
                 end else begin
                     acc_preop <= acc;
                     acc <= rom_data;  // rom_data = ROM[{4'b0011, acc}] = ROM[0x300+acc]
-                    #10 display_read_status(ir, acc_preop, rom_data, acc, {4'b0011, acc});
+                    #10 display_read_status(pc,ir, acc_preop, rom_data, acc, {4'b0011, acc});
                     pc <= pc + 1'b1;
                     cycle_2 <= 0;
                 end
@@ -696,20 +702,20 @@ task execute_instruction;
             8'h02: begin // OUTL BUS, A
                       bus_preop <= bus_out;
                       bus_out <= acc;  // Latch Accumulator to the BUS output register
+                      #10 display_read_status(pc,ir,bus_preop,acc,bus_out,12'hXXX);
                       pc <= pc + 1'b1;
-                     #10 display_read_status(ir,bus_preop,acc,bus_out,12'hXXX);
                    end
             8'h3A: begin //OUTL P1,A 
                      bus_preop <= p1;
                      p1 <= acc;
+                     #10 display_read_status(pc,ir,bus_preop,acc,p1,12'hAA1);
                      pc <= pc + 1'b1;
-                     #10 display_read_status(ir,bus_preop,acc,p1,12'hXXX);
                    end // [cite: 28]
             8'h3B: begin //OUTL P2,A 
                      bus_preop <= p2;
                      p2 <= acc;
+                     #10 display_read_status(pc,ir,bus_preop,acc,p2,12'hAA2);
                      pc <= pc + 1'b1;
-                     #10 display_read_status(ir,bus_preop,acc,p2,12'hXXX);
                    end // [cite: 28]
             8'h15: begin irq_en_ext <= 1'b0; pc <= pc + 1'b1; end // [cite: 30, 31]
             8'h25: begin irq_en_timer <= 1'b1; pc <= pc + 1'b1; end // [cite: 124, 125]
@@ -725,7 +731,7 @@ task execute_instruction;
                      begin
                        p1 <= p1 | rom_data;
                        cycle_2 <= 0;
-                       #10 display_read_status(ir,bus_preop,rom_data,p1,pc);
+                       #10 display_read_status(pc,ir,bus_preop,rom_data,p1,pc);
                        pc <= pc + 1'b1;
                      end
             end
@@ -740,7 +746,7 @@ task execute_instruction;
                      begin
                        p2 <= p2 | rom_data;
                        cycle_2 <= 0;
-                       #10 display_read_status(ir,bus_preop,rom_data,p2,pc);
+                       #10 display_read_status(pc,ir,bus_preop,rom_data,p2,pc);
                        pc <= pc + 1'b1;
                      end
             end
@@ -757,7 +763,7 @@ task execute_instruction;
                        begin
                          p1 <= p1 & rom_data;
                          cycle_2 <= 0;
-                         #10 display_read_status(ir,bus_preop,rom_data,p1,pc);
+                         #10 display_read_status(pc,ir,bus_preop,rom_data,p1,pc);
                          pc <= pc + 1'b1;
                        end
                    end
@@ -772,7 +778,7 @@ task execute_instruction;
                      begin
                        p2 <= p2 & rom_data;
                        cycle_2 <= 0;
-                       #10 display_read_status(ir,bus_preop,rom_data,p2,pc);
+                       #10 display_read_status(pc,ir,bus_preop,rom_data,p2,pc);
                        pc <= pc + 1'b1;
                      end
                    end
@@ -802,10 +808,10 @@ task execute_instruction;
 
 
             // --- Status Selection ---
-            8'hE5: begin mb_latch <= 1'b0; pc <= pc + 1'b1; end // SEL MB0 [cite: 174, 175]
-            8'hF5: begin mb_latch <= 1'b1; pc <= pc + 1'b1; end // SEL MB1[cite: 172, 173]
-            8'hC5: begin psw[4] <= 1'b0;; pc <= pc + 1'b1; end // SEL RB0 [cite: 176, 177]
-            8'hD5: begin psw[4] <= 1'b1; pc <= pc + 1'b1; end // SEL RB1 [cite: 178, 179]
+            8'hC5: begin psw[4] <= 1'b0; pc <= pc + 1'b1; end // SEL RB0 [cite: 174, 175]
+            8'hD5: begin psw[4] <= 1'b1; pc <= pc + 1'b1; end // SEL RB1[cite: 172, 173]
+            8'hE5: begin mb_latch <= 1'b0; pc <= pc + 1'b1; end // SEL MB0 [cite: 176, 177]
+            8'hF5: begin mb_latch <= 1'b1; pc <= pc + 1'b1; end // SEL MB1 [cite: 178, 179]
 
             8'h57: begin // DA A (Decimal Adjust Accumulator)
                 acc_preop <= acc;
@@ -817,7 +823,7 @@ task execute_instruction;
                         acc <= acc + 8'h60;
                         psw[7] <= 1'b1; // Set Carry flag
                 end
-                   #10 display_read_status(ir,acc_preop,8'hXX,acc,pc);
+                   #10 display_read_status(pc,ir,acc_preop,8'hXX,acc,pc);
                     
                     pc <= pc + 1'b1;
                 end
@@ -831,7 +837,7 @@ task execute_instruction;
             8'h08: begin // INS A, BUS
                 acc_preop <= acc;
                 acc       <= bus_in;
-                #10 display_read_status(ir, acc_preop, bus_in, acc, 12'hACC);
+                #10 display_read_status(pc,ir, acc_preop, bus_in, acc, 12'hACC);
                 pc <= pc + 1'b1;
             end
 
@@ -842,7 +848,7 @@ task execute_instruction;
             8'h09: begin // IN A, P1
                 acc_preop <= acc;
                 acc       <= p1;
-                #10 display_read_status(ir, acc_preop, p1, acc, 12'hACC);
+                #10 display_read_status(pc,ir, acc_preop, p1, acc, 12'hACC);
                 pc <= pc + 1'b1;
             end
 
@@ -853,7 +859,7 @@ task execute_instruction;
             8'h0A: begin // IN A, P2
                 acc_preop <= acc;
                 acc       <= p2;
-                #10 display_read_status(ir, acc_preop, p2, acc, 12'hACC);
+                #10 display_read_status(pc,ir, acc_preop, p2, acc, 12'hACC);
                 pc <= pc + 1'b1;
             end
 
@@ -873,7 +879,7 @@ task execute_instruction;
                 end else begin
                     {psw[7], acc} <= {1'b0, acc} + {1'b0, rom_data} + {8'b0, psw[7]};
                     psw[6]  <= (acc[3:0] + rom_data[3:0] + psw[7] > 4'hF);
-                    #10 display_read_status(ir, acc_preop, rom_data, acc, pc);
+                    #10 display_read_status(pc,ir, acc_preop, rom_data, acc, pc);
                     pc      <= pc + 1'b1;
                     cycle_2 <= 1'b0;
                 end
@@ -887,7 +893,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc       <= acc | ram[ptr_addr];
                 rmem_dat  <= ram[ptr_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, ptr_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, ptr_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -903,7 +909,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc       <= acc | ram[rn_addr];
                 rmem_dat  <= ram[rn_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, rn_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -915,7 +921,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc       <= acc & ram[ptr_addr];
                 rmem_dat  <= ram[ptr_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, ptr_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, ptr_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -928,7 +934,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 acc       <= acc & ram[rn_addr];
                 rmem_dat  <= ram[rn_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, rn_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -946,7 +952,7 @@ task execute_instruction;
                 {psw[7], acc} <= {1'b0, acc} + {1'b0, ram[rn_addr]};
                 psw[6]    <= (acc[3:0] + ram[rn_addr][3:0] > 4'hF);
                 rmem_dat  <= ram[rn_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, rn_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
             end
 
@@ -963,7 +969,7 @@ task execute_instruction;
                 {psw[7], acc} <= {1'b0, acc} + {1'b0, ram[rn_addr]} + {8'b0, psw[7]};
                 psw[6]    <= (acc[3:0] + ram[rn_addr][3:0] + psw[7] > 4'hF);
                 rmem_dat  <= ram[rn_addr];
-                #10 display_read_status(ir, acc_preop, rmem_dat, acc, rn_addr);
+                #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
             end
 

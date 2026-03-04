@@ -1,3 +1,4 @@
+#!/bin/bash
 #python3 ../disassemble/csv2veriloghex.py ../disassemble/test_sim.csv ../disassemble/test_sim.hex 
 #python3 hex2mem48.py  89KLR_951.hex 89KLR_951.mem
 rm ../../tmp/gemini8058/i8048_regression_tb.vvp
@@ -9,9 +10,10 @@ rm ../../tmp/gemini8058/ram_out.hex
 rm ../../tmp/gemini8058/951klr.vcd
 
 
-iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
-vvp ../../tmp/gemini8048/i8048_regression_tb.vvp
-iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -s i8048_tb
+which vvp
+/opt/homebrew/bin/iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
+/opt/homebrew/bin/vvp ../../tmp/gemini8048/i8048_regression_tb.vvp
+/opt/homebrew/bin/iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -s i8048_tb
 source  ../8051_Debug/bin/activate
 python3 ../disassemble/xlsx2veriloghex.py bin/87KLR951.xlsx bin/test_sim.hex 
 python3 ../disassemble/xlsxmembyte2veriloghex.py  bin/87KLR951.xlsx bin/memory_byte_map.hex
@@ -22,7 +24,7 @@ mv asm_operands_numeric.hex bin
 mv asm_operands.hex bin
 
 #python3 bin/hex2bin48.py
-vvp ../../tmp/gemini8048/i8048.vvp > ../../tmp/gemini8048/951klr.log
+/opt/homebrew/bin/vvp ../../tmp/gemini8048/i8048.vvp > ../../tmp/gemini8048/951klr.log
 mv ram_out.hex ../../tmp/gemini8048 
 mv 951klr.vcd ../../tmp/gemini8048
 cat ../../tmp/gemini8048/951klr.log | grep -v "^\t" | grep -v "^label" > ../../tmp/gemini8048/debug1.log
