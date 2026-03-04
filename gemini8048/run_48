@@ -1,16 +1,14 @@
 #!/bin/bash
 #python3 ../disassemble/csv2veriloghex.py ../disassemble/test_sim.csv ../disassemble/test_sim.hex 
 #python3 hex2mem48.py  89KLR_951.hex 89KLR_951.mem
-rm ../../tmp/gemini8058/i8048_regression_tb.vvp
-rm ../../tmp/gemini8058/i8048.vvp
-rm ../../tmp/gemini8058/951klr.log
-rm ../../tmp/gemini8058/debug1.log
-rm ../../tmp/gemini8058/951klr_dedupe.log
-rm ../../tmp/gemini8058/ram_out.hex
-rm ../../tmp/gemini8058/951klr.vcd
+rm ../../tmp/gemini8048/i8048_regression_tb.vvp
+rm ../../tmp/gemini8048/i8048.vvp
+rm ../../tmp/gemini8048/951klr.log
+rm ../../tmp/gemini8048/debug1.log
+rm ../../tmp/gemini8048/951klr_dedupe.log
+rm ../../tmp/gemini8048/ram_out.hex
+rm ../../tmp/gemini8048/951klr.vcd
 
-
-which vvp
 /opt/homebrew/bin/iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 /opt/homebrew/bin/vvp ../../tmp/gemini8048/i8048_regression_tb.vvp
 /opt/homebrew/bin/iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -s i8048_tb
@@ -23,7 +21,6 @@ mv asm_opcode_ins.hex bin
 mv asm_operands_numeric.hex bin
 mv asm_operands.hex bin
 
-#python3 bin/hex2bin48.py
 /opt/homebrew/bin/vvp ../../tmp/gemini8048/i8048.vvp > ../../tmp/gemini8048/951klr.log
 mv ram_out.hex ../../tmp/gemini8048 
 mv 951klr.vcd ../../tmp/gemini8048
