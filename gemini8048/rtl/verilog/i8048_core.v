@@ -1014,7 +1014,8 @@ always @(posedge clk) begin
           if (timer_mode == 1'b0)
               // --- TIMER MODE ---
           begin
-             if (machine_cycle_pulse) 
+             //if (machine_cycle_pulse) 
+             if (ale) 
                begin
                  if (prescaler == 5'd31)
                   begin

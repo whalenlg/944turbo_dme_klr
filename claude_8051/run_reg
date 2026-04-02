@@ -1,0 +1,4 @@
+iverilog -o ../../tmp/claude_8051/claude_8051_reg.vvp bench/verilog/i8051_regression_tb.v rtl/verilog/i8051_core.v
+vvp ../../tmp/claude_8051/claude_8051_reg.vvp 
+rm ../../tmp/claude_8051/*reg*.vcd
+mv *reg*.vcd ../../tmp/claude_8051

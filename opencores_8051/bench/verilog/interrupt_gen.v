@@ -4,13 +4,16 @@ module interrupt_generator #(
     //------------------------------------------------------------
     // INT_1: square wave, period in clock cycles
 //    parameter INT1_PERIOD = 2480, //1136 RPM
-    parameter INT1_PERIOD = 1240, //2272 RPM
+//    parameter INT1_PERIOD = 1240, //2272 RPM
+    parameter INT1_PERIOD = 100, //2272 RPM
 
     // INT_0: pulse with custom high-time and full period
 //    parameter INT0_PERIOD = 327360, //132 * INT1_PERIOD
-    parameter INT0_PERIOD = 163680, //132 * INT1_PERIOD
+//    parameter INT0_PERIOD = 163680, //132 * INT1_PERIOD
+    parameter INT0_PERIOD = 13200, //132 * INT1_PERIOD
 //    parameter INT0_HIGH   = 4960 
-    parameter INT0_HIGH   = 2480 
+//    parameter INT0_HIGH   = 2480 
+    parameter INT0_HIGH   = 200 
 )(
     input  wire clk,
     input  wire rst,

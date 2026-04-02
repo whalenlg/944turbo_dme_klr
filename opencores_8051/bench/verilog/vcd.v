@@ -31,19 +31,18 @@ $dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_memory_interface1);
 //$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_wb_interface);
 //$dumpvars(1,oc8051_tb.interrupt_generator_1);
 `ifdef RAMPRPM $dumpvars(1,oc8051_tb.var_interrupt_generator_1);
+`endif
 `ifdef FLATRPM $dumpvars(1,oc8051_tb.interrupt_generator_1);
 `endif
 $dumpvars(1,oc8051_tb.oc8051_xrom1);
 $dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_ram_top1.oc8051_idata.oc8051_ram1);
 $dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1);
-//$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_tc1);
-//$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_int1);
+$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_tc1);
+$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_tc21);
+$dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_int1);
 $dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_sfr1.oc8051_ports1);
 $dumpvars(1,oc8051_tb.oc8051_top_1.oc8051_decoder1);
-
 $dumpvars(1,oc8051_tb.oc8051_xram1);
-
-`endif
 
 
 //`ifdef FST

@@ -4,7 +4,7 @@
 `define RPMCONST 2728000
 `define RPMRAMP
 `define FLATRPM
-`define SIM_TIME   10000000000
+`define SIM_TIME   100000000
 
 module i8048_tb;
     `define FREQ   11000 // frequency in kHz

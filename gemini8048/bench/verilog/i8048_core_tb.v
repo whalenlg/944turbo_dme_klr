@@ -663,7 +663,7 @@ module i8048_core_tb;
             end
         end
         // timer_flag just set: CPU is in cycle_1 of JTF, needs one more cycle for cycle_2 to load PC
-        clock_cycles(1);
+        clock_cycles(3);
         check_pc(12'h070, "JTF taken after timer overflow");
 
         // =====================================================================

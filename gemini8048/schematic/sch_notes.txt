@@ -27,7 +27,7 @@ Conn1 - d654 - conn5
         t653 - conn2
              -  r666
              - b52 - cpu 31 (p14)
-              - pin25 of CPU (PROG)++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+              - pin25 of CPU (PROG)++
              - r665 (open?)
 
 XXX Conn3 - B35 - b103 - cpu pin 38 (P27)
@@ -40,15 +40,15 @@ Conn6 - bus91 - ? -
 Xxx Conn7 - bus100 - cpu 33 (p1.6)
 Conn8 - bus92 - GND
 Conn9 - LM2902 pins 3 and 4
-       - c252 - 2902 pin 11
+       - c252 - 2902 pin 11R
               - B86
               - b105
 Conn10 - b87 - b94 - GND
 Conn11 - b94 gnd
 Conn12 - bus 93 ??
-Conn13 - bus 88 - r452 -adc
+xxxxxConn13 - bus 88 - r452 -adc 1
 Conn14 - bus 95 - add 26
-Conn15 - r955 -adc 1
+Xxxxx Conn15 - r955 -adc 3
 Conn16 - r 956 - pin 28
 Conn17 - bus 79 - bus 80 - add 28 (conn 21?)
 
@@ -97,3 +97,34 @@ ADC
 1
 0
 
+
+Analog Board
+
+Pin 25 - Bus 20 - R424A (1k) - CONN5 (Dig Conn pin 9)
+
+Pin 23 - GND
+
+Pin 22 Angle Sensor In  R432A AConn23 (Dig Conn Pin 16) 
+
+
+Pin 21 AngleSensor Supply - R430A - Bus 39 - R900 - Dig Pin 15 -->ADC1 
+                                  - C403A - GND
+                          -  R429A - 
+
+
+
+
+     - bus 24 - nowhere
+   -.
+- T302 (C639 NPN collector)) - r307 -  Bus 29 -  R401 -(Dig Conn Pin 13)
+-      - r ??? (100 ohms) Near 307 - goes to T301 collector
+  - r301 - T302 emitter 
+    - b11 - base f t302
+          - base of T301
+          - r ??? Infront of T301 - to base and emitter of T301 to pin of big test T300
+T301 (C640 PH66) NPN
+
+
+Pin 11 GND
+
+Pin 12 GND

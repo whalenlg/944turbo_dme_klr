@@ -1,0 +1,14 @@
+rtl/verilog/oc8051_defines.v
+rtl/verilog/i8051_top.v
+bench/verilog/i8051_tb.v
+bench/verilog/adc_delay.v
+bench/verilog/interrupt_gen.v
+bench/verilog/var_interrupt_gen.v
+bench/verilog/o2_gen.v
+bench/verilog/vcd.v
+bench/verilog/oc8051_serial.v
+bench/verilog/oc8051_timescale.v
+bench/verilog/oc8051_uart_test.v
+bench/verilog/oc8051_xram.v
+bench/verilog/oc8051_xrom.v
+rtl/verilog/i8051_core.v

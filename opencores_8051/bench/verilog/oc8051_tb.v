@@ -95,13 +95,13 @@
 //super long `define SIM_TIME   80000000000
 //medium `define SIM_TIME 4000000000
 //MOVX test `define SIM_TIME  380000
-`define SIM_TIME   8000000000
+`define SIM_TIME   800000000
 
 `define RPMSTART 840
 `define RPMEND   6500
 `define RPMCONST 2728000
 `define RPMRAMP
-`define FLATRPM
+//`define FLATRPM
 //`define NOINT
 
 module oc8051_tb;
@@ -109,7 +109,8 @@ module oc8051_tb;
 
 //parameter FREQ  = 20000; // frequency in kHz
 //parameter FREQ  = 12000; // frequency in kHz
-`define FREQ   6000 // frequency in kHz
+//`define FREQ   6000 // frequency in kHz
+`define FREQ   500 // frequency in kHz
 `define FRQ_SCALE  500000
 parameter DELAY = `FRQ_SCALE/`FREQ;
 
@@ -381,7 +382,7 @@ initial begin
 // p2_in = 8'h80;// all ADC's at mid line
 #220
   rst = 1'b0;
-
+  
 //#800000000
 #`SIM_TIME
   $display("time ",$time, "\nend of time\n \n");
