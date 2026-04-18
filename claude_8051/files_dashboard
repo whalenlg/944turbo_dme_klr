@@ -1,4 +1,4 @@
-bench/verilog/i8051_tb.v
+bench/verilog/i8051_dashboard_tb.v
 rtl/verilog/oc8051_defines.v
 rtl/verilog/i8051_top.v
 bench/verilog/adc_delay.v

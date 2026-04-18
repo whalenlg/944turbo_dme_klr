@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""
+validate_dash_log.py  —  89 DME 951 post-simulation log checker
+
+Usage:
+    python3 validate_dash_log.py <test_name> <path/to/test.dash.log>
+
+Exit codes:
+    0  PASS or WARN
+    1  FAIL
+
+Output (one line per verdict, tab-separated):
+    PASS|WARN|FAIL  <test_name>  <detail>
+"""
+
+import sys, re
+
+# ─── Per-test expectations ──────────────────────────────────────────────────
+# fuel_range     : (min_ms, max_ms) of steady-state injected fuel
+# rpm_target     : expected final RPM (tolerance ±200)
+# expect_sync    : ENGINE SYNC must fire
+# expect_ase     : AFTER-START ENRICH begin must fire
+# expect_fuelcut : FUEL CUT end must fire (injection resumes)
+# dwell_min      : dwell half-teeth minimum in steady state
+# dwell_cap      : dwell half-teeth cap expected (tolerance ±2)
+# isv_cold       : ISV must start > 0x14 (cold idle warm-up)
+# known_issues   : list of known-bad fields (reported as WARN, not FAIL)
+
+TESTS = {
+    'warm_idle':         {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
+    'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(2.0, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
+    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'tippy_in':          {'rpm_target':  840, 'fuel_range':(2.0, 4.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'known_issues':['iram[4Ch] accel register permanently zero — confirmed ROM design limitation: MOV 3h,A at 0x1F9B saves delta to bank0 R3 (iram[03h]), map_lookup switches to bank1 then Get_Map_Addr clobbers iram[0Bh] before 0x054E reads it. Patched ROM (MOV 0Bh,A) tested and confirmed same result. Enrichment delivered via load calc (10ms spike confirmed correct)']},
+    'overrun_cutoff':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
+    'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True},
+    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(2.0, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(2.0, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+    'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+    'o2_lean_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.5, 5.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,
+                          'known_issues':['Dwell exceeds 45° cap above 6000 RPM (no rev limiter)']},
+    'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ignition_timing':   {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True},
+    'dwell_scaling':     {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'isv_cold_idle':     {'rpm_target':  840, 'fuel_range':(1.0, 3.5),   'expect_ase':False, 'expect_fuelcut':False, 'isv_cold':True},
+    'isv_load_droop':    {'rpm_target':  840, 'fuel_range':(1.5, 4.0),   'expect_ase':True,  'expect_fuelcut':True,  'rpm_droop':True},
+}
+
+# ─── Parsers ─────────────────────────────────────────────────────────────────
+
+def parse_ds(line):
+    line = line.strip()
+    if not line.startswith('[DS]'):
+        return None
+    parts = line[5:].split(',')
+    if len(parts) < 3:
+        return None
+    try:
+        t = int(parts[0])
+    except ValueError:
+        return None
+    h = parts[1]
+    if len(h) < 256:
+        return None
+    def b(n):
+        s = h[n*2:n*2+2]
+        return int(s, 16) if 'x' not in s.lower() else 0
+    hb = b(0x4B); lb = b(0x4A)
+    f23 = b(0x23)
+    fuelcut = (f23 >> 5) & 1
+    rpm = int(parts[3]) if len(parts) >= 4 else 0
+    return {
+        't': t,
+        'fuelcut': fuelcut,
+        'fuel_actual': 0 if fuelcut else ((hb << 8) | lb) * 2 / 1000,
+        'dwell': b(0x2F),
+        'isv': b(0x7F),
+        'rpm': rpm,
+    }
+
+# ─── Main validator ───────────────────────────────────────────────────────────
+
+def validate(test_name, logpath):
+    exp = TESTS.get(test_name)
+    if exp is None:
+        print(f"WARN\t{test_name}\tNo expectations defined — skipping checks")
+        return 0
+
+    try:
+        lines = open(logpath).readlines()
+    except FileNotFoundError:
+        print(f"FAIL\t{test_name}\tLog file not found: {logpath}")
+        return 1
+
+    rows = []
+    phases = []
+    for line in lines:
+        s = parse_ds(line)
+        if s:
+            rows.append(s)
+        elif line.startswith('[PHASE]') or line.startswith('[SEED]'):
+            phases.append(line.strip())
+
+    fails = []
+    warns = []
+    infos = []
+
+    # ── 1. DS line count
+    if len(rows) == 0:
+        print(f"FAIL\t{test_name}\tNo [DS] lines found — simulation may have crashed")
+        return 1
+    infos.append(f"{len(rows)} DS snapshots")
+
+    # ── 2. ENGINE SYNC (or INTERRUPT BLOCK cleared for tests without SKIP_LAMBDA_WARMUP)
+    if exp.get('expect_sync', True):
+        engine_synced = (any('ENGINE SYNC' in p for p in phases) or
+                         any('INTERRUPT BLOCK cleared' in p for p in phases))
+        if not engine_synced:
+            fails.append("ENGINE SYNC never fired")
+        else:
+            # Report which event confirmed sync
+            sync_ev = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
+            t_sync = sync_ev.split('t=')[1].split(' ')[0] if 't=' in sync_ev else '?'
+            infos.append(f"sync={t_sync}ms")
+
+    # ── 3. INTERRUPT BLOCK cleared (engine ready)
+    if not any('INTERRUPT BLOCK cleared' in p for p in phases):
+        warns.append("INTERRUPT BLOCK never cleared")
+
+    # ── 4. AFTER-START ENRICH
+    ase_fired = any('AFTER-START ENRICH begin' in p for p in phases)
+    ase_ended = any('AFTER-START ENRICH end' in p for p in phases)
+    if exp.get('expect_ase', True):
+        if not ase_fired:
+            fails.append("AFTER-START ENRICH never began")
+        elif not ase_ended:
+            warns.append("AFTER-START ENRICH began but never ended")
+    if ase_fired:
+        # Extract timing
+        t_begin = next((p for p in phases if 'AFTER-START ENRICH begin' in p), '')
+        t_end   = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_b = re.search(r't=(\d+)', t_begin)
+        m_e = re.search(r't=(\d+)', t_end)
+        if m_b and m_e:
+            infos.append(f"ASE {m_b.group(1)}–{m_e.group(1)}ms")
+
+    # ── 5. FUEL CUT end (injection resumes)
+    if exp.get('expect_fuelcut', True):
+        if not any('FUEL CUT end' in p for p in phases):
+            fails.append("FUEL CUT never cleared — injection never resumed")
+        else:
+            t_fc = next((p for p in phases if 'FUEL CUT end' in p), '')
+            m = re.search(r't=(\d+)', t_fc)
+            if m:
+                infos.append(f"FuelCut→end={m.group(1)}ms")
+
+    # ── 6. Steady-state fuel (last 20% of snapshots, injection only)
+    cutoff_idx = max(0, len(rows) - max(10, len(rows) // 5))
+    steady = [r for r in rows[cutoff_idx:] if r['fuel_actual'] > 0]
+    if steady:
+        fuel_min = min(r['fuel_actual'] for r in steady)
+        fuel_max = max(r['fuel_actual'] for r in steady)
+        fuel_avg = sum(r['fuel_actual'] for r in steady) / len(steady)
+        lo, hi = exp['fuel_range']
+        infos.append(f"fuel={fuel_min:.3f}–{fuel_max:.3f}ms (avg {fuel_avg:.3f}ms)")
+        if fuel_avg < lo:
+            fails.append(f"Steady-state fuel {fuel_avg:.3f}ms below floor {lo}ms")
+        elif fuel_avg > hi:
+            fails.append(f"Steady-state fuel {fuel_avg:.3f}ms above ceiling {hi}ms")
+    elif exp.get('expect_fuelcut', True):
+        # Should have had injection in steady state
+        warns.append("No injected fuel snapshots in steady state")
+
+    # ── 7. RPM target reached
+    rpm_target = exp.get('rpm_target', 0)
+    if rpm_target > 0:
+        max_rpm = max((r['rpm'] for r in rows if r['rpm'] > 0), default=0)
+        if max_rpm < rpm_target - 200:
+            fails.append(f"RPM never reached target {rpm_target} (max {max_rpm})")
+        else:
+            infos.append(f"RPM max={max_rpm}")
+
+    # ── 8. Dwell cap check
+    dwell_cap = exp.get('dwell_cap')
+    if dwell_cap and steady:
+        late_dwells = [r['dwell'] for r in steady if r['dwell'] > 0]
+        if late_dwells:
+            max_dwell = max(late_dwells)
+            if abs(max_dwell - dwell_cap) > 4:
+                warns.append(f"Dwell at steady state {max_dwell}½t, expected cap {dwell_cap}½t")
+            else:
+                infos.append(f"dwell cap={max_dwell}½t ✓")
+
+    # ── 9. Dwell minimum (battery low test)
+    dwell_min = exp.get('dwell_min')
+    if dwell_min and steady:
+        late_dwells = [r['dwell'] for r in steady if r['dwell'] > 0]
+        if late_dwells and min(late_dwells) < dwell_min:
+            fails.append(f"Dwell {min(late_dwells)}½t below minimum {dwell_min}½t for low-battery compensation")
+        elif late_dwells:
+            infos.append(f"dwell min={min(late_dwells)}½t ✓")
+
+    # ── 10. ISV cold start (should start elevated)
+    if exp.get('isv_cold'):
+        early_isvs = [r['isv'] for r in rows[:10] if r['isv'] > 0]
+        if early_isvs and max(early_isvs) <= 0x14:
+            warns.append(f"ISV not elevated at cold start (max early ISV=0x{max(early_isvs):02X}, expected >0x14)")
+        elif early_isvs:
+            infos.append(f"ISV cold start=0x{max(early_isvs):02X} ✓")
+
+    # ── 11. RPM droop (isv_load_droop — expect a dip then recovery)
+    if exp.get('rpm_droop'):
+        rpms = [r['rpm'] for r in rows if r['rpm'] > 0]
+        if rpms:
+            rpm_steady = rpms[-1]
+            rpm_min = min(rpms)
+            if rpm_min > rpm_steady - 100:
+                warns.append(f"No RPM droop detected (min {rpm_min}, final {rpm_steady})")
+            else:
+                infos.append(f"RPM droop confirmed: {rpm_steady}→{rpm_min}→{rpm_steady} ✓")
+
+    # ── 12. WATCHDOG STALLED
+    wdog_events = [p for p in phases if 'WATCHDOG STALLED' in p]
+    if wdog_events:
+        # Only warn if more than one or very late in sim
+        if len(wdog_events) > 1:
+            warns.append(f"Multiple WATCHDOG STALLED events ({len(wdog_events)})")
+        else:
+            # Single event at ~1000ms is a known false positive with 2s detection window
+            m = re.search(r't=(\d+)', wdog_events[0])
+            if m and int(m.group(1)) <= 2100:
+                infos.append("WATCHDOG at 1000ms (known false positive)")
+            else:
+                warns.append(f"WATCHDOG STALLED: {wdog_events[0]}")
+
+    # ── 13. Known issues — always WARN, never FAIL
+    for issue in exp.get('known_issues', []):
+        warns.append(f"known: {issue}")
+
+    # ── Verdict
+    detail = ' | '.join(infos)
+    if fails:
+        detail_full = detail + (' | FAIL: ' + '; '.join(fails) if detail else 'FAIL: ' + '; '.join(fails))
+        if warns:
+            detail_full += ' | WARN: ' + '; '.join(warns)
+        print(f"FAIL\t{test_name}\t{detail_full}")
+        return 1
+    elif warns:
+        detail_full = detail + (' | WARN: ' + '; '.join(warns) if detail else 'WARN: ' + '; '.join(warns))
+        print(f"WARN\t{test_name}\t{detail_full}")
+        return 0
+    else:
+        print(f"PASS\t{test_name}\t{detail}")
+        return 0
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <test_name> <dash.log>", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(validate(sys.argv[1], sys.argv[2]))

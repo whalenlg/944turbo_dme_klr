@@ -9,7 +9,7 @@
 #    ./run_parallel.sh <workers> [test1 test2 ...]
 #
 #  Examples:
-#    ./run_parallel.sh 4              # run all 21 tests, 4 at a time
+#    ./run_parallel.sh 4              # run all 24 tests, 4 at a time
 #    ./run_parallel.sh 2 warm_idle cold_start hot_idle
 #                                     # run 3 specific tests, 2 at a time
 #    ./run_parallel.sh 8              # maximum parallelism
@@ -30,6 +30,10 @@ ALL_TESTS=(
     idle_battery_low
     idle_high_alt
     idle_poor_fuel
+    ac_on_idle
+    overrun_cutoff
+    tippy_in
+    warmup_enrichment
     afm_open_circuit
     coolant_fail
     airtemp_fail

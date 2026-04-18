@@ -1,0 +1,3 @@
+./run_reg
+./run_parallel.sh 8
+./run_dashboard_parallel.sh 8

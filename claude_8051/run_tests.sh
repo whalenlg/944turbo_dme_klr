@@ -98,8 +98,8 @@ run_all() {
 # --- Idle tests ---
 compile_and_run warm_idle \
     -DTEST_WARM_IDLE \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
 compile_and_run cold_start \
     -DTEST_COLD_START \
@@ -125,6 +125,29 @@ compile_and_run idle_poor_fuel \
     -DTEST_IDLE_POOR_FUEL \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+compile_and_run ac_on_idle \
+    -DTEST_AC_ON_IDLE \
+    -DAC_COMP_ON \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
+compile_and_run overrun_cutoff \
+    -DTEST_OVERRUN_CUTOFF \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+compile_and_run tippy_in \
+    -DTEST_TIPPY_IN \
+    -DCPU_DEBUG \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
+compile_and_run warmup_enrichment \
+    -DTEST_WARMUP_ENRICHMENT \
+    -DCPU_DEBUG \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSIM_TIME=60000000000
 
 # --- Sensor failure tests ---
 compile_and_run afm_open_circuit \
@@ -213,12 +236,13 @@ compile_and_run isv_load_droop \
 # --------------------------------------------------------
 if [ -n "$1" ]; then
     case "$1" in
-        warm_idle)        compile_and_run warm_idle        -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        cold_start)       compile_and_run cold_start       -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                       -DSIM_TIME=120000000000 ;;
+        warm_idle)        compile_and_run warm_idle        -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000  ;;
+        cold_start)       compile_and_run cold_start       -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                       -DSIM_TIME=120000000000  ;;
         hot_idle)         compile_and_run hot_idle         -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         idle_battery_low) compile_and_run idle_battery_low -DTEST_IDLE_BATTERY_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
         idle_high_alt)    compile_and_run idle_high_alt    -DTEST_IDLE_HIGH_ALT    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
         idle_poor_fuel)   compile_and_run idle_poor_fuel   -DTEST_IDLE_POOR_FUEL   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
+        ac_on_idle)       compile_and_run ac_on_idle       -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         afm_open_circuit) compile_and_run afm_open_circuit -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
         coolant_fail)     compile_and_run coolant_fail     -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
         airtemp_fail)     compile_and_run airtemp_fail     -DTEST_AIRTEMP_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
@@ -234,10 +258,14 @@ if [ -n "$1" ]; then
         dwell_scaling)    compile_and_run dwell_scaling    -DTEST_DWELL_SCALING    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=80 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
         isv_cold_idle)    compile_and_run isv_cold_idle    -DTEST_ISV_COLD_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                       -DSIM_TIME=60000000000 ;;
         isv_load_droop)   compile_and_run isv_load_droop   -DTEST_ISV_LOAD_DROOP   -DISV_LOAD_DROOP -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
+        overrun_cutoff)   compile_and_run overrun_cutoff   -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        tippy_in)         compile_and_run tippy_in         -DTEST_TIPPY_IN         -DCPU_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        warmup_enrichment)compile_and_run warmup_enrichment -DTEST_WARMUP_ENRICHMENT -DCPU_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSIM_TIME=60000000000 ;;
         *)
             echo "Unknown test: $1"
             echo "Available: warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
-            echo "           idle_poor_fuel afm_open_circuit coolant_fail airtemp_fail"
+            echo "           idle_poor_fuel overrun_cutoff tippy_in warmup_enrichment"
+            echo "           afm_open_circuit coolant_fail airtemp_fail"
             echo "           o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             echo "           ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
             echo "           ignition_timing dwell_scaling isv_cold_idle isv_load_droop"

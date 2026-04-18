@@ -82,6 +82,12 @@ module var_interrupt_generator (
                 end
             end
 
+`ifdef DASHBOARD_TB
+  `define CYCLE_COUNT i8051_dashboard_tb.i8051_top.u_cpu.cycle_count
+`else
+  `define CYCLE_COUNT i8051_tb.i8051_top.u_cpu.cycle_count
+`endif
+
 `ifdef ISV_LOAD_DROOP
             // --------------------------------------------------------
             //  ISV load droop stimulus:
@@ -91,10 +97,10 @@ module var_interrupt_generator (
             //  t=5s      : 30,000,000 clocks
             //  t=5.5s    : 33,000,000 clocks (end of droop)
             // --------------------------------------------------------
-            if (i8051_tb.i8051_top.u_cpu.cycle_count >= 30_000_000 &&
-                i8051_tb.i8051_top.u_cpu.cycle_count <  33_000_000) begin
+            if (`CYCLE_COUNT >= 30_000_000 &&
+                `CYCLE_COUNT <  33_000_000) begin
                 period_current <= `RPMCONST / 650;   // 650 RPM droop
-            end else if (i8051_tb.i8051_top.u_cpu.cycle_count >= 33_000_000 &&
+            end else if (`CYCLE_COUNT >= 33_000_000 &&
                          current_rpm >= `RPMEND) begin
                 period_current <= period_end;         // restore
             end

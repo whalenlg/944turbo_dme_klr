@@ -79,8 +79,10 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
+  `undef  RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 10
   `undef  SIM_TIME
-  `define SIM_TIME  25000000000   // 25 sec
+  `define SIM_TIME  60000000000   // 60 sec
   `define _COOLANT_RAW  8'h20    // ~80°C
   `define _AIRTEMP_RAW  8'h50    // ~20°C
   `define _BATTERY      8'hD8    // 13.5V
@@ -94,8 +96,8 @@
   `undef  RPMEND
   `define RPMEND    840
   `undef  SIM_TIME
-  `define SIM_TIME  120000000000  // 120 sec (lambda engages at ~98s)
-  `define _COOLANT_RAW  8'h60    // ~10°C (cold)
+  `define SIM_TIME  120000000000  // 120 sec
+  `define _COOLANT_RAW  8'hC0    // cold — linearises to >= 0x8F threshold for cold-start enrich
   `define _AIRTEMP_RAW  8'h70    // ~5°C (cold intake air)
   `define _BATTERY      8'hD8    // 13.5V
   `define _ALTITUDE     8'hF8    // sea level
@@ -162,7 +164,39 @@
   `define _FUEL_QUAL    8'h00    // poor/low octane fuel
 `endif
 
-// --- TEST_AFM_OPEN_CIRCUIT ---
+// --- TEST_AC_ON_IDLE ---
+`ifdef TEST_AC_ON_IDLE
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define AC_COMP_ON                 // T1=1: AC compressor active
+  `undef  RPMEND
+  `define RPMEND    840
+  `undef  SIM_TIME
+  `define SIM_TIME  10000000000      // 10s — observe ISV and fuel response to AC load
+  `define _COOLANT_RAW  8'h20        // warm engine
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_TIPPY_IN ---
+`ifdef TEST_TIPPY_IN
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define AFM_TIPPY                  // enables step-change AFM override for accel enrichment
+  `undef  RPMEND
+  `define RPMEND    840              // hold at idle — AFM spike drives enrichment, not RPM
+  `undef  RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 10
+  `undef  SIM_TIME
+  `define SIM_TIME  10000000000
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
 `ifdef TEST_AFM_OPEN_CIRCUIT
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
@@ -178,6 +212,39 @@
   `define _FUEL_QUAL    8'h80
 `endif
 
+// --- TEST_OVERRUN_CUTOFF ---
+`ifdef TEST_OVERRUN_CUTOFF
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `undef  RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 10
+  `undef  SIM_TIME
+  `define SIM_TIME  30000000000   // 30 sec — short ramp, ~25s steady state
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_WARMUP_ENRICHMENT ---
+`ifdef TEST_WARMUP_ENRICHMENT
+  `define RPMRAMP
+  // Note: use CPU_DEBUG only when compiling with i8051_tb (normal TB).
+  // Passing -DCPU_DEBUG via the run script for normal TB runs only.
+  `undef  RPMEND
+  `define RPMEND    840
+  `undef  SIM_TIME
+  `define SIM_TIME  60000000000   // 60 sec — observe enrichment decay over time
+  `define _COOLANT_RAW  8'hC0    // cold — linearises to >= 0x8F threshold for cold-start enrich
+  `define _AIRTEMP_RAW  8'h70    // ~5°C cold intake air
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
 // --- TEST_COOLANT_FAIL ---
 `ifdef TEST_COOLANT_FAIL
   `define RPMRAMP
@@ -186,7 +253,7 @@
   `define RPMEND    840
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
-  `define _COOLANT_RAW  8'h00   // open circuit: NTC disconnected, pull-up → ADC=0V=0x00
+  `define _COOLANT_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 104°C hot
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
@@ -202,7 +269,7 @@
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h00   // open circuit: NTC disconnected, pull-up → ADC=0V=0x00
+  `define _AIRTEMP_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 104°C hot air
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `define _FUEL_QUAL    8'h80
@@ -434,9 +501,28 @@ parameter DELAY = `FRQ_SCALE/`FREQ;
 
 reg  rst, clk;
 reg  [7:0] p0_in, p1_in, p2_in,p3_in;
+
+// Initialise all port inputs to safe defaults at t=0 so the firmware
+// never sees X on any pin — especially T0 (P3.4) and T1 (P3.5).
+initial begin
+    p0_in = 8'hFF;
+    p1_in = 8'hFF;
+    p2_in = 8'hFF;
+    p3_in = 8'hFF;   // all idle-high; always block overrides at first clock edge
+end
 wire  [7:0] p0, p1, p2, p3;
 wire [15:0] ext_addr;
-wire write, write_xram, write_uart, rxd, int_uart, reference_sensor, speed_sensor, t0, t1, bit_out, stb_o, ack_i;
+wire write, write_xram, write_uart, rxd, int_uart, reference_sensor, speed_sensor, bit_out, stb_o, ack_i;
+// T0/T1 are separate top-level ports — not derived from p3_in.
+// Drive explicitly to prevent X propagation into the timer module.
+// T1 = AC compressor status input: 0=off (default), 1=on.
+//      Override with -DAC_COMP_ON to simulate AC compressor load.
+`ifdef AC_COMP_ON
+wire t1; assign t1 = 1'b1;   // AC compressor active
+`else
+wire t1; assign t1 = 1'b0;   // AC compressor off (default)
+`endif
+wire t0;  assign t0 = 1'b0;   // T0 = has catalytic converter (0 = fitted)
 wire ack_xram, ack_uart, cyc_o, iack_i, istb_o, icyc_o, t2, t2ex;
 wire [7:0] data_in, data_out, data_out_uart;
 wire [7:0] data_out_xram;
@@ -532,7 +618,41 @@ end
 // --------------------------------------------------------
 //  ADC
 // --------------------------------------------------------
-`define AFM_IDLE_THR 8'h1A
+`define AFM_IDLE_THR 8'h30
+
+// ─── Tippy-in AFM step override ─────────────────────────────
+// iram[53h] is updated by the ADC scan every crank cycle — so a
+// free-running step always finds delta=0 by the time airflow_calc runs.
+// Fix: spike AFM ON the reference sensor rising edge. The ADC scan
+// has just finished (iram[53h] = 0x28). The spike makes iram[10h]=0x78
+// BEFORE airflow_calc reads it, creating delta=0x50 within the same
+// crank event. Spike held for 2 seconds (~28 crank cycles at 840 RPM)
+// to simulate a realistic sustained throttle opening.
+`ifdef AFM_TIPPY
+reg [7:0]  afm_tippy;
+reg [7:0]  tippy_crank_count;
+reg        tippy_fired;
+
+initial begin
+    afm_tippy         = 8'h28;
+    tippy_crank_count = 8'd0;
+    tippy_fired       = 1'b0;
+end
+
+always @(posedge reference_sensor) begin
+    if (!tippy_fired) begin
+        tippy_crank_count <= tippy_crank_count + 8'd1;
+        if (tippy_crank_count == 8'd25) begin
+            afm_tippy   <= 8'h78;
+            tippy_fired <= 1'b1;
+        end
+    end else begin
+        tippy_crank_count <= tippy_crank_count + 8'd1;
+        if (tippy_crank_count >= 8'd53)   // 25 + 28 = 53
+            afm_tippy <= 8'h28;
+    end
+end
+`endif
 
 wire [7:0] afm_wiper;
 reg  [7:0] adc_mux;
@@ -542,6 +662,8 @@ always @(p2[2:0] or afm_wiper) begin
     // ch0: AFM wiper
 `ifdef AFM_FAULT
     3'b000:  adc_mux = 8'hFF;            // open circuit fault
+`elsif AFM_TIPPY
+    3'b000:  adc_mux = afm_tippy;        // step-change for accel enrichment test
 `else
     3'b000:  adc_mux = afm_wiper;
 `endif
@@ -557,6 +679,8 @@ always @(p2[2:0] or afm_wiper) begin
     // ch6: TPS
 `ifdef TPS_FIXED
     3'b110:  adc_mux = `TPS_FIXED;
+`elsif AFM_TIPPY
+    3'b110:  adc_mux = (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `else
     3'b110:  adc_mux = (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `endif
@@ -611,7 +735,9 @@ always @(clk) begin
     p1_in[6] = o2_6;      // O2 sensor bottom (lean threshold)
     p1_in[7] = o2_7;      // O2 sensor top    (lean only)
 
-    p3_in[7:5] = 3'h0;
+    p3_in[7:6] = 2'b11;           // unused, idle high
+    p3_in[5]   = t1;              // T1 (P3.5) — AC compressor status (driven via t1 assign)
+    p3_in[4]   = 1'b0;            // T0 (P3.4) — has-cat flag (0 = catalytic converter fitted)
     p3_in[1:0] = {bit_out, int_uart};
     p3_in[2]   = reference_sensor;
     p3_in[3]   = speed_sensor;
