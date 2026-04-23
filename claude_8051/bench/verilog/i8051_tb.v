@@ -180,6 +180,82 @@
   `define _FUEL_QUAL    8'h80
 `endif
 
+// --- TEST_CL_RAMP_TO_3000 ---
+`ifdef TEST_CL_RAMP_TO_3000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72
+  `undef  SIM_TIME
+  `define SIM_TIME  30000000000
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_CL_RAMP_TO_6000 ---
+`ifdef TEST_CL_RAMP_TO_6000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA
+  `undef  SIM_TIME
+  `define SIM_TIME  40000000000
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_CL_RAMP_TO_REDLINE ---
+`ifdef TEST_CL_RAMP_TO_REDLINE
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'hEB      // 6500 RPM → ADC=0xEB (max)
+  `undef  SIM_TIME
+  `define SIM_TIME  40000000000
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_CL_AC_HALFWAY ---
+`ifdef TEST_CL_AC_HALFWAY
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2
+  `undef  SIM_TIME
+  `define SIM_TIME  20000000000     // 20s — 10s pre-AC, 10s with AC
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+// --- TEST_CL_COLD_START ---
+`ifdef TEST_CL_COLD_START
+  `define RPMRAMP
+  `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
+  `undef  SIM_TIME
+  `define SIM_TIME  60000000000
+  `define _COOLANT_RAW  8'hC0       // cold — above 0x8F threshold for cold-start enrich
+  `define _AIRTEMP_RAW  8'h70
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
 // --- TEST_TIPPY_IN ---
 `ifdef TEST_TIPPY_IN
   `define RPMRAMP
@@ -516,8 +592,15 @@ wire write, write_xram, write_uart, rxd, int_uart, reference_sensor, speed_senso
 // T0/T1 are separate top-level ports — not derived from p3_in.
 // Drive explicitly to prevent X propagation into the timer module.
 // T1 = AC compressor status input: 0=off (default), 1=on.
-//      Override with -DAC_COMP_ON to simulate AC compressor load.
-`ifdef AC_COMP_ON
+//      Override with -DAC_COMP_ON (always on) or -DCL_AC_HALFWAY (on at SIM_TIME/2).
+`ifdef CL_AC_HALFWAY
+reg t1;
+initial begin
+    t1 = 1'b0;
+    #(`SIM_TIME / 2);
+    t1 = 1'b1;
+end
+`elsif AC_COMP_ON
 wire t1; assign t1 = 1'b1;   // AC compressor active
 `else
 wire t1; assign t1 = 1'b0;   // AC compressor off (default)
@@ -654,6 +737,19 @@ always @(posedge reference_sensor) begin
 end
 `endif
 
+// ─── CL ramp AFM override ────────────────────────────────────
+// Steps AFM to AFM_CL_TARGET at t=2000ms and holds, driving the
+// firmware load calc to compute elevated fuel.  CL dynamics then
+// accelerates RPM naturally until a new equilibrium is reached.
+`ifdef AFM_CL_RAMP
+reg [7:0] afm_cl;
+initial begin
+    afm_cl = 8'h28;   // idle until engine settled
+    #2_000_000_000;   // 2000ms — past fuel cut and ASE
+    afm_cl = `AFM_CL_TARGET;
+end
+`endif
+
 wire [7:0] afm_wiper;
 reg  [7:0] adc_mux;
 
@@ -662,6 +758,8 @@ always @(p2[2:0] or afm_wiper) begin
     // ch0: AFM wiper
 `ifdef AFM_FAULT
     3'b000:  adc_mux = 8'hFF;            // open circuit fault
+`elsif AFM_CL_RAMP
+    3'b000:  adc_mux = afm_cl;           // CL ramp target
 `elsif AFM_TIPPY
     3'b000:  adc_mux = afm_tippy;        // step-change for accel enrichment test
 `else
@@ -679,6 +777,8 @@ always @(p2[2:0] or afm_wiper) begin
     // ch6: TPS
 `ifdef TPS_FIXED
     3'b110:  adc_mux = `TPS_FIXED;
+`elsif AFM_CL_RAMP
+    3'b110:  adc_mux = (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `elsif AFM_TIPPY
     3'b110:  adc_mux = (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `else
@@ -748,6 +848,8 @@ end
 //  RPM generator
 // --------------------------------------------------------
 `ifdef RPMRAMP
+`ifdef CL_MODE
+// Closed-loop engine dynamics — RPM driven by fuel pulse feedback
 var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
@@ -755,6 +857,16 @@ var_interrupt_generator var_interrupt_generator_1 (
     .int_1     ( speed_sensor     ),
     .afm_wiper ( afm_wiper        )
 );
+`else
+// Open-loop RPM ramp — default
+var_interrupt_generator var_interrupt_generator_1 (
+    .clk       ( clk              ),
+    .rst       ( rst              ),
+    .int_0     ( reference_sensor ),
+    .int_1     ( speed_sensor     ),
+    .afm_wiper ( afm_wiper        )
+);
+`endif
 `else
   `ifdef NOINT
     assign reference_sensor = 1'b1;
@@ -778,6 +890,16 @@ always @(posedge xwr_n)
 // --------------------------------------------------------
 //  Simulation control
 // --------------------------------------------------------
+
+// Pre-initialise key iram registers to 0 at t=0 to prevent
+// X-state from triggering monitors before the firmware runs.
+initial begin
+    wait (rst === 1'b1);
+    #1;
+    i8051_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
+    i8051_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
+end
+
 initial begin
     rst   = 1'b0;
     p2_in = 8'hFF;

@@ -13,19 +13,19 @@ const GROUPS = {
   lambda: { color: '#cc66ff', label: 'Lambda'      },
   flags:  { color: '#ffaa00', label: 'Bit Flags'   },
   ign:    { color: '#ff8844', label: 'Ignition'    },
-  rpm:    { color: '#44ff88', label: 'RPM / Crank' },
+  rpm:    { color: '#66ffaa', label: 'RPM / Crank' },
   timer:  { color: '#44cccc', label: 'Timers'      },
-  fuel:   { color: '#88ff88', label: 'Fuel / Load' },
+  fuel:   { color: '#aaffaa', label: 'Fuel / Load' },
   sys:    { color: '#aaaaaa', label: 'System'      },
   enrich: { color: '#ff88cc', label: 'Enrichment'  },
   isv:    { color: '#ff44aa', label: 'ISV'         },
-  misc:   { color: '#446644', label: 'Work Area'   },
+  misc:   { color: '#99cc99', label: 'Work Area'   },
 };
 
 const PHASE_COLORS = {
   fuelcut: '#ff4444',
   cold:    '#44aaff',
-  sync:    '#44ff88',
+  sync:    '#66ffaa',
   lambda:  '#cc66ff',
   isv:     '#ff44aa',
   warn:    '#ffaa00',
@@ -368,7 +368,7 @@ const dwellMs  = (deg, prpm) => (deg != null && prpm >= PRPM_MIN_VALID)
 const C = {
   bg:'#040a04', panelBg:'#060e06', panelBg2:'#0a150a',
   border:'#0d2e0d', border2:'#1a3a1a',
-  text:'#00e060', textDim:'#336633', textBright:'#00ff80',
+  text:'#00e060', textDim:'#ccddcc', textBright:'#00ff80',
   amber:'#ffaa00', red:'#ff4444', blue:'#44aaff',
 };
 
@@ -379,7 +379,7 @@ const S = {
        display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'},
   title:{fontFamily:"'Orbitron','Courier New',monospace",fontSize:'15px',fontWeight:900,
          color:C.textBright,letterSpacing:'0.08em',textShadow:`0 0 12px ${C.textBright}66`,margin:0},
-  sub:{color:C.textDim,fontSize:'9px',letterSpacing:'0.2em',marginTop:'1px'},
+  sub:{color:'#88bb88',fontSize:'9px',letterSpacing:'0.2em',marginTop:'1px'},
   tabBar:{display:'flex',gap:'2px',background:C.panelBg,borderBottom:`1px solid ${C.border}`,
           padding:'4px 12px 0',flexShrink:0},
   tab:a=>({padding:'5px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:'11px',
@@ -423,6 +423,7 @@ const S = {
 // ─────────────────────────────────────────────────────────────────
 export default function DMEDashboard() {
   const [logText, setLogText]   = useState('');
+  const [logFileName, setLogFileName] = useState('');
   const [data, setData]         = useState({ snapshots:[], phases:[] });
   const [idx, setIdx]           = useState(0);
   const [tab, setTab]           = useState('overview');
@@ -437,6 +438,33 @@ export default function DMEDashboard() {
     document.head.appendChild(lnk);
   }, []);
 
+  // Auto-load log from ?log=<url> query param.
+  // The shell script starts a temporary CORS-enabled HTTP server
+  // in the log directory and passes the full URL here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const logParam = params.get('log');
+    if (!logParam) return;
+    fetch(logParam)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
+      .then(text => {
+        const fname = logParam.split('/').pop();
+        // Derive test name from filename: cl_tippy_in.dash.log → cl_tippy_in
+        const testName = fname.replace(/\.dash\.log$/, '').replace(/\.log$/, '');
+        document.title = `DME 951 — ${testName}`;
+        setLogFileName(fname);
+        setLogText(text);
+        const parsed = parseLog(text);
+        setData(parsed);
+        setIdx(0);
+        if (parsed.snapshots.length || parsed.phases.length) setShowLog(false);
+      })
+      .catch(err => console.warn('[DME951] ?log= fetch failed:', err));
+  }, []);
+
   const handleLoad = useCallback(() => {
     const parsed = parseLog(logText);
     setData(parsed);
@@ -449,6 +477,7 @@ export default function DMEDashboard() {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
+    setLogFileName(file.name);
     const reader = new FileReader();
     reader.onload = ev => setLogText(ev.target.result);
     reader.readAsText(file);
@@ -463,30 +492,34 @@ export default function DMEDashboard() {
   const lmbd16   = ((iram[0x1B]||0)<<8)|(iram[0x1C]||0);
 
   const chartData = useMemo(() => {
-    let lastCoolant = null, lastAir = null;
+    let lastCoolant = null, lastAir = null, lastAfm = null;
     return data.snapshots.map(s => {
       // Show 0ms when fuel is cut (FuelOffCoast = iram[23h].5)
       const fuel = ((s.iram[0x23] ?? 0) >> 5) & 1 ? 0 : +fuelMs(s).toFixed(3);
       // Use only reference-sensor RPM — null = gap in chart (pre-sync)
       const rpm  = s.refRpm ?? s.explicitRpm ?? null;
       // Temperature: carry forward last valid reading to bridge ADC-scan artifacts.
-      // iram[0x12/13] briefly shows raw ADC (0x20) mid-scan before linearisation
-      // overwrites it — this creates false nulls at random 100ms boundaries.
       const rawCoolant = ntcToC(s.iram[0x13]);
       const rawAir     = ntcToC(s.iram[0x12]);
       if (rawCoolant !== null) lastCoolant = rawCoolant;
       if (rawAir     !== null) lastAir     = rawAir;
+      // AFM delta: difference from previous snapshot AFM value.
+      // iram[53h] is always == iram[10h] at snapshot time so we compute it here.
+      const afmNow   = s.iram[0x10] ?? null;
+      const afmDelta = (afmNow !== null && lastAfm !== null) ? afmNow - lastAfm : 0;
+      if (afmNow !== null) lastAfm = afmNow;
       return {
-        t:       s.t,
+        t:         s.t,
         fuel,
         rpm,
-        coolant: lastCoolant,
-        lmbdLn:  s.iram[0x19] ?? null,
-        lmbdNln: s.iram[0x1A] ?? null,
-        isv:     s.iram[0x7F] ?? null,
-        dwell:   s.iram[0x2F] ?? null,
-        afm:     s.iram[0x10] ?? null,   // AFM_RAW — reflects afm_tippy spike in TEST_TIPPY_IN
-        tps:     s.iram[0x16] ?? null,   // TPS raw ADC value (0x40=closed, 0xDB=WOT)
+        coolant:   lastCoolant,
+        lmbdLn:    s.iram[0x19] ?? null,
+        lmbdNln:   s.iram[0x1A] ?? null,
+        isv:       s.iram[0x7F] ?? null,
+        dwell:     s.iram[0x2F] ?? null,
+        afm:       afmNow,
+        afm_delta: afmDelta,
+        tps:       s.iram[0x16] ?? null,
       };
     });
   }, [data.snapshots]);
@@ -508,7 +541,6 @@ export default function DMEDashboard() {
       coolant: mm(s => ntcToC(s.iram[0x13]),         v=>`${v}°C`),
       airtemp: mm(s => ntcToC(s.iram[0x12]),         v=>`${v}°C`),
       afm:     mm(s => s.iram[0x10]??null,        v => h2(v)),
-      afm_prev:mm(s => s.iram[0x53]??null,        v => h2(v)),
       tps:     mm(s => s.iram[0x16]??null,        v => h2(v)),
       wdog:    mm(s => s.iram[0x2A]??null,        v => h2(v)),
     };
@@ -523,6 +555,12 @@ export default function DMEDashboard() {
         <div>
           <div style={S.title}>▶ 89 DME 951 — SIMULATION DEBUG CONSOLE</div>
           <div style={S.sub}>BOSCH MOTRONIC · INTEL 8051 · PORSCHE 944 TURBO</div>
+          {logFileName && (
+            <div style={{color:'#66ddaa',fontSize:'10px',marginTop:'3px',
+                         fontFamily:"'Courier New',monospace",letterSpacing:'0.05em'}}>
+              📄 {logFileName}
+            </div>
+          )}
         </div>
         <div style={{marginLeft:'auto',display:'flex',gap:'8px',alignItems:'center'}}>
           {(data.snapshots.length>0||data.phases.length>0) && (
@@ -648,7 +686,7 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
   ];
 
   const flags = [
-    { name:'EngineSync',        val:(f21>>0)&1, col:'#44ff88',  addr:'21h.0' },
+    { name:'EngineSync',        val:(f21>>0)&1, col:'#66ffaa',  addr:'21h.0' },
     { name:'Phase2Lambda',      val:(f21>>1)&1, col:'#cc66ff',  addr:'21h.1' },
     { name:'UseMap1140',        val:(f21>>5)&1, col:'#44cccc',  addr:'21h.5' },
     { name:'ISVPWMOverflow',    val:(f20>>5)&1, col:'#ff88cc',  addr:'20h.5' },
@@ -806,7 +844,7 @@ function PortsTab({ snap }) {
               {bits.map(b=>{
                 const bitVal = hasVal ? ((portByte >> b.bit) & 1) : null;
                 const isSet  = bitVal === 1;
-                const dirCol = b.dir==='IN' ? C.blue : b.dir==='OUT' ? '#44ff88' : C.amber;
+                const dirCol = b.dir==='IN' ? C.blue : b.dir==='OUT' ? '#66ffaa' : C.amber;
                 return (
                   <div key={b.bit} style={{
                     display:'grid',
@@ -1174,7 +1212,7 @@ function ChartsTab({ chartData, currentT }) {
     {title:'INJECTION PULSE WIDTH',  k:'fuel',    col:'#66ff66', unit:'ms',      dom:[0,'auto']},
     {title:'ENGINE SPEED (RPM)',     k:'rpm',     col:C.textBright,unit:'RPM',   dom:[0,'auto']},
     {title:'AFM RAW (10h)',          k:'afm',     col:'#44cccc', unit:'hex',     dom:[0,255]},
-    {title:'AFM Prev (53h)',         k:'afm_prev',col:'#339999', unit:'hex',     dom:[0,255]},
+    {title:'AFM DELTA (snapshot)',   k:'afm_delta',col:'#ff9944', unit:'Δhex',   dom:['auto','auto']},
     {title:'TPS RAW (16h)',          k:'tps',     col:'#ffcc44', unit:'hex',     dom:[0,255]},
     {title:'ISV STEP POSITION',      k:'isv',     col:'#ff44aa', unit:'hex',     dom:[0,255]},
     {title:'LAMBDA ADJ — LEAN (19)', k:'lmbdLn',  col:'#cc66ff', unit:'hex',     dom:[0,255]},

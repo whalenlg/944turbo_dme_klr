@@ -54,9 +54,14 @@ compile_and_run() {
     echo "  TEST: $name  [${sim_sec}s simulated / ~${sim_sec}m wall]"
     echo "======================================================"
 
-    # Compile
+    # Compile — swap files list when -DCL_MODE is present
+    local files_list="$FILES"
+    for arg in "$@"; do
+        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
+    done
+
     iverilog -o "$vvp" \
-        -f "$FILES" \
+        -f "$files_list" \
         -I "$RTL" \
         -I "$BENCH" \
         -s i8051_tb \
@@ -100,6 +105,42 @@ compile_and_run warm_idle \
     -DTEST_WARM_IDLE \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
+
+# --- Closed-loop tests ---
+compile_and_run cl_warm_idle \
+    -DTEST_WARM_IDLE \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
+
+compile_and_run cl_tippy_in \
+    -DTEST_TIPPY_IN \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
+compile_and_run cl_ramp_to_3000 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+compile_and_run cl_ramp_to_6000 \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+compile_and_run cl_ramp_to_redline \
+    -DTEST_CL_RAMP_TO_REDLINE \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+compile_and_run cl_ac_halfway \
+    -DTEST_CL_AC_HALFWAY \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DCL_AC_HALFWAY \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+
+compile_and_run cl_cold_start \
+    -DTEST_CL_COLD_START \
+    -DRPMRAMP -DCL_MODE -DCPU_DEBUG \
+    -DSIM_TIME=60000000000
 
 compile_and_run cold_start \
     -DTEST_COLD_START \
@@ -237,6 +278,13 @@ compile_and_run isv_load_droop \
 if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        compile_and_run warm_idle        -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000  ;;
+        cl_warm_idle)     compile_and_run cl_warm_idle     -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000                        ;;
+        cl_tippy_in)      compile_and_run cl_tippy_in      -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000                        ;;
+        cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_redline) compile_and_run cl_ramp_to_redline -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ac_halfway)    compile_and_run cl_ac_halfway     -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_cold_start)    compile_and_run cl_cold_start     -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DSIM_TIME=60000000000 ;;
         cold_start)       compile_and_run cold_start       -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                       -DSIM_TIME=120000000000  ;;
         hot_idle)         compile_and_run hot_idle         -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         idle_battery_low) compile_and_run idle_battery_low -DTEST_IDLE_BATTERY_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000  ;;
@@ -269,6 +317,8 @@ if [ -n "$1" ]; then
             echo "           o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             echo "           ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
             echo "           ignition_timing dwell_scaling isv_cold_idle isv_load_droop"
+            echo "           cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000"
+            echo "           cl_ramp_to_redline cl_ac_halfway cl_cold_start"
             exit 1
             ;;
     esac

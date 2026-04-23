@@ -9,7 +9,7 @@
 #    ./run_parallel.sh <workers> [test1 test2 ...]
 #
 #  Examples:
-#    ./run_parallel.sh 4              # run all 24 tests, 4 at a time
+#    ./run_parallel.sh 4              # run all 33 tests, 4 at a time
 #    ./run_parallel.sh 2 warm_idle cold_start hot_idle
 #                                     # run 3 specific tests, 2 at a time
 #    ./run_parallel.sh 8              # maximum parallelism
@@ -23,7 +23,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_TESTS="$SCRIPT_DIR/run_tests.sh"
 LOGDIR=../../tmp/claude_8051/logs
 
+# Look up simulated seconds for a test from the run script
+sim_secs() {
+    local ns
+    ns=$(grep -m1 "${1})" "$RUN_TESTS" 2>/dev/null | grep -oE 'DSIM_TIME=[0-9]+' | grep -oE '[0-9]+')
+    [ -n "$ns" ] && echo $(( ns / 1000000000 )) || echo "?"
+}
+
 ALL_TESTS=(
+    cl_warm_idle
+    cl_tippy_in
+    cl_ramp_to_3000
+    cl_ramp_to_6000
+    cl_ramp_to_redline
+    cl_ac_halfway
+    cl_cold_start
     warm_idle
     cold_start
     hot_idle
@@ -125,7 +139,7 @@ for test in "${TESTS[@]}"; do
     done
 
     # Launch next test in background
-    echo "  [START]  $test"
+    echo "  [START]  $test  ($(sim_secs $test)s sim)"
     (
         cd "$SCRIPT_DIR"
         bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.log" 2>&1

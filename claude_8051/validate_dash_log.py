@@ -57,6 +57,22 @@ TESTS = {
     'dwell_scaling':     {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'isv_cold_idle':     {'rpm_target':  840, 'fuel_range':(1.0, 3.5),   'expect_ase':False, 'expect_fuelcut':False, 'isv_cold':True},
     'isv_load_droop':    {'rpm_target':  840, 'fuel_range':(1.5, 4.0),   'expect_ase':True,  'expect_fuelcut':True,  'rpm_droop':True},
+    # ── Closed-loop tests (RPM is output of dynamics model, not fixed input) ──
+    'cl_warm_idle':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: RPM should stabilise near 840 post-ASE; slow drift is a tuning issue'},
+    'cl_tippy_in':       {'rpm_target':  840, 'fuel_range':(1.5, 12.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: RPM should rise above 840 during AFM spike (2s), return to ~840 after',
+                          'known_issues':['iram[4Ch] accel register permanently zero — ROM design limitation (same as tippy_in)']},
+    'cl_ramp_to_3000':   {'rpm_target': 3000, 'fuel_range':(1.5, 10.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: AFM steps to 3000RPM target at t=2s; RPM should reach ~3000 in 30s'},
+    'cl_ramp_to_6000':   {'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s'},
+    'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s'},
+    'cl_ac_halfway':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'CL: AC compressor engages at 10s; expect ISV step-up and slight RPM droop'},
+    'cl_cold_start':     {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':False, 'expect_fuelcut':False,
+                          'notes':'CL: cold start without SKIP_LAMBDA_WARMUP; cold enrich flags should fire'},
 }
 
 # ─── Parsers ─────────────────────────────────────────────────────────────────

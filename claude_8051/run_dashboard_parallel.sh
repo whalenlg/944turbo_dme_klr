@@ -10,7 +10,7 @@
 #    ./run_dashboard_parallel.sh <workers> [test1 test2 ...]
 #
 #  Examples:
-#    ./run_dashboard_parallel.sh 4              # all 24 tests, 4 at a time
+#    ./run_dashboard_parallel.sh 4              # all 36 tests, 4 at a time
 #    ./run_dashboard_parallel.sh 2 warm_idle cold_start hot_idle
 #    ./run_dashboard_parallel.sh 8              # maximum parallelism
 #
@@ -27,7 +27,16 @@ LOGDIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/claude_8051 2>/dev/null || \
 
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
+# Look up simulated seconds for a test from the run script
+sim_secs() {
+    local ns
+    ns=$(grep -m1 "${1})" "$RUN_TESTS" 2>/dev/null | grep -oE 'DSIM_TIME=[0-9]+' | grep -oE '[0-9]+')
+    [ -n "$ns" ] && echo $(( ns / 1000000000 )) || echo "?"
+}
+
 ALL_TESTS=(
+    cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
+    cl_ramp_to_redline cl_ac_halfway cl_cold_start
     warm_idle cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle
     tippy_in overrun_cutoff warmup_enrichment afm_open_circuit
     coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail
@@ -146,7 +155,7 @@ for test in "${TESTS[@]}"; do
         [ "$RUNNING" -ge "$WORKERS" ] && sleep 1
     done
 
-    printf "  [START]  %s\n" "$test"
+    printf "  [START]  %s  (%ss sim)\n" "$test" "$(sim_secs $test)"
     (
         cd "$SCRIPT_DIR"
         bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1

@@ -38,6 +38,11 @@
 //`define TEST_IDLE_HIGH_ALT
 //`define TEST_IDLE_POOR_FUEL
 //`define TEST_AC_ON_IDLE
+//`define TEST_CL_RAMP_TO_3000
+//`define TEST_CL_RAMP_TO_6000
+//`define TEST_CL_RAMP_TO_REDLINE
+//`define TEST_CL_AC_HALFWAY
+//`define TEST_CL_COLD_START
 
 // --- Fuel transient tests ---
 //`define TEST_TIPPY_IN
@@ -185,6 +190,77 @@
   `define SIM_TIME  10000000000      // 10s — enough to see ISV and fuel response to AC load
   `define _COOLANT_RAW  8'h20        // warm engine
   `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+`ifdef TEST_CL_RAMP_TO_3000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72 (114)
+  `undef  SIM_TIME
+  `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+`ifdef TEST_CL_RAMP_TO_6000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA (218)
+  `undef  SIM_TIME
+  `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+`ifdef TEST_CL_RAMP_TO_REDLINE
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'hEB      // 6500 RPM → ADC=0xEB (235, max)
+  `undef  SIM_TIME
+  `define SIM_TIME  40000000000     // 40s
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+`ifdef TEST_CL_AC_HALFWAY
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2 (~10s)
+  `undef  SIM_TIME
+  `define SIM_TIME  20000000000     // 20s — 10s pre-AC, 10s with AC
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `define _FUEL_QUAL    8'h80
+`endif
+
+`ifdef TEST_CL_COLD_START
+  `define RPMRAMP
+  `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
+  `undef  SIM_TIME
+  `define SIM_TIME  60000000000     // 60s — observe cold enrichment decay
+  `define _COOLANT_RAW  8'hC0       // cold — above 0x8F threshold for cold-start enrich
+  `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `define _FUEL_QUAL    8'h80
@@ -533,11 +609,20 @@ wire        reference_sensor, speed_sensor;
 // sees X and MOV C,bitaddr reads of port-derived bits are corrupted.
 // T0: firmware uses as has-cat flag (0 = cat fitted). Drive low.
 // T1: AC compressor status input. 0=off (default), 1=on.
-//     Override with -DAC_COMP_ON to simulate AC load.
-wire        t1;
-`ifdef AC_COMP_ON
+//     Override with -DAC_COMP_ON for always-on, or -DCL_AC_HALFWAY
+//     for mid-simulation switch (fires at SIM_TIME/2).
+`ifdef CL_AC_HALFWAY
+reg t1;
+initial begin
+    t1 = 1'b0;
+    #(`SIM_TIME / 2);   // switch AC on halfway through simulation
+    t1 = 1'b1;
+end
+`elsif AC_COMP_ON
+wire t1;
 assign t1 = 1'b1;   // T1 = AC compressor active
 `else
+wire t1;
 assign t1 = 1'b0;   // T1 = AC compressor off (default)
 `endif
 
@@ -622,8 +707,7 @@ always @(posedge clk) begin : coolant_warmup
 end
 `endif
 
-// ─── Tippy-in AFM step override ─────────────────────────────
-// iram[53h] is updated by the ADC scan every crank cycle — so a
+// ─── Tippy-in AFM step override ─────────────────────────────// iram[53h] is updated by the ADC scan every crank cycle — so a
 // free-running step always finds delta=0 by the time airflow_calc runs.
 // Fix: spike AFM ON the reference sensor rising edge. The ADC scan
 // has just finished (iram[53h] = 0x28). The spike makes iram[10h]=0x78
@@ -658,6 +742,19 @@ always @(posedge reference_sensor) begin
 end
 `endif
 
+// ─── CL ramp AFM override ────────────────────────────────────
+// Steps AFM to AFM_CL_TARGET at t=2000ms, driving firmware load
+// calc to compute high fuel — CL dynamics then accelerates RPM.
+// TPS also follows the AFM override for correct throttle sensing.
+`ifdef AFM_CL_RAMP
+reg [7:0] afm_cl;
+initial begin
+    afm_cl = 8'h28;   // idle until engine settled
+    #2_000_000_000;   // 2000ms — past fuel cut and ASE
+    afm_cl = `AFM_CL_TARGET;
+end
+`endif
+
 // ─── ADC mux ────────────────────────────────────────────────
 // AFM idle threshold: below = TPS closed (0x40), above = TPS open (0xDB)
 // At 840 RPM afm_wiper=0x28; threshold must be > 0x28 so idle reads closed.
@@ -671,6 +768,8 @@ always @(p2[2:0] or afm_wiper) begin
     case (p2[2:0])
 `ifdef AFM_FAULT
         3'b000: adc_mux = 8'hFF;
+`elsif AFM_CL_RAMP
+        3'b000: adc_mux = afm_cl;
 `elsif AFM_TIPPY
         3'b000: adc_mux = afm_tippy;
 `else
@@ -693,6 +792,8 @@ always @(p2[2:0] or afm_wiper) begin
         3'b101: adc_mux = 8'hFF;
 `ifdef TPS_FIXED
         3'b110: adc_mux = `TPS_FIXED;
+`elsif AFM_CL_RAMP
+        3'b110: adc_mux = (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `elsif AFM_TIPPY
         3'b110: adc_mux = (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `else
@@ -756,6 +857,8 @@ end
 
 // ─── RPM / crank generator ──────────────────────────────────
 `ifdef RPMRAMP
+`ifdef CL_MODE
+// Closed-loop engine dynamics — RPM driven by fuel pulse feedback
 var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
@@ -763,6 +866,16 @@ var_interrupt_generator var_interrupt_generator_1 (
     .int_1     ( speed_sensor     ),
     .afm_wiper ( afm_wiper        )
 );
+`else
+// Open-loop RPM ramp — default
+var_interrupt_generator var_interrupt_generator_1 (
+    .clk       ( clk              ),
+    .rst       ( rst              ),
+    .int_0     ( reference_sensor ),
+    .int_1     ( speed_sensor     ),
+    .afm_wiper ( afm_wiper        )
+);
+`endif
 `else
   `ifdef NOINT
     assign reference_sensor = 1'b1;
@@ -804,8 +917,9 @@ always @(posedge clk) begin : lambda_warmup_skip
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23][5] <= 1'b1; // bit1Dh = FuelOffCoast
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h58]    <= 8'h00; // warmup counter hi = 0
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h59]    <= 8'h01; // warmup counter lo = 1
+        i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F]    <= 8'h14; // ISV step — warm idle baseline
         skip_lambda_done <= 1'b1;
-        $display("[SEED] t=%0d ms  SKIP_LAMBDA_WARMUP — bit08h+09h+1Dh set, wu=0x0001",
+        $display("[SEED] t=%0d ms  SKIP_LAMBDA_WARMUP — bit08h+09h+1Dh set, wu=0x0001, ISV=0x14",
                  i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000);
     end
 end // lambda_warmup_skip
@@ -814,6 +928,17 @@ end // lambda_warmup_skip
 // ============================================================
 //  SIMULATION CONTROL  (identical to i8051_dashboard_tb.v)
 // ============================================================
+// Pre-initialise key iram registers to 0 at t=0 to prevent
+// X-state propagation into monitors before the firmware runs.
+// Without this, iram[7Fh] (ISV) is X until the firmware writes
+// it at ~14ms, triggering the ISV DEADLOCK monitor spuriously.
+initial begin
+    wait (rst === 1'b1);            // after reset deasserts
+    #1;                             // one delta cycle
+    i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
+    i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
+end
+
 initial begin
     rst   = 1'b0;
     p2_in = 8'hFF;
@@ -879,15 +1004,21 @@ end
 `define IRAM(a) i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h``a``]
 `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
 
+// Snapshot-in-progress flag — phase monitor checks this before $display
+// to prevent its output from interleaving into the DS hex stream.
+reg snapshot_busy;
+initial snapshot_busy = 1'b0;
+
 task emit_snapshot;
     integer i;
     begin
+        snapshot_busy = 1'b1;
         $write("[DS] %0d,", `DME_MS);
         for (i = 0; i < 128; i = i + 1)
             $write("%02h", i8051_dashboard_tb.i8051_top.u_cpu.iram[i[6:0]]);
         $write(",%02h%02h%02h", p1, p2, p3);
-        $write(",%0d", ref_rpm);
-        $display("");
+        $write(",%0d\n", ref_rpm);
+        snapshot_busy = 1'b0;
     end
 endtask
 
@@ -931,7 +1062,7 @@ always @(posedge clk) begin : phase_monitor
         ph_isvovf_prev     <= 1'b0;
         ph_usemap_prev     <= 1'b0;
         ph_intblock_prev   <= 1'b0;
-    end else begin
+    end else if (!snapshot_busy) begin
 
         // EngineSync  iram[21h].0
         if (`IRAM(21)[0] && !ph_sync_prev)

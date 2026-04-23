@@ -1,9 +1,9 @@
-bench/verilog/i8051_dashboard_tb.v
+bench/verilog/i8051_tb.v
 rtl/verilog/oc8051_defines.v
 rtl/verilog/i8051_top.v
 bench/verilog/adc_delay.v
 bench/verilog/interrupt_gen.v
-bench/verilog/var_interrupt_gen.v
+bench/verilog/var_interrupt_gen_cl.v
 bench/verilog/o2_gen.v
 bench/verilog/vcd.v
 bench/verilog/oc8051_serial.v

@@ -33,6 +33,81 @@ TB_FILE="bench/verilog/i8051_dashboard_tb.v"
 # Default snapshot interval (ms of simulated time between [DS] lines)
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
+# Dashboard URL — set DASHBOARD_URL env var to override
+DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:5173}"
+
+# Vite project public directory — a symlink is created here pointing
+# at the log directory so Vite serves logs as static files.
+# Set DASHBOARD_PUBLIC env var to your Vite project's public/ folder.
+# e.g. export DASHBOARD_PUBLIC=~/projects/dme951-dash/public
+DASHBOARD_PUBLIC="${DASHBOARD_PUBLIC:-}"
+
+# Symlink name inside public/ that points to the log directory
+DASH_LOGS_LINK="dash_logs"
+
+# --------------------------------------------------------
+#  ensure_symlink
+#
+#  Creates public/dash_logs -> LOGDIR if it doesn't exist.
+# --------------------------------------------------------
+ensure_symlink() {
+    [ -z "$DASHBOARD_PUBLIC" ] && return 1
+    [ -d "$DASHBOARD_PUBLIC" ] || { echo "  [DASHBOARD] DASHBOARD_PUBLIC not found: $DASHBOARD_PUBLIC"; return 1; }
+    local link="$DASHBOARD_PUBLIC/$DASH_LOGS_LINK"
+    if [ -L "$link" ]; then
+        return 0   # already exists
+    fi
+    ln -s "$LOGDIR" "$link"
+    echo "  [DASHBOARD] Created symlink: $link → $LOGDIR"
+}
+
+# --------------------------------------------------------
+#  open_in_dashboard <log_path>
+#
+#  Ensures the public/dash_logs symlink exists, then opens
+#  the dashboard with ?log=/dash_logs/<filename> so the app
+#  fetches it directly from Vite's static file server.
+#  Set AUTO_OPEN=0 to disable browser opening entirely.
+# --------------------------------------------------------
+open_in_dashboard() {
+    local logpath="$1"
+    local logfile
+    logfile="$(basename "$logpath")"
+
+    [ "${AUTO_OPEN:-1}" = "0" ] && return 0
+
+    # Detect browser open command
+    local open_cmd=""
+    if command -v open &>/dev/null; then
+        open_cmd="open"
+    elif command -v xdg-open &>/dev/null; then
+        open_cmd="xdg-open"
+    else
+        echo "  [DASHBOARD] No browser open command found"
+        echo "  [DASHBOARD] Load manually: $logpath"
+        return 0
+    fi
+
+    if [ -z "$DASHBOARD_PUBLIC" ]; then
+        echo "  [DASHBOARD] DASHBOARD_PUBLIC not set"
+        echo "  [DASHBOARD] e.g. export DASHBOARD_PUBLIC=~/projects/dme951-dash/public"
+        echo "              Load manually: $logpath"
+        return 0
+    fi
+
+    ensure_symlink || return 0
+
+    if ! curl -sf --max-time 2 "$DASHBOARD_URL" > /dev/null 2>&1; then
+        echo "  [DASHBOARD] Server not reachable at $DASHBOARD_URL — start your dev server"
+        echo "              Then open: ${DASHBOARD_URL}?log=/${DASH_LOGS_LINK}/${logfile}"
+        return 0
+    fi
+
+    local url="${DASHBOARD_URL}?log=/${DASH_LOGS_LINK}/${logfile}"
+    $open_cmd "$url" 2>/dev/null
+    echo "  [DASHBOARD] Opened: $url"
+}
+
 mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
 
 # --------------------------------------------------------
@@ -73,8 +148,14 @@ compile_and_run() {
     echo "======================================================"
 
     # Compile — dashboard tb is added explicitly; all other sources via -f files
+    # When -DCL_MODE is present, swap var_interrupt_gen.v for var_interrupt_gen_cl.v
+    local files_list="$FILES"
+    for arg in "$@"; do
+        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
+    done
+
     iverilog -o "$vvp" \
-        -f "$FILES" \
+        -f "$files_list" \
         -I "$RTL" \
         -I "$BENCH" \
         -s i8051_dashboard_tb \
@@ -118,6 +199,9 @@ compile_and_run() {
     local verdict=$(echo "$val_result" | cut -f1)
     local val_detail=$(echo "$val_result" | cut -f3-)
     echo "  ${verdict}: $name — $val_detail" | tee -a "$LOGDIR/validation.log"
+
+    # Open in dashboard browser if running a single test
+    open_in_dashboard "$LOGDIR/${name}.dash.log"
 }
 
 # --------------------------------------------------------
@@ -130,6 +214,42 @@ compile_and_run warm_idle \
     -DTEST_WARM_IDLE \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
+
+# --- Closed-loop tests ---
+compile_and_run cl_warm_idle \
+    -DTEST_WARM_IDLE \
+    -DRPMRAMP -DCL_MODE \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
+
+compile_and_run cl_tippy_in \
+    -DTEST_TIPPY_IN \
+    -DRPMRAMP -DCL_MODE \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
+compile_and_run cl_ramp_to_3000 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+compile_and_run cl_ramp_to_6000 \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+compile_and_run cl_ramp_to_redline \
+    -DTEST_CL_RAMP_TO_REDLINE \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hEB \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+compile_and_run cl_ac_halfway \
+    -DTEST_CL_AC_HALFWAY \
+    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+
+compile_and_run cl_cold_start \
+    -DTEST_CL_COLD_START \
+    -DRPMRAMP -DCL_MODE \
+    -DSIM_TIME=60000000000
 
 compile_and_run cold_start \
     -DTEST_COLD_START \
@@ -269,8 +389,16 @@ if [ -n "$1" ]; then
     if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
         IARG="$2"
     fi
+    SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run
     case "$1" in
         warm_idle)        compile_and_run warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+        cl_warm_idle)     compile_and_run cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+        cl_tippy_in)      compile_and_run cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_redline) compile_and_run cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ac_halfway)    compile_and_run cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_cold_start)    compile_and_run cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       compile_and_run cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
         hot_idle)         compile_and_run hot_idle         $IARG -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000   ;;
         idle_battery_low) compile_and_run idle_battery_low $IARG -DTEST_IDLE_BATTERY_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
@@ -297,12 +425,18 @@ if [ -n "$1" ]; then
         isv_load_droop)   compile_and_run isv_load_droop   $IARG -DTEST_ISV_LOAD_DROOP   -DISV_LOAD_DROOP -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
         *)
             echo "Unknown test: $1"
-            echo "Available: warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
-            echo "           idle_poor_fuel tippy_in overrun_cutoff warmup_enrichment"
-            echo "           afm_open_circuit coolant_fail airtemp_fail"
-            echo "           o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
-            echo "           ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
-            echo "           ignition_timing dwell_scaling isv_cold_idle isv_load_droop"
+            echo "Available tests:"
+            echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
+            echo "               idle_poor_fuel ac_on_idle"
+            echo "  Accel/Ramp:  tippy_in overrun_cutoff warmup_enrichment"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
+            echo "  Ignition:    ignition_timing dwell_scaling"
+            echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
+            echo "               o2_disconnected o2_rich_stuck o2_lean_stuck"
+            echo "  ISV:         isv_cold_idle isv_load_droop"
+            echo "  Closed-loop: cl_warm_idle cl_tippy_in"
+            echo "               cl_ramp_to_3000 cl_ramp_to_6000 cl_ramp_to_redline"
+            echo "               cl_ac_halfway cl_cold_start"
             exit 1
             ;;
     esac
