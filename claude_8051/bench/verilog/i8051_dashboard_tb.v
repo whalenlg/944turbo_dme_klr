@@ -1,4 +1,4 @@
-`include "oc8051_timescale.v"
+`include "timescale.v"
 
 // ============================================================
 //  i8051_dashboard_tb.v  —  89 DME 951 Dashboard Testbench
@@ -601,7 +601,7 @@ end
 
 // ─── Misc wires (match i8051_dashboard_tb.v declarations) ─────────────
 wire [15:0] ext_addr;
-wire        write, write_xram, write_uart;
+wire        write, write_uart;
 wire        rxd, int_uart, bit_out;
 wire        reference_sensor, speed_sensor;
 // T0 (P3.4) and T1 (P3.5) are separate top-level ports on i8051_top —
@@ -628,14 +628,14 @@ assign t1 = 1'b0;   // T1 = AC compressor off (default)
 
 wire        t0;
 assign t0 = 1'b0;   // T0 = has catalytic converter (0 = fitted)
-wire        stb_o, ack_i, ack_xram, ack_uart;
+wire        stb_o, ack_i, ack_uart;
 wire        cyc_o, iack_i, istb_o, icyc_o;
-wire [7:0]  data_in, data_out, data_out_uart, data_out_xram;
+wire [7:0]  data_in, data_out, data_out_uart;
 wire        o2_6, o2_7;
-reg  [7:0]  xram [0:65535];
 wire [15:0] addr_bus;
 wire [15:0] xaddr;
 wire [7:0]  xdata;
+reg [7:0] diag_data,diag_addr;
 reg  [7:0]  xdata_in;
 wire [7:0]  adc_data, xadc_data_out, adc_data_out;
 wire        ale, txd;
@@ -685,26 +685,51 @@ i8051_system  i8051_top (
     .xwr_n   ( xwr_n            )
 );
 
-// ─── Dynamic coolant warmup (TEST_ISV_COLD_IDLE only) ────────
+// ─── Dynamic coolant warmup ───────────────────────────────────
+// Active for: TEST_ISV_COLD_IDLE, TEST_COLD_START, TEST_CL_COLD_START
+// NTC inverse: lower raw = hotter. Ramps from starting temp to 0x20 (~80°C).
+// ISV_COLD_IDLE : 0x68 (~5°C)  → 0x20 over 50s  @ 4,166,667 clk/step
+// COLD_START    : 0xC0 (~52°C) → 0x20 over 100s @ 3,750,000 clk/step
 `ifdef TEST_ISV_COLD_IDLE
 reg [7:0]  coolant_dynamic;
 reg [31:0] coolant_tick;
-initial begin
-    coolant_dynamic = 8'hC0;
-    coolant_tick    = 32'd0;
-end
+initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
 always @(posedge clk) begin : coolant_warmup
-    if (!rst) begin
-        coolant_dynamic <= 8'hC0;
-        coolant_tick    <= 32'd0;
-    end else if (coolant_dynamic > 8'h20) begin
-        if (coolant_tick >= 32'd4_687_500) begin
-            coolant_dynamic <= coolant_dynamic - 8'h01;
-            coolant_tick    <= 32'd0;
-        end else
-            coolant_tick <= coolant_tick + 32'd1;
+    if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
+    end else if (coolant_dynamic>8'h20) begin
+        if (coolant_tick>=32'd4_166_667) begin
+            coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
+        end else coolant_tick<=coolant_tick+32'd1;
     end
 end
+`else
+`ifdef TEST_COLD_START
+reg [7:0]  coolant_dynamic;
+reg [31:0] coolant_tick;
+initial begin coolant_dynamic=8'hC0; coolant_tick=32'd0; end
+always @(posedge clk) begin : coolant_warmup
+    if (!rst) begin coolant_dynamic<=8'hC0; coolant_tick<=32'd0;
+    end else if (coolant_dynamic>8'h20) begin
+        if (coolant_tick>=32'd3_750_000) begin
+            coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
+        end else coolant_tick<=coolant_tick+32'd1;
+    end
+end
+`else
+`ifdef TEST_CL_COLD_START
+reg [7:0]  coolant_dynamic;
+reg [31:0] coolant_tick;
+initial begin coolant_dynamic=8'hC0; coolant_tick=32'd0; end
+always @(posedge clk) begin : coolant_warmup
+    if (!rst) begin coolant_dynamic<=8'hC0; coolant_tick<=32'd0;
+    end else if (coolant_dynamic>8'h20) begin
+        if (coolant_tick>=32'd3_750_000) begin
+            coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
+        end else coolant_tick<=coolant_tick+32'd1;
+    end
+end
+`endif
+`endif
 `endif
 
 // ─── Tippy-in AFM step override ─────────────────────────────// iram[53h] is updated by the ADC scan every crank cycle — so a
@@ -782,6 +807,10 @@ always @(p2[2:0] or afm_wiper) begin
         3'b010: adc_mux = `_AIRTEMP_RAW;
 `endif
 `ifdef TEST_ISV_COLD_IDLE
+        3'b011: adc_mux = coolant_dynamic;
+`elsif TEST_COLD_START
+        3'b011: adc_mux = coolant_dynamic;
+`elsif TEST_CL_COLD_START
         3'b011: adc_mux = coolant_dynamic;
 `elsif TEST_COOLANT_FAIL
         3'b011: adc_mux = 8'h00;  // shorted sensor: matches normal TB
@@ -892,8 +921,10 @@ interrupt_generator interrupt_generator_1 (
 
 // ─── External RAM ────────────────────────────────────────────
 always @(posedge xwr_n)
-    xram[xaddr] <= xdata;
-
+    begin 
+     diag_data <= xdata; 
+     diag_addr <= p2;
+    end
 // ─── Lambda warmup skip (matches phase_monitor.v exactly) ───
 //  Watches for the falling edge of iram[23h].4 (bit1Ch) then
 //  seeds bit08h+09h+1Dh and wu=0x0001 — identical to the original
@@ -930,14 +961,16 @@ end // lambda_warmup_skip
 // ============================================================
 // Pre-initialise key iram registers to 0 at t=0 to prevent
 // X-state propagation into monitors before the firmware runs.
-// Without this, iram[7Fh] (ISV) is X until the firmware writes
-// it at ~14ms, triggering the ISV DEADLOCK monitor spuriously.
+// Only active when SKIP_LAMBDA_WARMUP is set — for cold-start
+// tests the firmware must initialise from scratch.
+`ifdef SKIP_LAMBDA_WARMUP
 initial begin
-    wait (rst === 1'b1);            // after reset deasserts
-    #1;                             // one delta cycle
+    wait (rst === 1'b1);
+    #1;
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
 end
+`endif
 
 initial begin
     rst   = 1'b0;
@@ -948,7 +981,6 @@ initial begin
     $display("time ", $time, "\nend of time\n");
     $writememh("rom_out.hex",  i8051_dashboard_tb.i8051_top.u_eprom.mem);
     $writememh("ram_out.hex",  i8051_dashboard_tb.i8051_top.u_cpu.iram);
-    $writememh("xram_out.hex", i8051_dashboard_tb.xram);
     #10000
     $finish;
 end

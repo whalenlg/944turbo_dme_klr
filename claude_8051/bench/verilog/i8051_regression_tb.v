@@ -2,20 +2,6 @@
 ////                                                              ////
 ////  i8051_regression_tb.v                                      ////
 ////                                                              ////
-////  Self-checking regression testbench adapted from            ////
-////  oc8051_opcode_regression_tb.v for use with i8051_core /   ////
-////  i8051_system.v.                                            ////
-////                                                              ////
-////  Key differences from the original oc8051 testbench:        ////
-////   - DUT is i8051_core (native bus, not Wishbone)            ////
-////   - ROM is a byte-wide combinatorial array on addr_bus      ////
-////     (no 32-bit word packing, no registered ACK)             ////
-////   - Reset is active-LOW  (res_n) not active-high            ////
-////   - External RAM uses xrd_n/xwr_n/xaddr_bus/xdata signals   ////
-////     instead of a Wishbone data bus                          ////
-////   - Timeouts scaled ×12 (12 osc clocks per machine cycle)  ////
-////   - Test-done monitor watches xwr_n + xaddr_bus == 0x0010   ////
-////                                                              ////
 ////  Compatible with: iverilog / vvp                            ////
 ////  Usage:                                                      ////
 ////    iverilog -o sim i8051_regression_tb.v i8051_core.v       ////
@@ -253,7 +239,6 @@ endtask
 // run_test
 //   Apply active-low reset, then poll for test_done or timeout.
 //   Timeouts are in oscillator clock edges (12 clocks = 1 machine cycle).
-//   Original oc8051 values multiplied by 12 to preserve the same wall time.
 // ---------------------------------------------------------------------------
 task run_test;
     input [255:0] tname;

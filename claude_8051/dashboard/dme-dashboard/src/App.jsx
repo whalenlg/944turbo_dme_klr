@@ -86,17 +86,17 @@ const IRAM_MAP = [
   {a:0x2E,n:'XINT1RL',g:'ign',    d:'XINT1 countdown reload value (0xFC=252, loaded from ROM[0x1162])'},
   {a:0x2F,n:'DWELL',  g:'ign',    d:'Dwell angle in half-teeth — coil charge duration (90° cap applied from table)'},
   {a:0x30,n:'IGN_DUR',g:'ign',    d:'Ignition duration: dwell with crank-reference offset correction applied'},
-  {a:0x31,n:'TIM_ADV',g:'ign',    d:'Spark timing advance — half-teeth before TDC (current active value)'},
+  {a:0x31,n:'IGN_ADV',g:'ign',    d:'Ignition advance °BTDC — base map value, reduced by KLR knock retard on real engine'},
   {a:0x32,n:'TIM_NXT',g:'ign',    d:'Next computed timing advance value (loaded into 0x31 at next update)'},
   {a:0x33,n:'NXT_TDC',g:'ign',    d:'Half-teeth from spark event to TDC (= advance + 180°)'},
   {a:0x34,n:'TIM_UPD',g:'ign',    d:'Interval (main-loop iterations) between timing advance updates'},
   {a:0x35,n:'FIRE_EV',g:'ign',    d:'Fire event index (0 or 1) — selects cylinder for next injection/ignition'},
   {a:0x36,n:'PRPM_CT',g:'rpm',    d:'PRPM tooth counter — accumulates teeth between crank reference pulses'},
   {a:0x37,n:'PRPM',   g:'rpm',    d:'PRPM tooth period — inversely proportional to RPM (lower = higher RPM)'},
-  {a:0x38,n:'PSC0',   g:'timer',  d:'Prescaler 0 — subtask scheduler countdown (for subtask0 at 0x3C)'},
+  {a:0x38,n:'PSC0',   g:'timer',  d:'Prescaler 0 — subtask scheduler countdown'},
   {a:0x39,n:'PSC1',   g:'timer',  d:'Prescaler 1 — subtask scheduler countdown'},
   {a:0x3A,n:'PSC2',   g:'timer',  d:'Prescaler 2 — subtask scheduler countdown'},
-  {a:0x3B,n:'PSC3',   g:'timer',  d:'Prescaler 3 — subtask scheduler countdown'},
+  {a:0x3B,n:'PRPM_PRV',g:'rpm',   d:'Previous PRPM — used for RPM rate-of-change calculation'},
   {a:0x3C,n:'SUBTSK0',g:'timer',  d:'Subtask-0 prescaler / after-start enrichment counter (reloads 0x43–0x59)'},
   {a:0x3D,n:'AFM_PK', g:'rpm',    d:'AFM wiper peak — maximum wiper deflection sampled per crankshaft revolution'},
   {a:0x3E,n:'LMBD_TM',g:'lambda', d:'Lambda warmup timer — counts down before closed-loop lambda control enabled'},
@@ -546,7 +546,7 @@ export default function DMEDashboard() {
     };
   }, [data.snapshots]);
 
-  const TABS = ['overview','ports','iram','charts','phase'];
+  const TABS = ['overview','ports','iram','charts','phase','diag'];
 
   return (
     <div style={S.root}>
@@ -590,6 +590,7 @@ export default function DMEDashboard() {
         {tab==='iram'     && <IRAMTab iram={iram} tooltip={tooltip} setTooltip={setTooltip} />}
         {tab==='charts'   && <ChartsTab chartData={chartData} currentT={snap.t} />}
         {tab==='phase'    && <PhaseTab phases={data.phases} currentT={snap.t} />}
+        {tab==='diag'     && <DiagTab iram={iram} snap={snap} />}
       </div>
 
       {/* ── TIME SCRUBBER ───────────────────────────────────── */}
@@ -1318,6 +1319,184 @@ function PhaseTab({ phases, currentT }) {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DiagTab ───────────────────────────────────────────────────────
+// Reconstructs the send_diag_p2 diagnostic stream from current iram
+// values, showing what the DME would output on each P2 page.
+//
+// Routine at 0x1E00 — confirmed from ROM disassembly:
+//   P2=0x19  MOVX @R0, iram[0x1B]              → LMB_LO raw
+//   P2=0x1B  MOVX @R0, (iram[0x31]+0x0A)<<1    → IGN_ADV transformed
+//   P2=0x1C  MOVX @R0, iram[0x37]              → PRPM
+//   P2=0x1D  MOVX @R0, iram[0x49]              → LOAD_IX
+//   P2=0x1E  MOVX @R0, iram[0x10]              → AFM_RAW
+//   P2=0x1F  MOVX @R0, iram[0x13]              → COOLANT
+//   P2=0x98  MOVX @R0, lambda_state_2bit        → computed
+//
+function DiagTab({ iram }) {
+  const ir = iram || {};
+
+  // Compute transmitted byte for each channel exactly as firmware does
+  const lmbLo   = ir[0x1B] ?? 0;
+  const lmbHi   = ir[0x1C] ?? 0;
+  const lmb16   = (lmbHi << 8) | lmbLo;
+  const ignAdv  = ir[0x31] ?? 0;
+  const prpm    = ir[0x37] ?? 0;
+  const loadIdx = ir[0x49] ?? 0;
+  const afmRaw  = ir[0x10] ?? 0;
+  const coolant = ir[0x13] ?? 0;
+
+  // P2=0x1B: ADD A,#0x0A then RL A (rotate left = ×2, wrapping 8-bit)
+  const ignAdvTx = ((ignAdv + 0x0A) << 1) & 0xFF;
+
+  // P2=0x98: CPL A, INC A, ADD A,iram[1B], RL, RL, MOV R0,A
+  //          MOV A,iram[1C], RLC, RLC, RLC, ANL #0x03
+  // This encodes the lambda integrator as a 2-bit state:
+  //   offset = -(0x60) + lmb16, shift left 2, take bits[7:6] → 2-bit value
+  const lmbOffset = (lmb16 - 0x60) & 0xFFFF;
+  const lmbState  = (lmbOffset >> 6) & 0x03;
+  const LMBD_STATES = ['Stoich / closed-loop centre', 'Lean correction active', 'Rich correction active', 'Max correction'];
+
+  // RPM decode
+  const rpm = prpm >= 3 ? Math.round(17640 / prpm) : 0;
+
+  // Coolant decode (linearised → °C approx)
+  const coolC = Math.round(coolant * 0.875 - 116);
+
+  // Lambda integrator decode (0x80 = stoich centre)
+  const lmbSigned = lmbLo - 0x80;
+  const lmbPct = (lmbSigned / 0x80 * 100).toFixed(1);
+
+  const CHANNELS = [
+    {
+      p2: '0x19', name: 'LAMBDA INTEGRATOR', src: 'iram[0x1B]  LMB_LO',
+      raw: lmbLo, tx: lmbLo,
+      decode: `${lmbLo === 0x80 ? 'Stoich (centred)' : lmbLo > 0x80 ? `Rich offset +${(lmbLo-0x80)}` : `Lean offset ${lmbLo-0x80}`}  (0x80=λ1.0)`,
+      col: '#cc66ff',
+      detail: `16-bit integrator: 0x${h2(lmbHi)}:${h2(lmbLo)} = ${lmb16}  |  correction: ${lmbPct}%`,
+    },
+    {
+      p2: '0x1B', name: 'IGNITION ADVANCE', src: 'iram[0x31]  IGN_ADV',
+      raw: ignAdv, tx: ignAdvTx,
+      decode: `${ignAdv}° BTDC base  →  tx=(${ignAdv}+10)×2=${ignAdvTx}  |  KLR may retard further`,
+      col: '#ff8844',
+      detail: `Ignition duration: iram[0x30]=0x${h2(ir[0x30]??0)} (${ir[0x30]??0} half-teeth)`,
+    },
+    {
+      p2: '0x1C', name: 'ENGINE SPEED (PRPM)', src: 'iram[0x37]  PRPM',
+      raw: prpm, tx: prpm,
+      decode: prpm >= 3 ? `${rpm} RPM  (17640 / ${prpm})` : 'Engine not running',
+      col: '#66ffaa',
+      detail: `Previous PRPM: iram[0x3B]=0x${h2(ir[0x3B]??0)}`,
+    },
+    {
+      p2: '0x1D', name: 'LOAD INDEX', src: 'iram[0x49]  LOAD_IX',
+      raw: loadIdx, tx: loadIdx,
+      decode: `Row ${loadIdx} (0x${h2(loadIdx)}) in fuel map  |  load acc: 0x${h2(ir[0x46]??0)}${h2(ir[0x47]??0)}`,
+      col: '#aaffaa',
+      detail: `Fuel pulse: 0x${h2(ir[0x4B]??0)}:${h2(ir[0x4A]??0)} = ${(((ir[0x4B]||0)<<8|(ir[0x4A]||0))*2/1000).toFixed(3)}ms`,
+    },
+    {
+      p2: '0x1E', name: 'AFM RAW', src: 'iram[0x10]  AFM_RAW',
+      raw: afmRaw, tx: afmRaw,
+      decode: `0x${h2(afmRaw)} = ${afmRaw}d  |  prev: iram[0x53]=0x${h2(ir[0x53]??0)}  delta: ${afmRaw-(ir[0x53]??afmRaw)>=0?'+':''}${afmRaw-(ir[0x53]??afmRaw)}`,
+      col: '#44cccc',
+      detail: `TPS: iram[0x16]=0x${h2(ir[0x16]??0)}  ${(ir[0x16]??0)>=0xD1?'CLOSED':(ir[0x16]??0)>=0x77?'WOT':'PART THROTTLE'}`,
+    },
+    {
+      p2: '0x1F', name: 'COOLANT TEMP', src: 'iram[0x13]  COOLANT',
+      raw: coolant, tx: coolant,
+      decode: `0x${h2(coolant)} → ${coolC}°C  |  air temp: iram[0x12]=0x${h2(ir[0x12]??0)} → ${Math.round((ir[0x12]??0)*0.875-116)}°C`,
+      col: '#44aaff',
+      detail: `Cold start enrich: ${(ir[0x25]??0)>>5&1?'ACTIVE':'off'}  cold timing: ${(ir[0x25]??0)>>4&1?'ACTIVE':'off'}`,
+    },
+    {
+      p2: '0x98', name: 'LAMBDA STATE (computed)', src: 'f(iram[0x1C:0x1B])',
+      raw: lmb16, tx: lmbState,
+      decode: `${lmbState} — ${LMBD_STATES[lmbState]}`,
+      col: '#cc66ff',
+      detail: `Derived: (0x${lmb16.toString(16).padStart(4,'0').toUpperCase()} − 0x60) << 2, bits[7:6]`,
+    },
+  ];
+
+  return (
+    <div>
+      <div style={{...S.panel, marginBottom:'8px'}}>
+        <div style={S.panelTitle}>SEND_DIAG_P2 — DIAGNOSTIC STREAM  (ROM 0x1E00)</div>
+        <div style={{color:C.textDim, fontSize:'9px', marginBottom:'8px', lineHeight:'1.5'}}>
+          Reconstructed from current iram values. P2 = diagnostic channel address.
+          On real hardware this stream is output via MOVX @R0 on the external data bus
+          and captured by the test equipment at the DME diagnostic connector.
+        </div>
+        <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
+          {CHANNELS.map(ch => (
+            <div key={ch.p2} style={{
+              background: C.panelBg2,
+              border: `1px solid ${C.border2}`,
+              borderLeft: `3px solid ${ch.col}`,
+              borderRadius: '2px',
+              padding: '6px 10px',
+              display: 'grid',
+              gridTemplateColumns: '60px 180px 60px 60px 1fr',
+              alignItems: 'start',
+              gap: '8px',
+            }}>
+              {/* P2 page */}
+              <div>
+                <div style={{color: C.textDim, fontSize:'8px', letterSpacing:'.1em'}}>P2 PAGE</div>
+                <div style={{color: ch.col, fontSize:'13px', fontWeight:'bold', letterSpacing:'.05em'}}>{ch.p2}</div>
+              </div>
+              {/* Channel name */}
+              <div>
+                <div style={{color: C.textDim, fontSize:'8px', letterSpacing:'.1em'}}>CHANNEL</div>
+                <div style={{color: ch.col, fontSize:'10px', fontWeight:'bold'}}>{ch.name}</div>
+                <div style={{color: C.textDim, fontSize:'9px', marginTop:'1px'}}>{ch.src}</div>
+              </div>
+              {/* Raw iram value */}
+              <div>
+                <div style={{color: C.textDim, fontSize:'8px', letterSpacing:'.1em'}}>IRAM</div>
+                <div style={{color: C.textBright, fontSize:'12px'}}>0x{h2(ch.raw & 0xFF)}</div>
+                <div style={{color: C.textDim, fontSize:'9px'}}>{ch.raw & 0xFF}d</div>
+              </div>
+              {/* Transmitted byte */}
+              <div>
+                <div style={{color: C.textDim, fontSize:'8px', letterSpacing:'.1em'}}>TX BYTE</div>
+                <div style={{color: ch.col, fontSize:'12px', textShadow:`0 0 6px ${ch.col}66`}}>
+                  0x{h2(ch.tx & 0xFF)}
+                </div>
+                <div style={{color: C.textDim, fontSize:'9px'}}>{ch.tx & 0xFF}d</div>
+              </div>
+              {/* Decoded meaning */}
+              <div>
+                <div style={{color: C.textDim, fontSize:'8px', letterSpacing:'.1em'}}>DECODED</div>
+                <div style={{color: C.text, fontSize:'10px', marginTop:'1px'}}>{ch.decode}</div>
+                <div style={{color: C.textDim, fontSize:'9px', marginTop:'2px'}}>{ch.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Raw iram values used by diag routine */}
+      <div style={S.panel}>
+        <div style={S.panelTitle}>SUPPORTING IRAM VALUES</div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'4px'}}>
+          {[
+            [0x10,'AFM_RAW'], [0x13,'COOLANT'], [0x16,'TPS'],
+            [0x1B,'LMB_LO'],  [0x1C,'LMB_HI'], [0x19,'LMB_ADJ_LN'],
+            [0x31,'IGN_ADV'], [0x30,'IGN_DUR'], [0x37,'PRPM'],
+            [0x49,'LOAD_IX'], [0x4B,'FUEL_HB'], [0x4A,'FUEL_LB'],
+          ].map(([a,n])=>(
+            <div key={a} style={{display:'flex',justifyContent:'space-between',
+                                 padding:'2px 6px',borderBottom:`1px solid ${C.border}`,fontSize:'10px'}}>
+              <span style={{color:C.textDim}}>{n} ({h2(a)}h)</span>
+              <span style={{color:C.textBright}}>0x{h2(ir[a]??0)}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
