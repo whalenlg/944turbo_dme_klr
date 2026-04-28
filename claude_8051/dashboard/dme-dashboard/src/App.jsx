@@ -356,11 +356,13 @@ const ntcToC = v => {
   const c = Math.round(v * 0.875 - 116);
   return c >= -40 ? c : null;
 };
-// Dwell: firmware value IS degrees (0x5A cap = 90°)
-// dwell_ms derived from dwell_deg and current RPM
-const dwellDeg = v => v !== undefined ? v : null;
-const dwellMs  = (deg, prpm) => (deg != null && prpm >= PRPM_MIN_VALID)
-  ? (deg / 360 * 60000 / prpmToRpm(prpm)).toFixed(2) : '--';
+// Dwell: iram[0x2F] is in half-teeth (132 teeth × 2 edges = 264 ht/rev)
+// 1 half-tooth = 360°/264 = 1.364°
+// dwell_ms = half_teeth × 60000 / (RPM × 264)
+const HT_PER_REV = 264;
+const dwellHtToDeg = ht => ht != null ? +(ht * 360 / HT_PER_REV).toFixed(1) : null;
+const dwellHtToMs  = (ht, rpm) => (ht != null && rpm >= 40)
+  ? (ht * 60000 / (rpm * HT_PER_REV)).toFixed(2) : '--';
 
 // ─────────────────────────────────────────────────────────────────
 //  STYLES  (all inline — zero external CSS deps)
@@ -429,7 +431,24 @@ export default function DMEDashboard() {
   const [tab, setTab]           = useState('overview');
   const [tooltip, setTooltip]   = useState(null);
   const [showLog, setShowLog]   = useState(true);
+  const [playing, setPlaying]   = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(100); // ms between steps
   const logRef = useRef();
+
+  // Playback engine
+  useEffect(() => {
+    if (!playing || data.snapshots.length === 0) return;
+    const id = setInterval(() => {
+      setIdx(i => {
+        if (i >= data.snapshots.length - 1) {
+          setPlaying(false);
+          return i;
+        }
+        return i + 1;
+      });
+    }, playSpeed);
+    return () => clearInterval(id);
+  }, [playing, playSpeed, data.snapshots.length]);
 
   useEffect(() => {
     const lnk = document.createElement('link');
@@ -460,6 +479,7 @@ export default function DMEDashboard() {
         const parsed = parseLog(text);
         setData(parsed);
         setIdx(0);
+        setPlaying(false);
         if (parsed.snapshots.length || parsed.phases.length) setShowLog(false);
       })
       .catch(err => console.warn('[DME951] ?log= fetch failed:', err));
@@ -537,14 +557,21 @@ export default function DMEDashboard() {
       fuel:    mm(s => +fuelMs(s).toFixed(3),    v => v.toFixed(3)),
       rpm:     mm(s => snapRpm(s) || null,        v => v.toString()),
       isv:     mm(s => s.iram[0x7F]??null,        v => h2(v)),
-      dwell:   mm(s => s.iram[0x2F]??null,        v => `${v}°`),
+      dwell:   mm(s => s.iram[0x2F]??null,        v => `${dwellHtToDeg(v)}°`),
       coolant: mm(s => ntcToC(s.iram[0x13]),         v=>`${v}°C`),
       airtemp: mm(s => ntcToC(s.iram[0x12]),         v=>`${v}°C`),
+      batt:    mm(s => s.iram[0x11]!=null ? +(s.iram[0x11]*20/256).toFixed(1) : null, v=>`${v}V`),
       afm:     mm(s => s.iram[0x10]??null,        v => h2(v)),
       tps:     mm(s => s.iram[0x16]??null,        v => h2(v)),
       wdog:    mm(s => s.iram[0x2A]??null,        v => h2(v)),
     };
   }, [data.snapshots]);
+
+  // True once any snapshot has FLAGS21.bit1 set — never goes false.
+  // Prevents AFR display flickering from snapshot timing artifacts.
+  const clEverActive = useMemo(() =>
+    data.snapshots.some(s => ((s.iram[0x21] ?? 0) >> 1) & 1),
+  [data.snapshots]);
 
   const TABS = ['overview','ports','iram','charts','phase','diag'];
 
@@ -585,7 +612,7 @@ export default function DMEDashboard() {
       <div style={S.content}>
         {tab==='overview' && <OverviewTab snap={snap} iram={iram}
           fuelMsV={fuelMsV} fuelNext={fuelNext} load16={load16} wu16={wu16} lmbd16={lmbd16}
-          minmax={minmax} />}
+          minmax={minmax} clEverActive={clEverActive} />}
         {tab==='ports'    && <PortsTab snap={snap} />}
         {tab==='iram'     && <IRAMTab iram={iram} tooltip={tooltip} setTooltip={setTooltip} />}
         {tab==='charts'   && <ChartsTab chartData={chartData} currentT={snap.t} />}
@@ -593,17 +620,56 @@ export default function DMEDashboard() {
         {tab==='diag'     && <DiagTab iram={iram} snap={snap} />}
       </div>
 
-      {/* ── TIME SCRUBBER ───────────────────────────────────── */}
+      {/* ── TIME SCRUBBER + PLAYBACK ────────────────────────── */}
       {data.snapshots.length>0 && (
         <div style={S.scrubber}>
-          <span style={{color:C.textDim,fontSize:'10px',whiteSpace:'nowrap'}}>◀ TIME ▶</span>
+          {/* Play / Pause */}
+          <button onClick={()=>setPlaying(p=>!p)}
+            style={{...S.btn(playing?'p':'s'),minWidth:'60px',letterSpacing:'.05em',
+                    boxShadow:playing?`0 0 8px ${C.textBright}44`:'none'}}>
+            {playing ? '⏸ PAUSE' : '▶ PLAY'}
+          </button>
+
+          {/* Step back */}
+          <button onClick={()=>{setPlaying(false);setIdx(i=>Math.max(0,i-1));}}
+            style={{...S.btn('s'),padding:'5px 8px'}} title="Step back">◀</button>
+
+          {/* Step forward */}
+          <button onClick={()=>{setPlaying(false);setIdx(i=>Math.min(data.snapshots.length-1,i+1));}}
+            style={{...S.btn('s'),padding:'5px 8px'}} title="Step forward">▶</button>
+
+          {/* Rewind to start */}
+          <button onClick={()=>{setPlaying(false);setIdx(0);}}
+            style={{...S.btn('s'),padding:'5px 8px'}} title="Rewind">⏮</button>
+
+          {/* Speed selector */}
+          <select value={playSpeed} onChange={e=>{setPlaySpeed(+e.target.value);}}
+            style={{background:C.panelBg,border:`1px solid ${C.border}`,color:C.textDim,
+                    fontFamily:'inherit',fontSize:'9px',padding:'3px 4px',cursor:'pointer'}}>
+            <option value={500}>0.2×</option>
+            <option value={200}>0.5×</option>
+            <option value={100}>1×</option>
+            <option value={50}>2×</option>
+            <option value={20}>5×</option>
+            <option value={10}>10×</option>
+            <option value={1}>MAX</option>
+          </select>
+
+          {/* Scrub slider */}
           <input type="range" min={0} max={data.snapshots.length-1} value={idx}
-            onChange={e=>setIdx(+e.target.value)}
+            onChange={e=>{setPlaying(false);setIdx(+e.target.value);}}
             style={{flex:1,accentColor:'#00cc66',cursor:'pointer'}} />
+
+          {/* Time display */}
           <span style={{color:C.textBright,fontFamily:"'Orbitron',monospace",
                         fontSize:'14px',whiteSpace:'nowrap',minWidth:'90px',textAlign:'right',
                         textShadow:`0 0 8px ${C.textBright}66`}}>
             t={snap.t ?? '---'} ms
+          </span>
+
+          {/* Snapshot counter */}
+          <span style={{color:C.textDim,fontSize:'9px',whiteSpace:'nowrap'}}>
+            {idx+1}/{data.snapshots.length}
           </span>
         </div>
       )}
@@ -647,7 +713,7 @@ export default function DMEDashboard() {
 // ─────────────────────────────────────────────────────────────────
 //  OVERVIEW TAB
 // ─────────────────────────────────────────────────────────────────
-function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minmax }) {
+function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minmax, clEverActive }) {
   const f20=iram[0x20]??0, f21=iram[0x21]??0, f23=iram[0x23]??0,
         f24=iram[0x24]??0, f25=iram[0x25]??0;
 
@@ -657,8 +723,9 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
   // in iram[0x12/13] mid-scan before linearisation; ignore those readings.
   const coolC   = ntcToC(iram[0x13]) ?? ntcToC(snap._prevCoolant);
   const airC    = ntcToC(iram[0x12]) ?? ntcToC(snap._prevAir);
-  const dwDeg   = dwellDeg(iram[0x2F]);
-  const dwMs    = dwellMs(dwDeg, prpm);
+  const dwHt    = iram[0x2F] ?? null;
+  const dwDeg   = dwellHtToDeg(dwHt);
+  const dwMs    = dwellHtToMs(dwHt, rpm);
   const mm      = minmax || {};
 
   // FuelOffCoast (bit1Dh = iram[23h].5) — fuel injection physically cut
@@ -671,13 +738,59 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
     ? `ms  (CUT — computed: ${fuelMsV.toFixed(3)}ms)`
     : 'ms';
 
+  const battRaw = iram[0x11] ?? null;
+  const battV   = battRaw != null ? (battRaw * 20 / 256).toFixed(1) : '--';
+  const battCol = battRaw != null
+    ? (battRaw < 0x70 ? C.red : battRaw < 0x90 ? C.amber : C.textBright)
+    : C.textDim;
+
+  // Estimated lambda / AFR from closed-loop integrator
+  // iram[0x1C:0x1B] = 16-bit lambda integrator, centred at 0x0080 = stoich
+  // trim% = (integrator − 0x80) / 0x80 × 100
+  // estimated AFR ≈ 14.7 × (1 + trim/100)
+  // NOTE: narrowband sensor — this is the firmware's CL correction, not a real wideband reading
+  const lmbLo  = iram[0x1B] ?? null;
+  const lmbHi  = iram[0x1C] ?? null;
+  const lmb16  = (lmbLo != null && lmbHi != null) ? (lmbHi << 8) | lmbLo : null;
+  const o2Lean = ((iram[0x24] ?? 0) >> 3) & 1;
+  const engSync   = ((iram[0x21] ?? 0) & 1) || (rpm != null && rpm > 100);
+  const lmbTmrVal = iram[0x3E] ?? 255;
+  const clBit     = ((iram[0x21] ?? 0) >> 1) & 1;
+  // Use clEverActive (latched across all snapshots) to avoid flickering from
+  // the crank interrupt transiently clearing FLAGS21.bit1 at snapshot time.
+  const clActive  = clBit || (clEverActive && engSync && rpm != null && rpm > 100);
+  let estLambda = null, estAFR = null, afrCol = C.textDim, afrLabel = '--';
+  if (lmb16 != null && clActive) {
+    const trim = (lmb16 - 0x80) / 0x80;
+    estLambda = (1 + trim).toFixed(3);
+    estAFR    = (14.7 * (1 + trim)).toFixed(2);
+    afrCol    = lmb16 > 0x90 ? '#44aaff'   // lean — blue
+              : lmb16 < 0x70 ? '#ff6644'   // rich — orange-red
+              : '#66ffaa';                  // stoich — green
+    afrLabel  = `λ${estLambda}`;
+  } else if (fuelCut) {
+    afrLabel = 'FUEL CUT';
+    afrCol   = C.red;
+  } else if (!clActive) {
+    // Determine why open-loop: high load, warmup, or sensor fault
+    const loadIdx = iram[0x49] ?? 0;
+    if (!engSync)              { afrLabel = 'PRE-SYNC';   afrCol = C.textDim; }
+    else if (lmbTmrVal > 0)    { afrLabel = 'WARMUP';     afrCol = C.amber;   }
+    else if (loadIdx > 0x30)   { afrLabel = 'HIGH LOAD';  afrCol = C.amber;   }
+    else                       { afrLabel = 'OPEN LOOP';  afrCol = C.textDim; }
+  }
+
   const metrics = [
     { lbl:'FUEL PULSE',    val:fuelDisplay,                              unit:fuelUnit,      col:fuelCut?C.red:'#66ff66', mmk:'fuel'    },
     { lbl:'ENGINE SPEED',  val:rpm != null ? rpm : '---',              unit:'RPM',         col:C.textBright, mmk:'rpm' },
     { lbl:'ISV STEP',      val:h2(iram[0x7F]),                       unit:'hex',         col:'#ff44aa', mmk:'isv'     },
-    { lbl:'DWELL',         val:`${dwDeg??'--'}°/${dwMs}ms`,          unit:'deg / ms',    col:'#ff8844', mmk:'dwell'   },
+    { lbl:'DWELL',         val:`${dwDeg??'--'}° / ${dwMs}ms`,   unit:`${dwHt??'--'} half-teeth`, col:'#ff8844', mmk:'dwell'   },
     { lbl:'COOLANT',       val:coolC!==null?`${coolC}°C`:'--',       unit:`0x${h2(iram[0x13])}`, col:C.blue, mmk:'coolant' },
     { lbl:'AIR TEMP',      val:airC !==null?`${airC}°C` :'--',       unit:`0x${h2(iram[0x12])}`, col:C.blue, mmk:'airtemp' },
+    { lbl:'BATTERY',       val:`${battV}V`,                            unit:`0x${h2(iram[0x11])}`, col:battCol, mmk:'batt'   },
+    { lbl:'EST. AFR',      val:estAFR ?? afrLabel,
+                           unit:clActive ? `${afrLabel}  O2:${o2Lean?'LEAN':'RICH'}` : 'narrowband NB',
+                           col:afrCol, mmk:null },
     { lbl:'AFM RAW (10h)',    val:h2(iram[0x10]),                       unit:'hex',         col:'#44cccc', mmk:'afm'     },
     { lbl:'AFM Prev (53h)',   val:h2(iram[0x53]),                       unit:'hex',         col:'#339999', mmk:null      },
     { lbl:'AFM Delta',        val:(iram[0x10]!=null&&iram[0x53]!=null) ? `+${iram[0x10]-iram[0x53]}` : '--', unit:'', col: (iram[0x10]??0)>(iram[0x53]??0) ? '#ff9944' : '#44cccc', mmk:null },
@@ -706,7 +819,7 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
     ['DataPlug (3F)',     h2(iram[0x3F]),  `${iram[0x3F]??'--'}d`],
     ['Coolant (13)',      h2(iram[0x13]),  coolC !== null ? `${coolC}°C` : '--'],
     ['Air Temp (12)',     h2(iram[0x12]),  airC  !== null ? `${airC}°C`  : '--'],
-    ['Dwell (2F)',        h2(iram[0x2F]),  `${dwDeg ?? '--'}° / ${dwMs}ms`],
+    ['Dwell (2F)',        h2(iram[0x2F]),  `${dwDeg ?? '--'}° / ${dwMs}ms (${dwHt??'--'}ht)`],
     ['IGN Next (32)',     h2(iram[0x32]),  `${iram[0x32]??'--'} ½-teeth`],
     ['AFM Peak (3D)',     h2(iram[0x3D]),  `${iram[0x3D]??'--'}d`],
     ['Subtask0 (3C)',     h2(iram[0x3C]),  'prescaler cdown'],
@@ -1217,7 +1330,7 @@ function ChartsTab({ chartData, currentT }) {
     {title:'TPS RAW (16h)',          k:'tps',     col:'#ffcc44', unit:'hex',     dom:[0,255]},
     {title:'ISV STEP POSITION',      k:'isv',     col:'#ff44aa', unit:'hex',     dom:[0,255]},
     {title:'LAMBDA ADJ — LEAN (19)', k:'lmbdLn',  col:'#cc66ff', unit:'hex',     dom:[0,255]},
-    {title:'DWELL ANGLE (2F)',       k:'dwell',   col:'#ff8844', unit:'½-teeth', dom:[0,128]},
+    {title:'DWELL ANGLE (2F)',       k:'dwell',   col:'#ff8844', unit:'half-teeth (×1.364°)', dom:[0,128]},
     {title:'COOLANT TEMP (13)',      k:'coolant', col:C.blue,    unit:'°C',      dom:[-20,120]},
   ];
 
@@ -1338,15 +1451,22 @@ function PhaseTab({ phases, currentT }) {
 //   P2=0x1F  MOVX @R0, iram[0x13]              → COOLANT
 //   P2=0x98  MOVX @R0, lambda_state_2bit        → computed
 //
-function DiagTab({ iram }) {
+function DiagTab({ iram, snap }) {
   const ir = iram || {};
+
+  // Use the authoritative RPM from the DS header (refRpm) rather than
+  // iram[0x37] raw — PRPM gets updated mid-crank-cycle so the 100ms
+  // snapshot often catches a stale or intermediate value.
+  const refRpm   = snap?.refRpm ?? snap?.explicitRpm ?? null;
+  const prpm     = ir[0x37] ?? 0;
+  // For the transmitted byte the firmware sends iram[0x37] directly
+  const prpmTx   = prpm;
 
   // Compute transmitted byte for each channel exactly as firmware does
   const lmbLo   = ir[0x1B] ?? 0;
   const lmbHi   = ir[0x1C] ?? 0;
   const lmb16   = (lmbHi << 8) | lmbLo;
   const ignAdv  = ir[0x31] ?? 0;
-  const prpm    = ir[0x37] ?? 0;
   const loadIdx = ir[0x49] ?? 0;
   const afmRaw  = ir[0x10] ?? 0;
   const coolant = ir[0x13] ?? 0;
@@ -1389,8 +1509,10 @@ function DiagTab({ iram }) {
     },
     {
       p2: '0x1C', name: 'ENGINE SPEED (PRPM)', src: 'iram[0x37]  PRPM',
-      raw: prpm, tx: prpm,
-      decode: prpm >= 3 ? `${rpm} RPM  (17640 / ${prpm})` : 'Engine not running',
+      raw: prpm, tx: prpmTx,
+      decode: refRpm != null
+        ? `${refRpm} RPM  (from DS header)  |  iram[0x37]=0x${h2(prpm)} raw`
+        : prpm >= 3 ? `${Math.round(17640 / prpm)} RPM  (17640 / ${prpm})` : 'Engine not running',
       col: '#66ffaa',
       detail: `Previous PRPM: iram[0x3B]=0x${h2(ir[0x3B]??0)}`,
     },
