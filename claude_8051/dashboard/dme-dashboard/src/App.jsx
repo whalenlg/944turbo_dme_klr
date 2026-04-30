@@ -54,7 +54,7 @@ const IRAM_MAP = [
   {a:0x0E,n:'B1:R6',  g:'reg',    d:'Bank 1 R6'},
   {a:0x0F,n:'B1:R7',  g:'reg',    d:'Bank 1 R7'},
   {a:0x10,n:'AFM_RAW',g:'adc',    d:'ADC Ch0 — Airflow meter raw value (ADC-derived; reflects afm_tippy spike during TEST_TIPPY_IN)'},
-  {a:0x11,n:'BATT_V', g:'adc',    d:'ADC Ch1 — Battery voltage. Formula: volts = raw × 13.5 / 216  (0xD8=13.5V, 0x8C=8.8V)'},
+  {a:0x11,n:'BATT_V', g:'adc',    d:'ADC Ch1 — Battery voltage. Formula: V = raw × 0.05263 + 2.132  (0xD8=13.5V, 0x8C=11.0V, ADC spans ~6.4–14.8V)'},
   {a:0x12,n:'AIR_NTC',g:'adc',    d:'ADC Ch2 — Intake air temperature NTC (linearised firmware units)'},
   {a:0x13,n:'COOLANT',g:'adc',    d:'ADC Ch3 — Engine coolant NTC (linearised, 0xE0≈80°C warm, 0x00=cold/error)'},
   {a:0x14,n:'ALT_COR',g:'adc',    d:'ADC Ch4 — Altitude correction switch (0x00=high altitude >1000m, 0xF8=sea level)'},
@@ -536,7 +536,9 @@ export default function DMEDashboard() {
         lmbdLn:    s.iram[0x19] ?? null,
         lmbdNln:   s.iram[0x1A] ?? null,
         isv:       s.iram[0x7F] ?? null,
-        dwell:     s.iram[0x2F] ?? null,
+        dwell:   rpm != null && rpm >= 40 && s.iram[0x2F] != null
+                   ? +(s.iram[0x2F] * 60000 / (rpm * HT_PER_REV)).toFixed(2)
+                   : null,
         afm:       afmNow,
         afm_delta: afmDelta,
         tps:       s.iram[0x16] ?? null,
@@ -557,10 +559,10 @@ export default function DMEDashboard() {
       fuel:    mm(s => +fuelMs(s).toFixed(3),    v => v.toFixed(3)),
       rpm:     mm(s => snapRpm(s) || null,        v => v.toString()),
       isv:     mm(s => s.iram[0x7F]??null,        v => h2(v)),
-      dwell:   mm(s => s.iram[0x2F]??null,        v => `${dwellHtToDeg(v)}°`),
+      dwell:   mm(s => { const ht=s.iram[0x2F]; const r=s.refRpm??s.explicitRpm; return (ht!=null&&r>=40) ? +(ht*60000/(r*HT_PER_REV)).toFixed(2) : null; }, v=>`${v}ms`),
       coolant: mm(s => ntcToC(s.iram[0x13]),         v=>`${v}°C`),
       airtemp: mm(s => ntcToC(s.iram[0x12]),         v=>`${v}°C`),
-      batt:    mm(s => s.iram[0x11]!=null ? +(s.iram[0x11]*20/256).toFixed(1) : null, v=>`${v}V`),
+      batt:    mm(s => s.iram[0x11]!=null ? +(s.iram[0x11]*0.05263+2.132).toFixed(1) : null, v=>`${v}V`),
       afm:     mm(s => s.iram[0x10]??null,        v => h2(v)),
       tps:     mm(s => s.iram[0x16]??null,        v => h2(v)),
       wdog:    mm(s => s.iram[0x2A]??null,        v => h2(v)),
@@ -739,9 +741,12 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
     : 'ms';
 
   const battRaw = iram[0x11] ?? null;
-  const battV   = battRaw != null ? (battRaw * 20 / 256).toFixed(1) : '--';
+  // Battery ADC calibration derived from dwell table behaviour:
+  // 0xD8 = 13.5V (normal), 0x8C = 9.5V (low — firmware dwell matches ~10V TunerPro column)
+  // Formula: V = raw × 0.05263 + 2.132  (offset divider, ~2.1V floor)
+  const battV   = battRaw != null ? (battRaw * 0.05263 + 2.132).toFixed(1) : '--';
   const battCol = battRaw != null
-    ? (battRaw < 0x70 ? C.red : battRaw < 0x90 ? C.amber : C.textBright)
+    ? (battRaw < 0x98 ? C.red : battRaw < 0xB0 ? C.amber : C.textBright)
     : C.textDim;
 
   // Estimated lambda / AFR from closed-loop integrator
@@ -784,7 +789,7 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
     { lbl:'FUEL PULSE',    val:fuelDisplay,                              unit:fuelUnit,      col:fuelCut?C.red:'#66ff66', mmk:'fuel'    },
     { lbl:'ENGINE SPEED',  val:rpm != null ? rpm : '---',              unit:'RPM',         col:C.textBright, mmk:'rpm' },
     { lbl:'ISV STEP',      val:h2(iram[0x7F]),                       unit:'hex',         col:'#ff44aa', mmk:'isv'     },
-    { lbl:'DWELL',         val:`${dwDeg??'--'}° / ${dwMs}ms`,   unit:`${dwHt??'--'} half-teeth`, col:'#ff8844', mmk:'dwell'   },
+    { lbl:'DWELL',         val:`${dwMs}ms`,   unit:`${dwDeg??'--'}° / ${dwHt??'--'} ht`, col:'#ff8844', mmk:'dwell'   },
     { lbl:'COOLANT',       val:coolC!==null?`${coolC}°C`:'--',       unit:`0x${h2(iram[0x13])}`, col:C.blue, mmk:'coolant' },
     { lbl:'AIR TEMP',      val:airC !==null?`${airC}°C` :'--',       unit:`0x${h2(iram[0x12])}`, col:C.blue, mmk:'airtemp' },
     { lbl:'BATTERY',       val:`${battV}V`,                            unit:`0x${h2(iram[0x11])}`, col:battCol, mmk:'batt'   },
@@ -815,11 +820,11 @@ function OverviewTab({ snap, iram, fuelMsV, fuelNext, load16, wu16, lmbd16, minm
     ['PRPM raw (37)',      h2(iram[0x37]),  `${rpm} RPM`],
     ['TPS (16)',          h2(iram[0x16]),  (iram[0x16]??0)>=0xD1?'IDLE/CLOSED':(iram[0x16]??0)>=0x77?'WOT':'PART LOAD'],
     ['FQS/Alt (17)',      h2(iram[0x17]),  (iram[0x17]??0)>=0x80?'PREMIUM FUEL':'REGULAR FUEL'],
-    ['Batt V (11)',       h2(iram[0x11]),  iram[0x11] != null ? `${(iram[0x11]*13.5/216).toFixed(1)}V` : '--'],
+    ['Batt V (11)',       h2(iram[0x11]),  iram[0x11] != null ? `${(iram[0x11]*0.05263+2.132).toFixed(1)}V` : '--'],
     ['DataPlug (3F)',     h2(iram[0x3F]),  `${iram[0x3F]??'--'}d`],
     ['Coolant (13)',      h2(iram[0x13]),  coolC !== null ? `${coolC}°C` : '--'],
     ['Air Temp (12)',     h2(iram[0x12]),  airC  !== null ? `${airC}°C`  : '--'],
-    ['Dwell (2F)',        h2(iram[0x2F]),  `${dwDeg ?? '--'}° / ${dwMs}ms (${dwHt??'--'}ht)`],
+    ['Dwell (2F)',        h2(iram[0x2F]),  `${dwMs}ms  (${dwDeg ?? '--'}° / ${dwHt??'--'}ht)`],
     ['IGN Next (32)',     h2(iram[0x32]),  `${iram[0x32]??'--'} ½-teeth`],
     ['AFM Peak (3D)',     h2(iram[0x3D]),  `${iram[0x3D]??'--'}d`],
     ['Subtask0 (3C)',     h2(iram[0x3C]),  'prescaler cdown'],
@@ -1330,7 +1335,7 @@ function ChartsTab({ chartData, currentT }) {
     {title:'TPS RAW (16h)',          k:'tps',     col:'#ffcc44', unit:'hex',     dom:[0,255]},
     {title:'ISV STEP POSITION',      k:'isv',     col:'#ff44aa', unit:'hex',     dom:[0,255]},
     {title:'LAMBDA ADJ — LEAN (19)', k:'lmbdLn',  col:'#cc66ff', unit:'hex',     dom:[0,255]},
-    {title:'DWELL ANGLE (2F)',       k:'dwell',   col:'#ff8844', unit:'half-teeth (×1.364°)', dom:[0,128]},
+    {title:'DWELL TIME (2F)',         k:'dwell',   col:'#ff8844', unit:'ms', dom:[0,'auto']},
     {title:'COOLANT TEMP (13)',      k:'coolant', col:C.blue,    unit:'°C',      dom:[-20,120]},
   ];
 
