@@ -32,7 +32,7 @@ module i8048_core (
 // Determine current R0 or R1 based on PSW bank bit (psw[4])
 // Better yet, just use the absolute RAM address:
 wire [6:0] ptr_addr = (ir[0] ? ram[psw[4]?8'h19:8'h01] : ram[psw[4]?8'h18:8'h00]);
-reg [255:0] opinstr[255:0];
+reg [255:0] opinstr[0:255];
 
 wire is_2_cycle = 
     (ir[3:0] == 4'h4) || // JMP & CALL (All pages: 04, 24, 44, 64, 84, A4, C4, E4)
@@ -56,6 +56,8 @@ wire is_2_cycle =
     (ir == 8'h76)      ||
     (ir == 8'h83)      ||
     (ir == 8'h93)      ||
+    (ir == 8'h80)      || // MOVX A,@R0  (2-cycle: addr cycle + read cycle)
+    (ir == 8'h81)      || // MOVX A,@R1  (2-cycle: addr cycle + read cycle)
     (ir == 8'h53)      ||
     (ir == 8'h43)      ||
     (ir == 8'hD3)      ||
@@ -78,8 +80,10 @@ task display_read_status;
     input [7:0] data_out;
     input [11:0] address;
     begin
+`ifdef CPU_DEBUG
         $display("\t\t\t\tPC: %h | OpCode: %h | Instr: %s | Addr: %h | OldVal: %h | ReadVal: %h | ResultVal: %h",
                  pc,instr,opinstr[instr],address, data_old, data_read, data_out);
+`endif
     end
 endtask
 
@@ -105,7 +109,7 @@ wire [11:0] mem_addr = (ir == 8'hA3 && cycle_2) ? {pc[11:8], acc} :
 
 
 // --- ROM Data Latching ---
-always @(posedge clk) begin
+always @(posedge clk or negedge res_n) begin
     if (!res_n) begin
         ir <= 8'h00;
         cycle_2 <= 0;
@@ -158,11 +162,19 @@ end
                     state <= 3'd1;
                     if (!irq_in_progress && !cycle_2) begin
                         if (irq_en_ext && !int_n) begin
-                             // Force the math inside the task call so the stack gets the NEXT address
-                             service_interrupt(12'h003, is_2_cycle ? pc + 2 : pc + 1);
+                             // External interrupt acknowledged.
+                             // Return address = pc (the instruction about to execute).
+                             // Per 8049 spec, RETR transfers to the interrupted instruction.
+                             // The old formula (is_2_cycle ? pc+2 : pc+1) was correct for
+                             // sequential instructions but wrong for branch instructions:
+                             // after JMP target→0x812, pc=0x812; pc+2=0x814 skips the JMP.
+                             service_interrupt(12'h003, pc);
                         end 
                         else if (irq_en_timer && timer_flag) begin
-                             service_interrupt(12'h007, is_2_cycle ? pc + 2 : pc + 1);
+                             // Timer interrupt acknowledged — clear timer_flag
+                             // so it does not immediately re-fire after RETR.
+                             timer_flag <= 1'b0;
+                             service_interrupt(12'h007, pc);
                         end 
                         else begin
                             execute_instruction();
@@ -193,7 +205,7 @@ task execute_instruction;
                 end else begin
                     acc_preop <= acc;
                     {psw[7], acc} <= acc + rom_data;
-                    psw[6] <= (acc[3:0] + rom_data[3:0] > 4'hF);
+                    psw[6] <= ({1'b0,acc[3:0]} + {1'b0,rom_data[3:0]} > 5'h0F);
                     #10 display_read_status(pc,ir,acc_preop,rom_data,acc,pc);
                     pc <= pc + 1'b1;
                     cycle_2 <= 1'b0;
@@ -372,7 +384,7 @@ task execute_instruction;
             // --- Indirect & Exchange ---
             8'b0111000?: begin // ADDC A, @Ri [cite: 159, 160]
                 {psw[7], acc} <= acc + ram[ptr_addr] + psw[7];
-                psw[6] <= (acc[3:0] + ram[ptr_addr][3:0] + psw[7] > 4'hF);
+                psw[6] <= ({1'b0,acc[3:0]} + {1'b0,ram[ptr_addr][3:0]} + {4'b0,psw[7]} > 5'h0F);
                 rmem_dat <= ram[ptr_addr];
                 pc <= pc + 1'b1;
             end
@@ -407,7 +419,7 @@ task execute_instruction;
                 acc_preop <= acc;
                 {psw[7], acc} <= acc + ram[ptr_addr];
                 rmem_dat <= ram[ptr_addr];
-                psw[6] <= (acc[3:0] + ram[ptr_addr][3:0] > 4'hF);
+                psw[6] <= ({1'b0,acc[3:0]} + {1'b0,ram[ptr_addr][3:0]} > 5'h0F);
                 #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ptr_addr);
                 pc <= pc + 1'b1;
             end
@@ -453,12 +465,21 @@ task execute_instruction;
 
             // --- External Data (MOVX) ---
             8'h80, 8'h81: begin // MOVX A, @Ri [cite: 13, 16]
-                bus_preop <= bus_in;
-                acc <= bus_in;
-                bus_addr <= ram[(psw[4] ? 5'h18 : 5'h00) + ir[0]];
-                bus_out <= bus_addr;
-                #10 display_read_status(pc,ir,bus_preop,acc,bus_out,bus_addr);
-                pc <= pc + 1'b1;
+                // Cycle 1: put Ri address onto bus, assert ALE, advance PC
+                // Cycle 2: sample bus_in into acc (rd_n asserted by state
+                //          machine in state 3 whenever ir==0x80/81)
+                if (!cycle_2) begin
+                    bus_addr <= ram[(psw[4] ? 5'h18 : 5'h00) + ir[0]];
+                    ale      <= 1'b1;
+                    pc       <= pc + 1'b1;
+                    cycle_2  <= 1'b1;
+                end else begin
+                    bus_preop <= bus_in;
+                    acc       <= bus_in;
+                    ale       <= 1'b0;
+                    #10 display_read_status(pc, ir, bus_preop, acc, bus_out, bus_addr);
+                    cycle_2   <= 1'b0;
+                end
             end
             8'h90, 8'h91: begin // MOVX @Ri, A [cite: 18, 25]
                 if (!cycle_2) begin
@@ -612,19 +633,20 @@ task execute_instruction;
             // --- Subroutine Control ---
             8'b???10100: begin // CALL [cite: 66, 74]
                 if (!cycle_2) begin
-                    psw[2:0] <= psw[2:0] + 1'b1;
+                    psw[2:0] <= psw[2:0] + 1'b1;  // increment SP (non-blocking)
                     pc <= pc + 1'b1;
                     next_pc <= pc + 2'b10;
                     cycle_2 <= 1'b1;
                 end else begin
-                    //ram[{(psw[2:0]), 1'b0} + 6'h08] <= (pc + 1'b1);
-                    callmem1 <= {(psw[2:0]), 1'b0} + 6'h08;
+                    // psw[2:0] already holds the post-increment SP value here.
+                    // Write return address to the pre-increment location (SP-1)
+                    // so that RET/RETR (which also use SP-1) read it back correctly.
+                    callmem1 <= {(psw[2:0] - 1'b1), 1'b0} + 6'h08;
                     wmem_dat <= next_pc[7:0];
-                    callmem2 = {psw[2:0], 1'b1} + 6'h08;
+                    callmem2 = {(psw[2:0] - 1'b1), 1'b1} + 6'h08;
                     wmem_dat2 <= {psw[7:4], next_pc[11:8]};
-                    //ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], (pc + 1'b1) >> 8};
-                    ram[{(psw[2:0]), 1'b0} + 6'h08] <= next_pc[7:0];
-                    ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], next_pc[11:8]};
+                    ram[{(psw[2:0] - 1'b1), 1'b0} + 6'h08] <= next_pc[7:0];
+                    ram[{(psw[2:0] - 1'b1), 1'b1} + 6'h08] <= {psw[7:4], next_pc[11:8]};
                     pc <= {mb_latch, ir[7:5], rom_data[7:0]};
                     #10 display_read_status(pc,ir,wmem_dat,wmem_dat2,8'hXX,pc);
                     cycle_2 <= 1'b0;
@@ -634,12 +656,21 @@ task execute_instruction;
                 if (!cycle_2) begin
                     cycle_2 <= 1'b1;
                 end else begin
-                    pc[7:0] <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    retmem1 <= {psw[2:0], 1'b0} + 6'h08;
-                    rmem_dat <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    pc[11:8] <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
-                    retmem2 <= {psw[2:0], 1'b1} + 6'h08;
-                    rmem_dat2 <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
+                    if (psw[2:0] == 3'b000)
+                        // Suppress known intentional computed-jump RET:
+                        // 0x2b0 uses SP=0 wrap-around deliberately to jump
+                        // into MB1 via ram[0x16/0x17] as a fake stack frame.
+                        if (pc != 12'h2b0)
+                        $display("*** STACK UNDERFLOW: RET at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
+                            pc,
+                            ({3'b111, 1'b0} + 6'h08),
+                            ({3'b111, 1'b1} + 6'h08));
+                    pc[7:0] <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
+                    retmem1 <= {psw[2:0] - 1'b1, 1'b0} + 6'h08;
+                    rmem_dat <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
+                    pc[11:8] <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
+                    retmem2 <= {psw[2:0] - 1'b1, 1'b1} + 6'h08;
+                    rmem_dat2 <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
                     psw[2:0] <= psw[2:0] - 1'b1;
                     #10 display_read_status(pc,ir,rmem_dat,rmem_dat2,psw,pc);
                     cycle_2 <= 1'b0;
@@ -649,18 +680,20 @@ task execute_instruction;
                 if (!cycle_2) begin
                     cycle_2 <= 1'b1;
                 end else begin
-                    //ram_preop <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    //psw[2:0] <= psw[2:0] - 1'b1;
-                    pc[7:0] <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    retmem1 <= {psw[2:0], 1'b0} + 6'h08;
-                    rmem_dat <= ram[{psw[2:0], 1'b0} + 6'h08];
-                    psw[7:4] <= ram[{psw[2:0], 1'b1} + 6'h08][7:4];
-                    pc[11:8] <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
-                    retmem2 <= {psw[2:0], 1'b1} + 6'h08;
-                    rmem_dat2 <= ram[{psw[2:0], 1'b1} + 6'h08][3:0];
-                    //psw[2:0] <= psw[2:0] - 1'b1;
-                    #10 display_read_status(pc,ir,rmem_dat,rmem_dat2,psw,pc);
+                    if (psw[2:0] == 3'b000)
+                        $display("*** STACK UNDERFLOW: RETR at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
+                            pc,
+                            ({3'b111, 1'b0} + 6'h08),
+                            ({3'b111, 1'b1} + 6'h08));
+                    pc[7:0] <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
+                    retmem1 <= {psw[2:0] - 1'b1, 1'b0} + 6'h08;
+                    rmem_dat <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
+                    psw[7:4] <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][7:4];
+                    pc[11:8] <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
+                    retmem2 <= {psw[2:0] - 1'b1, 1'b1} + 6'h08;
+                    rmem_dat2 <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
                     psw[2:0] <= psw[2:0] - 1'b1;
+                    #10 display_read_status(pc,ir,rmem_dat,rmem_dat2,psw,pc);
                     irq_in_progress <= 1'b0;
                     cycle_2 <= 1'b0;
                 end
@@ -717,7 +750,8 @@ task execute_instruction;
                      #10 display_read_status(pc,ir,bus_preop,acc,p2,12'hAA2);
                      pc <= pc + 1'b1;
                    end // [cite: 28]
-            8'h15: begin irq_en_ext <= 1'b0; pc <= pc + 1'b1; end // [cite: 30, 31]
+            8'h15: begin irq_en_ext <= 1'b0; pc <= pc + 1'b1; end // DIS I    [cite: 30, 31]
+            8'h35: begin irq_en_timer <= 1'b0; pc <= pc + 1'b1; end // DIS TCNTI
             8'h25: begin irq_en_timer <= 1'b1; pc <= pc + 1'b1; end // [cite: 124, 125]
             8'h85: begin psw[5] <= 1'b0; pc <= pc + 1'b1; end //CPL F0 [cite: 153, 154]
             8'h89: begin // ORL P1, #data [cite: 100, 101]
@@ -878,7 +912,7 @@ task execute_instruction;
                     acc_preop <= acc;
                 end else begin
                     {psw[7], acc} <= {1'b0, acc} + {1'b0, rom_data} + {8'b0, psw[7]};
-                    psw[6]  <= (acc[3:0] + rom_data[3:0] + psw[7] > 4'hF);
+                    psw[6]  <= ({1'b0,acc[3:0]} + {1'b0,rom_data[3:0]} + {4'b0,psw[7]} > 5'h0F);
                     #10 display_read_status(pc,ir, acc_preop, rom_data, acc, pc);
                     pc      <= pc + 1'b1;
                     cycle_2 <= 1'b0;
@@ -950,7 +984,7 @@ task execute_instruction;
             8'b01101???: begin // ADD A, Rn  (0x68..0x6F)
                 acc_preop <= acc;
                 {psw[7], acc} <= {1'b0, acc} + {1'b0, ram[rn_addr]};
-                psw[6]    <= (acc[3:0] + ram[rn_addr][3:0] > 4'hF);
+                psw[6]    <= ({1'b0,acc[3:0]} + {1'b0,ram[rn_addr][3:0]} > 5'h0F);
                 rmem_dat  <= ram[rn_addr];
                 #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
@@ -967,7 +1001,7 @@ task execute_instruction;
             8'b01111???: begin // ADDC A, Rn  (0x78..0x7F)
                 acc_preop <= acc;
                 {psw[7], acc} <= {1'b0, acc} + {1'b0, ram[rn_addr]} + {8'b0, psw[7]};
-                psw[6]    <= (acc[3:0] + ram[rn_addr][3:0] + psw[7] > 4'hF);
+                psw[6]    <= ({1'b0,acc[3:0]} + {1'b0,ram[rn_addr][3:0]} + {4'b0,psw[7]} > 5'h0F);
                 rmem_dat  <= ram[rn_addr];
                 #10 display_read_status(pc,ir, acc_preop, rmem_dat, acc, rn_addr);
                 pc <= pc + 1'b1;
@@ -982,7 +1016,8 @@ task execute_instruction;
             end
 
             default: begin
-                $display("ERROR: Unimplemented Opcode %h at PC %h", ir, pc); //[cite: 180]
+                $display("ERROR: Unimplemented Opcode %h at PC %h", ir, pc);
+                pc <= pc + 1'b1;  // advance PC to prevent infinite loop
             end
         endcase
     end
@@ -1018,11 +1053,20 @@ always @(posedge clk) begin
              if (ale) 
                begin
                  if (prescaler == 5'd31)
-                  begin
-                      prescaler <= 0;
-                      {timer_flag, timer_val} <= timer_val + 1'b1;
+              begin
+                  prescaler <= 0;
+                  // Sticky overflow flag — same pattern as counter mode.
+                  // Previous: {timer_flag, timer_val} <= timer_val + 1
+                  // was wrong: timer_flag only pulsed for one ALE cycle
+                  // because the next increment cleared it via the carry bit.
+                  if (timer_val == 8'hFF) begin
+                      timer_val  <= 8'h00;
+                      timer_flag <= 1'b1;  // sticky — held until acknowledged
+                  end else begin
+                      timer_val  <= timer_val + 1'b1;
                   end
-                  else  prescaler <= prescaler + 1'b1;
+              end
+              else  prescaler <= prescaler + 1'b1;
                end
           end
           else
@@ -1031,17 +1075,23 @@ always @(posedge clk) begin
               // --- COUNTER MODE ---
               if (t1_falling_edge)
                  begin
+`ifdef CPU_DEBUG
                    $display("counter edge");
+`endif
                    if (timer_val == 8'hFF)
                    begin
+`ifdef CPU_DEBUG
                      $display("counter roll");
+`endif
                      timer_val  <= 8'h00;
                      timer_flag <= 1'b1; // Flag sets and "sticks"
                    end
                    else
                      begin
                        timer_val  <= timer_val + 1'b1;
+`ifdef CPU_DEBUG
                        $display("count updated");
+`endif
                      end
                  end
           end
@@ -1061,6 +1111,11 @@ end
 
 // Create a physical address wire for the ROM
 // We use the lower 11 bits of the PC, and P2[3] acts as the 12th bit (A11)
-wire [11:0] rom_addr_phys = {p2[3], pc[10:0]};
+// rom_addr_phys: use pc[11] as the memory bank select bit.
+// pc[11] is loaded from mb_latch by CALL and JMP; SEL MB0/MB1
+// update mb_latch which is then transferred to pc[11] on the
+// next branch.  p2[3] is NOT the bank select on the KLR —
+// mb_latch / pc[11] is the authoritative source.
+wire [11:0] rom_addr_phys = pc[11:0];
 
 endmodule

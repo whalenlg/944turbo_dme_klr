@@ -570,7 +570,13 @@
 `define RPMCONST 2727272  // 6MHz * 60 / 132 teeth = exact
 `define FREQ   6000
 
-module i8051_tb;
+module i8051_tb (
+    // External I/O signals
+    input  wire ign,              // Ignition switch input
+    output wire A_1_tach_pulse,   // Tachometer output (P1.1)
+    output wire A_5_KLR_ign_out,  // KLR / ignition coil primary (P1.5)
+    input  wire full_load         // Full-load (WOT) switch → ADC ch6 / TPS
+);
 
 `define FRQ_SCALE  500000
 parameter DELAY = `FRQ_SCALE/`FREQ;
@@ -621,25 +627,23 @@ wire [7:0]  xadc_data_out, adc_data_out;
 wire ale, txd;
 wire dumreference_sensor, dumspeed_sensor;
 
-// P1 output signal aliases — referenced by vcd.v dumpvcd module
+// P1 output signal aliases — A_1_tach_pulse and A_5_KLR_ign_out are module ports
 wire A_0_inj_driver;
-wire A_1_tach_pulse;
 wire A_2_dme_relay;
 wire A_3_unused_p1_3;
 wire A_4_idle_speed;
-wire A_5_KLR_ign_out;
 
-assign A_0_inj_driver  = p1[0];  // Injectors        active-low
-assign A_1_tach_pulse  = p1[1];  // Tachometer       pulse
+assign A_0_inj_driver  = p1[0];  // Injectors         active-low
+assign A_1_tach_pulse  = p1[1];  // Tachometer        pulse     (module output)
 assign A_2_dme_relay   = p1[2];  // DME relay/fuel pump active-low
 assign A_3_unused_p1_3 = p1[3];  // unused
 assign A_4_idle_speed  = p1[4];  // Idle speed positioner + watchdog
-assign A_5_KLR_ign_out = p1[5];  // KLROut / ignition coil primary
+assign A_5_KLR_ign_out = p1[5];  // KLROut / ignition coil primary (module output)
 
 // --------------------------------------------------------
 //  VCD dump
 // --------------------------------------------------------
-dumpvcd u_dumpvcd();
+dumpvcd u_dumpvcd(.clk(clk), .pc(i8051_top.u_cpu.pc));
 
 // --------------------------------------------------------
 //  CPU core instantiation
@@ -802,11 +806,12 @@ always @(p2[2:0] or afm_wiper) begin
 `ifdef TPS_FIXED
     3'b110:  adc_mux = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-    3'b110:  adc_mux = (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    3'b110:  adc_mux = full_load ? 8'hDB : (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `elsif AFM_TIPPY
-    3'b110:  adc_mux = (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    3'b110:  adc_mux = full_load ? 8'hDB : (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `else
-    3'b110:  adc_mux = (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    // full_load (module input): 1 = full throttle/WOT (0xDB), 0 = normal TPS from AFM
+    3'b110:  adc_mux = full_load ? 8'hDB : (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `endif
     3'b111:  adc_mux = `_FUEL_QUAL;      // ch7: fuel quality
     default: adc_mux = 8'hF0;
@@ -951,6 +956,6 @@ end
 // --------------------------------------------------------
 //  Phase monitor and test helpers
 // --------------------------------------------------------
-`include "bench/verilog/phase_monitor.v"
+`include "phase_monitor.v"
 
 endmodule

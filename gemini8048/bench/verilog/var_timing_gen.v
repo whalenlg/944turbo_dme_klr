@@ -6,7 +6,7 @@
 
 module var_timing_generator (
     input  wire clk,rst,        // Fast Master Clock
-    output reg trigger,        // Active high reset
+    output reg trigger = 1'b1,  // start high → res_n=0 (CPU held in reset until first pulse ends)
     output reg  ign // The slowing square wave
 );
     integer period_current,period_inc;
@@ -24,25 +24,34 @@ module var_timing_generator (
             counter <= 16'd0;
             ign <= #10 1'b0;
         end else begin
+            // Wrap counter at end of period
             if (counter >= 24'd400000) begin
                 counter <= 24'd0;
             end else begin
                 counter <= counter + 1'b1;
             end
 
-            // Logic: Low for count 0 and 1 (2 cycles), High otherwise
-            if (counter < 24'd380000) begin
-                #10 ign <= 1'b0;
+            // ── Trigger pulse ─────────────────────────────────────────
+            // Narrow pulse at the START of each cycle (counter 0..99).
+            // Matches oscilloscope: blue spike fires at the leading edge
+            // of every engine cycle, well before the ignition event.
+            if (counter < 24'd100) begin
+                trigger <= 1'b1;
             end else begin
-                #10 ign <= 1'b1;
-            end
-            if (counter < 24'd190000) begin
                 trigger <= 1'b0;
-            end else if (counter < 190100) 
-                     begin
-                       trigger <= 1'b1;
-                     end
-                     else trigger <= 1'b0;
+            end
+
+            // ── Ignition signal ───────────────────────────────────────
+            // Goes HIGH 25% into the cycle (counter 100000),
+            // stays HIGH for 25% of the cycle (until counter 200000),
+            // then LOW for the remaining 50%.
+            // Matches oscilloscope: IGN rising edge ~10ms after trigger,
+            // HIGH for ~10ms, LOW for ~20ms at ~1500 RPM (40ms period).
+            if (counter >= 24'd100000 && counter < 24'd200000) begin
+                #10 ign <= 1'b1;
+            end else begin
+                #10 ign <= 1'b0;
+            end
         end
     end 
 

@@ -1,10 +1,16 @@
+// Default RPM_RAMP_PCT if not set by the including testbench.
+// i8051_tb.v sets this via `undef/`define before each use.
+`ifndef RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 25
+`endif
+
 module var_interrupt_generator (
     input  wire clk,        // Fast Master Clock
     input  wire rst,        // Active high reset
     output reg  int_0,int_1,// The slowing square wave
     output reg  [7:0] afm_wiper // AFM wiper value tracking RPM ramp
 );
-    integer period_current;
+    integer period_current = `RPMCONST/`RPMSTART;  // initialised = no Z on afm_wiper at t=0
     integer tick_counter = 0;
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;

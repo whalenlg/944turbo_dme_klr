@@ -568,7 +568,13 @@
   `define FREQ     6000
 `endif
 
-module i8051_dashboard_tb;
+module i8051_dashboard_tb (
+    // External I/O signals
+    input  wire ign,              // Ignition switch input
+    output wire A_1_tach_pulse,   // Tachometer output (P1.1)
+    output wire A_5_KLR_ign_out,  // KLR / ignition coil primary (P1.5)
+    input  wire full_load         // Full-load (WOT) switch → ADC ch6 / TPS
+);
 
 `define FRQ_SCALE  500000
 parameter DELAY = `FRQ_SCALE / `FREQ;
@@ -642,20 +648,18 @@ wire        ale, txd;
 wire        xrd_n, xwr_n;
 wire        dumreference_sensor, dumspeed_sensor;
 
-// ─── P1 signal aliases (for dumpvcd compatibility) ──────────
+// ─── P1 signal aliases — A_1_tach_pulse and A_5_KLR_ign_out are module ports
 wire A_0_inj_driver;
-wire A_1_tach_pulse;
 wire A_2_dme_relay;
 wire A_3_unused_p1_3;
 wire A_4_idle_speed;
-wire A_5_KLR_ign_out;
 
 assign A_0_inj_driver  = p1[0];
-assign A_1_tach_pulse  = p1[1];
+assign A_1_tach_pulse  = p1[1];  // module output port
 assign A_2_dme_relay   = p1[2];
 assign A_3_unused_p1_3 = p1[3];
 assign A_4_idle_speed  = p1[4];
-assign A_5_KLR_ign_out = p1[5];
+assign A_5_KLR_ign_out = p1[5];  // module output port
 
 // ─── VCD dump ───────────────────────────────────────────────
 dumpvcd u_dumpvcd();
@@ -822,11 +826,12 @@ always @(p2[2:0] or afm_wiper) begin
 `ifdef TPS_FIXED
         3'b110: adc_mux = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-        3'b110: adc_mux = (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+        3'b110: adc_mux = full_load ? 8'hDB : (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `elsif AFM_TIPPY
-        3'b110: adc_mux = (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+        3'b110: adc_mux = full_load ? 8'hDB : (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `else
-        3'b110: adc_mux = (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+        // full_load (module input): 1 = full throttle/WOT (0xDB), 0 = normal TPS from AFM
+        3'b110: adc_mux = full_load ? 8'hDB : (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
 `endif
         3'b111: adc_mux = `_FUEL_QUAL;
         default: adc_mux = 8'hF0;
@@ -946,8 +951,8 @@ always @(posedge clk) begin : lambda_warmup_skip
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h21][0] <= 1'b1; // bit08h = phase1 init done
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h21][1] <= 1'b1; // bit09h = phase2 init done
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23][5] <= 1'b1; // bit1Dh = FuelOffCoast
-        i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h58]    <= 8'h00; // warmup counter hi = 0
-        i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h59]    <= 8'h01; // warmup counter lo = 1
+        i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h58]    <= 8'h00; // WU_HB = 0 (warmup fully expired)
+        i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h59]    <= 8'h00; // WU_LB = 0 (warmup fully expired)
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F]    <= 8'h14; // ISV step — warm idle baseline
         skip_lambda_done <= 1'b1;
         $display("[SEED] t=%0d ms  SKIP_LAMBDA_WARMUP — bit08h+09h+1Dh set, wu=0x0001, ISV=0x14",

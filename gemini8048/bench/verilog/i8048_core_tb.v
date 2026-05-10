@@ -35,6 +35,12 @@
 //  Group 19  : XCH A,Rn  / XCH A,@Ri  / XCHD A,@Ri
 //  Group 20  : JMP  (page 0)
 //  Group 21  : CALL / RET
+//                  - CALL jumps to target, SP increments
+//                  - Return address stored at correct RAM slot (pre-increment SP)
+//                  - RAM[0x08]=low byte, RAM[0x09]=high byte verified explicitly
+//                  - RET restores correct PC, SP decrements
+//                  - Nested CALL/RET: two-deep stack verifies SP tracks correctly
+//                    throughout; inner/outer return addresses in adjacent slots
 //  Group 22  : DJNZ Rn,addr
 //  Group 23  : JZ / JNZ
 //  Group 24  : JC / JNC
@@ -47,7 +53,26 @@
 //  Group 31  : INS A,BUS              (newly added)
 //  Group 32  : SEL RB0 / SEL RB1  (register bank switch)
 //  Group 33  : RETR (interrupt return)
+//                  - RETR reads from correct RAM slot (pre-decrement SP)
+//                  - PSW[7:4] (including CY) restored from stack high byte
+//                  - SP decrements correctly after RETR
+//                  - irq_in_progress cleared
 //  Group 34  : Carry propagation through ADD chain
+//  Group 35  : Auxiliary Carry (AC / PSW[6]) — all six ADD/ADDC variants
+//                  AC=1 and AC=0 cases for each:
+//                  ADD A,#data / ADD A,Rn / ADD A,@Ri
+//                  ADDC A,#data / ADDC A,Rn / ADDC A,@Ri
+//  Group 36  : SEL MB1 / CALL — memory bank select + cross-bank fetch
+//                  - SEL MB1 sets mb_latch=1
+//                  - CALL loads pc[11]=mb_latch → target in upper 2K bank
+//                  - rom_addr_phys correctly uses pc[11:0] not {p2[3],pc[10:0]}
+//                  - IR fetches real opcode from bank 1, not NOP (0xFF/0x00)
+//                  - RET from bank 1 returns to bank 0 correctly
+//                  - SEL MB0 / CALL confirms bank 0 still reachable
+//  Group 37  : Timer interrupt re-fire after RETR (regression)
+//                  - timer_flag cleared on acknowledge, not sticky after ISR
+//                  - irq_in_progress stays 0 after RETR (no immediate re-entry)
+//                  - 3-deep call stack + timer ISR + RETR full scenario
 //
 //  USAGE
 //  -----
@@ -208,6 +233,57 @@ module i8048_core_tb;
             end else begin
                 $display("  FAIL [%0d] PC: expected %03h, got %03h (%0s)",
                          test_num, expected, pc, label);
+                fail_count = fail_count + 1;
+            end
+        end
+    endtask
+
+    // Check stack pointer (PSW[2:0])
+    task check_sp;
+        input [2:0] expected;
+        input [127:0] label;
+        begin
+            test_num = test_num + 1;
+            if (dut.psw[2:0] === expected) begin
+                $display("  PASS [%0d] SP=%0d (%0s)", test_num, dut.psw[2:0], label);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] SP: expected %0d, got %0d (%0s)",
+                         test_num, expected, dut.psw[2:0], label);
+                fail_count = fail_count + 1;
+            end
+        end
+    endtask
+
+    // Check PSW upper nibble (PSW[7:4] = {CY, AC, F0, BS})
+    task check_psw_hi;
+        input [3:0] expected;
+        input [127:0] label;
+        begin
+            test_num = test_num + 1;
+            if (dut.psw[7:4] === expected) begin
+                $display("  PASS [%0d] PSW[7:4]=%1h (%0s)", test_num, dut.psw[7:4], label);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] PSW[7:4]: expected %1h, got %1h (%0s)",
+                         test_num, expected, dut.psw[7:4], label);
+                fail_count = fail_count + 1;
+            end
+        end
+    endtask
+
+    // Check auxiliary carry (PSW[6])
+    task check_ac;
+        input expected;
+        input [127:0] label;
+        begin
+            test_num = test_num + 1;
+            if (dut.psw[6] === expected) begin
+                $display("  PASS [%0d] AC=%0b (%0s)", test_num, dut.psw[6], label);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] AC: expected %0b, got %0b (%0s)",
+                         test_num, expected, dut.psw[6], label);
                 fail_count = fail_count + 1;
             end
         end
@@ -589,11 +665,56 @@ module i8048_core_tb;
 
         // =====================================================================
         $display("\n--- Group 21: CALL / RET ---");
+        // ── Sub-test A: stack slot address verification ──────────────────────
+        // The previous test only checked the final PC, which masked the bug
+        // because old CALL+old RET were consistently off by one frame (errors
+        // cancelled).  We now explicitly check the RAM addresses used.
+        //
+        // After reset: SP=0 (psw[2:0]=0), PSW[7:4]=0x0, page=0
+        // CALL 0x020 from 0x000: next_pc=0x002
+        //   Correct:  writes to {SP,   1'b0}+8 = {0,0}+8 = 0x08  (low byte)
+        //                        {SP,   1'b1}+8 = {0,1}+8 = 0x09  (high byte)
+        //   Buggy:    writes to {SP+1, 1'b0}+8 = {1,0}+8 = 0x0A  (wrong!)
         fill_nop(); hard_reset();
-        rom[0] = 8'h14; rom[1] = 8'h20;  // CALL 0x020
-        rom[12'h20] = 8'h83;                // RET
-        clock_cycles(2); check_pc(12'h020, "CALL jumps to 0x020");
-        clock_cycles(2); check_pc(12'h002, "RET returns to 0x002");
+        rom[0]       = 8'h14; rom[1]      = 8'h20;  // CALL 0x020
+        rom[12'h20]  = 8'h83;                         // RET
+        clock_cycles(2);
+        check_pc(12'h020, "CALL: PC jumps to target 0x020");
+        check_sp(3'h1,    "CALL: SP incremented from 0 to 1");
+        check_ram(7'h08, 8'h02, "CALL: low  byte of return addr at RAM[0x08]");
+        check_ram(7'h09, 8'h00, "CALL: high byte of return addr at RAM[0x09]");
+        clock_cycles(2);
+        check_pc(12'h002, "RET: returns to correct address 0x002");
+        check_sp(3'h0,    "RET: SP decremented back to 0");
+
+        // ── Sub-test B: nested CALL / RET ────────────────────────────────────
+        // Two-deep call stack exercises both SP increment slots.
+        // ROM layout:
+        //   0x000: CALL 0x040  → return addr = 0x002, slot 0: RAM[0x08/0x09]
+        //   0x040: CALL 0x060  → return addr = 0x042, slot 1: RAM[0x0A/0x0B]
+        //   0x060: RET         → should return to 0x042 (reads slot 1)
+        //   0x042: RET         → should return to 0x002 (reads slot 0)
+        fill_nop(); hard_reset();
+        rom[0]       = 8'h14; rom[1]      = 8'h40;  // CALL 0x040
+        rom[12'h40]  = 8'h14; rom[12'h41] = 8'h60;  // CALL 0x060
+        rom[12'h60]  = 8'h83;                         // RET  (inner)
+        rom[12'h42]  = 8'h83;                         // RET  (outer)
+        clock_cycles(2);
+        check_pc(12'h040, "Nested: outer CALL jumps to 0x040");
+        check_sp(3'h1,    "Nested: SP=1 after outer CALL");
+        check_ram(7'h08, 8'h02, "Nested: outer return addr low  at RAM[0x08]");
+        check_ram(7'h09, 8'h00, "Nested: outer return addr high at RAM[0x09]");
+        clock_cycles(2);
+        check_pc(12'h060, "Nested: inner CALL jumps to 0x060");
+        check_sp(3'h2,    "Nested: SP=2 after inner CALL");
+        check_ram(7'h0A, 8'h42, "Nested: inner return addr low  at RAM[0x0A]");
+        check_ram(7'h0B, 8'h00, "Nested: inner return addr high at RAM[0x0B]");
+        clock_cycles(2);
+        check_pc(12'h042, "Nested: inner RET returns to 0x042");
+        check_sp(3'h1,    "Nested: SP=1 after inner RET");
+        clock_cycles(2);
+        check_pc(12'h002, "Nested: outer RET returns to 0x002");
+        check_sp(3'h0,    "Nested: SP=0 after outer RET");
 
         // =====================================================================
         $display("\n--- Group 22: DJNZ Rn,addr ---");
@@ -765,12 +886,62 @@ module i8048_core_tb;
 
         // =====================================================================
         $display("\n--- Group 33: RETR ---");
+        // ── Sub-test A: stack slot, PSW restoration, SP tracking ─────────────
+        // Like Group 21, the old test only checked the final PC.  The stack
+        // address bug in RETR (reading from SP instead of SP-1) also cancelled
+        // with the CALL bug, so it went undetected.
+        //
+        // We now:
+        //   1. Establish a known PSW[7:4] before the CALL (CY=1 via ADD overflow)
+        //   2. Check the RAM slot written by CALL
+        //   3. Modify PSW inside the subroutine (CLR C → CY=0)
+        //   4. Execute RETR and verify:
+        //      - PC restored to correct return address
+        //      - SP decremented back to 0
+        //      - CY restored to 1 (PSW[7:4] read from correct stack slot)
+        //      - irq_in_progress cleared
+        //
+        // ROM layout:
+        //   0x000: MOV A,#0xFF
+        //   0x002: ADD A,#0x01  → CY=1, AC=1  (PSW[7:4] = 4'hC = {CY=1,AC=1,F0=0,BS=0})
+        //   0x004: CALL 0x030   → return addr = 0x006
+        //            CALL stores {psw[7:4]=0xC, page=0x0} → RAM[0x09]=0xC0
+        //            low byte 0x06 → RAM[0x08]=0x06,  SP: 0→1
+        //   0x030: CLR C        → CY=0 (verifies RETR must restore it from stack)
+        //   0x031: RETR         → restores PC=0x006, PSW[7:4]=0xC (CY=1), SP→0
         fill_nop(); hard_reset();
-        // Use CALL to simulate entering an ISR, then RETR to return
-        rom[0] = 8'h14; rom[1] = 8'h30;  // CALL 0x030
-        rom[12'h30] = 8'h93;                // RETR
-        clock_cycles(2); check_pc(12'h030, "CALL before RETR test");
-        clock_cycles(2); check_pc(12'h002, "RETR returns to 0x002");
+        rom[0]       = 8'h23; rom[1]      = 8'hFF;  // MOV A,#0xFF
+        rom[2]       = 8'h03; rom[3]      = 8'h01;  // ADD A,#0x01 → CY=1, AC=1
+        rom[4]       = 8'h14; rom[5]      = 8'h30;  // CALL 0x030  (return=0x006)
+        rom[12'h30]  = 8'h97;                         // CLR C  (CY→0 in subroutine)
+        rom[12'h31]  = 8'h93;                         // RETR
+        clock_cycles(2);                              // MOV A,#0xFF
+        clock_cycles(2);                              // ADD A,#0x01
+        check_carry(1'b1, "RETR setup: CY=1 before CALL");
+        clock_cycles(2);                              // CALL 0x030
+        check_pc(12'h030, "RETR: CALL reaches subroutine 0x030");
+        check_sp(3'h1,    "RETR: SP=1 after CALL");
+        check_ram(7'h08, 8'h06, "RETR: low  byte of return addr at RAM[0x08]");
+        check_ram(7'h09, 8'hC0, "RETR: high byte {PSW[7:4]=0xC,page=0} at RAM[0x09]");
+        clock_cycles(1);                              // CLR C
+        check_carry(1'b0, "RETR: CY=0 after CLR C inside subroutine");
+        clock_cycles(2);                              // RETR
+        check_pc(12'h006, "RETR: PC restored to return address 0x006");
+        check_sp(3'h0,    "RETR: SP decremented back to 0");
+        check_carry(1'b1, "RETR: CY restored to 1 from stack (PSW[7:4] roundtrip)");
+        check_psw_hi(4'hC, "RETR: full PSW[7:4] = 0xC {CY=1,AC=1,F0=0,BS=0} restored");
+        // irq_in_progress must be cleared by RETR regardless of how it was entered
+        begin : retr_irq_check
+            test_num = test_num + 1;
+            if (dut.irq_in_progress === 1'b0) begin
+                $display("  PASS [%0d] irq_in_progress=0 after RETR", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] irq_in_progress: expected 0, got %0b",
+                         test_num, dut.irq_in_progress);
+                fail_count = fail_count + 1;
+            end
+        end
 
         // =====================================================================
         $display("\n--- Group 34: Carry chain (multi-byte add) ---");
@@ -790,7 +961,697 @@ module i8048_core_tb;
         check_carry(1'b0, "No carry out of high byte");
 
         // =====================================================================
-        // FINAL SUMMARY
+        $display("\n--- Group 35: Auxiliary Carry (AC) — all ADD/ADDC variants ---");
+        // AC (PSW[6]) was broken in all 6 variants: the 4-bit nibble sum was
+        // compared against 4'hF, which a 4-bit value can NEVER exceed, so AC
+        // was permanently 0.  These tests catch that regression explicitly.
+        //
+        // Strategy: for each variant test BOTH cases —
+        //   AC=1: lower nibble sum > 0xF  (carry out of bit 3)
+        //   AC=0: lower nibble sum ≤ 0xF  (no carry)
+        //
+        // All 6 variants run sequentially in one ROM layout; no reset needed
+        // between sub-tests since AC is overwritten by each new ADD/ADDC.
+        //
+        // ROM byte layout (compact, no gaps — NOP fill means CPU streams through):
+        //
+        //  0x000  MOV A,#0x0F          2B  ─┐ ADD A,#data AC=1: 0xF+1=0x10
+        //  0x002  ADD A,#0x01          2B  ─┘
+        //  0x004  MOV A,#0x10          2B  ─┐ ADD A,#data AC=0: 0x0+1=0x01
+        //  0x006  ADD A,#0x01          2B  ─┘
+        //  0x008  MOV A,#0x09          2B  ─┐
+        //  0x00A  MOV R0,#0x09         2B   │ ADD A,Rn AC=1: 9+9=18
+        //  0x00C  ADD A,R0             1B  ─┘
+        //  0x00D  MOV A,#0x10          2B  ─┐
+        //  0x00F  MOV R0,#0x10         2B   │ ADD A,Rn AC=0: 0+0=0
+        //  0x011  ADD A,R0             1B  ─┘
+        //  0x012  MOV R0,#0x20         2B  ─┐
+        //  0x014  MOV @R0,#0x08        2B   │ ADD A,@Ri AC=1: 9+8=17
+        //  0x016  MOV A,#0x09          2B   │
+        //  0x018  ADD A,@R0            1B  ─┘
+        //  0x019  MOV @R0,#0x01        2B  ─┐ ADD A,@Ri AC=0: 2+1=3
+        //  0x01B  MOV A,#0x02          2B   │
+        //  0x01D  ADD A,@R0            1B  ─┘
+        //  0x01E  MOV A,#0xFF          2B  ─┐ set CY=1 for ADDC tests
+        //  0x020  ADD A,#0x01          2B  ─┘ CY=1, A=0x00
+        //  0x022  MOV A,#0x0F          2B  ─┐ ADDC A,#data AC=1: F+0+1=0x10
+        //  0x024  ADDC A,#0x00         2B  ─┘
+        //  0x026  CLR C                1B    clear CY
+        //  0x027  MOV A,#0x01          2B  ─┐ ADDC A,#data AC=0: 1+1+0=2
+        //  0x029  ADDC A,#0x01         2B  ─┘
+        //  0x02B  MOV A,#0xFF          2B  ─┐ set CY=1
+        //  0x02D  ADD A,#0x01          2B  ─┘
+        //  0x02F  MOV A,#0x09          2B  ─┐
+        //  0x031  MOV R2,#0x07         2B   │ ADDC A,Rn AC=1: 9+7+1=17
+        //  0x033  ADDC A,R2            1B  ─┘
+        //  0x034  CLR C                1B
+        //  0x035  MOV A,#0x01          2B  ─┐ ADDC A,Rn AC=0: 1+2+0=3
+        //  0x037  MOV R2,#0x02         2B   │
+        //  0x039  ADDC A,R2            1B  ─┘
+        //  0x03A  MOV A,#0xFF          2B  ─┐ set CY=1
+        //  0x03C  ADD A,#0x01          2B  ─┘
+        //  0x03E  MOV R0,#0x30         2B  ─┐
+        //  0x040  MOV @R0,#0x07        2B   │ ADDC A,@Ri AC=1: 9+7+1=17
+        //  0x042  MOV A,#0x09          2B   │
+        //  0x044  ADDC A,@R0           1B  ─┘
+        //  0x045  CLR C                1B
+        //  0x046  MOV @R0,#0x01        2B  ─┐ ADDC A,@Ri AC=0: 2+1+0=3
+        //  0x048  MOV A,#0x02          2B   │
+        //  0x04A  ADDC A,@R0           1B  ─┘
+        fill_nop(); hard_reset();
+        // ADD A,#data
+        rom[12'h000]=8'h23; rom[12'h001]=8'h0F;  // MOV A,#0x0F
+        rom[12'h002]=8'h03; rom[12'h003]=8'h01;  // ADD A,#0x01 → AC=1
+        rom[12'h004]=8'h23; rom[12'h005]=8'h10;  // MOV A,#0x10
+        rom[12'h006]=8'h03; rom[12'h007]=8'h01;  // ADD A,#0x01 → AC=0
+        // ADD A,Rn
+        rom[12'h008]=8'h23; rom[12'h009]=8'h09;  // MOV A,#0x09
+        rom[12'h00A]=8'hB8; rom[12'h00B]=8'h09;  // MOV R0,#0x09
+        rom[12'h00C]=8'h68;                        // ADD A,R0   → AC=1
+        rom[12'h00D]=8'h23; rom[12'h00E]=8'h10;  // MOV A,#0x10
+        rom[12'h00F]=8'hB8; rom[12'h010]=8'h10;  // MOV R0,#0x10
+        rom[12'h011]=8'h68;                        // ADD A,R0   → AC=0
+        // ADD A,@Ri
+        rom[12'h012]=8'hB8; rom[12'h013]=8'h20;  // MOV R0,#0x20
+        rom[12'h014]=8'hB0; rom[12'h015]=8'h08;  // MOV @R0,#0x08
+        rom[12'h016]=8'h23; rom[12'h017]=8'h09;  // MOV A,#0x09
+        rom[12'h018]=8'h60;                        // ADD A,@R0  → AC=1
+        rom[12'h019]=8'hB0; rom[12'h01A]=8'h01;  // MOV @R0,#0x01
+        rom[12'h01B]=8'h23; rom[12'h01C]=8'h02;  // MOV A,#0x02
+        rom[12'h01D]=8'h60;                        // ADD A,@R0  → AC=0
+        // ADDC A,#data  (CY=1 set by ADD 0xFF+0x01)
+        rom[12'h01E]=8'h23; rom[12'h01F]=8'hFF;  // MOV A,#0xFF
+        rom[12'h020]=8'h03; rom[12'h021]=8'h01;  // ADD A,#0x01 → CY=1
+        rom[12'h022]=8'h23; rom[12'h023]=8'h0F;  // MOV A,#0x0F
+        rom[12'h024]=8'h13; rom[12'h025]=8'h00;  // ADDC A,#0x00 → AC=1
+        rom[12'h026]=8'h97;                        // CLR C
+        rom[12'h027]=8'h23; rom[12'h028]=8'h01;  // MOV A,#0x01
+        rom[12'h029]=8'h13; rom[12'h02A]=8'h01;  // ADDC A,#0x01 → AC=0
+        // ADDC A,Rn
+        rom[12'h02B]=8'h23; rom[12'h02C]=8'hFF;  // MOV A,#0xFF
+        rom[12'h02D]=8'h03; rom[12'h02E]=8'h01;  // ADD A,#0x01 → CY=1
+        rom[12'h02F]=8'h23; rom[12'h030]=8'h09;  // MOV A,#0x09
+        rom[12'h031]=8'hBA; rom[12'h032]=8'h07;  // MOV R2,#0x07
+        rom[12'h033]=8'h7A;                        // ADDC A,R2  → AC=1
+        rom[12'h034]=8'h97;                        // CLR C
+        rom[12'h035]=8'h23; rom[12'h036]=8'h01;  // MOV A,#0x01
+        rom[12'h037]=8'hBA; rom[12'h038]=8'h02;  // MOV R2,#0x02
+        rom[12'h039]=8'h7A;                        // ADDC A,R2  → AC=0
+        // ADDC A,@Ri
+        rom[12'h03A]=8'h23; rom[12'h03B]=8'hFF;  // MOV A,#0xFF
+        rom[12'h03C]=8'h03; rom[12'h03D]=8'h01;  // ADD A,#0x01 → CY=1
+        rom[12'h03E]=8'hB8; rom[12'h03F]=8'h30;  // MOV R0,#0x30
+        rom[12'h040]=8'hB0; rom[12'h041]=8'h07;  // MOV @R0,#0x07
+        rom[12'h042]=8'h23; rom[12'h043]=8'h09;  // MOV A,#0x09
+        rom[12'h044]=8'h70;                        // ADDC A,@R0 → AC=1
+        rom[12'h045]=8'h97;                        // CLR C
+        rom[12'h046]=8'hB0; rom[12'h047]=8'h01;  // MOV @R0,#0x01
+        rom[12'h048]=8'h23; rom[12'h049]=8'h02;  // MOV A,#0x02
+        rom[12'h04A]=8'h70;                        // ADDC A,@R0 → AC=0
+
+        // ── ADD A,#data ──────────────────────────────────────────
+        clock_cycles(2);                  // MOV A,#0x0F
+        clock_cycles(2); check_ac(1'b1, "ADD A,#data: 0x0F+0x01 lower=0x10 → AC=1");
+        clock_cycles(2);                  // MOV A,#0x10
+        clock_cycles(2); check_ac(1'b0, "ADD A,#data: 0x10+0x01 lower=0x01 → AC=0");
+        // ── ADD A,Rn ─────────────────────────────────────────────
+        clock_cycles(2);                  // MOV A,#0x09
+        clock_cycles(2);                  // MOV R0,#0x09
+        clock_cycles(1); check_ac(1'b1, "ADD A,Rn: 0x09+0x09 lower=0x12 → AC=1");
+        clock_cycles(2);                  // MOV A,#0x10
+        clock_cycles(2);                  // MOV R0,#0x10
+        clock_cycles(1); check_ac(1'b0, "ADD A,Rn: 0x10+0x10 lower=0x00 → AC=0");
+        // ── ADD A,@Ri ────────────────────────────────────────────
+        clock_cycles(2);                  // MOV R0,#0x20
+        clock_cycles(2);                  // MOV @R0,#0x08
+        clock_cycles(2);                  // MOV A,#0x09
+        clock_cycles(1); check_ac(1'b1, "ADD A,@Ri: 0x09+0x08 lower=0x11 → AC=1");
+        clock_cycles(2);                  // MOV @R0,#0x01
+        clock_cycles(2);                  // MOV A,#0x02
+        clock_cycles(1); check_ac(1'b0, "ADD A,@Ri: 0x02+0x01 lower=0x03 → AC=0");
+        // ── ADDC A,#data ─────────────────────────────────────────
+        clock_cycles(2);                  // MOV A,#0xFF
+        clock_cycles(2);                  // ADD A,#0x01 → CY=1
+        clock_cycles(2);                  // MOV A,#0x0F
+        clock_cycles(2); check_ac(1'b1, "ADDC A,#data: 0x0F+0x00+CY1 lower=0x10 → AC=1");
+        clock_cycles(1);                  // CLR C
+        clock_cycles(2);                  // MOV A,#0x01
+        clock_cycles(2); check_ac(1'b0, "ADDC A,#data: 0x01+0x01+CY0 lower=0x02 → AC=0");
+        // ── ADDC A,Rn ────────────────────────────────────────────
+        clock_cycles(2);                  // MOV A,#0xFF
+        clock_cycles(2);                  // ADD A,#0x01 → CY=1
+        clock_cycles(2);                  // MOV A,#0x09
+        clock_cycles(2);                  // MOV R2,#0x07
+        clock_cycles(1); check_ac(1'b1, "ADDC A,Rn: 0x09+0x07+CY1 lower=0x11 → AC=1");
+        clock_cycles(1);                  // CLR C
+        clock_cycles(2);                  // MOV A,#0x01
+        clock_cycles(2);                  // MOV R2,#0x02
+        clock_cycles(1); check_ac(1'b0, "ADDC A,Rn: 0x01+0x02+CY0 lower=0x03 → AC=0");
+        // ── ADDC A,@Ri ───────────────────────────────────────────
+        clock_cycles(2);                  // MOV A,#0xFF
+        clock_cycles(2);                  // ADD A,#0x01 → CY=1
+        clock_cycles(2);                  // MOV R0,#0x30
+        clock_cycles(2);                  // MOV @R0,#0x07
+        clock_cycles(2);                  // MOV A,#0x09
+        clock_cycles(1); check_ac(1'b1, "ADDC A,@Ri: 0x09+0x07+CY1 lower=0x11 → AC=1");
+        clock_cycles(1);                  // CLR C
+        clock_cycles(2);                  // MOV @R0,#0x01
+        clock_cycles(2);                  // MOV A,#0x02
+        clock_cycles(1); check_ac(1'b0, "ADDC A,@Ri: 0x02+0x01+CY0 lower=0x03 → AC=0");
+
+        // =====================================================================
+        $display("\n--- Group 36: SEL MB1 / CALL — cross-bank fetch ---");
+        // This tests the bug where rom_addr_phys used {p2[3], pc[10:0]}
+        // instead of pc[11:0].  After SEL MB1 + CALL, pc[11]=1 but p2[3]=0,
+        // so the old code addressed bank 0 and fetched 0xFF (NOP) instead of
+        // the real opcode in bank 1.
+        //
+        // ROM layout:
+        //   Bank 0 (0x000–0x7FF):
+        //     0x000: MOV A,#0x55        load known sentinel into A
+        //     0x002: SEL MB1            mb_latch → 1
+        //     0x003: CALL 0x010         → pc = {1, 0, 0x10} = 0x810  (bank 1)
+        //     0x005: MOV A,#0xAA        return lands here (check A=0xBB from bank1)
+        //
+        //   Bank 1 (0x800–0xFFF):
+        //     0x810: MOV A,#0xBB        proof we fetched from bank 1 (not NOP)
+        //     0x812: SEL MB0            switch back to bank 0 before RET
+        //     0x813: RET                return to 0x005 in bank 0
+        //
+        // If the old bug is present: pc jumps to 0x810 but rom_addr_phys
+        // addresses 0x010 (bank 0), fetches NOP, A stays 0x55.
+        // With fix: A becomes 0xBB, confirming bank 1 was reached.
+        fill_nop(); hard_reset();
+        // Bank 0
+        rom[12'h000] = 8'h23; rom[12'h001] = 8'h55;  // MOV A,#0x55
+        rom[12'h002] = 8'hF5;                          // SEL MB1
+        rom[12'h003] = 8'h14; rom[12'h004] = 8'h10;  // CALL 0x010 (→ 0x810)
+        rom[12'h005] = 8'h23; rom[12'h006] = 8'hAA;  // MOV A,#0xAA (should not run)
+        // Bank 1
+        rom[12'h810] = 8'h23; rom[12'h811] = 8'hBB;  // MOV A,#0xBB
+        rom[12'h812] = 8'hE5;                          // SEL MB0
+        rom[12'h813] = 8'h83;                          // RET → back to 0x005
+
+        clock_cycles(2);                               // MOV A,#0x55
+        check_acc(8'h55, "MB1/CALL setup: A=0x55 before SEL MB1");
+        clock_cycles(1);                               // SEL MB1
+        clock_cycles(2);                               // CALL 0x010 → 0x810
+        check_pc(12'h810, "MB1/CALL: PC=0x810 (bank 1 target)");
+        clock_cycles(2);                               // MOV A,#0xBB  in bank 1
+        check_acc(8'hBB, "MB1/CALL: A=0xBB — real bank-1 opcode fetched (not NOP)");
+        clock_cycles(1);                               // SEL MB0
+        clock_cycles(2);                               // RET → 0x005
+        check_pc(12'h005, "MB1/CALL: RET returns to bank-0 address 0x005");
+
+        // ── SEL MB0 / CALL confirms bank 0 still reachable ──────────────────
+        // After the RET above we are at 0x005 in bank 0.
+        // Re-run with SEL MB0 explicitly to confirm mb_latch=0 keeps us in bank 0.
+        fill_nop(); hard_reset();
+        rom[12'h000] = 8'hE5;                          // SEL MB0  (mb_latch → 0)
+        rom[12'h001] = 8'h14; rom[12'h002] = 8'h20;  // CALL 0x020 → 0x020 (bank 0)
+        rom[12'h020] = 8'h23; rom[12'h021] = 8'hCC;  // MOV A,#0xCC
+        rom[12'h022] = 8'h83;                          // RET → 0x003
+
+        clock_cycles(1);                               // SEL MB0
+        clock_cycles(2);                               // CALL 0x020
+        check_pc(12'h020, "MB0/CALL: PC=0x020 (stays in bank 0)");
+        clock_cycles(2);                               // MOV A,#0xCC
+        check_acc(8'hCC, "MB0/CALL: A=0xCC — bank-0 fetch correct");
+        clock_cycles(2);                               // RET → 0x003
+        check_pc(12'h003, "MB0/CALL: RET returns to 0x003 in bank 0");
+
+        // =====================================================================
+        $display("\n--- Group 37: Timer interrupt re-fire after RETR (regression) ---");
+        // Regression for: timer_flag not cleared on acknowledge.
+        // Symptom: after RETR, irq_in_progress=0 and timer_flag still=1,
+        // so the ISR fires again immediately on every subsequent instruction.
+        //
+        // Scenario: 3 nested CALLs on the stack, timer interrupt fires,
+        // ISR executes RETR.  After RETR the interrupted code resumes and
+        // executes a RET — this RET must complete normally.  irq_in_progress
+        // must stay 0 and the ISR must NOT re-enter.
+        //
+        // ROM layout:
+        //   0x000: EN TCNTI          enable timer interrupts
+        //   0x001: MOV A,#0xFD       load timer near overflow
+        //   0x003: MOV T,A
+        //   0x004: STRT T            start timer
+        //   0x005: CALL 0x040        call1 → SP:0→1, return=0x007
+        //   0x007: NOP (never reached during test)
+        //
+        //   0x040: CALL 0x060        call2 → SP:1→2, return=0x042
+        //   0x042: RET               returns to 0x007 — the "interrupted code RET"
+        //
+        //   0x060: CALL 0x080        call3 → SP:2→3, return=0x062
+        //   0x062: RET               (not reached in this test path)
+        //
+        //   0x080: NOP loop          spin here — interrupt fires during this NOP
+        //   0x081: JMP 0x080
+        //
+        //   ISR vector 0x007: (timer ISR)
+        //   0x007: MOV A,#0xEE       sentinel — proves ISR ran
+        //   0x009: RETR              return from ISR
+        //
+        // Expected sequence:
+        //   1. timer overflows while CPU spins at 0x080 (SP=3)
+        //   2. service_interrupt: push 0x080 at slot 3, SP→4, pc→0x007
+        //      timer_flag CLEARED on acknowledge (the fix)
+        //   3. ISR: MOV A,#0xEE, then RETR
+        //   4. RETR: SP→3, pc→0x080, irq_in_progress→0
+        //   5. CPU resumes at 0x080, executes NOP, JMP back — no re-interrupt
+        //   6. After a few cycles, force test exit by checking irq_in_progress
+        //      stays 0 and timer_flag stays 0
+        //
+        // Old (buggy) behaviour: timer_flag still=1 after RETR, ISR re-fires
+        // at step 5, irq_in_progress goes back to 1.
+        fill_nop(); hard_reset();
+        // Main code
+        rom[12'h000] = 8'h25;                          // EN TCNTI
+        rom[12'h001] = 8'h23; rom[12'h002] = 8'hFD;  // MOV A,#0xFD (3 ticks to overflow)
+        rom[12'h003] = 8'h62;                          // MOV T,A
+        rom[12'h004] = 8'h55;                          // STRT T
+        rom[12'h005] = 8'h14; rom[12'h006] = 8'h40;  // CALL 0x040 → SP:0→1
+        rom[12'h007] = 8'h00;                          // NOP (return landing pad)
+        // call chain
+        rom[12'h040] = 8'h14; rom[12'h041] = 8'h60;  // CALL 0x060 → SP:1→2
+        rom[12'h042] = 8'h83;                          // RET → back to 0x007
+        rom[12'h060] = 8'h14; rom[12'h061] = 8'h80;  // CALL 0x080 → SP:2→3
+        rom[12'h062] = 8'h83;                          // RET (not reached in this path)
+        // spin loop — interrupt fires here
+        rom[12'h080] = 8'h00;                          // NOP
+        rom[12'h081] = 8'h04; rom[12'h082] = 8'h80;  // JMP 0x080
+        // Timer ISR at vector 0x007 — NOTE: overlaps with main NOP at 0x007.
+        // For this test we point the ISR at 0x100 and patch the vector indirectly
+        // by placing the ISR at 0x007 (timer vector IS 0x007 on 8049).
+        // Reuse 0x007 as ISR: MOV A,#0xEE, RETR
+        rom[12'h007] = 8'h23; rom[12'h008] = 8'hEE;  // MOV A,#0xEE (ISR sentinel)
+        rom[12'h009] = 8'h93;                          // RETR
+
+        // Run EN TCNTI + MOV A + MOV T + STRT T + CALL 0x040 + CALL 0x060 + CALL 0x080
+        clock_cycles(1);  // EN TCNTI
+        clock_cycles(2);  // MOV A,#0xFD
+        clock_cycles(1);  // MOV T,A
+        clock_cycles(1);  // STRT T
+        clock_cycles(2);  // CALL 0x040 → SP=1
+        clock_cycles(2);  // CALL 0x060 → SP=2
+        clock_cycles(2);  // CALL 0x080 → SP=3
+        // Note: check SP=3 rather than exact PC since the CPU may be at
+        // 0x080 (NOP) or 0x081 (JMP) depending on where in the spin loop
+        // we sample — SP=3 is the invariant that confirms call depth.
+        check_sp(3'h3,    "TIMER-REFIRE: SP=3 (3 calls deep) before interrupt");
+
+        // Wait for timer overflow → ISR entry
+        begin : wait_timer_irq
+            integer t;
+            t = 0;
+            while (!dut.irq_in_progress && t < 500) begin
+                @(posedge clk); #1;
+                t = t + 1;
+            end
+        end
+        check_sp(3'h4,    "TIMER-REFIRE: SP=4 after interrupt push");
+
+        // Verify timer_flag was cleared on acknowledge (the fix)
+        begin : check_tflag
+            test_num = test_num + 1;
+            if (dut.timer_flag === 1'b0) begin
+                $display("  PASS [%0d] timer_flag=0 after acknowledge (not re-fired)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] timer_flag=1 after acknowledge — will re-fire after RETR", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Run ISR: MOV A,#0xEE
+        clock_cycles(2);
+        check_acc(8'hEE,  "TIMER-REFIRE: ISR ran — A=0xEE sentinel");
+
+        // RETR
+        clock_cycles(2);
+        check_sp(3'h3,    "TIMER-REFIRE: SP=3 after RETR");
+        check_pc(12'h080, "TIMER-REFIRE: RETR returned to 0x080 (interrupted instruction per 8049 spec)");
+
+        // Run the NOP at 0x080 that was interrupted — now executes after RETR
+        clock_cycles(1);  // NOP at 0x080
+        begin : check_no_refire
+            test_num = test_num + 1;
+            if (dut.irq_in_progress === 1'b0) begin
+                $display("  PASS [%0d] irq_in_progress=0 after RETR — ISR did not re-fire", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] irq_in_progress=1 after RETR — ISR re-fired (timer_flag not cleared)", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+        // =====================================================================
+        $display("\n--- Group 38: Multiple interrupt scenarios ---");
+        // Three sub-tests:
+        // A: timer_flag sticky — old carry-out bug cleared flag after 1 ALE cycle.
+        // B: Timer pending during external ISR (DIS I) — must fire after RETR.
+        // C: ext IRQ -> timer IRQ -> ext IRQ sequence.
+        //
+        // ROM layout (avoids ISR vector address conflicts):
+        //   0x000: JMP 0x009      skip vectors
+        //   0x003: JMP 0x040      ext ISR vector
+        //   0x007: JMP 0x060      timer ISR vector
+        //   0x009: EN I/TCNTI/setup/spin at 0x00F
+        //   0x040: MOV A,#0xAA / DIS I / RETR
+        //   0x060: MOV A,#0x55 / RETR
+
+        // Sub-test A: timer_flag sticky
+        $display("\n  Sub-test A: timer_flag held across multiple ALE cycles");
+        fill_nop(); hard_reset();
+        rom[12'h000] = 8'h23; rom[12'h001] = 8'hFF;
+        rom[12'h002] = 8'h62;
+        rom[12'h003] = 8'h55;
+        clock_cycles(2); clock_cycles(1); clock_cycles(1);
+        begin : wait_ovf_a
+            // Timer at 0xFF: 1 tick × 32 ALE × 5 clks/ALE = 160 clks min; use 300
+            integer w; for (w = 0; w < 300; w = w+1) @(posedge clk);
+        end
+        begin : chk_sticky1
+            test_num = test_num + 1;
+            if (dut.timer_flag === 1'b1) begin
+                $display("  PASS [%0d] timer_flag=1 after overflow (sticky)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] timer_flag=0 — cleared prematurely", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+        begin : wait_64
+            integer w; for (w = 0; w < 64; w = w+1) @(posedge clk);
+        end
+        begin : chk_sticky2
+            test_num = test_num + 1;
+            if (dut.timer_flag === 1'b1) begin
+                $display("  PASS [%0d] timer_flag still=1 after 64 more cycles (not a pulse)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] timer_flag=0 — was only a 1-cycle pulse", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Sub-test B: timer pending during external ISR with DIS I
+        //
+        // Key insight: can't mix free-running @(posedge clk) waits with
+        // clock_cycles() instruction steps — the wait lets the DUT freely
+        // execute instructions we then try to re-step.
+        //
+        // Strategy: overflow the timer FIRST (no interrupts enabled), verify
+        // timer_flag is sticky, THEN enable interrupts and force ext IRQ,
+        // THEN step through ext ISR instruction-by-instruction, THEN check
+        // timer fires after RETR.
+        $display("\n  Sub-test B: timer fires after external ISR (DIS I inside ISR)");
+        fill_nop(); hard_reset();
+        // Vectors
+        rom[12'h003] = 8'h04; rom[12'h004] = 8'h40;  // ext vector JMP 0x040
+        rom[12'h007] = 8'h04; rom[12'h008] = 8'h60;  // timer vector JMP 0x060
+        // Ext ISR body: MOV A,#0xAA / DIS I / RETR
+        rom[12'h040] = 8'h23; rom[12'h041] = 8'hAA;
+        rom[12'h042] = 8'h15;
+        rom[12'h043] = 8'h93;
+        // Timer ISR body: MOV A,#0x55 / RETR
+        rom[12'h060] = 8'h23; rom[12'h061] = 8'h55;
+        rom[12'h062] = 8'h93;
+        // Main at 0x000: load timer to 0xFF (1 tick to overflow), start it,
+        // then spin — NO EN I / EN TCNTI yet so ISR can't fire during overflow
+        rom[12'h000] = 8'h23; rom[12'h001] = 8'hFF;  // MOV A,#0xFF (1 tick)
+        rom[12'h002] = 8'h62;                          // MOV T,A
+        // 0x003 = ext vector — JMP 0x040. Main continues past it:
+        // Actually 0x003 is now a JMP opcode. Main falls into it, but that's
+        // fine — main jumps to 0x040 which is the ext ISR body (NOP-filled
+        // initially but we set it). We need main to NOT hit 0x003.
+        // Restructure: put timer setup at 0x000, JMP to spin past vectors.
+        fill_nop(); hard_reset();
+        // Vectors
+        rom[12'h003] = 8'h04; rom[12'h004] = 8'h40;  // ext vector
+        rom[12'h007] = 8'h04; rom[12'h008] = 8'h60;  // timer vector
+        // ISR bodies
+        rom[12'h040] = 8'h23; rom[12'h041] = 8'hAA;
+        rom[12'h042] = 8'h15;
+        rom[12'h043] = 8'h93;
+        rom[12'h060] = 8'h23; rom[12'h061] = 8'h55;
+        rom[12'h062] = 8'h93;
+        // Main: JMP past vectors to 0x009, then setup
+        rom[12'h000] = 8'h04; rom[12'h001] = 8'h09;  // JMP 0x009
+        rom[12'h009] = 8'h23; rom[12'h00A] = 8'hFF;  // MOV A,#0xFF (1 tick to overflow)
+        rom[12'h00B] = 8'h62;                          // MOV T,A
+        rom[12'h00C] = 8'h55;                          // STRT T
+        // Spin — interrupts NOT yet enabled
+        rom[12'h00D] = 8'h00;                          // NOP spin
+        rom[12'h00E] = 8'h04; rom[12'h00F] = 8'h0D;  // JMP 0x00D
+
+        // Step through setup
+        clock_cycles(2); check_pc(12'h009, "MultiIRQ-B: at setup 0x009");
+        clock_cycles(2);  // MOV A,#0xFF
+        clock_cycles(1);  // MOV T,A
+        clock_cycles(1);  // STRT T
+
+        // Wait for timer to overflow — poll timer_flag in a tight loop
+        // No ISR can fire (EN TCNTI not called yet)
+        begin : wait_tmr_ovf_b
+            integer t; t = 0;
+            while (dut.timer_flag !== 1'b1 && t < 1000) begin @(posedge clk); #1; t=t+1; end
+        end
+        begin : chk_tmr_pend
+            test_num = test_num + 1;
+            if (dut.timer_flag === 1'b1) begin
+                $display("  PASS [%0d] timer_flag=1 after overflow (sticky, no ISR yet)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] timer_flag=0 — not sticky", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Now enable interrupts and force external IRQ
+        // timer_flag is already set and will stay set while ext ISR runs
+        force dut.irq_en_ext   = 1'b1;
+        force dut.irq_en_timer = 1'b1;
+        @(posedge clk); #1;
+        release dut.irq_en_ext;
+        release dut.irq_en_timer;
+        force dut.int_n = 1'b0;
+
+        // Wait for ext interrupt entry
+        begin : wait_ext_b
+            integer t; t = 0;
+            while (!dut.irq_in_progress && t < 200) begin @(posedge clk); #1; t=t+1; end
+        end
+        clock_cycles(2);  // JMP at 0x003 → 0x040
+        check_pc(12'h040, "MultiIRQ-B: ext ISR entered 0x040");
+        release dut.int_n;
+
+        // Verify timer_flag still set while ext ISR is running
+        begin : chk_flag_in_isr
+            test_num = test_num + 1;
+            if (dut.timer_flag === 1'b1) begin
+                $display("  PASS [%0d] timer_flag=1 while ext ISR running (sticky)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] timer_flag=0 in ext ISR — flag cleared prematurely", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Step through ext ISR instruction by instruction
+        clock_cycles(2); check_acc(8'hAA, "MultiIRQ-B: ext ISR A=0xAA");
+        clock_cycles(1);  // DIS I
+        clock_cycles(2);  // RETR
+
+        // After ext RETR: irq_en_ext=0 (DIS I), irq_en_timer=1, timer_flag=1
+        // → timer ISR must fire
+        begin : wait_tmr_fires_b
+            integer t; t = 0;
+            while (!dut.irq_in_progress && t < 100) begin @(posedge clk); #1; t=t+1; end
+        end
+        // Wait for JMP dispatch at 0x007 → 0x060 to complete using PC poll
+        // (event-based, avoids fixed clock count that may be too short)
+        begin : wait_pc_060
+            integer t; t = 0;
+            while (dut.pc !== 12'h060 && t < 100) begin @(posedge clk); #1; t=t+1; end
+        end
+        check_pc(12'h060, "MultiIRQ-B: timer ISR entered 0x060 after ext RETR");
+        clock_cycles(2); check_acc(8'h55, "MultiIRQ-B: timer ISR A=0x55");
+        clock_cycles(1);  // STOP T
+        clock_cycles(2);  // RETR
+        begin : chk_clean_b
+            test_num = test_num + 1;
+            if (dut.irq_in_progress === 1'b0) begin
+                $display("  PASS [%0d] irq_in_progress=0 after timer RETR", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] irq_in_progress set after timer RETR", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Sub-test C: ext -> timer -> ext — fresh ROM with DIS TCNTI in ext ISR
+        // Sub-test B verified timer fires after a DIS-I-only ext ISR.
+        // Sub-test C verifies the full 3-interrupt sequence exits cleanly
+        // when the ext ISR disables BOTH external and timer before returning.
+        $display("\n  Sub-test C: ext, timer, ext again — full sequence");
+        fill_nop(); hard_reset();
+        rom[12'h000] = 8'h04; rom[12'h001] = 8'h09;  // JMP 0x009 (skip vectors)
+        rom[12'h003] = 8'h04; rom[12'h004] = 8'h40;  // ext vector JMP 0x040
+        rom[12'h007] = 8'h04; rom[12'h008] = 8'h60;  // timer vector JMP 0x060
+        rom[12'h009] = 8'h05;                          // EN I
+        rom[12'h00A] = 8'h25;                          // EN TCNTI
+        rom[12'h00B] = 8'h23; rom[12'h00C] = 8'hFD;  // MOV A,#0xFD (3 ticks)
+        rom[12'h00D] = 8'h62;                          // MOV T,A
+        rom[12'h00E] = 8'h55;                          // STRT T
+        rom[12'h00F] = 8'h00;                          // NOP spin
+        rom[12'h010] = 8'h04; rom[12'h011] = 8'h0F;  // JMP 0x00F
+        // Ext ISR with DIS TCNTI — clean exit, no timer re-fire
+        rom[12'h040] = 8'h23; rom[12'h041] = 8'hAA;  // MOV A,#0xAA
+        rom[12'h042] = 8'h15;                          // DIS I
+        rom[12'h043] = 8'h35;                          // DIS TCNTI
+        rom[12'h044] = 8'h93;                          // RETR
+        // Timer ISR
+        rom[12'h060] = 8'h23; rom[12'h061] = 8'h55;  // MOV A,#0x55
+        rom[12'h062] = 8'h93;                          // RETR
+        clock_cycles(2);  // JMP 0x009
+        clock_cycles(1); clock_cycles(1);                // EN I, EN TCNTI
+        clock_cycles(2); clock_cycles(1); clock_cycles(1); // MOV/MOV T/STRT T
+        force dut.int_n = 1'b0;
+        begin : wait_ext_c
+            integer t; t = 0;
+            while (!dut.irq_in_progress && t < 200) begin @(posedge clk); #1; t=t+1; end
+        end
+        clock_cycles(2);  // JMP at 0x003 executes → PC arrives at 0x040
+        check_pc(12'h040, "MultiIRQ-C: ext ISR at 0x040");
+        release dut.int_n;
+        clock_cycles(2); check_acc(8'hAA, "MultiIRQ-C: ext ISR A=0xAA");
+        clock_cycles(1);  // DIS I
+        clock_cycles(1);  // DIS TCNTI
+        clock_cycles(2);  // RETR
+        // Settle: DIS TCNTI means irq_en_timer=0 and DIS I means irq_en_ext=0.
+        // Neither interrupt can fire. Wait a few cycles for state to propagate.
+        begin : settle_c
+            integer w; for (w = 0; w < 20; w = w+1) @(posedge clk);
+        end
+        begin : chk_final_c
+            test_num = test_num + 1;
+            if (dut.irq_in_progress === 1'b0) begin
+                $display("  PASS [%0d] irq_in_progress=0 — ext+DIS_TCNTI sequence clean", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] irq_in_progress set after final RETR", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // =====================================================================
+        $display("\n--- Group 39: Reset during cycle_2 (mid-instruction) ---");
+        // Regression for: ROM latch block was @(posedge clk) without negedge res_n.
+        // When reset fired mid-instruction (cycle_2=1), ir and cycle_2 were NOT
+        // cleared until the next clock edge. CPU restarted with cycle_2=1, skipping
+        // the fetch phase and executing the second half of the interrupted instruction.
+        //
+        // Also tests: mb_latch cleared to 0 on reset (MB resets to bank 0).
+        //
+        // Scenario A — reset during 2-cycle instruction (CALL):
+        //   1. Execute SEL MB1 (sets mb_latch=1)
+        //   2. Start CALL (cycle_2 goes 1 during operand fetch)
+        //   3. Assert res_n=0 while cycle_2=1
+        //   4. Release res_n=1
+        //   5. Verify: mb_latch=0, cycle_2=0, ir=0, pc=0x000
+        //
+        // Scenario B — mb_latch cleared on reset:
+        //   1. Execute SEL MB1 (mb_latch=1)
+        //   2. Hard reset
+        //   3. Verify mb_latch=0 after reset
+
+        // ── Scenario A: reset during CALL cycle_2 ─────────────────────────
+        $display("\n  Scenario A: reset fires during CALL cycle_2");
+        fill_nop(); hard_reset();
+        rom[12'h000] = 8'hF5;                          // SEL MB1 → mb_latch=1
+        rom[12'h001] = 8'h14; rom[12'h002] = 8'h20;   // CALL 0x020 (2-cycle)
+
+        clock_cycles(1);  // SEL MB1 — mb_latch now 1
+        begin : check_mb1_set
+            test_num = test_num + 1;
+            if (dut.mb_latch === 1'b1) begin
+                $display("  PASS [%0d] mb_latch=1 after SEL MB1", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] mb_latch not 1 after SEL MB1", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Start CALL — wait for cycle_2=1 (operand fetch in progress)
+        @(posedge clk); #1;
+        begin : wait_cycle2_a
+            integer t; t = 0;
+            while (dut.cycle_2 !== 1'b1 && t < 20) begin @(posedge clk); #1; t=t+1; end
+        end
+
+        // Assert reset while cycle_2=1
+        res_n = 0;
+        #1;  // one delta after res_n goes low
+        begin : check_async_reset_a
+            test_num = test_num + 1;
+            if (dut.cycle_2 === 1'b0 && dut.mb_latch === 1'b0) begin
+                $display("  PASS [%0d] cycle_2=0 and mb_latch=0 immediately on negedge res_n", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] cycle_2=%0b mb_latch=%0b — not cleared async on res_n low",
+                    test_num, dut.cycle_2, dut.mb_latch);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Release reset and verify clean restart
+        @(posedge clk); #1;
+        res_n = 1;
+
+        // Check mb_latch=0 immediately after reset release — BEFORE any
+        // instruction executes. rom[0x000]=SEL MB1 would set it back to 1
+        // if we wait for clock_cycles(1) first.
+        begin : check_mb0_after_reset
+            test_num = test_num + 1;
+            if (dut.mb_latch === 1'b0) begin
+                $display("  PASS [%0d] mb_latch=0 immediately after reset release (MB0 selected)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] mb_latch=1 after reset — MB not cleared to 0", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        clock_cycles(1);  // first fetch from 0x000 (SEL MB1 — will set mb_latch=1 again)
+        begin : check_restart_a
+            test_num = test_num + 1;
+            if (dut.pc === 12'h001) begin
+                $display("  PASS [%0d] PC=0x001 — CPU fetched first instruction from 0x000", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] PC=0x%03h — expected 0x001 after first fetch", test_num, dut.pc);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // ── Scenario B: mb_latch cleared by hard_reset ────────────────────
+        $display("\n  Scenario B: mb_latch=0 after hard reset from MB1");
+        fill_nop(); hard_reset();
+        rom[12'h000] = 8'hF5;  // SEL MB1
+        clock_cycles(1);        // SEL MB1 executes
+        hard_reset();           // reset while mb_latch=1
+        begin : check_mb_hard_reset
+            test_num = test_num + 1;
+            if (dut.mb_latch === 1'b0) begin
+                $display("  PASS [%0d] mb_latch=0 after hard_reset from MB1", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] mb_latch=1 after hard_reset — not cleared", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
         // =====================================================================
         $display("\n=============================================================");
         $display("  TEST SUMMARY");

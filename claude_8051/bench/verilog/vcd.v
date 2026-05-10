@@ -1,9 +1,15 @@
-module dumpvcd();
+module dumpvcd(
+    input wire        clk,
+    input wire [15:0] pc
+);
 
 // Top-level testbench path macro.
-// Compile with -DDASHBOARD_TB when using i8051_dashboard_tb.
+// -DDASHBOARD_TB : use i8051_dashboard_tb
+// -DDME_KLR_TB   : use dme_klr_tb.u_dme (combined DME+KLR mode)
 `ifdef DASHBOARD_TB
   `define TB i8051_dashboard_tb
+`elsif DME_KLR_TB
+  `define TB dme_klr_tb.u_dme
 `else
   `define TB i8051_tb
 `endif
@@ -215,7 +221,7 @@ initial
 
 //mem traces
 
-$display ("VCD Dump enabled");
+$display("DME: VCD Dump enabled");
 $dumpfile("sim.vcd");
 $dumpon;
 //$dumpvars(1,i8051_tb);
@@ -224,7 +230,7 @@ $dumpvars(1,`TB.u_dumpvcd.r7f);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
 
 `ifdef CPU_DEBUG
-$dumpvars(1,i8051_tb);
+$dumpvars(1,`TB);
 $dumpvars(1,`TB.i8051_top.u_cpu);
 $dumpvars(0,`TB.u_dumpvcd);
 $dumpvars(0,`TB.adc_delay_8_1);
@@ -235,7 +241,7 @@ $dumpvars(0,`TB.adc_delay_8_1);
 `endif
 
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
-$dumpvars(1,`TB.i8051_top.u_cpu.pc);
+$dumpvars(1,pc);
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
@@ -262,7 +268,7 @@ $dumpvars(1,`TB.A_3_unused_p1_3);
 $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
-//$dumpvars(1,`TB.clk);
+//$dumpvars(1,clk);
 
 
     clk_count=0;
@@ -278,9 +284,9 @@ $dumpvars(1,`TB.A_0_inj_driver);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands_numeric.hex",opsnums);
     end
 `ifdef CPU_DEBUG
-  always @(negedge `TB.clk) begin
+  always @(negedge clk) begin
       clk_count <= clk_count + 1;
-      msg_addr    = `TB.i8051_top.u_cpu.pc;
+      msg_addr    = pc;
       asmlabel    = debug_msg[msg_addr];
       asmopcode   = opcode[msg_addr];
       asminstr    = instr[msg_addr][159:120];
@@ -297,9 +303,9 @@ $dumpvars(1,`TB.A_0_inj_driver);
                  msg_count=msg_count+1;
                 end
               if ((asmlabel[159:152] != 8'h20))
-                 $display("%15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", asmlabel,clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
+                 $display("DME: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", asmlabel,clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
               else
-                 $display("\t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
+                 $display("DME: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
               last_msg=asmlabel;
            end
        last_pc=msg_addr;
@@ -312,14 +318,14 @@ $dumpvars(1,`TB.A_0_inj_driver);
 // Guard: skip entirely when prpm=0 (engine not yet synced) to avoid thresh=0 false positives.
 // At idle (prpm~0x15): threshold = 0x84 (original calibration).
 // Formula: thresh = 0x84 * prpm / 0x15  (integer divide)
-always @(posedge `TB.clk) begin : isv_deadlock_detect
+always @(posedge clk) begin : isv_deadlock_detect
     reg [15:0] dl_thresh;
     dl_thresh = (16'h0084 * {8'h00, `TB.i8051_top.u_cpu.iram[7'h37]}) / 16'h0015;
     if (`TB.rst &&
         `TB.i8051_top.u_cpu.iram[7'h37] > 8'h00 &&  // skip when prpm=0
         !`TB.i8051_top.u_cpu.p1[4] &&
         {8'h00, `TB.i8051_top.u_cpu.iram[7'h36]} > dl_thresh)
-        $display("[DEADLOCK] cycle=%0d P1.4=0, iram[36h]=0x%02X iram[7Fh]=0x%02X thresh=0x%02X",
+        $display("DME: [DEADLOCK] cycle=%0d P1.4=0, iram[36h]=0x%02X iram[7Fh]=0x%02X thresh=0x%02X",
                  `TB.i8051_top.u_cpu.cycle_count,
                  `TB.i8051_top.u_cpu.iram[7'h36],
                  `TB.i8051_top.u_cpu.iram[7'h7F],
