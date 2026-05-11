@@ -28,6 +28,11 @@ HEXDIR="$LOGDIR/hex"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
+RTLd=../claude_8051/rtl/verilog
+BENCHd=../claude_8051/bench/verilog
+RTLk=../gemini8048/rtl/verilog
+BENCHk=../gemini8048/bench/verilog
+
 TB_FILE="bench/verilog/i8051_dashboard_tb.v"
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
@@ -158,6 +163,10 @@ compile_and_run() {
         -f "$files_list" \
         -I "$RTL" \
         -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
         -s i8051_dashboard_tb \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
