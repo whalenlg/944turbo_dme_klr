@@ -286,7 +286,7 @@ if [ -n "$1" ]; then
         warm_idle)        compile_and_run warm_idle        -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000  ;;
         cl_warm_idle)     compile_and_run cl_warm_idle     -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000                        ;;
         cl_tippy_in)      compile_and_run cl_tippy_in      -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000                        ;;
-        cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE  -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  -DCPU_DEBUG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE  -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE  -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) compile_and_run cl_ramp_to_redline -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ac_halfway)    compile_and_run cl_ac_halfway     -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
