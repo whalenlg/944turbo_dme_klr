@@ -21,7 +21,7 @@
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/claude_8051 2>/dev/null || { mkdir -p ../../tmp/claude_8051 && cd ../../tmp/claude_8051; } && pwd)"
+VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
 LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
@@ -33,7 +33,7 @@ BENCHd=../claude_8051/bench/verilog
 RTLk=../gemini8048/rtl/verilog
 BENCHk=../gemini8048/bench/verilog
 
-TB_FILE="bench/verilog/i8051_dashboard_tb.v"
+TB_FILE="bench/verilog/dme_klr_dashboard_tb.v"
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"

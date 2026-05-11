@@ -21,7 +21,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_TESTS="$SCRIPT_DIR/run_tests.sh"
-LOGDIR=../../tmp/claude_8051/logs
+LOGDIR=../../tmp/dme_klr/logs
 
 # Look up simulated seconds for a test from the run script
 sim_secs() {

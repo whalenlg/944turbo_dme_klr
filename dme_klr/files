@@ -1,7 +1,8 @@
   ../gemini8048/bench/verilog/klr_defs.v 
   ../claude_8051/bench/verilog/timescale.v 
   ../claude_8051/bench/verilog/vcd.v 
-  ../claude_8051/rtl/verilog/i8051_core.v 
+../claude_8051/bench/verilog/i8051_dashboard_tb.v
+../claude_8051/rtl/verilog/i8051_core.v 
   ../claude_8051/rtl/verilog/i8051_top.v 
   ../gemini8048/bench/verilog/klr_vcd.v 
   ../gemini8048/bench/verilog/klr_tb.v 
