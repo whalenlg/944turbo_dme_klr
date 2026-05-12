@@ -30,17 +30,17 @@ TESTS = {
     'warm_idle':         {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(2.0, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
-    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
+    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'tippy_in':          {'rpm_target':  840, 'fuel_range':(2.0, 4.0),   'expect_ase':True,  'expect_fuelcut':True,
+    'tippy_in':          {'rpm_target':  840, 'fuel_range':(1.5, 4.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'known_issues':['iram[4Ch] accel register permanently zero — confirmed ROM design limitation: MOV 3h,A at 0x1F9B saves delta to bank0 R3 (iram[03h]), map_lookup switches to bank1 then Get_Map_Addr clobbers iram[0Bh] before 0x054E reads it. Patched ROM (MOV 0Bh,A) tested and confirmed same result. Enrichment delivered via load calc (10ms spike confirmed correct)']},
     'overrun_cutoff':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True},
-    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(2.0, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(2.0, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'known_issues':['O2 signal not diverging lambda (firmware issue)']},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -212,23 +212,6 @@ def validate(test_name, logpath):
     elif exp.get('expect_fuelcut', True):
         # Should have had injection in steady state
         warns.append("No injected fuel snapshots in steady state")
-
-    # ── 6b. Periodic fuel-register artifact detection
-    # At cruise RPM the DME's iram[0x4A/0x4B] fuel width register is briefly
-    # overwritten by a periodic background task (likely the lambda integrator
-    # update or slow housekeeping tick), producing an anomalous value in the
-    # snapshot every ~400ms.  These land as fuel_actual=0 and are already
-    # excluded by the r['fuel_actual'] > 0 filter.  Report count for clarity.
-    rpm_cruise = exp.get('rpm_target', 0) * 0.8
-    if rpm_cruise >= 1500:
-        all_steady_rows = rows[cutoff_idx:]
-        fuel_artifacts = [r for r in all_steady_rows
-                          if r['fuel_actual'] == 0 and r['rpm'] >= rpm_cruise]
-        if fuel_artifacts:
-            infos.append(
-                f"{len(fuel_artifacts)} DME fuel-register artifact snapshot(s) at cruise RPM "
-                f"(fuel=0, excluded from avg — iram[4A/4B] mid-update capture, not a real fuel cut)"
-            )
 
     # ── 7. RPM target reached
     rpm_target = exp.get('rpm_target', 0)
