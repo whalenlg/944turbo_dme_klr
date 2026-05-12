@@ -955,8 +955,9 @@ always @(posedge clk) begin : lambda_warmup_skip
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h59]    <= 8'h00; // WU_LB = 0 (warmup fully expired)
         i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F]    <= 8'h14; // ISV step — warm idle baseline
         skip_lambda_done <= 1'b1;
-        $display("[SEED] t=%0d ms  SKIP_LAMBDA_WARMUP — bit08h+09h+1Dh set, wu=0x0001, ISV=0x14",
-                 i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000);
+        $display("DME: [SEED] t=%0d ms  SKIP_LAMBDA_WARMUP — bit08h+09h+1Dh set, wu=0x0001, ISV=0x14",
+                 `DME_MS);
+        $fflush();
     end
 end // lambda_warmup_skip
 `endif // SKIP_LAMBDA_WARMUP
@@ -1039,7 +1040,11 @@ end
 //  Format: [DS] <ms>,<256hex_iram>,<p1><p2><p3>,<rpm>
 // ============================================================
 `define IRAM(a) i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h``a``]
-`define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
+`ifdef DME_KLR_COMBINED
+  `define DME_MS  ($time / 1_000_000)   // wall-clock ms — avoids KLR clock freq bleed
+`else
+  `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
+`endif
 
 // Snapshot-in-progress flag — phase monitor checks this before $display
 // to prevent its output from interleaving into the DS hex stream.
@@ -1050,7 +1055,7 @@ task emit_snapshot;
     integer i;
     begin
         snapshot_busy = 1'b1;
-        $write("[DS] %0d,", `DME_MS);
+        $write("DME: [DS] %0d,", `DME_MS);
         for (i = 0; i < 128; i = i + 1)
             $write("%02h", i8051_dashboard_tb.i8051_top.u_cpu.iram[i[6:0]]);
         $write(",%02h%02h%02h", p1, p2, p3);
@@ -1059,6 +1064,9 @@ task emit_snapshot;
     end
 endtask
 
+`ifndef DME_KLR_COMBINED
+// Snapshot scheduler — suppressed when dme_klr_dashboard_tb is top
+// (that testbench has its own combined DME+KLR scheduler).
 reg [63:0] next_snap;
 initial    next_snap = (`DASH_INTERVAL_MS * 6000);
 
@@ -1069,6 +1077,7 @@ always @(posedge clk) begin
         next_snap <= next_snap + (`DASH_INTERVAL_MS * 6000);
     end
 end
+`endif // DME_KLR_COMBINED
 
 // ============================================================
 //  PHASE MONITOR (inlined — same events as phase_monitor.v)
@@ -1088,7 +1097,7 @@ initial begin
     ph_intblock_prev   = 1'b0;
 end
 
-always @(posedge clk) begin : phase_monitor
+always @(posedge clk) begin  // phase_monitor
 
     if (!rst) begin
         ph_sync_prev       <= 1'b0;
@@ -1103,61 +1112,61 @@ always @(posedge clk) begin : phase_monitor
 
         // EngineSync  iram[21h].0
         if (`IRAM(21)[0] && !ph_sync_prev)
-            $display("[PHASE] t=%0d ms  ENGINE SYNC                  (bit08h set)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  ENGINE SYNC                  (bit08h set)", `DME_MS);
         ph_sync_prev <= `IRAM(21)[0];
 
         // IntBlock  iram[23h].4 — set at power-on, cleared when engine synced
         if (`IRAM(23)[4] && !ph_intblock_prev)
-            $display("[PHASE] t=%0d ms  INTERRUPT BLOCK set      (watchdog or power-on reset)",
+            $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK set      (watchdog or power-on reset)",
                      `DME_MS);
         if (!`IRAM(23)[4] && ph_intblock_prev)
-            $display("[PHASE] t=%0d ms  INTERRUPT BLOCK cleared  (engine synced — fully running)",
+            $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK cleared  (engine synced — fully running)",
                      `DME_MS);
         ph_intblock_prev <= `IRAM(23)[4];
 
         // UseMap1140 / After-start enrich  iram[21h].5  (bit 0Dh)
         if (`IRAM(21)[5] && !ph_usemap_prev)
-            $display("[PHASE] t=%0d ms  AFTER-START ENRICH begin (UseMap1140 set, iram[3Ch]=0x%02X)",
+            $display("DME: [PHASE] t=%0d ms  AFTER-START ENRICH begin (UseMap1140 set, iram[3Ch]=0x%02X)",
                      `DME_MS, `IRAM(3C));
         if (!`IRAM(21)[5] && ph_usemap_prev)
-            $display("[PHASE] t=%0d ms  AFTER-START ENRICH end   (UseMap1140 clr, iram[3Ch]=0x%02X)",
+            $display("DME: [PHASE] t=%0d ms  AFTER-START ENRICH end   (UseMap1140 clr, iram[3Ch]=0x%02X)",
                      `DME_MS, `IRAM(3C));
         ph_usemap_prev <= `IRAM(21)[5];
 
         // FuelOffCoast  iram[23h].5
         if (`IRAM(23)[5] && !ph_fuelcut_prev)
-            $display("[PHASE] t=%0d ms  FUEL CUT begin               (FuelOffCoast set)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  FUEL CUT begin               (FuelOffCoast set)", `DME_MS);
         if (!`IRAM(23)[5] && ph_fuelcut_prev)
-            $display("[PHASE] t=%0d ms  FUEL CUT end                 (FuelOffCoast clr)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  FUEL CUT end                 (FuelOffCoast clr)", `DME_MS);
         ph_fuelcut_prev <= `IRAM(23)[5];
 
         // LambdaOK  iram[24h].3
         if (`IRAM(24)[3] && !ph_lambdaok_prev)
-            $display("[PHASE] t=%0d ms  LAMBDA CONTROL begin         (LambdaOK set)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  LAMBDA CONTROL begin         (LambdaOK set)", `DME_MS);
         if (!`IRAM(24)[3] && ph_lambdaok_prev)
-            $display("[PHASE] t=%0d ms  LAMBDA CONTROL end           (LambdaOK clr)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  LAMBDA CONTROL end           (LambdaOK clr)", `DME_MS);
         ph_lambdaok_prev <= `IRAM(24)[3];
 
         // ColdStartEnrich  iram[25h].5
         if (`IRAM(25)[5] && !ph_coldenrich_prev)
-            $display("[PHASE] t=%0d ms  COLD-START ENRICH begin      (bit2Dh set)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  COLD-START ENRICH begin      (bit2Dh set)", `DME_MS);
         if (!`IRAM(25)[5] && ph_coldenrich_prev)
-            $display("[PHASE] t=%0d ms  COLD-START ENRICH end        (bit2Dh clr)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  COLD-START ENRICH end        (bit2Dh clr)", `DME_MS);
         ph_coldenrich_prev <= `IRAM(25)[5];
 
         // ColdStartTiming  iram[25h].4
         if (`IRAM(25)[4] && !ph_coldtiming_prev)
-            $display("[PHASE] t=%0d ms  COLD-START TIMING begin      (bit2Ch set)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  COLD-START TIMING begin      (bit2Ch set)", `DME_MS);
         if (!`IRAM(25)[4] && ph_coldtiming_prev)
-            $display("[PHASE] t=%0d ms  COLD-START TIMING end        (bit2Ch clr)", `DME_MS);
+            $display("DME: [PHASE] t=%0d ms  COLD-START TIMING end        (bit2Ch clr)", `DME_MS);
         ph_coldtiming_prev <= `IRAM(25)[4];
 
         // ISVPWMOverflow  iram[20h].5
         if (`IRAM(20)[5] && !ph_isvovf_prev)
-            $display("[PHASE] t=%0d ms  ISV OVERFLOW begin           (isv_step=0x%02X)",
+            $display("DME: [PHASE] t=%0d ms  ISV OVERFLOW begin           (isv_step=0x%02X)",
                      `DME_MS, `IRAM(7F));
         if (!`IRAM(20)[5] && ph_isvovf_prev)
-            $display("[PHASE] t=%0d ms  ISV OVERFLOW end             (isv_step=0x%02X)",
+            $display("DME: [PHASE] t=%0d ms  ISV OVERFLOW end             (isv_step=0x%02X)",
                      `DME_MS, `IRAM(7F));
         ph_isvovf_prev <= `IRAM(20)[5];
 
@@ -1195,7 +1204,7 @@ always @(posedge clk) begin : wdog_stall_detect
         if (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= ph_wdog_next_sample &&
             i8051_dashboard_tb.i8051_top.u_cpu.cycle_count > 6_000_000) begin
             if (!ph_wdog_changed)
-                $display("[PHASE] t=%0d ms  WARNING: WATCHDOG STALLED    (wdog=0x%02X)",
+                $display("DME: [PHASE] t=%0d ms  WARNING: WATCHDOG STALLED    (wdog=0x%02X)",
                          `DME_MS, `IRAM(2A));
             ph_wdog_changed     <= 1'b0;
             ph_wdog_next_sample <= ph_wdog_next_sample + 64'd12_000_000;

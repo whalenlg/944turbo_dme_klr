@@ -9,7 +9,7 @@
 //
 //  Snapshot format (every DASH_INTERVAL_MS, latched to DME clock):
 //    [DS]  <ms>,<256hex_dme_iram>,<p1p2p3>,<rpm>
-//    [KLR] <ms>,<128hex_klr_ram>,<p1p2>,<ign><ignout><fl>
+//    KLR: [DS] <ms>,<128hex_klr_ram>,<p1p2>,<ign><ignout><fl>
 // ============================================================
 
 `timescale 1ns/1ps
@@ -57,15 +57,15 @@ module dme_klr_dashboard_tb;
             snapshot_busy = 1'b1;
 
             // ── [DS] — DME 8051 iram (128 bytes) ─────────────
-            $write("[DS] %0d,", `DME_KLR_MS);
+            $write("DME: [DS] %0d,", `DME_KLR_MS);
             for (i = 0; i < 128; i = i + 1)
                 $write("%02h", u_dme.i8051_top.u_cpu.iram[i[6:0]]);
             $write(",%02h%02h%02h", u_dme.p1, u_dme.p2, u_dme.p3);
             $write(",%0d\n", u_dme.ref_rpm);
 
-            // ── [KLR] — 8048 RAM (64 bytes) ──────────────────
+            // ── KLR: [DS] — 8048 RAM (64 bytes) ──────────────────
             // TODO: confirm KLR RAM hierarchy path (u_klr.<path>.ram)
-            $write("[KLR] %0d,", `DME_KLR_MS);
+            $write("KLR: [DS] %0d,", `DME_KLR_MS);
             for (i = 0; i < 64; i = i + 1)
                 $write("%02h", u_klr.top.i8048_core_1.ram[i[5:0]]);
             // TODO: confirm KLR port hierarchy for p1/p2
@@ -84,13 +84,22 @@ module dme_klr_dashboard_tb;
     initial    next_snap_ns = `DASH_INTERVAL_MS * 64'd1_000_000;
 
     wire dme_clk = u_dme.clk;
-    wire dme_rst = u_dme.rst;
 
     always @(posedge dme_clk) begin
-        if (dme_rst && ($time >= next_snap_ns)) begin
+        if ($time >= next_snap_ns) begin
             emit_combined_snapshot;
             next_snap_ns <= next_snap_ns + (`DASH_INTERVAL_MS * 64'd1_000_000);
         end
+    end
+
+    // Hard simulation boundary — terminates at exactly SIM_TIME regardless of
+    // sub-testbench $finish timing, preventing phase events leaking past 10s.
+`ifndef SIM_TIME
+  `define SIM_TIME 10000000000
+`endif
+    initial begin
+        #`SIM_TIME;
+        $finish;
     end
 
 endmodule

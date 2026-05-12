@@ -233,7 +233,7 @@ const KLR_PORT_DEFS = {
 //   [DS] <time_ms>,<256-hex-iram>,<p1hex><p2hex><p3hex>
 function parseDsLine(line) {
   // Strip "[DS] " prefix
-  const body = line.replace(/^\[DS\]\s*/,'').trim();
+  const body = line.replace(/^(?:DME:\s*)?\[DS\]\s*/,'').trim();
   const parts = body.split(',');
   if (parts.length < 3) return null;
   const t    = parseInt(parts[0]);
@@ -311,7 +311,7 @@ function parseStatusLine(line) {
 function parsePhaseLine(line) {
   const tm = line.match(/t=(\d+)\s*ms/);
   if (!tm) return null;
-  const msg = line.replace(/^\[PHASE\]\s*t=\d+\s*ms\s*/,'').trim();
+  const msg = line.replace(/^(?:DME:\s*)?\[PHASE\]\s*t=\d+\s*ms\s*/,'').trim();
   let category = 'info';
   if (/FUEL CUT/i.test(msg))               category = 'fuelcut';
   else if (/COLD.START/i.test(msg))        category = 'cold';
@@ -329,9 +329,10 @@ function parseLog(text) {
   const snapshots = [], phases = [];
   for (const line of text.split('\n')) {
     const t = line.trim();
-    if (t.startsWith('[DS]'))          { const s = parseDsLine(t);      if (s) snapshots.push(s); }
-    else if (t.startsWith('[STATUS]')) { const s = parseStatusLine(t);  if (s) snapshots.push(s); }
-    else if (t.startsWith('[PHASE]'))  { const p = parsePhaseLine(t);   if (p) phases.push(p);    }
+    if (t.startsWith('[DS]') || t.startsWith('DME: [DS]'))             { const s = parseDsLine(t);      if (s) snapshots.push(s); }
+    else if (t.startsWith('[STATUS]'))                                  { const s = parseStatusLine(t);  if (s) snapshots.push(s); }
+    else if (t.startsWith('[PHASE]') || t.startsWith('DME: [PHASE]'))  { const p = parsePhaseLine(t);   if (p) phases.push(p);    }
+    else if (t.startsWith('DME: [STATUS]'))                            { const s = parseStatusLine(t.replace(/^DME: /,'')); if (s) snapshots.push(s); }
   }
   // Annotate each snapshot with last valid raw temp bytes so Overview
   // can carry-forward across mid-scan raw ADC artifacts.
@@ -344,6 +345,7 @@ function parseLog(text) {
     s._prevCoolant = lastCoolantRaw;
     s._prevAir     = lastAirRaw;
   }
+  phases.sort((a, b) => a.t - b.t);
   return { snapshots, phases };
 }
 
@@ -365,8 +367,8 @@ function parseKLRLog(text) {
     const t = line.trim();
 
     // ── [KLR] hex snapshot ──────────────────────────────────
-    if (t.startsWith('[KLR]')) {
-      const parts = t.slice(5).trim().split(',');
+    if (t.startsWith('KLR: [DS]')) {
+      const parts = t.slice('KLR: [DS]'.length).trim().split(',');
       if (parts.length < 2) continue;
       const time = parseInt(parts[0]);
       if (isNaN(time)) continue;
@@ -431,15 +433,25 @@ function parseKLRLog(text) {
       const tm = body.match(/t=(\d+)\s*ms/);
       if (!tm) continue;
       const msg = body.replace(/t=\d+\s*ms\s*/, '').trim();
-      const p = { t: parseInt(tm[1]), msg, cat: 'klr' };
-      // Extract delay and pulse width
+      // Extract timing measurements
       const dm = msg.match(/delay_from_ign_in=([\d.]+)\s*(us|ms)/);
       const pm = msg.match(/pulse_width=([\d.]+)\s*(us|ms)/);
-      if (dm) p.delay_us = parseFloat(dm[1]) * (dm[2] === 'ms' ? 1000 : 1);
-      if (pm) p.pulse_ms = parseFloat(pm[1]) * (pm[2] === 'us' ? 0.001 : 1);
-      p.asserted   = /asserted/i.test(msg);
-      p.deasserted = /deasserted/i.test(msg);
-      phases.push(p);
+      const delay_us = dm ? parseFloat(dm[1]) * (dm[2] === 'ms' ? 1000 : 1) : null;
+      const pulse_ms = pm ? parseFloat(pm[1]) * (pm[2] === 'us' ? 0.001 : 1) : null;
+      // Timing-only lines (no parenthetical context) — merge into previous entry
+      const isTiming = (dm || pm) && !/\(/.test(msg);
+      if (isTiming && phases.length > 0) {
+        const prev = phases[phases.length - 1];
+        if (delay_us != null) prev.delay_us = delay_us;
+        if (pulse_ms != null) prev.pulse_ms = pulse_ms;
+      } else {
+        const p = { t: parseInt(tm[1]), msg, cat: 'klr' };
+        if (delay_us != null) p.delay_us = delay_us;
+        if (pulse_ms != null) p.pulse_ms = pulse_ms;
+        p.asserted   = /asserted/i.test(msg);
+        p.deasserted = /deasserted/i.test(msg);
+        phases.push(p);
+      }
 
     // ── DME [PHASE] (no KLR: prefix) ────────────────────────
     } else if (t.startsWith('[PHASE]')) {
@@ -447,6 +459,7 @@ function parseKLRLog(text) {
       if (p) phases.push(p);
     }
   }
+  phases.sort((a, b) => a.t - b.t);
   return { snapshots, phases, status };
 }
 // ─────────────────────────────────────────────────────────────────
@@ -619,29 +632,31 @@ export default function DMEDashboard() {
         document.title = `DME 951 — ${testName}`;
         setLogFileName(fname);
         setLogText(text);
-        const parsed = parseLog(text);
-        setData(parsed);
+        const dme = parseLog(text);
+        const klr = parseKLRLog(text);
+        setData(dme);
+        setKlrData(klr);
         setIdx(0);
+        setKlrIdx(0);
         setPlaying(false);
-        if (parsed.snapshots.length || parsed.phases.length) setShowLog(false);
+        setKlrPlaying(false);
+        if (dme.snapshots.length || dme.phases.length ||
+            klr.snapshots.length || klr.phases.length) setShowLog(false);
       })
       .catch(err => console.warn('[DME951] ?log= fetch failed:', err));
   }, []);
 
-  const handleLoad = useCallback(() => {
-    const parsed = parseLog(logText);
-    setData(parsed);
+  const handleLoadAll = useCallback(() => {
+    const dme = parseLog(logText);
+    const klr = parseKLRLog(logText);
+    setData(dme);
+    setKlrData(klr);
     setIdx(0);
-    setPlaying(false);
-    if (parsed.snapshots.length || parsed.phases.length) setShowLog(false);
-  }, [logText]);
-
-  const handleLoadKLR = useCallback(() => {
-    const parsed = parseKLRLog(logText);
-    setKlrData(parsed);
     setKlrIdx(0);
+    setPlaying(false);
     setKlrPlaying(false);
-    if (parsed.snapshots.length || parsed.phases.length) setShowLog(false);
+    if (dme.snapshots.length || dme.phases.length ||
+        klr.snapshots.length || klr.phases.length) setShowLog(false);
   }, [logText]);
 
   // Drag-drop onto textarea
@@ -915,23 +930,20 @@ export default function DMEDashboard() {
             <textarea ref={logRef} style={S.ta} value={logText}
               onChange={e=>setLogText(e.target.value)}
               onDrop={handleDrop} onDragOver={e=>e.preventDefault()}
-              placeholder={"[DS] ... (DME dashboard log)\n[KLR] ... (combined DME+KLR log)\n[STATUS] ... (legacy status log)\n[PHASE] ...\n\nPaste your log file here or drag and drop."}
+              placeholder={"DME: [DS] ... (DME snapshot)\nKLR: [DS] ... (KLR snapshot)\nDME: [PHASE] / KLR: [PHASE] ...\n\nPaste your .dash.log file here or drag and drop."}
             />
             <div style={{color:C.textDim,fontSize:'9px',marginTop:'4px',marginBottom:'14px'}}>
-              Use <strong style={{color:C.textBright}}>PARSE &amp; LOAD DME</strong> for DME data ([DS]/[STATUS] lines) &nbsp;|&nbsp;
-              <strong style={{color:'#44aaff'}}>PARSE &amp; LOAD KLR</strong> for KLR knock controller data ([KLR] lines)
+              Supports combined DME+KLR logs (<code>DME: [DS]</code> / <code>[KLR]</code>),
+              DME-only logs (<code>[DS]</code> / <code>[STATUS]</code>), and legacy formats.
+              All data is parsed in one pass.
             </div>
             <div style={{display:'flex',gap:'8px',justifyContent:'flex-end',flexWrap:'wrap'}}>
               {(data.snapshots.length > 0 || data.phases.length > 0 ||
                 klrData.snapshots.length > 0) && (
                 <button style={S.btn('s')} onClick={()=>setShowLog(false)}>CANCEL</button>
               )}
-              <button style={{...S.btn('p'), borderColor:'#44aaff', color:'#44aaff'}}
-                onClick={handleLoadKLR}>
-                PARSE &amp; LOAD KLR →
-              </button>
-              <button style={S.btn('p')} onClick={handleLoad}>
-                PARSE &amp; LOAD DME →
+              <button style={S.btn('p')} onClick={handleLoadAll}>
+                PARSE &amp; LOAD →
               </button>
             </div>
           </div>
@@ -1550,7 +1562,7 @@ function IRAMTooltip({ tip }) {
 function ChartsTab({ chartData, currentT }) {
   if (!chartData.length) return (
     <div style={{textAlign:'center',color:C.textDim,padding:'60px',fontSize:'14px'}}>
-      No STATUS data loaded — use LOAD LOG to parse a log file
+      No snapshot data loaded — use LOAD LOG to parse a log file
     </div>
   );
 
@@ -1863,7 +1875,7 @@ function KLRTab({ klrData, currentT }) {
   if (!klrData || (klrData.snapshots.length === 0 && klrData.phases.length === 0 && (!klrData.status || klrData.status.length === 0))) {
     return (
       <div style={{textAlign:'center',color:C.textDim,padding:'60px',fontSize:'11px'}}>
-        No KLR data loaded — use <strong style={{color:'#44aaff'}}>PARSE &amp; LOAD KLR</strong> with a log containing{' '}
+        No KLR data loaded — use <strong style={{color:C.textBright}}>PARSE &amp; LOAD</strong> with a combined log containing{' '}
         <code style={{color:'#44aaff'}}>[KLR]</code> or <code style={{color:'#44aaff'}}>KLR: [STATUS]</code> lines
       </div>
     );
@@ -2032,7 +2044,7 @@ function KLRChartsTab({ klrData, currentT }) {
 
   if (empty) return (
     <div style={{textAlign:'center',color:C.textDim,padding:'60px',fontSize:'11px'}}>
-      No KLR data — use <strong style={{color:'#44aaff'}}>PARSE &amp; LOAD KLR</strong>
+      No KLR data — use <strong style={{color:C.textBright}}>PARSE &amp; LOAD</strong> with a combined log
     </div>
   );
 

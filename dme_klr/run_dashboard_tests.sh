@@ -3,7 +3,8 @@
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
 #  Uses i8051_tb (dashboard edition) instead of the standard i8051_tb,
-#  compact [DS] snapshot lines for the React dashboard.
+#  compact DME: [DS] snapshot lines for the React dashboard.
+#  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
 #  Usage:
 #    ./run_dashboard_tests.sh                   # run all tests
@@ -12,7 +13,7 @@
 #
 #  Output: ../../tmp/dme_klr/dash_logs/<test>.log       (full sim output)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd
+#          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd.gz
 #          ../../tmp/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
@@ -190,21 +191,23 @@ compile_and_run() {
         return 1
     fi
 
-    # Move sim.vcd to named location
-    [ -f "$hexdir/sim.vcd" ] && mv "$hexdir/sim.vcd" "$vcdfile"
+    # Move sim.vcd to named location, then gzip it
+    if [ -f "$hexdir/sim.vcd" ]; then
+        mv "$hexdir/sim.vcd" "$vcdfile"
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
+    fi
 
-    # Extract [DS], [KLR], [PHASE], KLR: [STATUS], KLR: [PHASE], and [SEED] lines into dash log
-    grep -E "^\[DS\]|^\[KLR\]|^\[PHASE\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    # Extract DME and KLR lines into dashboard log.
+    # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
+    grep -E "^\[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
 
-    local nlines=$(wc -l < "$log")
     local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklr=$(grep -c "^\[KLR\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nphase=$(grep -c "^\[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nklr} KLR / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / ${nphase} PHASE / ${dashsize} / VCD ${vcdsize})" \
+    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD.gz ${vcdsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -222,9 +225,9 @@ compile_and_run() {
 #  compile_and_run_klr <name> [defines...]
 #
 #  Compiles and runs the combined DME+KLR testbench
-#  (dme_klr_dashboard_tb).  Emits both [DS] (DME) and
-#  [KLR] lines into the same log — load into the dashboard
-#  with Parse & Load DME or Parse & Load KLR accordingly.
+#  (dme_klr_dashboard_tb).  Emits DME: [DS], DME: [PHASE],
+#  DME: [STATUS], [KLR], KLR: [PHASE], KLR: [STATUS] — load
+#  with the single PARSE & LOAD button in the dashboard.
 # --------------------------------------------------------
 compile_and_run_klr() {
     local name="$1"; shift
@@ -261,11 +264,15 @@ compile_and_run_klr() {
 
     iverilog -o "$vvp" \
         -f "$files_list" \
-        -f "$FILES_KLR_COMBINED" \
         -I "$RTL" \
         -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
         -s dme_klr_dashboard_tb \
         -DDASHBOARD_TB \
+        -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
         "$@" \
         "bench/verilog/dme_klr_dashboard_tb.v"
@@ -278,26 +285,32 @@ compile_and_run_klr() {
     echo "  VCD     → $vcdfile"
     echo "  HEX     → $hexdir/{rom,ram,klr_rom,klr_ram}_out.hex"
 
-    cd "$hexdir"
-    vvp -n "../../dash_klr_${name}.vvp" \
-        +vcd="${vcdfile}" \
-        > "${log}" 2>&1
+    ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
     local rc=$?
-    cd - > /dev/null
 
     if [ $rc -ne 0 ]; then
         echo "  SIM FAILED: $name (exit $rc)" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
 
-    # Extract DS+KLR+PHASE into dashboard log (all variants)
-    grep -E "^\[DS\]|^\[KLR\]|^\[PHASE\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
-    local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklr=$(grep -c "^\[KLR\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    # Gzip the VCD
+    if [ -f "$vcdfile" ]; then
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
+    fi
+
+    # Extract all DME: and KLR: lines into dashboard log.
+    # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
+    # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
+    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nklr=$(grep -c "^KLR: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nphase=$(grep -c "^\[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    echo "  DONE: $name — ${nds} DS / ${nklr} KLR / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / ${nphase} DME PHASE" \
+    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
+    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
         | tee -a "$LOGDIR/summary.log"
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
@@ -320,7 +333,7 @@ compile_and_run cl_warm_idle \
     -DRPMRAMP -DCL_MODE \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
-compile_and_run cl_tippy_in \
+compile_and_run_klr cl_tippy_in \
     -DTEST_TIPPY_IN \
     -DRPMRAMP -DCL_MODE \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
@@ -503,7 +516,7 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        compile_and_run warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     compile_and_run cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
-        cl_tippy_in)      compile_and_run cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        cl_tippy_in)      compile_and_run_klr cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) compile_and_run cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
