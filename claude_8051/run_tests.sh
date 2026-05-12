@@ -81,8 +81,12 @@ compile_and_run() {
         return 1
     fi
 
-    # Move sim.vcd to its proper named location in logs/vcd/
-    [ -f "$hexdir/sim.vcd" ] && mv "$hexdir/sim.vcd" "$vcdfile"
+    # Move sim.vcd to its proper named location in logs/vcd/ then compress
+    if [ -f "$hexdir/sim.vcd" ]; then
+        mv "$hexdir/sim.vcd" "$vcdfile"
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
+    fi
 
     grep "^\[STATUS\]" "$log" > "$LOGDIR/${name}_status.log"
     grep "^\[PHASE\]"  "$log" > "$LOGDIR/${name}_phase.log"

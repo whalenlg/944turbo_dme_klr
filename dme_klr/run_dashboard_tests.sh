@@ -188,8 +188,12 @@ compile_and_run() {
         return 1
     fi
 
-    # Move sim.vcd to named location
-    [ -f "$hexdir/sim.vcd" ] && mv "$hexdir/sim.vcd" "$vcdfile"
+    # Move sim.vcd to named location then compress
+    if [ -f "$hexdir/sim.vcd" ]; then
+        mv "$hexdir/sim.vcd" "$vcdfile"
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
+    fi
 
     # Extract [DS], [PHASE], and [SEED] lines into dash log
     grep -E "^\[DS\]|^\[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
