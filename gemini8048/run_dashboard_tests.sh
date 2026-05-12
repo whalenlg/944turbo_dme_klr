@@ -10,10 +10,10 @@
 #    ./run_dashboard_tests.sh warm_idle         # single test
 #    ./run_dashboard_tests.sh warm_idle 50      # single test, 50ms interval
 #
-#  Output: ../../tmp/dme_klr/dash_logs/<test>.log       (full sim output)
+#  Output: ../../tmp/claude_8051/dash_logs/<test>.log       (full sim output)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd
-#          ../../tmp/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
+#          ../../tmp/claude_8051/dash_logs/vcd/<test>.vcd
+#          ../../tmp/claude_8051/dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -21,20 +21,15 @@
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/claude_8051 2>/dev/null || { mkdir -p ../../tmp/claude_8051 && cd ../../tmp/claude_8051; } && pwd)"
 LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
-RTLd=../claude_8051/rtl/verilog
-BENCHd=../claude_8051/bench/verilog
-RTLk=../gemini8048/rtl/verilog
-BENCHk=../gemini8048/bench/verilog
-
-TB_FILE="bench/verilog/dme_klr_dashboard_tb.v"
-#KLR_BENCH=bench/verilog/i8048_tb.v
+TB_FILE="bench/verilog/i8051_dashboard_tb.v"
+KLR_BENCH=bench/verilog/i8048_tb.v
 FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
@@ -165,10 +160,6 @@ compile_and_run() {
         -f "$files_list" \
         -I "$RTL" \
         -I "$BENCH" \
-        -I "$RTLd" \
-        -I "$BENCHd" \
-        -I "$RTLk" \
-        -I "$BENCHk" \
         -s i8051_dashboard_tb \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
@@ -193,18 +184,15 @@ compile_and_run() {
     # Move sim.vcd to named location
     [ -f "$hexdir/sim.vcd" ] && mv "$hexdir/sim.vcd" "$vcdfile"
 
-    # Extract [DS], [KLR], [PHASE], KLR: [STATUS], KLR: [PHASE], and [SEED] lines into dash log
-    grep -E "^\[DS\]|^\[KLR\]|^\[PHASE\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    # Extract [DS], [PHASE], and [SEED] lines into dash log
+    grep -E "^\[DS\]|^\[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
 
     local nlines=$(wc -l < "$log")
     local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklr=$(grep -c "^\[KLR\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nphase=$(grep -c "^\[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nklr} KLR / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / ${nphase} PHASE / ${dashsize} / VCD ${vcdsize})" \
+    echo "  DONE: $name  ($nds DS snapshots / $nphase PHASE events / ${dashsize} / VCD ${vcdsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -290,14 +278,12 @@ compile_and_run_klr() {
         return 1
     fi
 
-    # Extract DS+KLR+PHASE into dashboard log (all variants)
-    grep -E "^\[DS\]|^\[KLR\]|^\[PHASE\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    # Extract DS+KLR+PHASE into dashboard log
+    grep -E "^\[DS\]|^\[KLR\]|^\[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
     local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nklr=$(grep -c "^\[KLR\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nphase=$(grep -c "^\[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    echo "  DONE: $name — ${nds} DS / ${nklr} KLR / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / ${nphase} DME PHASE" \
+    echo "  DONE: $name — ${nds} DS snaps, ${nklr} KLR snaps, ${nphase} phases" \
         | tee -a "$LOGDIR/summary.log"
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
