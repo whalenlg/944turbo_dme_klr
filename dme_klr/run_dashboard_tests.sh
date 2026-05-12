@@ -200,9 +200,9 @@ compile_and_run() {
 
     # Extract DME and KLR lines into dashboard log.
     # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
-    grep -E "^\[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    grep -E "^DME: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
 
-    local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nds=$(grep -c "^DME: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")

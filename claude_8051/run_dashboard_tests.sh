@@ -3,7 +3,8 @@
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
 #  Uses i8051_tb (dashboard edition) instead of the standard i8051_tb,
-#  compact [DS] snapshot lines for the React dashboard.
+#  compact DME: [DS] snapshot lines for the React dashboard.
+#  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
 #  Usage:
 #    ./run_dashboard_tests.sh                   # run all tests
@@ -12,7 +13,7 @@
 #
 #  Output: ../../tmp/claude_8051/dash_logs/<test>.log       (full sim output)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/claude_8051/dash_logs/vcd/<test>.vcd
+#          ../../tmp/claude_8051/dash_logs/vcd/<test>.vcd.gz
 #          ../../tmp/claude_8051/dash_logs/hex/<test>/{rom,ram,xram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
@@ -28,7 +29,14 @@ HEXDIR="$LOGDIR/hex"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
-TB_FILE="bench/verilog/i8051_dashboard_tb.v"
+RTLd=../claude_8051/rtl/verilog
+BENCHd=../claude_8051/bench/verilog
+RTLk=../gemini8048/rtl/verilog
+BENCHk=../gemini8048/bench/verilog
+
+TB_FILE="bench/verilog/dme_klr_dashboard_tb.v"
+#KLR_BENCH=bench/verilog/i8048_tb.v
+FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
@@ -158,6 +166,10 @@ compile_and_run() {
         -f "$files_list" \
         -I "$RTL" \
         -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
         -s i8051_dashboard_tb \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
@@ -179,22 +191,23 @@ compile_and_run() {
         return 1
     fi
 
-    # Move sim.vcd to named location then compress
+    # Move sim.vcd to named location, then gzip it
     if [ -f "$hexdir/sim.vcd" ]; then
         mv "$hexdir/sim.vcd" "$vcdfile"
         gzip -f "$vcdfile"
         vcdfile="${vcdfile}.gz"
     fi
 
-    # Extract [DS], [PHASE], and [SEED] lines into dash log
-    grep -E "^\[DS\]|^\[PHASE\]|^\[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    # Extract DME and KLR lines into dashboard log.
+    # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
+    grep -E "^DME: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
 
-    local nlines=$(wc -l < "$log")
-    local nds=$(grep -c "^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nphase=$(grep -c "^\[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nds=$(grep -c "^DME: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  ($nds DS snapshots / $nphase PHASE events / ${dashsize} / VCD ${vcdsize})" \
+    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD.gz ${vcdsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -205,6 +218,101 @@ compile_and_run() {
     echo "  ${verdict}: $name — $val_detail" | tee -a "$LOGDIR/validation.log"
 
     # Open in dashboard browser if running a single test
+    open_in_dashboard "$LOGDIR/${name}.dash.log"
+}
+
+# --------------------------------------------------------
+#  compile_and_run_klr <name> [defines...]
+#
+#  Compiles and runs the combined DME+KLR testbench
+#  (dme_klr_dashboard_tb).  Emits DME: [DS], DME: [PHASE],
+#  DME: [STATUS], [KLR], KLR: [PHASE], KLR: [STATUS] — load
+#  with the single PARSE & LOAD button in the dashboard.
+# --------------------------------------------------------
+compile_and_run_klr() {
+    local name="$1"; shift
+
+    local interval="$DASH_INTERVAL_MS"
+    if [[ "$1" =~ ^[0-9]+$ ]]; then
+        interval="$1"; shift
+    fi
+
+    local vvp="${VVP_DIR}/dash_klr_${name}.vvp"
+    local log="${LOGDIR}/${name}.log"
+    local vcdfile="${VCDDIR}/${name}.vcd"
+    local hexdir="${HEXDIR}/${name}"
+
+    mkdir -p "$hexdir"
+
+    local sim_ns=0
+    for arg in "$@"; do
+        case "$arg" in -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;; esac
+    done
+    local sim_sec=$(( sim_ns / 1000000000 ))
+    local n_snaps=$(( sim_sec * 1000 / interval ))
+
+    echo ""
+    echo "======================================================"
+    echo "  TEST (KLR): $name  [${sim_sec}s sim / interval=${interval}ms / ~${n_snaps} snaps]"
+    echo "======================================================"
+
+    # Auto-select CL file list if needed
+    local files_list="$FILES"
+    for arg in "$@"; do
+        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
+    done
+
+    iverilog -o "$vvp" \
+        -f "$files_list" \
+        -I "$RTL" \
+        -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
+        -s dme_klr_dashboard_tb \
+        -DDASHBOARD_TB \
+        -DDME_KLR_COMBINED \
+        -DDASH_INTERVAL_MS="$interval" \
+        "$@" \
+        "bench/verilog/dme_klr_dashboard_tb.v"
+    if [ $? -ne 0 ]; then
+        echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
+        return 1
+    fi
+
+    echo "  Running → $log"
+    echo "  VCD     → $vcdfile"
+    echo "  HEX     → $hexdir/{rom,ram,klr_rom,klr_ram}_out.hex"
+
+    ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    local rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "  SIM FAILED: $name (exit $rc)" | tee -a "$LOGDIR/summary.log"
+        return 1
+    fi
+
+    # Gzip the VCD
+    if [ -f "$vcdfile" ]; then
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
+    fi
+
+    # Extract all DME: and KLR: lines into dashboard log.
+    # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
+    # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
+    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+    local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nklr=$(grep -c "^KLR: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
+    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
+        | tee -a "$LOGDIR/summary.log"
+
     open_in_dashboard "$LOGDIR/${name}.dash.log"
 }
 
@@ -225,7 +333,7 @@ compile_and_run cl_warm_idle \
     -DRPMRAMP -DCL_MODE \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
-compile_and_run cl_tippy_in \
+compile_and_run_klr cl_tippy_in \
     -DTEST_TIPPY_IN \
     -DRPMRAMP -DCL_MODE \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
@@ -382,6 +490,17 @@ compile_and_run isv_load_droop \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000
 
+# --- DME+KLR combined tests ---
+compile_and_run_klr dme_klr_warm_idle \
+    -DTEST_WARM_IDLE \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
+
+compile_and_run_klr dme_klr_ramp_to_3000 \
+    -DTEST_RAMP_TO_3000 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
 }
 
 # --------------------------------------------------------
@@ -397,7 +516,7 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        compile_and_run warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     compile_and_run cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
-        cl_tippy_in)      compile_and_run cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        cl_tippy_in)      compile_and_run_klr cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) compile_and_run cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -427,6 +546,9 @@ if [ -n "$1" ]; then
         dwell_scaling)    compile_and_run dwell_scaling    $IARG -DTEST_DWELL_SCALING    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=80  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
         isv_cold_idle)    compile_and_run isv_cold_idle    $IARG -DTEST_ISV_COLD_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=60000000000   ;;
         isv_load_droop)   compile_and_run isv_load_droop   $IARG -DTEST_ISV_LOAD_DROOP   -DISV_LOAD_DROOP -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
+        # ── DME+KLR combined tests ──────────────────────────
+        dme_klr_warm_idle)    compile_and_run_klr dme_klr_warm_idle    $IARG -DTEST_WARM_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000 ;;
+        dme_klr_ramp_to_3000) compile_and_run_klr dme_klr_ramp_to_3000 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         *)
             echo "Unknown test: $1"
             echo "Available tests:"
@@ -441,6 +563,7 @@ if [ -n "$1" ]; then
             echo "  Closed-loop: cl_warm_idle cl_tippy_in"
             echo "               cl_ramp_to_3000 cl_ramp_to_6000 cl_ramp_to_redline"
             echo "               cl_ac_halfway cl_cold_start"
+            echo "  DME+KLR:     dme_klr_warm_idle dme_klr_ramp_to_3000"
             exit 1
             ;;
     esac

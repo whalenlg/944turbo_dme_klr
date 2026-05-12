@@ -79,9 +79,12 @@ TESTS = {
 
 def parse_ds(line):
     line = line.strip()
-    if not line.startswith('[DS]'):
+    if line.startswith('DME: [DS]'):
+        parts = line[len('DME: [DS]'):].strip().split(',')
+    elif line.startswith('[DS]'):
+        parts = line[len('[DS]'):].strip().split(',')
+    else:
         return None
-    parts = line[5:].split(',')
     if len(parts) < 3:
         return None
     try:
@@ -140,7 +143,8 @@ def validate(test_name, logpath):
         s = parse_ds(line)
         if s:
             rows.append(s)
-        elif line.startswith('[PHASE]') or line.startswith('[SEED]'):
+        elif (line.startswith('[PHASE]') or line.startswith('DME: [PHASE]') or
+              line.startswith('[SEED]')  or line.startswith('DME: [SEED]')):
             phases.append(line.strip())
 
     fails = []
@@ -149,7 +153,7 @@ def validate(test_name, logpath):
 
     # ── 1. DS line count
     if len(rows) == 0:
-        print(f"FAIL\t{test_name}\tNo [DS] lines found — simulation may have crashed")
+        print(f"FAIL\t{test_name}\tNo [DS] lines found — simulation may have crashed or DS prefix mismatch")
         return 1
     infos.append(f"{len(rows)} DS snapshots")
 
