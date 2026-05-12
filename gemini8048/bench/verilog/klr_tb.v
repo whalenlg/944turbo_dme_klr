@@ -198,4 +198,6 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //     adc_ch5 = 8'h86;
     // end
 
+`include "klr_phase_monitor.v"
+
 endmodule

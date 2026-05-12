@@ -1,0 +1,9 @@
+../claude_8051/bench/verilog/adc_delay.v 
+../claude_8051/bench/verilog/timescale.v
+rtl/verilog/i8048_core.v
+rtl/verilog/klr_top.v
+bench/verilog/klr_defs.v
+bench/verilog/adc_8090.v
+bench/verilog/var_timing_gen.v
+bench/verilog/klr_vcd.v
+bench/verilog/i8048_tb.v
