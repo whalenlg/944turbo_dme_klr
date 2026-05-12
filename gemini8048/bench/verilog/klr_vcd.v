@@ -422,6 +422,9 @@ always @(posedge `KLR_TB_PATH.clk) begin : klr_phase_monitor
         ph_klr_ign_in_prev <= `KLR_TB_PATH.ign_in;
 
         // ── ign_out: spark timing ─────────────────────────
+        // Minimum real dwell = 1 ms = 11,111 clocks at 11 MHz.
+        // Pulses shorter than this are the wait_ign_2 loop re-assertion
+        // artifact and cannot energise the coil — flagged, not counted.
         if (`KLR_TB_PATH.ign_out && !ph_klr_ign_prev) begin
             ph_klr_ign_out_time <= clk_count;
             $display("KLR: [PHASE] t=%0d ms  IGN_OUT asserted   delay_from_ign_in=%0d.%03d us",
@@ -429,11 +432,17 @@ always @(posedge `KLR_TB_PATH.clk) begin : klr_phase_monitor
                      (clk_count - ph_klr_ign_in_time) / 11,
                      ((clk_count - ph_klr_ign_in_time) % 11) * 1000 / 11);
         end
-        if (!`KLR_TB_PATH.ign_out && ph_klr_ign_prev)
-            $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms",
-                     `KLR_MS(clk_count),
-                     (clk_count - ph_klr_ign_out_time) / 11111,
-                     ((clk_count - ph_klr_ign_out_time) % 11111) * 1000 / 11111);
+        if (!`KLR_TB_PATH.ign_out && ph_klr_ign_prev) begin
+            if ((clk_count - ph_klr_ign_out_time) >= 64'd11111)
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms",
+                         `KLR_MS(clk_count),
+                         (clk_count - ph_klr_ign_out_time) / 11111,
+                         ((clk_count - ph_klr_ign_out_time) % 11111) * 1000 / 11111);
+            else
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT spurious pulse filtered  (width=%0d clk — wait_ign_2 artifact)",
+                         `KLR_MS(clk_count),
+                         (clk_count - ph_klr_ign_out_time));
+        end
         ph_klr_ign_prev <= `KLR_TB_PATH.ign_out;
 
         // ── knock_out ─────────────────────────────────────
