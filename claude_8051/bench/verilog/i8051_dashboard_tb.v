@@ -568,6 +568,12 @@
   `define FREQ     6000
 `endif
 
+`ifdef DME_KLR_COMBINED
+  `define DME_MS  ($time / 1_000_000)   // wall-clock ms — avoids KLR clock freq bleed
+`else
+  `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
+`endif
+
 module i8051_dashboard_tb (
     // External I/O signals
     input  wire ign,              // Ignition switch input
@@ -1040,11 +1046,6 @@ end
 //  Format: [DS] <ms>,<256hex_iram>,<p1><p2><p3>,<rpm>
 // ============================================================
 `define IRAM(a) i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h``a``]
-`ifdef DME_KLR_COMBINED
-  `define DME_MS  ($time / 1_000_000)   // wall-clock ms — avoids KLR clock freq bleed
-`else
-  `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
-`endif
 
 // Snapshot-in-progress flag — phase monitor checks this before $display
 // to prevent its output from interleaving into the DS hex stream.

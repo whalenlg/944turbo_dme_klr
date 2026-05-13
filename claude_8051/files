@@ -7,3 +7,4 @@ bench/verilog/o2_gen.v
 bench/verilog/vcd.v
 bench/verilog/timescale.v
 rtl/verilog/i8051_core.v
+bench/verilog/i8051_dashboard_tb.v

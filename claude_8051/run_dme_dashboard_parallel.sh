@@ -20,7 +20,7 @@
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
+RUN_TESTS="$SCRIPT_DIR/run_dme_dashboard_tests.sh"
 VALIDATE="$SCRIPT_DIR/validate_dash_log.py"
 LOGDIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/claude_8051 2>/dev/null || \
          { mkdir -p ../../tmp/claude_8051 && cd ../../tmp/claude_8051; } && pwd)/dash_logs"
