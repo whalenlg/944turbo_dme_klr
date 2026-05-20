@@ -10,7 +10,7 @@
 #    ./run_dashboard_parallel.sh <workers> [test1 test2 ...]
 #
 #  Examples:
-#    ./run_dashboard_parallel.sh 4              # all 36 tests, 4 at a time
+#    ./run_dashboard_parallel.sh 4              # all tests, 4 at a time
 #    ./run_dashboard_parallel.sh 2 warm_idle cold_start hot_idle
 #    ./run_dashboard_parallel.sh 8              # maximum parallelism
 #
@@ -22,8 +22,9 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
 VALIDATE="$SCRIPT_DIR/validate_dash_log.py"
-LOGDIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
-         { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)/dash_logs"
+_BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
+         { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+# LOGDIR and dash.log lookup are mode-dependent — set after MODE_FLAG is parsed below
 
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
@@ -43,11 +44,17 @@ ALL_TESTS=(
     ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
+    dme_klr_warm_idle dme_klr_ramp_to_3000
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
+# ── Mode switch — must parse before workers check ───────────────────────────
+MODE_FLAG=""
+if [ "$1" = "--nondash" ]; then MODE_FLAG="--nondash"; shift;
+elif [ "$1" = "--dash" ];    then MODE_FLAG="--dash";    shift; fi
+
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 <workers 1-8> [test1 test2 ...]"
+    echo "Usage: $0 [--nondash|--dash] <workers 1-8> [test1 test2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
@@ -55,6 +62,15 @@ if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
     echo "Available tests:"
     printf "  %s\n" "${ALL_TESTS[@]}"
     exit 1
+fi
+
+# Set LOGDIR based on mode
+if [ "$MODE_FLAG" = "--nondash" ]; then
+    LOGDIR="$_BASE/logs"
+    DASHLOG_SUFFIX=".log"        # nondash has no .dash.log — skip validation
+else
+    LOGDIR="$_BASE/dash_logs"
+    DASHLOG_SUFFIX=".dash.log"
 fi
 
 WORKERS="$1"; shift
@@ -74,7 +90,7 @@ VALIDATION_LOG="$LOGDIR/validation.log"
 
 echo ""
 echo "============================================================"
-echo "  DME 951 Dashboard Parallel Test Runner"
+echo "  DME 951 + KLR Parallel Test Runner  [mode: ${MODE_FLAG:---dash}]"
 printf "  Workers          : %s\n" "$WORKERS"
 printf "  Tests            : %s\n" "$TOTAL"
 printf "  Snapshot interval: %sms\n" "$DASH_INTERVAL_MS"
@@ -84,6 +100,20 @@ echo "============================================================"
 # ── validate_one <test_name> ──────────────────────────────────────────────────
 validate_one() {
     local name="$1"
+
+    # Non-dashboard mode: no .dash.log produced — just check sim completed
+    if [ "$MODE_FLAG" = "--nondash" ]; then
+        local simlog="$LOGDIR/${name}.log"
+        if [ -f "$simlog" ]; then
+            printf "  [PASS]   %-22s sim completed (nondash — no snapshot validation)\n" "$name"
+            printf "PASS\t%-22s\tsim completed (nondash mode)\n" "$name" >> "$VALIDATION_LOG"
+        else
+            printf "  [FAIL]   %-22s sim log missing\n" "$name"
+            printf "FAIL\t%-22s\tsim log not found — simulation may have crashed\n"                    "$name" >> "$VALIDATION_LOG"
+        fi
+        return 0
+    fi
+
     local dashlog="$LOGDIR/${name}.dash.log"
 
     if [ ! -f "$dashlog" ]; then
@@ -158,7 +188,7 @@ for test in "${TESTS[@]}"; do
     printf "  [START]  %s  (%ss sim)\n" "$test" "$(sim_secs $test)"
     (
         cd "$SCRIPT_DIR"
-        bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
+        bash "$RUN_TESTS" $MODE_FLAG "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
     ) &
     PIDS+=("$!")
     PID_NAMES+=("$test")

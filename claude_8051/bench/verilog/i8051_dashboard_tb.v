@@ -562,16 +562,16 @@
 //  Clock constants
 // ============================================================
 `ifndef RPMCONST
-  `define RPMCONST 2727272
+  `define RPMCONST (60 * 1000 * `DME_FREQ / 132)  // posedge-clk per RPM unit per tooth
+  // 132 = flywheel teeth; period_current = RPMCONST/RPM = clk events per tooth at that RPM
+  // ref_period (one revolution) = 132 × period_current → ref_rpm = (132×RPMCONST)/ref_period
 `endif
-`ifndef FREQ
-  `define FREQ     6000
-`endif
+`define DME_FREQ  6000    // DME 8051 clock half-periods per ms (6 MHz)
 
 `ifdef DME_KLR_COMBINED
   `define DME_MS  ($time / 1_000_000)   // wall-clock ms — avoids KLR clock freq bleed
 `else
-  `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / 6000)
+  `define DME_MS  (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count / `DME_FREQ)
 `endif
 
 module i8051_dashboard_tb (
@@ -582,8 +582,10 @@ module i8051_dashboard_tb (
     input  wire full_load         // Full-load (WOT) switch → ADC ch6 / TPS
 );
 
-`define FRQ_SCALE  500000
-parameter DELAY = `FRQ_SCALE / `FREQ;
+`ifndef FRQ_SCALE
+  `define FRQ_SCALE  500000   // half-period scale (ns × kHz); DELAY = FRQ_SCALE/FREQ
+`endif
+parameter DELAY = `FRQ_SCALE / `DME_FREQ;
 
 // ─── Clocks & reset ─────────────────────────────────────────
 reg  rst, clk;
@@ -1006,7 +1008,7 @@ end
 //  REFERENCE SENSOR RPM CALCULATOR
 //  Measures osc clocks between consecutive falling edges of
 //  reference_sensor (P3.2 / INT0 — one pulse per revolution).
-//  RPM = 60 * 6_000_000 / period_clocks
+//  RPM = 60 * 1000 * DME_FREQ / period_half_cycles
 //  Held until the next revolution so every snapshot has a value.
 // ============================================================
 reg [63:0] ref_last_edge;
@@ -1033,7 +1035,7 @@ always @(posedge clk) begin : ref_rpm_calc
             if (ref_last_edge != 64'd0) begin
                 ref_period = i8051_dashboard_tb.i8051_top.u_cpu.cycle_count - ref_last_edge;
                 if (ref_period > 0)
-                    ref_rpm <= 32'd360_000_000 / ref_period[31:0];
+                    ref_rpm <= (32'd60 * 32'd1000 * `DME_FREQ) / ref_period[31:0];
             end
             ref_last_edge <= i8051_dashboard_tb.i8051_top.u_cpu.cycle_count;
         end
@@ -1059,7 +1061,10 @@ task emit_snapshot;
         $write("DME: [DS] %0d,", `DME_MS);
         for (i = 0; i < 128; i = i + 1)
             $write("%02h", i8051_dashboard_tb.i8051_top.u_cpu.iram[i[6:0]]);
-        $write(",%02h%02h%02h", p1, p2, p3);
+        // P3 snapshot: construct from actual pin signals, not CPU latch.
+        // Bits 5/4 (T1/AC, T0/has-cat) read directly from t1/t0 wires.
+        $write(",%02h%02h%02h", p1, p2,
+               {p3[7:6], t1, t0, speed_sensor, reference_sensor, p3[1:0]});
         $write(",%0d\n", ref_rpm);
         snapshot_busy = 1'b0;
     end
@@ -1069,13 +1074,13 @@ endtask
 // Snapshot scheduler — suppressed when dme_klr_dashboard_tb is top
 // (that testbench has its own combined DME+KLR scheduler).
 reg [63:0] next_snap;
-initial    next_snap = (`DASH_INTERVAL_MS * 6000);
+initial    next_snap = (`DASH_INTERVAL_MS * `DME_FREQ);
 
 always @(posedge clk) begin
     if (rst &&
         i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= next_snap) begin
         emit_snapshot;
-        next_snap <= next_snap + (`DASH_INTERVAL_MS * 6000);
+        next_snap <= next_snap + (`DASH_INTERVAL_MS * `DME_FREQ);
     end
 end
 `endif // DME_KLR_COMBINED
@@ -1203,7 +1208,7 @@ always @(posedge clk) begin : wdog_stall_detect
 
         // At each window boundary, check and reset
         if (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= ph_wdog_next_sample &&
-            i8051_dashboard_tb.i8051_top.u_cpu.cycle_count > 6_000_000) begin
+            i8051_dashboard_tb.i8051_top.u_cpu.cycle_count > (1000 * `DME_FREQ)) begin
             if (!ph_wdog_changed)
                 $display("DME: [PHASE] t=%0d ms  WARNING: WATCHDOG STALLED    (wdog=0x%02X)",
                          `DME_MS, `IRAM(2A));

@@ -568,7 +568,7 @@
 `endif
 
 `define RPMCONST 2727272  // 6MHz * 60 / 132 teeth = exact
-`define FREQ   6000
+`define DME_FREQ  6000    // DME 8051 clock half-periods per ms (6 MHz)
 
 module i8051_tb (
     // External I/O signals
@@ -578,8 +578,10 @@ module i8051_tb (
     input  wire full_load         // Full-load (WOT) switch → ADC ch6 / TPS
 );
 
-`define FRQ_SCALE  500000
-parameter DELAY = `FRQ_SCALE/`FREQ;
+`ifndef FRQ_SCALE
+  `define FRQ_SCALE  500000   // half-period scale (ns × kHz); DELAY = FRQ_SCALE/FREQ
+`endif
+parameter DELAY = `FRQ_SCALE / `DME_FREQ;
 
 reg  rst, clk;
 reg  [7:0] p0_in, p1_in, p2_in,p3_in;

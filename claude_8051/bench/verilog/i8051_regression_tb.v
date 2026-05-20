@@ -11,7 +11,7 @@
 ////                                                              ////
 //////////////////////////////////////////////////////////////////////
 
-`timescale 1ns/1ps
+`include "timescale.v"
 `define MAX_OSC 1000
 module i8051_regression_tb;
 

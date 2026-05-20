@@ -59,7 +59,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
 );
 
     // ── Clock ─────────────────────────────────────────────
-    parameter DELAY = `FRQ_SCALE / `FREQ;  // half-period ≈ 45 ns → ~11.1 MHz
+    parameter DELAY = `FRQ_SCALE / `KLR_FREQ;  // half-period ≈ 45 ns → ~11.1 MHz
 
     reg clk = 0;
     always #DELAY clk <= ~clk;
@@ -90,11 +90,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg [7:0] adc_ch0 = 8'h81;  // conn 14  — knock sensor 1 amplified
     reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
     reg [7:0] adc_ch2 = 8'h83;  // conn 17
-    reg [7:0] adc_ch3 = 8'h84;  // conn 15
-    reg [7:0] adc_ch4 = 8'h85;  // conn 23
+    reg [7:0] adc_ch3 = 8'h84;  // conn 1 TPS 5V
+    reg [7:0] adc_ch4 = 8'h85;  // conn 23 
     reg [7:0] adc_ch5 = 8'h86;  // lm2902.14 — comparator output
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
-    reg [7:0] adc_ch7 = 8'h88;  // conn i16
+    reg [7:0] adc_ch7 = 8'h88;  // conn 16 TPS Angle
 
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;

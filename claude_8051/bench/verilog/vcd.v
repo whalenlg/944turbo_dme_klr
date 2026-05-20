@@ -226,7 +226,6 @@ $dumpfile("sim.vcd");
 $dumpon;
 //$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
-$dumpvars(1,`TB.u_dumpvcd.r7f);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
 
 `ifdef CPU_DEBUG
@@ -243,6 +242,8 @@ $dumpvars(0,`TB.adc_delay_8_1);
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
 $dumpvars(1,pc);
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
+$dumpvars(1,`TB.i8051_top.u_cpu.t0);
+$dumpvars(1,`TB.i8051_top.u_cpu.t1);
 
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
 //$dumpvars(1,`TB.xdata [7:0]);
@@ -251,6 +252,7 @@ $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 //$dumpvars(1,`TB.xaddr [15:0]);
 $dumpvars(1,`TB.speed_sensor);
 $dumpvars(1,`TB.reference_sensor);
+$dumpvars(1,`TB.p3_in [7:0]);
 $dumpvars(1,`TB.p3 [7:0]);
 $dumpvars(1,`TB.p2 [7:0]);
 $dumpvars(1,`TB.p1 [7:0]);

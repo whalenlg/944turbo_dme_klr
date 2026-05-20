@@ -12,7 +12,7 @@ module var_timing_generator (
     integer period_current,period_inc;
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;
-    localparam period_change = `SIM_TIME*`FREQ/(period_start+period_end)/22500000;
+    localparam period_change = `SIM_TIME*`KLR_FREQ/(period_start+period_end)/22500000;
     integer cycle_count  = 0;
     integer tick_counter = 0;
     reg [23:0] counter;

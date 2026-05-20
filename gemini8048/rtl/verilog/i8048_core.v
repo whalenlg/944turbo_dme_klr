@@ -80,7 +80,7 @@ task display_read_status;
     input [7:0] data_out;
     input [11:0] address;
     begin
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
         $display("\t\t\t\tPC: %h | OpCode: %h | Instr: %s | Addr: %h | OldVal: %h | ReadVal: %h | ResultVal: %h",
                  pc,instr,opinstr[instr],address, data_old, data_read, data_out);
 `endif
@@ -1075,12 +1075,12 @@ always @(posedge clk) begin
               // --- COUNTER MODE ---
               if (t1_falling_edge)
                  begin
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
                    $display("counter edge");
 `endif
                    if (timer_val == 8'hFF)
                    begin
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
                      $display("counter roll");
 `endif
                      timer_val  <= 8'h00;
@@ -1089,7 +1089,7 @@ always @(posedge clk) begin
                    else
                      begin
                        timer_val  <= timer_val + 1'b1;
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
                        $display("count updated");
 `endif
                      end

@@ -10,9 +10,9 @@ rm ../../tmp/gemini8048/hex/ram_out.hex
 rm ../../tmp/gemini8048/hex/rom_out.hex
 rm ../../tmp/gemini8048/vcd/951klr.vcd
 
-iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
+iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 vvp ../../tmp/gemini8048/i8048_regression_tb.vvp
-#iverilog -o -DCPU_DEBUG ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
+#iverilog -o -DKLR_DEBUG ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
 iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
 source  ../8051_Debug/bin/activate
 python3 ../disassemble/xlsx2veriloghex.py bin/87KLR951.xlsx bin/test_sim.hex 
@@ -28,4 +28,4 @@ mv ram_out.hex ../../tmp/gemini8048/hex
 mv rom_out.hex ../../tmp/gemini8048/hex 
 mv 951klr.vcd ../../tmp/gemini8048/vcd
 cat ../../tmp/gemini8048/951klr.log | grep -v "^\t" | grep -v "^label" > ../../tmp/gemini8048/debug1.log
-cat ../../tmp/gemini8048/debug1.log | python3 ../opencores_8051/dedupe.py > ../../tmp/gemini8048/951klr_dedupe.log
+cat ../../tmp/gemini8048/debug1.log | python3 ../../claude_8051/dedupe.py > ../../tmp/gemini8048/951klr_dedupe.log

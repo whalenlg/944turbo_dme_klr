@@ -8,7 +8,7 @@
 //  ────────────────────────
 //  128 continuous-assign wires (ram_00–ram_7f) mirror every byte
 //  of the 8049 internal RAM.  Because they live in this module and
-//  this module is swept by $dumpvars(1,dme_klr_tb.u_klr_vcd), every
+//  this module is swept by $dumpvars(1,`KLR_TOP.u_klr_vcd), every
 //  RAM location is visible in the VCD waveform viewer at every
 //  simulation timestep — no sampling gaps.
 //
@@ -21,6 +21,18 @@
 // ============================================================
 
 module klr_dumpvcd_combined();
+
+// Top-level hierarchy path — set by the testbench being compiled.
+// Dashboard flow:  -DDME_KLR_COMBINED → dme_klr_dashboard_tb
+// Regression flow: (default)          → dme_klr_tb
+`ifdef DME_KLR_COMBINED
+  `define KLR_TOP  dme_klr_dashboard_tb
+  `define KLR_CORE dme_klr_dashboard_tb.u_klr.top
+`else
+  `define KLR_TOP  dme_klr_tb
+  `define KLR_CORE dme_klr_tb.top_klr
+`endif
+
 
 `define MEMMAX 4095
 integer clk_count, msg_count;
@@ -43,15 +55,15 @@ reg [159:0] opcode[0:`MEMMAX], instr[0:`MEMMAX],
 //  RAM mirror wires  (ram_00 – ram_7f)
 //
 //  Each wire is a continuous alias of the corresponding RAM cell
-//  inside dme_klr_tb.top_klr.i8048_core_1.ram[].  Being signals in this
-//  module they are captured by $dumpvars(1,dme_klr_tb.u_klr_vcd) at
+//  inside `KLR_CORE.i8048_core_1.ram[].  Being signals in this
+//  module they are captured by $dumpvars(1,`KLR_TOP.u_klr_vcd) at
 //  every timestep, making all 128 bytes permanently visible in
 //  the VCD waveform viewer without any sampling gaps.
 //
 //  The always block below references these wires by name
 //  (e.g. ram_24) rather than hierarchical paths, for readability.
 // ============================================================
-`define RAM dme_klr_tb.top_klr.i8048_core_1.ram
+`define RAM `KLR_CORE.i8048_core_1.ram
 
 // 0x00 – 0x0F  (Bank 0 R0–R7 = ram_00–ram_07; Stack = ram_08–ram_17)
 wire [7:0] ram_00 = `RAM[8'h00]; wire [7:0] ram_01 = `RAM[8'h01];
@@ -140,47 +152,51 @@ wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
 //  interrupt-driven stack pushes.  This block synchronises depth
 //  with SP on every interrupt entry and exit.
 // ============================================================
-always @(posedge dme_klr_tb.top_klr.i8048_core_1.irq_in_progress) begin
+always @(posedge `KLR_CORE.i8048_core_1.irq_in_progress) begin
     call_depth = call_depth + 1;
     $display(">>> IRQ ENTRY: retaddr=ram[%02h/%02h]=%02h%02h  → ISR",
-        ({dme_klr_tb.top_klr.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
-        ({dme_klr_tb.top_klr.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08),
-        `RAM[{dme_klr_tb.top_klr.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08],
-        `RAM[{dme_klr_tb.top_klr.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08]);
+        ({`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
+        ({`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08),
+        `RAM[{`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08],
+        `RAM[{`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08]);
 end
 //  Logs whenever the crank trigger fires (res_n goes low) so
 //  we can see exactly what PC, SP, and IR state was interrupted.
 // ============================================================
-always @(negedge dme_klr_tb.top_klr.res_n) begin
+always @(negedge `KLR_CORE.res_n) begin
     $display("\n>>> TRIGGER RESET fired at t=%0t", $time);
     $display("    PC=%03h  IR=%02h  irq_in_progress=%0b  cycle_2=%0b",
-        dme_klr_tb.top_klr.i8048_core_1.pc,
-        dme_klr_tb.top_klr.i8048_core_1.ir,
-        dme_klr_tb.top_klr.i8048_core_1.irq_in_progress,
-        dme_klr_tb.top_klr.i8048_core_1.cycle_2);
+        `KLR_CORE.i8048_core_1.pc,
+        `KLR_CORE.i8048_core_1.ir,
+        `KLR_CORE.i8048_core_1.irq_in_progress,
+        `KLR_CORE.i8048_core_1.cycle_2);
     $display("    Stack slots: [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
         `RAM[8'h08], `RAM[8'h09], `RAM[8'h0a], `RAM[8'h0b],
         `RAM[8'h0c], `RAM[8'h0d], `RAM[8'h0e], `RAM[8'h0f]);
-    if (dme_klr_tb.top_klr.i8048_core_1.psw[2:0] != 0)
+    if (`KLR_CORE.i8048_core_1.psw[2:0] != 0)
         $display("    *** Reset with SP!=0 — stack frame(s) will be orphaned ***");
-    if (dme_klr_tb.top_klr.i8048_core_1.cycle_2)
+    if (`KLR_CORE.i8048_core_1.cycle_2)
         $display("    *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
 end
-`define VCD "1"
-`define VCD_FILE "951klr_combined.vcd"
-
 initial begin
-`ifdef VCD
-//`define VCD_FILE "951dme.vcd"
-`endif
+    // VCD filename from +vcd= runtime arg (set by run_dashboard_tests.sh)
+    // Falls back to a default name if not supplied.
+    begin : vcd_setup
+        reg [1023:0] vcd_path;
+        if ($value$plusargs("vcd=%s", vcd_path))
+            $dumpfile(vcd_path);
+        else
+            $dumpfile("klr_combined.vcd");
+    end
     $display("VCD Dump enabled");
-    $dumpfile(`VCD_FILE);
     $dumpon;
     $dumpvars(1, dme_klr_tb);
-    $dumpvars(1, dme_klr_tb.top_klr);
-    $dumpvars(1, dme_klr_tb.u_klr_vcd);   // sweeps all 128 ram_XX wires
-    $dumpvars(1, dme_klr_tb.top_klr.i8048_core_1);
-    $dumpvars(1, dme_klr_tb.top_klr.u_adc_mux);   // ADC pipeline internals
+`ifdef DME_KLR_DEBUG
+    $dumpvars(1, `KLR_CORE);
+    $dumpvars(1, `KLR_TOP.u_klr_vcd);   // sweeps all 128 ram_XX wires
+    $dumpvars(1, `KLR_CORE.i8048_core_1);
+    $dumpvars(1, `KLR_CORE.u_adc_mux);   // ADC pipeline internals
+`endif // DME_KLR_DEBUG
 
 `ifdef RAMPRPM $dumpvars(1, oc8048_tb.var_interrupt_generator_1);
 `ifdef FLATRPM $dumpvars(1, oc8048_tb.interrupt_generator_1);
@@ -192,27 +208,27 @@ initial begin
     last_msg  = "FFFF";
     msg_count = 1;
     call_depth = 0;
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/test_sim.hex",             debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/memory_byte_map.hex",      memory_byte_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_opcode_ins.hex",       opcode);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_instr.hex",            instr);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_operands.hex",         ops);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_operands_numeric.hex", opsnums);
+    $readmemh("../../../../../gemini8048/bin/test_sim.hex",             debug_msg);
+    $readmemh("../../../../../gemini8048/bin/memory_byte_map.hex",      memory_byte_map);
+    $readmemh("../../../../../gemini8048/bin/asm_opcode_ins.hex",       opcode);
+    $readmemh("../../../../../gemini8048/bin/asm_instr.hex",            instr);
+    $readmemh("../../../../../gemini8048/bin/asm_operands.hex",         ops);
+    $readmemh("../../../../../gemini8048/bin/asm_operands_numeric.hex", opsnums);
 end
 
 // ============================================================
 //  Per-instruction disassembly + register + key address display
 // ============================================================
-always @(negedge dme_klr_tb.top_klr.clk) begin
+always @(negedge `KLR_CORE.clk) begin
     clk_count      <= clk_count + 1;
-    msg_addr        = dme_klr_tb.top_klr.i8048_core_1.pc;
+    msg_addr        = `KLR_CORE.i8048_core_1.pc;
     asmlabel        = debug_msg[msg_addr];
     asmopcode       = opcode[msg_addr];
     asminstr        = instr[msg_addr][159:120];
     asmoperands     = ops[msg_addr];
     asmoperandnums  = opsnums[msg_addr];
 
-    if (last_pc !== msg_addr && !dme_klr_tb.top_klr.i8048_core_1.cycle_2) begin
+    if (last_pc !== msg_addr && !`KLR_CORE.i8048_core_1.cycle_2) begin
 
         if (last_msg !== asmlabel)
             msg_count = 1;
@@ -242,8 +258,8 @@ always @(negedge dme_klr_tb.top_klr.clk) begin
         begin : track_calls
             integer sp_now;
             reg [7:0] curr_op;
-            sp_now  = dme_klr_tb.top_klr.i8048_core_1.psw[2:0];
-            curr_op = dme_klr_tb.top_klr.rom_1.rom[msg_addr];
+            sp_now  = `KLR_CORE.i8048_core_1.psw[2:0];
+            curr_op = `KLR_CORE.rom_1.rom[msg_addr];
 
             // CALL family: opcodes x14,x34,x54,x74,x94,xB4,xD4,xF4
             if ((curr_op & 8'h1F) == 8'h14) begin
@@ -253,9 +269,9 @@ always @(negedge dme_klr_tb.top_klr.clk) begin
                     // Target: {mb_latch, ir[7:5], operand_byte}
                     // ir[7:5] = curr_op[7:5] (upper 3 target bits from opcode)
                     // operand byte = rom[msg_addr + 1]
-                    call_target = {dme_klr_tb.top_klr.i8048_core_1.mb_latch,
+                    call_target = {`KLR_CORE.i8048_core_1.mb_latch,
                                    curr_op[7:5],
-                                   dme_klr_tb.top_klr.rom_1.rom[msg_addr + 1]};
+                                   `KLR_CORE.rom_1.rom[msg_addr + 1]};
                     ret_addr = msg_addr[11:0] + 12'h002;
                     if (call_depth < 8) begin
                         call_stack[call_depth] = ret_addr;

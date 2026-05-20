@@ -374,7 +374,7 @@ function parseKLRLog(text) {
       if (isNaN(time)) continue;
       const hex = parts[1].trim();
       const snap = { t: time, ram: {} };
-      for (let i = 0; i < Math.min(hex.length / 2, 64); i++) {
+      for (let i = 0; i < Math.min(hex.length / 2, 128); i++) {
         const bs = hex.slice(i * 2, i * 2 + 2);
         if (bs && !/x/i.test(bs)) {
           const v = parseInt(bs, 16); if (!isNaN(v)) snap.ram[i] = v;
@@ -453,8 +453,8 @@ function parseKLRLog(text) {
         phases.push(p);
       }
 
-    // ── DME [PHASE] (no KLR: prefix) ────────────────────────
-    } else if (t.startsWith('[PHASE]')) {
+    // ── DME [PHASE] — bare or DME: prefixed (combined log) ───
+    } else if (t.startsWith('[PHASE]') || t.startsWith('DME: [PHASE]')) {
       const p = parsePhaseLine(t);
       if (p) phases.push(p);
     }
@@ -2414,7 +2414,7 @@ function KLRPortsTab({ klrData, klrIdx, logHasPorts, logLoaded }) {
 }
 
 // ── KLRIRAMTab ────────────────────────────────────────────────────
-// Displays the full 64-byte 8048 RAM dump from the [KLR] snapshot
+// Displays the full 128-byte 8048 RAM dump from the KLR: [DS] snapshot
 // nearest to the current KLR scrubber position, plus any named
 // locations available from KLR: [STATUS] ramVals.
 function KLRIRAMTab({ klrData, klrIdx }) {
@@ -2438,12 +2438,35 @@ function KLRIRAMTab({ klrData, klrIdx }) {
   // Merge: hex snapshot takes priority, then STATUS ramVals
   const ramMerged = { ...ramFromStatus, ...ram };
 
-  // Known 8048 RAM addresses
+  // KLR 8048 RAM labels — from bin/memory_byte_map.hex (27 labelled locations)
   const KNOWN = {
-    0x16: 'ADC_CH?',
-    0x17: 'ADC_CH?',
-    0x26: 'CTRL?',
-    0x38: 'STATE',
+    0x00: 'interrupt_info',
+    0x02: 'num_timer_ints',
+    0x03: 'mult_in',
+    0x05: 'dec_interrupts',
+    0x06: 'speed_count',
+    0x07: 'timer_period',
+    0x24: 'eng_speed',
+    0x2E: 'battery_volts',
+    0x2F: 'knock_raw',
+    0x31: 'knock_test_out',
+    0x33: 'blink',
+    0x38: 'scratch',
+    0x39: 'TPS',
+    0x3A: 'throttle_degrees',
+    0x3C: 'throttle_raw_sensor',
+    0x3E: 'WOT_angle',
+    0x44: 'rpm_range',
+    0x45: 'mac_knock_thresh',
+    0x46: 'integrated_knock_val',
+    0x47: 'knock_det_threshold',
+    0x48: 'throttle_position_threshold',
+    0x4A: 'cycle_count_before_restore',
+    0x4B: 'max_timing_retart',
+    0x4C: 'boost_threshold',
+    0x4E: 'cycle_count_before_pulling_boost',
+    0x50: 'cycle_count_before_restore_boost',
+    0x7A: 'knk_thres',
   };
 
   const hasHex    = Object.keys(ram).length > 0;
@@ -2456,9 +2479,10 @@ function KLRIRAMTab({ klrData, klrIdx }) {
     { key:'status', label:'STATUS VALUES' },
   ];
 
-  if (!hasData) return (
+  const logLoaded = (klrData?.snapshots?.length > 0) || (klrData?.status?.length > 0);
+  if (!logLoaded) return (
     <div style={{textAlign:'center',color:C.textDim,padding:'60px',fontSize:'14px'}}>
-      No KLR RAM data — load a log with <code style={{color:'#44aaff'}}>[KLR]</code> or{' '}
+      No KLR RAM data — load a log with <code style={{color:'#44aaff'}}>KLR: [DS]</code> or{' '}
       <code style={{color:'#44aaff'}}>KLR: [STATUS]</code> lines
     </div>
   );
@@ -2485,7 +2509,7 @@ function KLRIRAMTab({ klrData, klrIdx }) {
       {sub==='grid' && (
         <div style={S.panel}>
           <div style={S.panelTitle}>
-            8048 RAM — 64 BYTES &nbsp;
+            8048 RAM — 128 BYTES &nbsp;
             <span style={{color:C.textDim,fontSize:'8px'}}>hover for details · blue = known location</span>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(16,1fr)',gap:'2px',marginBottom:'2px'}}>
@@ -2494,7 +2518,7 @@ function KLRIRAMTab({ klrData, klrIdx }) {
             ))}
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(16,1fr)',gap:'2px'}}>
-            {Array.from({length:64},(_,addr)=>{
+            {Array.from({length:128},(_,addr)=>{
               const val   = ramMerged[addr];
               const hasV  = val !== undefined;
               const known = KNOWN[addr];
@@ -2527,30 +2551,41 @@ function KLRIRAMTab({ klrData, klrIdx }) {
       {/* ── KNOWN LOCATIONS ─────────────────────────────────── */}
       {sub==='known' && (
         <div style={S.panel}>
-          <div style={S.panelTitle}>KNOWN KLR RAM LOCATIONS</div>
-          {Object.entries(KNOWN).map(([addr,name])=>{
-            const val = ramMerged[+addr];
-            return (
-              <div key={addr} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-                                      padding:'5px 8px',borderBottom:`1px solid ${C.border}`,
-                                      borderLeft:`3px solid ${val!==undefined?'#44aaff':C.border}`}}>
-                <div>
-                  <span style={{color:'#44aaff',fontSize:'11px',fontWeight:'bold'}}>{name}</span>
-                  <span style={{color:C.textDim,fontSize:'9px',marginLeft:'8px'}}>
-                    ram[{addr}] = 0x{addr.padStart ? (+addr).toString(16).toUpperCase().padStart(2,'0') : (+addr).toString(16).toUpperCase().padStart(2,'0')}h
-                  </span>
-                </div>
-                <div style={{textAlign:'right'}}>
-                  <div style={{color:val!==undefined?C.textBright:'#335533',fontSize:'12px'}}>
-                    {val!==undefined?`0x${h2(val)}`:'--'}
+          <div style={S.panelTitle}>KNOWN KLR RAM LOCATIONS &nbsp;
+            <span style={{color:C.textDim,fontSize:'8px'}}>blue border = has value · dim = no data yet</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:'4px',marginTop:'6px'}}>
+            {Object.entries(KNOWN).map(([addr,name])=>{
+              const a   = +addr;
+              const val = ramMerged[a];
+              const hasV = val !== undefined;
+              const addrHex = a.toString(16).toUpperCase().padStart(2,'0');
+              return (
+                <div key={addr}
+                  title={`ram[${a}] (0x${addrHex}h) = ${hasV?'0x'+h2(val)+' ('+val+'d)':'no data'}`}
+                  style={{
+                    background: hasV ? '#001a22' : '#060d06',
+                    border:`1px solid ${hasV?'#44aaff':C.border}`,
+                    borderRadius:'4px',padding:'5px 6px',
+                  }}>
+                  <div style={{color:'#44aaff',fontSize:'9px',fontWeight:'bold',
+                               overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
+                    {name}
                   </div>
-                  {val!==undefined && <div style={{color:C.textDim,fontSize:'9px'}}>{val}d &nbsp; {val.toString(2).padStart(8,'0')}b</div>}
+                  <div style={{color:C.textDim,fontSize:'7px',marginBottom:'3px'}}>
+                    0x{addrHex}h
+                  </div>
+                  <div style={{color:hasV?C.textBright:'#335533',fontSize:'13px',fontWeight:'bold'}}>
+                    {hasV ? h2(val) : '--'}
+                  </div>
+                  {hasV && (
+                    <div style={{color:C.textDim,fontSize:'7px',marginTop:'1px'}}>
+                      {val}d &nbsp; {val.toString(2).padStart(8,'0')}b
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-          <div style={{marginTop:'8px',padding:'6px 8px',color:C.textDim,fontSize:'9px'}}>
-            Add more entries to the KNOWN object as KLR firmware is reverse-engineered.
+              );
+            })}
           </div>
         </div>
       )}

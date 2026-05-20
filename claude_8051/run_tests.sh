@@ -138,7 +138,7 @@ compile_and_run cl_ramp_to_redline \
 
 compile_and_run cl_ac_halfway \
     -DTEST_CL_AC_HALFWAY \
-    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY \
+    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DDEBUG\
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
 compile_and_run cl_cold_start \
@@ -286,7 +286,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000)  compile_and_run cl_ramp_to_3000  -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000)  compile_and_run cl_ramp_to_6000  -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) compile_and_run cl_ramp_to_redline -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ac_halfway)    compile_and_run cl_ac_halfway     -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_ac_halfway)    compile_and_run cl_ac_halfway     -DTEST_CL_AC_HALFWAY  -DDEBUG  -DRPMRAMP -DCL_MODE -DCPU_DEBUG -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_cold_start)    compile_and_run cl_cold_start     -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       compile_and_run cold_start       -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                       -DSIM_TIME=120000000000  ;;
         hot_idle)         compile_and_run hot_idle         -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;

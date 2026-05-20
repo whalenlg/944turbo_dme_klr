@@ -14,5 +14,4 @@
   ../claude_8051/bench/verilog/o2_gen.v 
   ../gemini8048/rtl/verilog/klr_top.v 
   bench/verilog/klr_vcd_combined.v 
-  ../claude_8051/bench/verilog/i8051_dashboard_tb.v
-  bench/verilog/dme_klr_dashboard_tb.v
+  ../claude_8051/bench/verilog/i8051_tb.v

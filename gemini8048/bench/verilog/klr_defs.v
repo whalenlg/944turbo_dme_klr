@@ -19,13 +19,21 @@
 // ============================================================
 
 // ── Oscillator ───────────────────────────────────────────
-`define FREQ       11000    // KLR crystal frequency in kHz  (11 MHz)
-`define FRQ_SCALE  500000   // half-period scale (ns × kHz); DELAY = FRQ_SCALE/FREQ
+`define KLR_FREQ   11000    // KLR crystal frequency in kHz  (11 MHz)
+`ifndef FRQ_SCALE
+  `define FRQ_SCALE  500000   // half-period scale (ns × kHz); DELAY = FRQ_SCALE/FREQ
+`endif
 
 // ── RPM sweep (used by var_timing_generator localparams) ─
-`define RPMSTART   840      // idle RPM  (sweep start)
-`define RPMEND     6500     // redline   (sweep end)
+`ifndef RPMSTART
+  `define RPMSTART   840      // KLR idle RPM — override with -DRPMSTART=<rpm>
+`endif
+`ifndef RPMEND
+  `define RPMEND     6500     // KLR redline  — override with -DRPMEND=<rpm>
+`endif
 `define RPMCONST   2727272  // 6 MHz × 60 / 132 teeth
 
 // ── Simulation run time ───────────────────────────────────
-`define SIM_TIME   10000000000  // 10000 ms (10 s) in ns
+`ifndef SIM_TIME
+  `define SIM_TIME   10000000000  // default 10s; override with -DSIM_TIME=<ns>
+`endif

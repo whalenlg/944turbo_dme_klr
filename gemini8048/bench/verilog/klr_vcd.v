@@ -154,19 +154,19 @@ wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
 // ============================================================
 always @(posedge `KLR_TB_PATH.i8048_core_1.irq_in_progress) begin
     call_depth = call_depth + 1;
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
     $display("KLR: >>> IRQ ENTRY: retaddr=ram[%02h/%02h]=%02h%02h  → ISR",
         ({`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
         ({`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08),
         `RAM[{`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08],
         `RAM[{`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08]);
-`endif // CPU_DEBUG
+`endif // KLR_DEBUG
 end
 //  Logs whenever the crank trigger fires (res_n goes low) so
 //  we can see exactly what PC, SP, and IR state was interrupted.
 // ============================================================
 always @(negedge `KLR_TB_PATH.res_n) begin
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
     $display("KLR: \n>>> TRIGGER RESET fired at t=%0t", $time);
     $display("KLR:     PC=%03h  IR=%02h  irq_in_progress=%0b  cycle_2=%0b",
         `KLR_TB_PATH.i8048_core_1.pc,
@@ -180,7 +180,7 @@ always @(negedge `KLR_TB_PATH.res_n) begin
         $display("KLR:     *** Reset with SP!=0 — stack frame(s) will be orphaned ***");
     if (`KLR_TB_PATH.i8048_core_1.cycle_2)
         $display("KLR:     *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
-`endif // CPU_DEBUG
+`endif // KLR_DEBUG
 end
 `ifndef VCD_FILE
   `define VCD_FILE "951klr.vcd"
@@ -193,7 +193,7 @@ initial begin
 
     // ── Always-on: minimal signal set (small VCD) ─────────────────
     // Key inter-ECU and output signals always captured regardless of
-    // CPU_DEBUG flag — keeps the VCD loadable in GTKWave.
+    // KLR_DEBUG flag — keeps the VCD loadable in GTKWave.
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.pc);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.ir);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.acc);
@@ -209,14 +209,14 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.CV_PWM);
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
-    $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
 
-    // ── CPU_DEBUG: full core + ADC internals (large VCD) ──────────
-    // Compile with -DCPU_DEBUG to enable.
-`ifdef CPU_DEBUG
+    // ── KLR_DEBUG: full core + ADC internals (large VCD) ──────────
+    // Compile with -DKLR_DEBUG to enable.
+`ifdef KLR_DEBUG
     $dumpvars(1, `KLR_TOP_TB);
     $dumpvars(1, `KLR_TB_PATH);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
+    $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
 `endif
 
@@ -252,8 +252,8 @@ always @(negedge top.clk) begin
         else
             msg_count = msg_count + 1;
 
-`ifdef CPU_DEBUG
-        // ── Disassembly line (CPU_DEBUG only) ──────────────
+`ifdef KLR_DEBUG
+        // ── Disassembly line (KLR_DEBUG only) ──────────────
         if (asmopcode[159:152] != 8'h20)
             if (asmlabel[159:152] != 8'h20)
                 $display("KLR: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
@@ -263,7 +263,7 @@ always @(negedge top.clk) begin
                 $display("KLR: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
                     clk_count, msg_addr,
                     asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
-`endif // CPU_DEBUG
+`endif // KLR_DEBUG
 
         // ── R0–R7 register banks ────────────────────────────
         // ── Call depth tracker ──────────────────────────────
@@ -296,10 +296,10 @@ always @(negedge top.clk) begin
                         call_stack[call_depth] = ret_addr;
                         call_depth = call_depth + 1;
                     end
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
                     $display("KLR: \t\tCALL  target=%03h  retaddr=%03h",
                         call_target, ret_addr);
-`endif // CPU_DEBUG
+`endif // KLR_DEBUG
                 end
             end
 
@@ -335,14 +335,14 @@ always @(negedge top.clk) begin
                 end else begin
                     call_depth = call_depth - 1;
                 end
-`ifdef CPU_DEBUG
+`ifdef KLR_DEBUG
                 $display("KLR: \t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
                     (curr_op == 8'h93) ? "RETR" : "RET ",
                     ({sp_now[2:0] - 1'b1, 1'b0} + 6'h08),
                     ({sp_now[2:0] - 1'b1, 1'b1} + 6'h08),
                     `RAM[{sp_now[2:0] - 1'b1, 1'b1} + 6'h08],
                     `RAM[{sp_now[2:0] - 1'b1, 1'b0} + 6'h08]);
-`endif // CPU_DEBUG
+`endif // KLR_DEBUG
             end
 
             else begin

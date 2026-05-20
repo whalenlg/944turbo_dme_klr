@@ -60,14 +60,5 @@ module dme_klr_tb;
         .full_load   ( full_load     )   // KLR WOT flag → DME
     );
 
-    // ── VCD: dump inter-ECU wires ─────────────────────────
-    // The sub-TBs (u_dme via vcd.v, u_klr via klr_vcd.v) each
-    // open their own VCD files and dump their own signals.
-    // This block adds the four inter-ECU wires to the DME VCD
-    // so you can see the cross-ECU signal activity in one file.
-    initial begin
-        #2;  // after sub-TB VCD files are opened
-        $dumpvars(1, dme_klr_tb);  // klr_trigger, klr_ign_in, klr_ign_out, full_load
-    end
 
 endmodule
