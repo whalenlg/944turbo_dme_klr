@@ -656,6 +656,50 @@ module i8048_core_tb;
         clock_cycles(1); check_acc(8'hAD, "XCHD A,@R0: A low nibble exchanged");
         check_ram(7'h40, 8'hCB, "XCHD A,@R0: RAM low nibble exchanged");
 
+        // XCHD regression: high nibbles must be preserved
+        // A=0xA3, RAM[0x41]=0x57 → A=0xA7, RAM[0x41]=0x53
+        fill_nop(); hard_reset();
+        rom[0]  = 8'hB8; rom[1]  = 8'h41;  // MOV R0,#0x41
+        rom[2]  = 8'hB0; rom[3]  = 8'h57;  // MOV @R0,#0x57
+        rom[4]  = 8'h23; rom[5]  = 8'hA3;  // MOV A,#0xA3
+        rom[6]  = 8'h30;                    // XCHD A,@R0
+        clock_cycles(2); clock_cycles(2); clock_cycles(2);
+        clock_cycles(1); check_acc(8'hA7, "XCHD: A high nibble preserved (A: 0xA3→0xA7)");
+        check_ram(7'h41, 8'h53, "XCHD: RAM high nibble preserved (RAM: 0x57→0x53)");
+
+        // XCHD regression: zero nibble exchange
+        // A=0xF0, RAM[0x42]=0x0F → A=0xFF, RAM[0x42]=0x00
+        fill_nop(); hard_reset();
+        rom[0]  = 8'hB8; rom[1]  = 8'h42;  // MOV R0,#0x42
+        rom[2]  = 8'hB0; rom[3]  = 8'h0F;  // MOV @R0,#0x0F
+        rom[4]  = 8'h23; rom[5]  = 8'hF0;  // MOV A,#0xF0
+        rom[6]  = 8'h30;                    // XCHD A,@R0
+        clock_cycles(2); clock_cycles(2); clock_cycles(2);
+        clock_cycles(1); check_acc(8'hFF, "XCHD zero nibble: A=0xF0,RAM=0x0F → A=0xFF");
+        check_ram(7'h42, 8'h00, "XCHD zero nibble: RAM=0x0F→0x00");
+
+        // XCHD regression: same nibble (no-op)
+        // A=0xAA, RAM[0x43]=0xBA → A=0xAA, RAM[0x43]=0xBA (nibbles identical)
+        fill_nop(); hard_reset();
+        rom[0]  = 8'hB8; rom[1]  = 8'h43;  // MOV R0,#0x43
+        rom[2]  = 8'hB0; rom[3]  = 8'hBA;  // MOV @R0,#0xBA
+        rom[4]  = 8'h23; rom[5]  = 8'hAA;  // MOV A,#0xAA
+        rom[6]  = 8'h30;                    // XCHD A,@R0
+        clock_cycles(2); clock_cycles(2); clock_cycles(2);
+        clock_cycles(1); check_acc(8'hAA, "XCHD same nibble: A unchanged (0xAA)");
+        check_ram(7'h43, 8'hBA, "XCHD same nibble: RAM unchanged (0xBA)");
+
+        // XCHD regression: R1 indirect (@R1 variant — opcode 0x31)
+        // A=0x12, RAM[0x50]=0x34 → A=0x14, RAM[0x50]=0x32
+        fill_nop(); hard_reset();
+        rom[0]  = 8'hB9; rom[1]  = 8'h50;  // MOV R1,#0x50
+        rom[2]  = 8'hB1; rom[3]  = 8'h34;  // MOV @R1,#0x34
+        rom[4]  = 8'h23; rom[5]  = 8'h12;  // MOV A,#0x12
+        rom[6]  = 8'h31;                    // XCHD A,@R1
+        clock_cycles(2); clock_cycles(2); clock_cycles(2);
+        clock_cycles(1); check_acc(8'h14, "XCHD @R1: A=0x12,RAM=0x34 → A=0x14");
+        check_ram(7'h50, 8'h32, "XCHD @R1: RAM=0x34→0x32");
+
         // =====================================================================
         $display("\n--- Group 20: JMP page 0 ---");
         fill_nop(); hard_reset();

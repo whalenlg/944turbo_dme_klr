@@ -12,8 +12,8 @@ rm ../../tmp/gemini8048/vcd/951klr.vcd
 
 iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 vvp ../../tmp/gemini8048/i8048_regression_tb.vvp
-#iverilog -o -DKLR_DEBUG ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
-iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
+iverilog -o ../../tmp/gemini8048/i8048.vvp -DKLR_DEBUG  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
+#iverilog -o ../../tmp/gemini8048/i8048.vvp  -f files -I rtl/verilog -I bench/verilog -I ../claude_8051/bench/verilog -s klr_tb 
 source  ../8051_Debug/bin/activate
 python3 ../disassemble/xlsx2veriloghex.py bin/87KLR951.xlsx bin/test_sim.hex 
 python3 ../disassemble/xlsxmembyte2veriloghex.py  bin/87KLR951.xlsx bin/memory_byte_map.hex

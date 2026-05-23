@@ -6,6 +6,7 @@
 //    DME A_5_KLR_ign_out → KLR ext_trigger (DME ign out → KLR, inverted)
 //    KLR ign_out         → (not connected to DME — spark output, not key switch)
 //    KLR full_load       → DME full_load   (WOT flag → DME TPS ch6)
+//    DME afm_wiper      → KLR tps_wiper   (TPS angle ch7)
 //
 //  Snapshot format (every DASH_INTERVAL_MS, latched to DME clock):
 //    [DS]  <ms>,<256hex_dme_iram>,<p1p2p3>,<rpm>
@@ -27,6 +28,10 @@ module dme_klr_dashboard_tb;
     wire ign_out_dme_to_klr;  // DME A_5_KLR_ign_out (active-high)
     wire klr_ign_out;         // KLR spark output (NOT connected to DME ign)
     wire full_load;            // KLR full_load → DME TPS ch6
+    // TPS angle: DME AFM wiper → KLR TPS angle ch7
+    // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
+    wire [7:0] tps_wiper_sig;
+    assign tps_wiper_sig = u_dme.afm_wiper;
 
     // ── DME sub-TB ───────────────────────────────────────────
     // ign tied high — ignition switch always on.
@@ -42,10 +47,11 @@ module dme_klr_dashboard_tb;
     // EXT_STIM=1: external trigger/ign signals (not internal generator)
     // Signals are inverted: DME active-high → KLR active-low inputs
     klr_tb #(.EXT_STIM(1)) u_klr (
-        .ext_trigger ( ~ign_out_dme_to_klr ),  // DME A_5_KLR_ign_out → KLR trigger (inverted)
-        .ext_ign     ( ~tach_dme_to_klr    ),  // DME tach → KLR ign (inverted)
-        .ign_out     ( klr_ign_out         ),  // KLR spark output → DME ign
-        .full_load   ( full_load           )   // KLR WOT flag → DME
+        .ext_trigger     ( ~ign_out_dme_to_klr ),  // DME A_5_KLR_ign_out → KLR trigger (inverted)
+        .ext_ign         ( ~tach_dme_to_klr    ),  // DME tach → KLR ign (inverted)
+        .ign_out         ( klr_ign_out         ),  // KLR spark output → DME ign
+        .full_load       ( full_load           ),  // KLR WOT flag → DME
+        .tps_wiper   ( tps_wiper_sig       )   // AFM → KLR TPS angle ch7
     );
 
     // ── Snapshot-busy flag ───────────────────────────────────

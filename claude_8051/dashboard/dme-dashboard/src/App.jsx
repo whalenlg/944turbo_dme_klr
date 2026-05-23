@@ -408,7 +408,7 @@ function parseKLRLog(text) {
       if (!tm) continue;
       const s = { t: parseInt(tm[1]) };
       // Named fields
-      const fields = ['pc','mb','SP','irq','ign_out','full_load','CV_PWM','timer_val'];
+      const fields = ['pc','mb','SP','irq','ign_out','full_load','CV_PWM','tps_raw','tps_deg','timer_val'];
       for (const f of fields) {
         const m = body.match(new RegExp(f + '=(\\w+)'));
         if (m && m[1] !== 'x' && m[1] !== 'xx') s[f] = parseInt(m[1], 16);
@@ -2438,7 +2438,7 @@ function KLRIRAMTab({ klrData, klrIdx }) {
   // Merge: hex snapshot takes priority, then STATUS ramVals
   const ramMerged = { ...ramFromStatus, ...ram };
 
-  // KLR 8048 RAM labels — from bin/memory_byte_map.hex (27 labelled locations)
+  // KLR 8048 RAM labels — from bin/memory_byte_map.hex (30 labelled locations)
   const KNOWN = {
     0x00: 'interrupt_info',
     0x02: 'num_timer_ints',
@@ -2452,10 +2452,12 @@ function KLRIRAMTab({ klrData, klrIdx }) {
     0x31: 'knock_test_out',
     0x33: 'blink',
     0x38: 'scratch',
-    0x39: 'TPS',
+    0x39: 'TPS Voltage',
     0x3A: 'throttle_degrees',
+    0x3B: 'TPS_Scaling',
     0x3C: 'throttle_raw_sensor',
     0x3E: 'WOT_angle',
+    0x43: 'TPS_Cycling',
     0x44: 'rpm_range',
     0x45: 'mac_knock_thresh',
     0x46: 'integrated_knock_val',
@@ -2474,9 +2476,10 @@ function KLRIRAMTab({ klrData, klrIdx }) {
   const hasData   = Object.keys(ramMerged).length > 0;
 
   const SUBTABS = [
-    { key:'grid',   label:'RAM GRID' },
-    { key:'known',  label:'KNOWN' },
-    { key:'status', label:'STATUS VALUES' },
+    { key:'grid',      label:'RAM GRID' },
+    { key:'known',     label:'KNOWN' },
+    { key:'adc',       label:'ADC INPUTS' },
+    { key:'status',    label:'STATUS VALUES' },
   ];
 
   const logLoaded = (klrData?.snapshots?.length > 0) || (klrData?.status?.length > 0);
@@ -2581,6 +2584,50 @@ function KLRIRAMTab({ klrData, klrIdx }) {
                   {hasV && (
                     <div style={{color:C.textDim,fontSize:'7px',marginTop:'1px'}}>
                       {val}d &nbsp; {val.toString(2).padStart(8,'0')}b
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── ADC INPUTS ─────────────────────────────────────────── */}
+      {sub==='adc' && (
+        <div style={S.panel}>
+          <div style={S.panelTitle}>KLR ADC INPUTS &nbsp;
+            <span style={{color:C.textDim,fontSize:'8px'}}>from KLR: [DS] snapshot</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px',marginTop:'6px'}}>
+            {[
+              { ch:3,  label:'TPS Supply',   addr:0x39, desc:'5V regulated supply (ch3)' },
+              { ch:7,  label:'TPS Angle',    addr:0x3C, desc:'Throttle wiper raw (ch7)' },
+              { ch:7,  label:'Throttle °',   addr:0x3A, desc:'Processed degrees (3A)' },
+              { ch:7,  label:'TPS Scaling',  addr:0x3B, desc:'3B scaling numerator' },
+              { ch:7,  label:'TPS Cycling',  addr:0x43, desc:'Cycling valve map input (43h)' },
+              { ch:7,  label:'WOT Threshold',addr:0x3E, desc:'WOT angle threshold (3E)' },
+              { ch:0,  label:'Knock ch0',    addr:null,  desc:'knock sensor 1 amplified' },
+              { ch:1,  label:'Knock ch1',    addr:null,  desc:'knock sensor 2 amplified' },
+              { ch:5,  label:'Comparator',   addr:null,  desc:'LM2902 comparator output (ch5)' },
+            ].map(({ch, label, addr, desc}) => {
+              const val = addr !== null ? ram[addr] : undefined;
+              const hasV = val !== undefined && val !== null;
+              return (
+                <div key={label} title={desc}
+                  style={{background: hasV?'#001a22':'#060d06',
+                          border:`1px solid ${hasV?'#44aaff':C.border}`,
+                          borderRadius:'4px',padding:'5px 6px'}}>
+                  <div style={{color:'#44aaff',fontSize:'9px',fontWeight:'bold'}}>{label}</div>
+                  <div style={{color:C.textDim,fontSize:'7px',marginBottom:'3px'}}>
+                    ch{ch}{addr!==null ? ` · ram[0x${addr.toString(16).toUpperCase()}]` : ''}
+                  </div>
+                  <div style={{color:hasV?C.textBright:'#335533',fontSize:'13px',fontWeight:'bold'}}>
+                    {hasV ? h2(val) : '--'}
+                  </div>
+                  {hasV && (
+                    <div style={{color:C.textDim,fontSize:'7px',marginTop:'1px'}}>
+                      {val}d &nbsp; {(val*100/255).toFixed(0)}%
                     </div>
                   )}
                 </div>

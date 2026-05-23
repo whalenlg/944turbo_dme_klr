@@ -103,7 +103,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         // ── Periodic STATUS snapshot ──────────────────────
         // Every ~100ms KLR time (≈1,111,100 half-cycles)
         if ($time >= ph_klr_next_snap) begin
-            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[38]=%02h  timer_val=%02h",
+            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[38]=%02h  timer_val=%02h",
                 `KLR_MS(0),
                 top.i8048_core_1.pc,
                 top.i8048_core_1.mb_latch,
@@ -113,6 +113,8 @@ always @(posedge clk) begin  // klr_phase_monitor
                 knock_out,
                 full_load,
                 CV_PWM,
+                `KLRRAM[8'h3C],  // tps_raw — throttle raw wiper (ram[3Ch])
+                `KLRRAM[8'h3A],  // tps_deg — throttle degrees processed (ram[3Ah])
                 `KLRRAM[8'h00],  // R0 bank0 — ISR context pointer
                 `KLRRAM[8'h02],  // R2 bank0 — retard counter
                 `KLRRAM[8'h04],  // R4 bank0 — slow tick / ADC dispatch

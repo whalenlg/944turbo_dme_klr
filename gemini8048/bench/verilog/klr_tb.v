@@ -52,10 +52,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // Inter-ECU ports — only used when EXT_STIM=1 (combined DME+KLR mode).
     // In standalone mode (EXT_STIM=0) these are left unconnected and the
     // internal var_timing_generator drives trigger/ign instead.
-    input  wire ext_trigger,   // DME A_5_KLR_ign_out → KLR trigger_in (inverted)
-    input  wire ext_ign,       // DME A_1_tach_pulse  → KLR ign_in     (inverted)
-    output wire ign_out,       // KLR P2.7 → DME ign  (retard-gated spark)
-    output wire full_load      // KLR P1.5 → DME full_load (WOT flag)
+    input  wire ext_trigger,        // DME A_5_KLR_ign_out → KLR trigger_in (inverted)
+    input  wire ext_ign,            // DME A_1_tach_pulse  → KLR ign_in     (inverted)
+    output wire ign_out,            // KLR P2.7 → DME ign  (retard-gated spark)
+    output wire full_load,          // KLR P1.5 → DME full_load (WOT flag)
+    // TPS angle input from DME side — only meaningful when EXT_STIM=1
+    // TPS supply is fixed (5V regulated on KLR board, independent of 12V battery)
+    input  wire [7:0] tps_wiper    // DME AFM wiper ADC value → KLR TPS angle ch7
 );
 
     // ── Clock ─────────────────────────────────────────────
@@ -90,11 +93,25 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg [7:0] adc_ch0 = 8'h81;  // conn 14  — knock sensor 1 amplified
     reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
     reg [7:0] adc_ch2 = 8'h83;  // conn 17
-    reg [7:0] adc_ch3 = 8'h84;  // conn 1 TPS 5V
-    reg [7:0] adc_ch4 = 8'h85;  // conn 23 
+    reg [7:0] adc_ch4 = 8'h85;  // conn 23
     reg [7:0] adc_ch5 = 8'h86;  // lm2902.14 — comparator output
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
-    reg [7:0] adc_ch7 = 8'h88;  // conn 16 TPS Angle
+
+    // ── TPS Supply (ch3) and TPS Angle (ch7) ─────────────────
+    // TPS supply (ch3/ram[39h]): fixed 201 — KLR has an onboard 5V regulator
+    //   so TPS supply is independent of the 12V battery.
+    //   201 = nominal ADC value for the regulated 5V supply (≈3.9V at ADC input).
+    //
+    // TPS angle (ch7/ram[3Ch]): mapped from DME AFM wiper in EXT_STIM mode.
+    //   AFM idle (0x28=40) → TPS 0x28 (40), AFM WOT (0xEB=235) → TPS 0xC8 (200)
+    //   Linear: tps_angle = 40 + (afm - 40) * 160 / 195
+    //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
+    wire [7:0] adc_ch3 = 8'd201;   // conn 1  TPS 5V supply — fixed regulated value
+
+    wire [15:0] _tps_angle_full = (tps_wiper > 8'd40)
+                               ? (16'd40 + (tps_wiper - 8'd40) * 16'd160 / 16'd195)
+                               : 16'd40;
+    wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_angle_full[7:0] : 8'd40;   // conn 16 TPS angle wiper
 
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;
@@ -165,7 +182,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         // Debug: pre-initialize ram[0x16] = 0x00 so the computed MB1
         // jump at 0x2b0 lands at 0x800 instead of 0x8XX (uninitialized).
         // Remove once the firmware correctly initializes this location.
-        klr_tb.top.i8048_core_1.ram[8'h16] = 8'h00;
+        klr_tb.top.i8048_core_1.ram[8'h16] = 8'h02;
         #5000;
         sim_rst = 1;
 
@@ -178,6 +195,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
 
         #1000;
         $finish;
+    end
+
+    // Zero ram[0x16] on every trigger posedge (reset event)
+    // Ensures MB1 jump at 0x2B0 always lands at 0x800, not 0x8XX.
+    always @(posedge trigger_in_mux) begin
+        #1;  // let the core see the edge before we force the value
+        klr_tb.top.i8048_core_1.ram[8'h16] = 8'h02;
     end
 
     // ============================================================

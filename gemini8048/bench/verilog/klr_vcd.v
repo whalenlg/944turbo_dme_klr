@@ -105,6 +105,13 @@ wire [7:0] ram_3a = `RAM[8'h3a]; wire [7:0] ram_3b = `RAM[8'h3b];
 wire [7:0] ram_3c = `RAM[8'h3c]; wire [7:0] ram_3d = `RAM[8'h3d];
 wire [7:0] ram_3e = `RAM[8'h3e]; wire [7:0] ram_3f = `RAM[8'h3f];
 
+// ── TPS named aliases (for readable VCD traces) ───────────────────────────
+wire [7:0] tps_supply       = ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
+wire [7:0] tps_raw_angle    = ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
+wire [7:0] tps_degrees      = ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
+wire [7:0] tps_wot_thresh   = ram_3e;  // KLR ram[3Eh] — WOT threshold angle (~66)
+wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage ADC
+
 // 0x40 – 0x4F
 wire [7:0] ram_40 = `RAM[8'h40]; wire [7:0] ram_41 = `RAM[8'h41];
 wire [7:0] ram_42 = `RAM[8'h42]; wire [7:0] ram_43 = `RAM[8'h43];

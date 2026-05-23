@@ -135,7 +135,8 @@ end
             timer_en <= 0; timer_flag <= 0; timer_val <= 0; prescaler <= 0;
             f1 <= 0;f0 <= 0;
             mb_latch <= 0;
-            //{p1, p2, bus_out, bus_addr} <= 40'hFFFFFFFF; {ale, psen_n, rd_n, wr_n, prog} <= 5'b01111;
+            p1 <= 8'hFF;  // 8048 open-drain: all bits float high on reset
+            p2 <= 8'hFF;  // same for P2
             {ale, psen_n, rd_n, wr_n, prog} <= 5'b01111;
         end else begin
             case (state)
@@ -407,11 +408,11 @@ task execute_instruction;
                 pc <= pc + 1'b1;
             end
             8'b0011000?: begin // XCHD A, @Ri [cite: 115]
-                acc_preop <= acc;
-                acc[3:0] <= ram[ri_addr][3:0];
+                acc_preop = acc;                                    // blocking: capture before swap
+                acc[3:0] <= ram[ri_addr][3:0];                     // acc nibble ← RAM nibble
                 rmem_dat <= ram[ri_addr];
-                ram[ri_addr][3:0] <= acc[3:0];
-                wmem_dat <= ram[ri_addr];
+                ram[ri_addr][3:0] <= acc_preop[3:0];               // RAM nibble ← old acc (safe)
+                wmem_dat <= {ram[ri_addr][7:4], acc_preop[3:0]};   // show post-swap RAM value
                 #10 display_read_status(pc,ir,acc_preop,rmem_dat,acc,ri_addr);
                 pc <= pc + 1'b1;
             end
