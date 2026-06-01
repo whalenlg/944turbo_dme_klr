@@ -4,7 +4,9 @@ module i8048_core (
     input  wire [7:0]  bus_in,
     output reg  [11:0] pc,
     output reg  [7:0]  ir,p1,p2, acc, bus_addr, bus_out,
-    output reg         ale, psen_n, rd_n, wr_n, prog, cycle_2
+    output reg         ale, psen_n, rd_n, wr_n, prog, cycle_2,
+    output wire [11:0] mem_addr,
+    output wire        movp_active  // high during MOVP/MOVP3 cycle_2 ROM lookup
 );
 
     // --- Registers & State ---
@@ -103,9 +105,10 @@ endtask
 // --- Address Bus Multiplexer ---
 // If we are in cycle_2 of a MOVP instruction, we point to the page/acc.
 // Otherwise, we point to the PC.
-wire [11:0] mem_addr = (ir == 8'hA3 && cycle_2) ? {pc[11:8], acc} : 
-                       (ir == 8'hE3 && cycle_2) ? {4'b0011, acc} : 
-                       pc;
+assign mem_addr    = (ir == 8'hA3 && cycle_2) ? {pc[11:8], acc} :
+                     (ir == 8'hE3 && cycle_2) ? {4'b0011, acc} :
+                     pc;
+assign movp_active = ((ir == 8'hA3) || (ir == 8'hE3)) && cycle_2;
 
 
 // --- ROM Data Latching ---

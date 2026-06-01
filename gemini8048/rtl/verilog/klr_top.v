@@ -133,6 +133,8 @@ module klr_system (
     wire [7:0]  bus_out, bus_addr;
     wire [7:0]  bus_in;            // CPU reads ADC result via bus_in
     wire        ale, psen_n, rd_n, wr_n, prog, cycle_2;
+    wire [11:0] mem_addr;   // fetch address from core (acc-based during MOVP cycle_2)
+    wire        movp_active; // high during MOVP/MOVP3 cycle_2
 
     // ROM interface
     wire [11:0] eprom_addr;   // Intel 2732 (4K×8): A11–A0 = latched pc[11:0]
@@ -195,7 +197,11 @@ module klr_system (
             latched_upper = pc[11:8];
     end
 
-    assign eprom_addr = { latched_upper, latched_addr[7:0] };  // A11–A0 (12-bit, glitch-free)
+    // During MOVP/MOVP3 cycle_2 the core drives mem_addr with {page,acc} or {0011,acc}.
+    // Override the ALE-latched eprom_addr so the EPROM sees the correct lookup address.
+    // MOVP/MOVP3: core signals movp_active and drives mem_addr = {page,acc}.
+    // Override the ALE-latched address so the EPROM reads from the correct table entry.
+    assign eprom_addr = movp_active ? mem_addr : { latched_upper, latched_addr[7:0] };
     assign eprom_ce_n = psen_n;    // /CE = /PSEN (active-low)
 
     // ============================================================
@@ -254,7 +260,9 @@ module klr_system (
         .pc       ( pc        ),
         .ir       ( ir        ),
         .acc      ( acc       ),
-        .cycle_2  ( cycle_2   )
+        .cycle_2     ( cycle_2     ),
+        .mem_addr    ( mem_addr    ),
+        .movp_active ( movp_active )
     );
 
     // ============================================================
