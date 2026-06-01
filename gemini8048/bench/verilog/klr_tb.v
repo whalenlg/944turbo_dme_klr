@@ -108,9 +108,12 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
     wire [7:0] adc_ch3 = 8'd201;   // conn 1  TPS 5V supply — fixed regulated value
 
+    // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
+    // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
+    // tps = 26 + (afm - 40) * (239 - 26) / (235 - 40) = 26 + (afm-40)*213/195
     wire [15:0] _tps_angle_full = (tps_wiper > 8'd40)
-                               ? (16'd40 + (tps_wiper - 8'd40) * 16'd160 / 16'd195)
-                               : 16'd40;
+                               ? (16'd26 + ({8'd0, tps_wiper} - 16'd40) * 16'd213 / 16'd195)
+                               : 16'd26;
     wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_angle_full[7:0] : 8'd40;   // conn 16 TPS angle wiper
 
     // ── Debug / monitoring wires ──────────────────────────
