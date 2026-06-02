@@ -808,12 +808,12 @@ always @(p2[2:0] or afm_wiper) begin
 `ifdef TPS_FIXED
     3'b110:  adc_mux = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-    3'b110:  adc_mux = full_load ? 8'hDB : (afm_cl    >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    3'b110:  adc_mux = full_load ? 8'hDB : 8'h40;  // KLR full_load: WOT=0xDB, else=0x40
 `elsif AFM_TIPPY
-    3'b110:  adc_mux = full_load ? 8'hDB : (afm_tippy >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    3'b110:  adc_mux = full_load ? 8'hDB : 8'h40;  // KLR full_load: WOT=0xDB, else=0x40
 `else
-    // full_load (module input): 1 = full throttle/WOT (0xDB), 0 = normal TPS from AFM
-    3'b110:  adc_mux = full_load ? 8'hDB : (afm_wiper >= `AFM_IDLE_THR) ? 8'hDB : 8'h40;
+    // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
+    3'b110:  adc_mux = full_load ? 8'hDB : 8'h40;
 `endif
     3'b111:  adc_mux = `_FUEL_QUAL;      // ch7: fuel quality
     default: adc_mux = 8'hF0;

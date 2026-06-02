@@ -270,6 +270,7 @@ $dumpvars(1,`TB.A_3_unused_p1_3);
 $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
+$dumpvars(1,`TB.full_load);
 //$dumpvars(1,clk);
 
 

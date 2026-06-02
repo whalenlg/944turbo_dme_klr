@@ -861,6 +861,44 @@ module i8048_core_tb;
         clock_cycles(2); check_acc(8'hDD, "MOVP3 A,@A: ROM[0x303]=0xDD");
         clock_cycles(1);
 
+        // MOVP regression: table lookup must return table data, NOT the opcode byte
+        // Old bug: mem_addr was computed correctly but EPROM still got pc-based address,
+        // so MOVP returned the opcode at pc (0xA3) instead of the table entry.
+        fill_nop(); hard_reset();
+        rom[0]  = 8'h23; rom[1]  = 8'hA3;  // MOV A,#0xA3  (same value as MOVP opcode)
+        rom[2]  = 8'hA3;                    // MOVP A,@A → should fetch ROM[0x0A3] not ROM[0x002]
+        rom[12'h0A3] = 8'h7E;               // table entry at 0x0A3 = 0x7E (≠ 0xA3 opcode)
+        clock_cycles(2); // MOV A,#0xA3
+        clock_cycles(2); check_acc(8'h7E, "MOVP: table data 0x7E, not opcode 0xA3");
+
+        // MOVP3 regression: same test — table data must differ from opcode 0xE3
+        fill_nop(); hard_reset();
+        rom[0]  = 8'h23; rom[1]  = 8'hE3;  // MOV A,#0xE3  (same value as MOVP3 opcode)
+        rom[2]  = 8'hE3;                    // MOVP3 A,@A → should fetch ROM[0x3E3] not opcode
+        rom[12'h3E3] = 8'h91;               // table entry at page3+0xE3 = 0x91 (≠ 0xE3)
+        clock_cycles(2); // MOV A,#0xE3
+        clock_cycles(2); check_acc(8'h91, "MOVP3: table data 0x91, not opcode 0xE3");
+
+        // MOVP acc=0 edge case: fetch from start of page
+        fill_nop(); hard_reset();
+        rom[0]  = 8'h27;                    // CLR A
+        rom[1]  = 8'hA3;                    // MOVP A,@A → fetch ROM[0x000] (page 0 start)
+        rom[12'h000] = 8'h27;               // ROM[0] = CLR opcode — just reuse it as data
+        clock_cycles(1); // CLR A
+        clock_cycles(2); check_acc(8'h27, "MOVP: acc=0 fetches page start ROM[0x000]");
+
+        // MOVP consecutive: two lookups back-to-back, independent results
+        fill_nop(); hard_reset();
+        rom[0]  = 8'h23; rom[1]  = 8'h10;  // MOV A,#0x10
+        rom[2]  = 8'hA3;                    // MOVP A,@A → ROM[0x010] = 0xAA
+        rom[3]  = 8'hA3;                    // MOVP A,@A → ROM[0x0AA] = 0x42 (using result of previous)
+        rom[12'h010] = 8'hAA;
+        rom[12'h0AA] = 8'h42;
+        clock_cycles(2); // MOV A,#0x10
+        clock_cycles(2); check_acc(8'hAA, "MOVP consecutive 1: ROM[0x010]=0xAA");
+        clock_cycles(2); check_acc(8'h42, "MOVP consecutive 2: ROM[0x0AA]=0x42");
+        clock_cycles(1);
+
         // =====================================================================
         $display("\n--- Group 29: OUTL BUS,A / OUTL P1,A / OUTL P2,A ---");
         fill_nop(); hard_reset();
