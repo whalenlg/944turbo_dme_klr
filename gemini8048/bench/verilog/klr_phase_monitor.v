@@ -36,6 +36,10 @@ reg        ph_klr_knock_prev;
 reg        ph_klr_fullload_prev;
 reg        ph_klr_mb_prev;
 reg        ph_klr_mb1_reached;   // latched once — MB1 first entry
+reg [11:0] ph_klr_pc_prev;       // previous PC for knock-entry edge detect
+reg        ph_klr_ign_in_prev;  // ign_in edge tracker (trigger reference)
+reg [63:0] ph_klr_ign_in_time;  // $time(ns) of last ign_in falling edge
+reg [63:0] ph_klr_ign_out_time; // $time(ns) of last ign_out assert
 reg [63:0] ph_klr_next_snap;
 
 initial begin
@@ -44,6 +48,10 @@ initial begin
     ph_klr_fullload_prev  = 1'b0;
     ph_klr_mb_prev        = 1'b0;
     ph_klr_mb1_reached    = 1'b0;
+    ph_klr_pc_prev        = 12'h000;
+    ph_klr_ign_in_prev    = 1'b0;
+    ph_klr_ign_in_time    = 64'd0;
+    ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
 end
 
@@ -55,16 +63,38 @@ always @(posedge clk) begin  // klr_phase_monitor
         ph_klr_ign_prev      <= 1'b0;
         ph_klr_knock_prev    <= 1'b0;
         ph_klr_fullload_prev <= 1'b0;
+        ph_klr_pc_prev       <= 12'h000;
+        ph_klr_ign_in_prev   <= 1'b0;
         ph_klr_mb_prev       <= 1'b0;
     end else begin
 
-        // ── ign_out: spark fired ──────────────────────────
-        if (ign_out && !ph_klr_ign_prev)
-            $display("KLR: [PHASE] t=%0d ms  IGN_OUT asserted   (spark event — P2.7 high)",
-                     `KLR_MS(0));
-        if (!ign_out && ph_klr_ign_prev)
-            $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted (coil recharging)",
-                     `KLR_MS(0));
+        // ── ign_in: track edge (trigger reference for spark-delay calc) ──
+        if (ign_in_mux && !ph_klr_ign_in_prev)
+            ph_klr_ign_in_time <= $time;
+        ph_klr_ign_in_prev <= ign_in_mux;
+
+        // ── ign_out: spark timing with dwell validation ───
+        // Minimum real dwell = 1 ms (1_000_000 ns). Pulses shorter than this
+        // are wait_ign_2 loop re-assertion artifacts that cannot energise the
+        // coil — flagged as spurious, not counted as real sparks.
+        if (ign_out && !ph_klr_ign_prev) begin
+            ph_klr_ign_out_time <= $time;
+            $display("KLR: [PHASE] t=%0d ms  IGN_OUT asserted   delay_from_ign_in=%0d.%03d us",
+                     `KLR_MS(0),
+                     ($time - ph_klr_ign_in_time) / 1000,
+                     ($time - ph_klr_ign_in_time) % 1000);
+        end
+        if (!ign_out && ph_klr_ign_prev) begin
+            if (($time - ph_klr_ign_out_time) >= 64'd1_000_000)
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms",
+                         `KLR_MS(0),
+                         ($time - ph_klr_ign_out_time) / 1_000_000,
+                         (($time - ph_klr_ign_out_time) % 1_000_000) / 1000);
+            else
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT spurious pulse filtered  (width=%0d ns — wait_ign_2 artifact)",
+                         `KLR_MS(0),
+                         ($time - ph_klr_ign_out_time));
+        end
         ph_klr_ign_prev <= ign_out;
 
         // ── knock_out: knock detected ─────────────────────
@@ -75,6 +105,14 @@ always @(posedge clk) begin  // klr_phase_monitor
             $display("KLR: [PHASE] t=%0d ms  KNOCK_OUT cleared   (knock window closed)",
                      `KLR_MS(0));
         ph_klr_knock_prev <= knock_out;
+
+        // ── knock logic execution (PC enters knock map axis read @0x900) ──
+        // Edge-detected on PC so we log once per entry, not every clock the
+        // CPU sits at 0x900. 0x900 = load_axis_hi_read (knock timing-map lookup).
+        if ((top.i8048_core_1.pc == 12'h900) && (ph_klr_pc_prev != 12'h900))
+            $display("KLR: [PHASE] t=%0d ms  KNOCK_LOGIC exec   (knock map axis read @0x900)",
+                     `KLR_MS(0));
+        ph_klr_pc_prev <= top.i8048_core_1.pc;
 
         // ── full_load: WOT engaged ────────────────────────
         if (full_load && !ph_klr_fullload_prev)

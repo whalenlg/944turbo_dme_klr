@@ -1,13 +1,5 @@
 // Default RPM_RAMP_PCT if not set by the including testbench.
 // i8051_tb.v sets this via `undef/`define before each use.
-`ifndef DME_FREQ
-  `define DME_FREQ 6000   // DME 8051 clock half-periods per ms (6 MHz)
-`endif
-
-`ifndef RPMCONST
-  `define RPMCONST (60 * 1000 * `DME_FREQ / 132)  // posedge-clk per RPM per tooth (132-tooth flywheel)
-`endif
-
 `ifndef RPM_RAMP_PCT
   `define RPM_RAMP_PCT 25
 `endif
@@ -18,10 +10,7 @@ module var_interrupt_generator (
     output reg  int_0,int_1,// The slowing square wave
     output reg  [7:0] afm_wiper // AFM wiper value tracking RPM ramp
 );
-    // period_current: static init using RPMCONST/RPMSTART.
-    // Literal 2727272 = 60*1000*6000/132 (RPMCONST at DME_FREQ=6000, 132 teeth).
-    // The !rst block reinitialises to the macro-computed RPMCONST/RPMSTART.
-    integer period_current = 2727272/`RPMSTART;
+    integer period_current = `RPMCONST/`RPMSTART;  // initialised = no Z on afm_wiper at t=0
     integer tick_counter = 0;
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;
@@ -75,7 +64,7 @@ module var_interrupt_generator (
     localparam ramp_ms      = SIM_TIME_MS * `RPM_RAMP_PCT / 100;
     localparam step_clocks  = ramp_ms * `DME_FREQ / rpm_steps;  // FREQ in kHz → clocks/ms
 
-    integer current_rpm       = `RPMSTART;  // explicit init avoids X on first active clock
+    integer current_rpm;
     integer master_clk_count = 0;
     localparam rpm_inc_val = (`RPMEND - `RPMSTART) / rpm_steps;
 
@@ -99,11 +88,7 @@ module var_interrupt_generator (
                 end
             end
 
-`ifdef DME_KLR_COMBINED
-  // In combined mode i8051_dashboard_tb is u_dme — absolute path breaks.
-  // Use $time (ns) for droop timing; constants scaled: 30M clocks → 5s, 33M → 5.5s at 6MHz
-  `define CYCLE_COUNT ($time / 166)   // 83ns half-period × 2 = 166ns per posedge-clk
-`elsif DASHBOARD_TB
+`ifdef DASHBOARD_TB
   `define CYCLE_COUNT i8051_dashboard_tb.i8051_top.u_cpu.cycle_count
 `else
   `define CYCLE_COUNT i8051_tb.i8051_top.u_cpu.cycle_count
@@ -179,24 +164,36 @@ module var_interrupt_generator (
     //  tooth 0.  This gives a 50% duty cycle across the full 132-tooth
     //  revolution, matching the scope trace where the ref signal is low
     //  for roughly half the flywheel rotation.
-    reg [27:0] ref_low_cnt;   // 28-bit: fits up to 66 * (360000000/100) = ~237.6M clocks
+    reg [20:0] ref_low_cnt;   // 21-bit: fits up to 66 * (2727272/100) = ~1.8M clocks
     reg        ref_low_active;
+    reg        ref_fired_this_rev;  // latch: ref pulse already fired for tooth 0
 
     always @(posedge clk or negedge rst) begin : ref_sensor_gen
         if (!rst) begin
-            int_0          <= 1'b1;
-            ref_low_active <= 1'b0;
-            ref_low_cnt    <= 28'd0;
+            int_0              <= 1'b1;
+            ref_low_active     <= 1'b0;
+            ref_low_cnt        <= 21'd0;
+            ref_fired_this_rev <= 1'b0;
         end else begin
-            if (counter == 8'd0 && int_1 == 1'b0 &&
-                tick_counter == (period_current/2 - 1 - period_current/5)) begin
+            // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
+            if (counter != 8'd0)
+                ref_fired_this_rev <= 1'b0;
+
+            // Falling edge: use a CROSSING (>=) test, not exact-match (==).
+            // period_current steps every ~100ms during the RPM ramp; an exact
+            // == target can be skipped when the threshold shifts mid-revolution,
+            // causing a missed ref pulse → doubled measured period → half-RPM
+            // sawtooth. A >= crossing plus a once-per-rev latch is robust.
+            if (counter == 8'd0 && int_1 == 1'b0 && !ref_fired_this_rev &&
+                tick_counter >= (period_current/2 - 1 - period_current/5)) begin
                 // Falling edge: hold low for 66 tooth periods
-                int_0          <= 1'b0;
-                ref_low_active <= 1'b1;
-                ref_low_cnt    <= 66 * period_current - 1;
+                int_0              <= 1'b0;
+                ref_low_active     <= 1'b1;
+                ref_fired_this_rev <= 1'b1;
+                ref_low_cnt        <= 66 * period_current - 1;
             end else if (ref_low_active) begin
                 int_0 <= 1'b0;
-                if (ref_low_cnt == 28'd0) begin
+                if (ref_low_cnt == 21'd0) begin
                     int_0          <= 1'b1;
                     ref_low_active <= 1'b0;
                 end else begin

@@ -17,6 +17,10 @@ module i8048_core (
     reg       timer_en, timer_flag,timer_running,timer_mode,mb_latch;
     reg [7:0] timer_val;
     reg [4:0] prescaler;
+    // Timer cross-block requests (single owner = timer engine block)
+    reg       timer_load_req;   // MOV T,A pending
+    reg [7:0] timer_load_val;   // value for MOV T,A
+    reg       timer_flag_clr_req; // ISR ack / JTF clear pending
     reg [7:0] rmem_dat, rmem_dat2, wmem_dat, wmem_dat2,acc_preop,ram_preop,timer_preop,bus_preop;
     reg [11:0] next_pc,pc_orig;
     // --- Helpers ---
@@ -27,45 +31,41 @@ module i8048_core (
 
     wire [6:0] ri_addr      = {1'b0,ram[rn_addr][6:0]};
     reg [2:0] sp_minus_1,sp_minus_2,intr_in_progress;
-    wire [11:0] ret_addr = pc + 12'd2;
     reg f1,f0;
     reg [7:0] callmem1, callmem2, retmem1,retmem2;
   
 // Determine current R0 or R1 based on PSW bank bit (psw[4])
 // Better yet, just use the absolute RAM address:
-wire [6:0] ptr_addr = (ir[0] ? ram[psw[4]?8'h19:8'h01] : ram[psw[4]?8'h18:8'h00]);
+// ptr_addr: @Ri pointer (bank-aware). Identical semantics to ri_addr;
+// both resolve R0/R1 of the active register bank as the indirect address.
+wire [6:0] ptr_addr = ri_addr;
 reg [255:0] opinstr[0:255];
 
-wire is_2_cycle = 
-    (ir[3:0] == 4'h4) || // JMP & CALL (All pages: 04, 24, 44, 64, 84, A4, C4, E4)
-    (ir[3:0] == 4'h6) || // All Conditional Jumps (JZ, JNZ, JC, JNC, JT0/1, JNT0/1, etc.)
-    (ir[3:0] == 4'h2) || // All JB0-JB7 instructions (12, 32, 52, 72, 92, B2, D2, F2)
-    (ir[7:4] == 4'hB) || // MOV Rn, #data (B8-BF) and MOV @Ri, #data (B0-B1)
-    (ir[7:4] == 4'hE) || // DJNZ Rn (E8-EF)
-    (ir == 8'h23)     || // MOV A, #data
-    (ir == 8'hA3)     || // MOVP A, @A (Requires a stall cycle for ROM address mux)
-    (ir == 8'hE3)     ||  // MOVP3 A, @A (Requires a stall cycle)
-    (ir == 8'h9A)     || // <--- Add this
-    (ir == 8'h8A)     || // <--- And these for safety
-    (ir == 8'h99)     || 
-    (ir[7:4] == 4'hE) ||  // Catch E8-EF
-    (ir == 8'h16)     ||
-    (ir[3:0] == 4'h6) ||
-    (ir == 8'h60)      ||
-    (ir == 8'h61)      ||
-    (ir == 8'h03)      ||
-    (ir == 8'hB6)      ||
-    (ir == 8'h76)      ||
-    (ir == 8'h83)      ||
-    (ir == 8'h93)      ||
-    (ir == 8'h80)      || // MOVX A,@R0  (2-cycle: addr cycle + read cycle)
-    (ir == 8'h81)      || // MOVX A,@R1  (2-cycle: addr cycle + read cycle)
-    (ir == 8'h53)      ||
-    (ir == 8'h43)      ||
-    (ir == 8'hD3)      ||
-    (ir == 8'h13)      ||
-    (ir == 8'hB3)      ||
-    (ir == 8'h89);
+// Two-cycle instructions. Each opcode listed once; grouped by family.
+wire is_2_cycle =
+    (ir[3:0] == 4'h4) || // JMP & CALL (all pages: x4)
+    (ir[3:0] == 4'h6) || // Conditional jumps (JZ,JNZ,JC,JNC,JT0/1,JNT0/1,JTF,JNI...)
+    (ir[3:0] == 4'h2) || // JB0-JB7 (x2) and a few immediates below
+    (ir[7:4] == 4'hB) || // MOV Rn,#data (B8-BF) / MOV @Ri,#data (B0-B1)
+    (ir[7:4] == 4'hE) || // DJNZ Rn (E8-EF) and JNC/conditional in Ex row
+    (ir == 8'h23)     || // MOV A,#data
+    (ir == 8'hA3)     || // MOVP A,@A   (ROM address-mux stall cycle)
+    (ir == 8'hE3)     || // MOVP3 A,@A  (ROM address-mux stall cycle)
+    (ir == 8'h9A)     || // ANL P2,#data
+    (ir == 8'h8A)     || // ORL P2,#data
+    (ir == 8'h99)     || // ANL P1,#data
+    (ir == 8'h89)     || // ORL P1,#data
+    (ir == 8'h16)     || // JTF
+    (ir == 8'h03)     || // ADD A,#data
+    (ir == 8'h13)     || // ADDC A,#data
+    (ir == 8'h43)     || // ORL A,#data
+    (ir == 8'h53)     || // ANL A,#data
+    (ir == 8'hD3)     || // XRL A,#data
+    (ir == 8'hB3)     || // JMPP @A
+    (ir == 8'h83)     || // RET
+    (ir == 8'h93)     || // RETR
+    (ir == 8'h80)     || // MOVX A,@R0  (addr + read cycle)
+    (ir == 8'h81);       // MOVX A,@R1  (addr + read cycle)
 
 wire next_cycle_state = (cycle_2 == 0 && is_2_cycle) ? 1'b1 : 1'b0;
 
@@ -135,7 +135,8 @@ end
         if (!res_n) begin
             pc <= 12'h000; state <= 3'd1; cycle_2 <= 0; psw <= 8'h00;
             irq_in_progress <= 0; irq_en_ext <= 0; irq_en_timer <= 0;
-            timer_en <= 0; timer_flag <= 0; timer_val <= 0; prescaler <= 0;
+            timer_en <= 0; timer_running <= 0;
+            timer_load_req <= 0; timer_flag_clr_req <= 0;
             f1 <= 0;f0 <= 0;
             mb_latch <= 0;
             p1 <= 8'hFF;  // 8048 open-drain: all bits float high on reset
@@ -175,9 +176,10 @@ end
                              service_interrupt(12'h003, pc);
                         end 
                         else if (irq_en_timer && timer_flag) begin
-                             // Timer interrupt acknowledged — clear timer_flag
-                             // so it does not immediately re-fire after RETR.
-                             timer_flag <= 1'b0;
+                             // Timer interrupt acknowledged — request flag clear
+                             // (timer engine owns timer_flag) so it does not
+                             // immediately re-fire after RETR.
+                             timer_flag_clr_req <= 1'b1;
                              service_interrupt(12'h007, pc);
                         end 
                         else begin
@@ -200,6 +202,10 @@ end
 
 task execute_instruction;
     begin
+        // Default: deassert timer request pulses each instruction.
+        // An instruction that needs them re-asserts below (same block, last write wins).
+        timer_load_req     <= 1'b0;
+        timer_flag_clr_req <= 1'b0;
         casez (ir)
             // --- Accumulator & ALU ---
             8'h03: begin // ADD A, #data
@@ -338,9 +344,10 @@ task execute_instruction;
                 pc <= pc + 1'b1;
             end
             8'h62: begin // MOV T, A [cite: 96]
-                timer_preop = timer_val;
-                timer_val <= acc; 
-                #10 display_read_status(pc,ir,timer_preop,acc,timer_val,12'hACC);
+                timer_preop    <= timer_val;
+                timer_load_val <= acc;       // hand off to timer engine
+                timer_load_req <= 1'b1;       // consumed next timer-block edge
+                #10 display_read_status(pc,ir,timer_preop,acc,acc,12'hACC);
                 pc <= pc + 1'b1;
             end
             8'hA0, 8'hA1: begin // MOV @Ri, A [cite: 8]
@@ -549,7 +556,7 @@ task execute_instruction;
                 end else begin
                     if (timer_flag) begin
                         pc <= {pc[11:8], rom_data};
-                        timer_flag <= 0;
+                        timer_flag_clr_req <= 1'b1;  // timer engine clears it
                     end else begin
                         pc <= pc + 1'b1;
                     end
@@ -1040,66 +1047,61 @@ always @(posedge clk)
    end;
 wire t1_falling_edge = (t1_delayed && !t1);
 
+// ─────────────────────────────────────────────────────────────
+// Timer / Counter engine — SOLE owner of timer_val, timer_flag, prescaler.
+// All assignments are non-blocking. Cross-block requests:
+//   timer_load_req     : MOV T,A  → load timer_load_val
+//   timer_flag_clr_req : ISR ack / JTF → clear timer_flag
+// Request-clear takes priority and a load overrides an increment this edge.
+// ─────────────────────────────────────────────────────────────
 always @(posedge clk) begin
     if (!res_n) begin
-        timer_flag = 1'b0;
-        timer_en = 1'b0;
-        timer_running = 1'b0;
-    end
-    else
-      if (timer_running) 
-        begin
-          //$display("timer running");
-          if (timer_mode == 1'b0)
-              // --- TIMER MODE ---
-          begin
-             //if (machine_cycle_pulse) 
-             if (ale) 
-               begin
-                 if (prescaler == 5'd31)
-              begin
-                  prescaler <= 0;
-                  // Sticky overflow flag — same pattern as counter mode.
-                  // Previous: {timer_flag, timer_val} <= timer_val + 1
-                  // was wrong: timer_flag only pulsed for one ALE cycle
-                  // because the next increment cleared it via the carry bit.
-                  if (timer_val == 8'hFF) begin
-                      timer_val  <= 8'h00;
-                      timer_flag <= 1'b1;  // sticky — held until acknowledged
-                  end else begin
-                      timer_val  <= timer_val + 1'b1;
-                  end
-              end
-              else  prescaler <= prescaler + 1'b1;
-               end
-          end
-          else
-          begin
-              //$display("else counter edge %h",t1_falling_edge);
-              // --- COUNTER MODE ---
-              if (t1_falling_edge)
-                 begin
+        timer_flag    <= 1'b0;
+        timer_val     <= 8'h00;
+        prescaler     <= 5'd0;
+    end else begin
+        // Flag clear request (consumed every edge it is asserted)
+        if (timer_flag_clr_req)
+            timer_flag <= 1'b0;
+
+        // MOV T,A load takes precedence over a normal increment
+        if (timer_load_req) begin
+            timer_val <= timer_load_val;
+        end else if (timer_running) begin
+            if (timer_mode == 1'b0) begin
+                // --- TIMER MODE: /32 prescaler, advance once per machine cycle ---
+                if (ale) begin
+                    if (prescaler == 5'd31) begin
+                        prescaler <= 5'd0;
+                        if (timer_val == 8'hFF) begin
+                            timer_val  <= 8'h00;
+                            timer_flag <= 1'b1;   // sticky overflow
+                        end else begin
+                            timer_val <= timer_val + 1'b1;
+                        end
+                    end else begin
+                        prescaler <= prescaler + 1'b1;
+                    end
+                end
+            end else begin
+                // --- COUNTER MODE: increment on T1 falling edge ---
+                if (t1_falling_edge) begin
 `ifdef KLR_DEBUG
-                   $display("counter edge");
+                    $display("counter edge");
 `endif
-                   if (timer_val == 8'hFF)
-                   begin
+                    if (timer_val == 8'hFF) begin
 `ifdef KLR_DEBUG
-                     $display("counter roll");
+                        $display("counter roll");
 `endif
-                     timer_val  <= 8'h00;
-                     timer_flag <= 1'b1; // Flag sets and "sticks"
-                   end
-                   else
-                     begin
-                       timer_val  <= timer_val + 1'b1;
-`ifdef KLR_DEBUG
-                       $display("count updated");
-`endif
-                     end
-                 end
-          end
+                        timer_val  <= 8'h00;
+                        timer_flag <= 1'b1;       // sticky overflow
+                    end else begin
+                        timer_val <= timer_val + 1'b1;
+                    end
+                end
+            end
         end
+    end
 end
 
 

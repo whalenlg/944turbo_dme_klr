@@ -1353,7 +1353,10 @@ module i8048_core_tb;
         end
         check_sp(3'h4,    "TIMER-REFIRE: SP=4 after interrupt push");
 
-        // Verify timer_flag was cleared on acknowledge (the fix)
+        // Verify timer_flag was cleared on acknowledge (the fix).
+        // The timer engine owns timer_flag and clears it via timer_flag_clr_req
+        // one clock edge after the ISR acknowledge — allow that edge to propagate.
+        @(posedge clk); #1;
         begin : check_tflag
             test_num = test_num + 1;
             if (dut.timer_flag === 1'b0) begin

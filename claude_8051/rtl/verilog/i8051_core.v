@@ -142,6 +142,18 @@ module i8051_core (
     // arbiter can see TF0/TF1 in the same execute phase that sets them.
     reg        irq_pending;   // interrupt latched, waiting for instruction boundary
     reg [15:0] irq_vector;    // vector address for pending interrupt
+    // ── tcon write requests (timer block is sole owner of tcon) ──
+    reg        tcon_clr_tf0_req;  // clear TF0 (tcon[5])
+    reg        tcon_clr_tf1_req;  // clear TF1 (tcon[7])
+    reg        tcon_clr_ie0_req;  // clear IE0 (tcon[1])
+    reg        tcon_clr_ie1_req;  // clear IE1 (tcon[3])
+    reg        tcon_wr_req;       // full-byte MOV to TCON pending
+    reg [7:0]  tcon_wr_val;       // value for full-byte write
+    // ── scon set requests (execute block is sole owner of scon) ──
+    reg        scon_set_ti_req;   // UART TX done → set TI (scon[1])
+    reg        scon_set_ri_req;   // UART RX done → set RI (scon[0])
+    reg        scon_set_rb8_req;  // set RB8 (scon[2])
+    reg        scon_rb8_val;      // value for RB8
 
     // ----------------------------------------------------------------
     //  Operand / debug temporaries
@@ -343,8 +355,10 @@ module i8051_core (
                 8'h83: dph     <= val;
                 8'h87: pcon    <= val;
                 8'h88: begin
-                    // Preserve TF1/TF0 if timer overflows on same cycle
-                    tcon <= val | {t1_overflow_now, 1'b0, t0_overflow_now, 1'b0, 4'b0000};
+                    // tcon is owned by the timer block; request the write there.
+                    // TF preservation on same-cycle overflow handled in timer block.
+                    tcon_wr_val <= val;
+                    tcon_wr_req <= 1'b1;
                 end
                 8'h89: tmod    <= val;
                 8'h8A: tl0     <= val;
@@ -403,8 +417,8 @@ module i8051_core (
             irq_in_progress <= 1'b1;
             // Push ret_addr: low byte at SP+1, high byte at SP+2.
             // All RHS expressions evaluate against old SP (NB semantics).
-            iram[(sp + 8'h01) & 7'h7F] <= ret_addr[7:0];
-            iram[(sp + 8'h02) & 7'h7F] <= ret_addr[15:8];
+            iram[(sp + 8'h01) & 8'h7F] <= ret_addr[7:0];
+            iram[(sp + 8'h02) & 8'h7F] <= ret_addr[15:8];
             sp <= sp + 8'h02;
             pc <= vector;
         end
@@ -465,6 +479,17 @@ module i8051_core (
             int0_dly <= 1'b1;
             int1_dly <= 1'b1;
         end else begin
+            // ---- Apply pending tcon writes from the execute block ----
+            // Full-byte MOV to TCON (TF bits preserved if overflow this cycle).
+            if (tcon_wr_req)
+                tcon <= tcon_wr_val | {t1_overflow_now, 1'b0,
+                                       t0_overflow_now, 1'b0, 4'b0000};
+            // Interrupt-acknowledge bit clears (request from execute block).
+            if (tcon_clr_ie0_req) tcon[1] <= 1'b0;
+            if (tcon_clr_ie1_req) tcon[3] <= 1'b0;
+            if (tcon_clr_tf0_req) tcon[5] <= 1'b0;
+            if (tcon_clr_tf1_req) tcon[7] <= 1'b0;
+
             // ---- INT0/INT1 falling-edge → set IE0/IE1 (TCON[1]/TCON[3]) ----
             int0_dly <= int0_n;
             int1_dly <= int1_n;
@@ -607,7 +632,10 @@ module i8051_core (
             tx_armed    <= 1'b0;
             sbuf_wr     <= 1'b0;
             txd         <= 1'b1;
+            scon_set_ti_req <= 1'b0;
         end else begin
+            // One-shot: default-deassert TI request; re-asserted below on TX done.
+            scon_set_ti_req <= 1'b0;
             // sbuf_wr is set (NB) by sfr_write; clear it one cycle later
             // so the TX engine sees exactly one high pulse per write.
             if (sbuf_wr) begin
@@ -627,7 +655,7 @@ module i8051_core (
                         end
                     end else if (tx_state == tx_stop_state) begin // STOP bit
                         txd      <= 1'b1;
-                        scon[1]  <= 1'b1;                        // TI
+                        scon_set_ti_req <= 1'b1;                 // request TI set
                         tx_state <= 4'd0;
                     end else if (tx_9bit && tx_state == 4'd9) begin // 9th bit (TB8)
                         txd      <= scon[3];
@@ -673,7 +701,12 @@ module i8051_core (
             rx_bit_cnt  <= 4'd0;
             rx_shift    <= 8'h00;
             rx_9th      <= 1'b0;
+            scon_set_ri_req  <= 1'b0;
+            scon_set_rb8_req <= 1'b0;
         end else begin
+            // One-shot: default-deassert RI/RB8 requests; re-asserted below on RX done.
+            scon_set_ri_req  <= 1'b0;
+            scon_set_rb8_req <= 1'b0;
             rxd_sync0 <= rxd;
             rxd_sync1 <= rxd_sync0;
 
@@ -706,8 +739,11 @@ module i8051_core (
                             rx_active <= 1'b0;
                             if (rxd_s && !scon[0]) begin       // valid stop + RI clear
                                 sbuf_rx  <= rx_shift;
-                                if (rx_9bit) scon[2] <= rx_9th; // RB8
-                                scon[0]  <= 1'b1;               // RI
+                                if (rx_9bit) begin
+                                    scon_set_rb8_req <= 1'b1;   // request RB8
+                                    scon_rb8_val     <= rx_9th;
+                                end
+                                scon_set_ri_req <= 1'b1;        // request RI set
                             end
                         end
                     end
@@ -760,6 +796,11 @@ module i8051_core (
 
             irq_pending     <= 1'b0;
             irq_vector      <= 16'h0000;
+            tcon_clr_tf0_req <= 1'b0;
+            tcon_clr_tf1_req <= 1'b0;
+            tcon_clr_ie0_req <= 1'b0;
+            tcon_clr_ie1_req <= 1'b0;
+            tcon_wr_req      <= 1'b0;
             psw             <= 8'h00;
             sp              <= 8'h07;   // 8051 reset value
             acc             <= 8'h00;
@@ -783,6 +824,15 @@ module i8051_core (
 
             // Free-running cycle counter for profiling
             cycle_count <= cycle_count + 64'd1;
+
+            // Default-deassert tcon write/clear request pulses. The interrupt
+            // logic or sfr_write below re-asserts them this same cycle if needed
+            // (later non-blocking write in this block wins).
+            tcon_clr_tf0_req <= 1'b0;
+            tcon_clr_tf1_req <= 1'b0;
+            tcon_clr_ie0_req <= 1'b0;
+            tcon_clr_ie1_req <= 1'b0;
+            tcon_wr_req      <= 1'b0;
 
             // Parity auto-update (PSW[0]) on every clock.
             // Guard against X-propagation from uninitialised acc bits:
@@ -930,29 +980,29 @@ module i8051_core (
 
                             if (ie[0] && tcon[1] && ip[0] &&
                                     (!irq_in_progress || !irq_hi_active))
-                                begin tcon[1] <= 1'b0; irq_pending <= 1'b1;
+                                begin tcon_clr_ie0_req <= 1'b1; irq_pending <= 1'b1;
                                       irq_pending_hi <= 1'b1;
                                       irq_vector <= 16'h0003; irq_hi_active <= 1'b1; end
                             else if (ie[1] && tcon[5] && ip[1] &&
                                     (!irq_in_progress || !irq_hi_active))
-                                begin tcon[5] <= 1'b0; irq_pending <= 1'b1;
+                                begin tcon_clr_tf0_req <= 1'b1; irq_pending <= 1'b1;
                                       irq_pending_hi <= 1'b1;
                                       irq_vector <= 16'h000B; irq_hi_active <= 1'b1; end
                             else if (ie[2] && tcon[3] && ip[2] &&
                                     (!irq_in_progress || !irq_hi_active))
-                                begin tcon[3] <= 1'b0; irq_pending <= 1'b1;
+                                begin tcon_clr_ie1_req <= 1'b1; irq_pending <= 1'b1;
                                       irq_pending_hi <= 1'b1;
                                       irq_vector <= 16'h0013; irq_hi_active <= 1'b1; end
                             else if (ie[3] && tcon[7] && ip[3] &&
                                     (!irq_in_progress || !irq_hi_active))
-                                begin tcon[7] <= 1'b0; irq_pending <= 1'b1;
+                                begin tcon_clr_tf1_req <= 1'b1; irq_pending <= 1'b1;
                                       irq_pending_hi <= 1'b1;
                                       irq_vector <= 16'h001B; irq_hi_active <= 1'b1; end
 
                             // Low-priority sources: only when no ISR is in progress
                             else if (!irq_in_progress) begin
                                 if (ie[0] && tcon[1] && !ip[0])
-                                    begin tcon[1] <= 1'b0; irq_pending <= 1'b1;
+                                    begin tcon_clr_ie0_req <= 1'b1; irq_pending <= 1'b1;
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h0003; irq_hi_active <= 1'b0; end
                                 else if (ie[0] && !tcon[0] && !int0_n && !ip[0])
@@ -960,11 +1010,11 @@ module i8051_core (
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h0003; irq_hi_active <= 1'b0; end
                                 else if (ie[1] && tcon[5] && !ip[1])
-                                    begin tcon[5] <= 1'b0; irq_pending <= 1'b1;
+                                    begin tcon_clr_tf0_req <= 1'b1; irq_pending <= 1'b1;
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h000B; irq_hi_active <= 1'b0; end
                                 else if (ie[2] && tcon[3] && !ip[2])
-                                    begin tcon[3] <= 1'b0; irq_pending <= 1'b1;
+                                    begin tcon_clr_ie1_req <= 1'b1; irq_pending <= 1'b1;
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h0013; irq_hi_active <= 1'b0; end
                                 else if (ie[2] && !tcon[2] && !int1_n && !ip[2])
@@ -972,7 +1022,7 @@ module i8051_core (
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h0013; irq_hi_active <= 1'b0; end
                                 else if (ie[3] && tcon[7] && !ip[3])
-                                    begin tcon[7] <= 1'b0; irq_pending <= 1'b1;
+                                    begin tcon_clr_tf1_req <= 1'b1; irq_pending <= 1'b1;
                                           irq_pending_hi <= 1'b0;
                                           irq_vector <= 16'h001B; irq_hi_active <= 1'b0; end
                                 else if (ie[4] && (scon[0] | scon[1]))
@@ -985,6 +1035,14 @@ module i8051_core (
                 end
 
             endcase
+
+            // ── Apply UART status-bit set requests LAST (execute owns scon) ──
+            // Placed after the instruction case so a UART-set TI/RI is not lost
+            // when software writes SCON the same machine cycle (hardware sets
+            // these status bits regardless of concurrent software writes).
+            if (scon_set_ti_req)  scon[1] <= 1'b1;   // TX complete → TI
+            if (scon_set_ri_req)  scon[0] <= 1'b1;   // RX complete → RI
+            if (scon_set_rb8_req) scon[2] <= scon_rb8_val;
         end
     end
 
@@ -1118,8 +1176,8 @@ module i8051_core (
                     end else begin
                         // Push return address = pc+1 (address after the imm8 operand).
                         // pc currently points to imm8 byte; pc+1 is the next instruction.
-                        iram[(sp + 8'h01) & 7'h7F] <= (pc + 1'b1) & 8'hFF; // low byte
-                        iram[(sp + 8'h02) & 7'h7F] <= (pc + 1'b1) >> 8;    // high byte
+                        iram[(sp + 8'h01) & 8'h7F] <= (pc + 1'b1) & 8'hFF; // low byte
+                        iram[(sp + 8'h02) & 8'h7F] <= (pc + 1'b1) >> 8;    // high byte
                         sp      <= sp + 8'h02;
                         pc      <= {pc[15:11], ir[7:5], rom_data_latch};
                         cycle_2 <= 1'b0;
@@ -1139,8 +1197,8 @@ module i8051_core (
                         cycle_2 <= 1'b1;
                     end else begin
                         // pc currently points one past addr_lo → that is the return address
-                        iram[(sp + 8'h01) & 7'h7F] <= (pc + 1'b1) & 8'hFF; // ret_lo
-                        iram[(sp + 8'h02) & 7'h7F] <= (pc + 1'b1) >> 8;    // ret_hi
+                        iram[(sp + 8'h01) & 8'h7F] <= (pc + 1'b1) & 8'hFF; // ret_lo
+                        iram[(sp + 8'h02) & 8'h7F] <= (pc + 1'b1) >> 8;    // ret_hi
                         sp      <= sp + 8'h02;
                         pc      <= {tmp1, rom_data_latch};
                         cycle_2 <= 1'b0;
@@ -1214,7 +1272,7 @@ module i8051_core (
                     if (!cycle_2) begin
                         cycle_2 <= 1'b1;
                     end else begin
-                        pc      <= {iram[sp[6:0]], iram[(sp - 1'b1) & 7'h7F]};
+                        pc      <= {iram[sp[6:0]], iram[(sp - 1'b1) & 8'h7F]};
                         sp      <= sp - 2'd2;
                         cycle_2 <= 1'b0;
                     end
@@ -1305,7 +1363,7 @@ module i8051_core (
                     if (!cycle_2) begin
                         cycle_2 <= 1'b1;
                     end else begin
-                        pc              <= {iram[sp[6:0]], iram[(sp - 1'b1) & 7'h7F]};
+                        pc              <= {iram[sp[6:0]], iram[(sp - 1'b1) & 8'h7F]};
                         sp              <= sp - 2'd2;
                         irq_in_progress <= 1'b0;
                         irq_hi_active   <= 1'b0;
@@ -1831,7 +1889,8 @@ module i8051_core (
                 // ====================================================
                 8'h94: begin // SUBB A,#imm  2-cycle
                         sum9   = {1'b0, acc} - {1'b0, rom_data_latch} - {8'b0, psw[7]};
-                        psw[7] <= (acc < (rom_data_latch + {7'b0, psw[7]}));
+                        // CY = borrow out of bit 7 (= sum9[8]); AC = borrow out of bit 3
+                        psw[7] <= sum9[8];
                         psw[6] <= ({1'b0,acc[3:0]} < ({1'b0,rom_data_latch[3:0]} + {4'b0,psw[7]}));
                         psw[2] <= (acc[7] != rom_data_latch[7]) & (sum9[7] != acc[7]);
                         acc    <= sum9[7:0];
@@ -1844,7 +1903,7 @@ module i8051_core (
                 8'h95: begin // SUBB A,direct  2-cycle
                         op_a   = direct_read(rom_data_latch);
                         sum9   = {1'b0, acc} - {1'b0, op_a} - {8'b0, psw[7]};
-                        psw[7] <= (acc < (op_a + {7'b0, psw[7]}));
+                        psw[7] <= sum9[8];
                         psw[6] <= ({1'b0,acc[3:0]} < ({1'b0,op_a[3:0]} + {4'b0,psw[7]}));
                         psw[2] <= (acc[7] != op_a[7]) & (sum9[7] != acc[7]);
                         acc    <= sum9[7:0];
@@ -1858,7 +1917,7 @@ module i8051_core (
                     acc_preop <= acc;
                     op_a      = iram[ri_ptr[6:0]];
                     sum9      = {1'b0, acc} - {1'b0, op_a} - {8'b0, psw[7]};
-                    psw[7]    <= (acc < (op_a + {7'b0, psw[7]}));
+                    psw[7]    <= sum9[8];
                     psw[6]    <= ({1'b0,acc[3:0]} < ({1'b0,op_a[3:0]} + {4'b0,psw[7]}));
                     psw[2]    <= (acc[7] != op_a[7]) & (sum9[7] != acc[7]);
                     acc       <= sum9[7:0];
@@ -1871,7 +1930,7 @@ module i8051_core (
                     acc_preop <= acc;
                     op_a      = iram[rn_addr];
                     sum9      = {1'b0, acc} - {1'b0, op_a} - {8'b0, psw[7]};
-                    psw[7]    <= (acc < (op_a + {7'b0, psw[7]}));
+                    psw[7]    <= sum9[8];
                     psw[6]    <= ({1'b0,acc[3:0]} < ({1'b0,op_a[3:0]} + {4'b0,psw[7]}));
                     psw[2]    <= (acc[7] != op_a[7]) & (sum9[7] != acc[7]);
                     acc       <= sum9[7:0];
@@ -2091,7 +2150,7 @@ module i8051_core (
                         tmp1    <= direct_read(rom_data_latch);
                         cycle_2 <= 1'b1;
                     end else begin
-                        iram[(sp + 8'h01) & 7'h7F] <= tmp1;
+                        iram[(sp + 8'h01) & 8'h7F] <= tmp1;
                         sp      <= sp + 8'h01;
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b0;
