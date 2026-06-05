@@ -109,7 +109,11 @@ module var_interrupt_generator (
     end
 
     // ── Tooth counter ────────────────────────────────────────────
-    reg [7:0] counter;
+    // init = 8'd0: rst is applied as a 0->1 pulse at sim start (a posedge),
+    // so the negedge-rst reset branch never fires at t=0.  Without the
+    // initialiser counter stays X, X+1=X, counter==0 never true, and the
+    // reference-sensor edge logic stalls (no int_0 pulses → RPM never measured).
+    reg [7:0] counter = 8'd0;
     always @(posedge int_1 or negedge rst) begin : tooth_counter
         if (!rst)          counter <= 8'd0;
         else if (counter >= 8'd131) counter <= 8'd0;
@@ -128,6 +132,7 @@ module var_interrupt_generator (
     reg        synced_once;
     reg [20:0] ref_low_cnt;
     reg        ref_low_active;
+    reg        ref_fired_this_rev;   // once-per-rev latch for the ref pulse
 
     always @(posedge clk or negedge rst) begin : ref_and_dynamics
         integer fuel_sample;
@@ -141,6 +146,7 @@ module var_interrupt_generator (
             int_0          <= 1'b1;
             ref_low_active <= 1'b0;
             ref_low_cnt    <= 21'd0;
+            ref_fired_this_rev <= 1'b0;
             rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
             period_current <= `RPMCONST / `CL_RPM_TARGET;
             synced_once    <= 1'b0;
@@ -150,12 +156,21 @@ module var_interrupt_generator (
             if (`CL_IRAM(21) & 8'h01)
                 synced_once <= 1'b1;
 
+            // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
+            if (counter != 8'd0)
+                ref_fired_this_rev <= 1'b0;
+
             // ── Reference pulse falling edge ──────────────────────
-            if (counter == 8'd0 && int_1 == 1'b0 &&
-                tick_counter == (period_current/2 - 1 - period_current/5)) begin
+            // Use a CROSSING (>=) test plus a once-per-rev latch instead of an
+            // exact-match (==).  period_current changes as RPM moves; an exact
+            // == target can be skipped when the threshold shifts between clocks,
+            // causing a missed ref pulse → doubled measured period → RPM glitch.
+            if (counter == 8'd0 && int_1 == 1'b0 && !ref_fired_this_rev &&
+                tick_counter >= (period_current/2 - 1 - period_current/5)) begin
 
                 int_0          <= 1'b0;
                 ref_low_active <= 1'b1;
+                ref_fired_this_rev <= 1'b1;
                 ref_low_cnt    <= 66 * period_current - 1;
 
                 // ── Torque update ─────────────────────────────────

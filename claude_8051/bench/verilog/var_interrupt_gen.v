@@ -12,6 +12,14 @@ module var_interrupt_generator (
 );
     integer period_current = `RPMCONST/`RPMSTART;  // initialised = no Z on afm_wiper at t=0
     integer tick_counter = 0;
+
+    // Define outputs and edge-state from t=0. rst is applied as a 0->1 pulse
+    // at sim start (posedge), so negedge-rst reset branches never fire then;
+    // without these initials int_0/int_1 would propagate X into the DME.
+    initial begin
+        int_0 = 1'b1;
+        int_1 = 1'b1;
+    end
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;
     // RPM_RAMP_PCT: percentage of total simulation time over which RPM ramps
@@ -145,9 +153,12 @@ module var_interrupt_generator (
     //        clocks needed in HIGH phase   : period/2 - period/5 = 3*period/10
     //      Rising edge fires at tick_counter == 3*period/10 - 1 in the HIGH phase.
     // --------------------------------------------------------
-    reg [7:0] counter;
+    reg [7:0] counter = 8'd0;   // init: avoids X until first negedge rst
 
-    // Tooth counter — increments on every rising edge of int_1
+    // Tooth counter — increments on every rising edge of int_1.
+    // NOTE: also self-initialised above because rst is applied as a 0->1 pulse
+    // at sim start (a posedge); the negedge-rst branch would otherwise never
+    // fire, leaving counter at X and stalling the reference-sensor edge logic.
     always @(posedge int_1 or negedge rst) begin : tooth_counter
         if (!rst)
             counter <= 8'd0;
@@ -164,9 +175,11 @@ module var_interrupt_generator (
     //  tooth 0.  This gives a 50% duty cycle across the full 132-tooth
     //  revolution, matching the scope trace where the ref signal is low
     //  for roughly half the flywheel rotation.
-    reg [20:0] ref_low_cnt;   // 21-bit: fits up to 66 * (2727272/100) = ~1.8M clocks
-    reg        ref_low_active;
-    reg        ref_fired_this_rev;  // latch: ref pulse already fired for tooth 0
+    reg [20:0] ref_low_cnt = 21'd0;   // 21-bit: fits up to 66*(2727272/100)
+    reg        ref_low_active = 1'b0;
+    reg        ref_fired_this_rev = 1'b0;  // latch: ref pulse fired for tooth 0
+    // (all initialised — the 0->1 rst pulse at sim start is a posedge, so the
+    //  negedge-rst reset branch below does not fire at t=0)
 
     always @(posedge clk or negedge rst) begin : ref_sensor_gen
         if (!rst) begin

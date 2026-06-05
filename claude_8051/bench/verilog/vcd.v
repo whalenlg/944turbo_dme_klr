@@ -233,9 +233,16 @@ $dumpvars(1,`TB);
 $dumpvars(1,`TB.i8051_top.u_cpu);
 $dumpvars(0,`TB.u_dumpvcd);
 $dumpvars(0,`TB.adc_delay_8_1);
-`ifdef RAMPRPM $dumpvars(1,`TB.var_interrupt_generator_1);
+// Dump the full RPM-ramp stimulus generator (level 0 = all internal regs:
+// current_rpm, period_current, tick_counter, counter, ref_low_cnt,
+// ref_low_active, ref_fired_this_rev, int_0/int_1).  Gate matches the
+// -DRPMRAMP flag passed by the run scripts (was misspelled RAMPRPM, so it
+// never fired before).
+`ifdef RPMRAMP
+$dumpvars(0,`TB.var_interrupt_generator_1);
 `endif
-`ifdef FLATRPM $dumpvars(1,`TB.interrupt_generator_1);
+`ifdef FLATRPM
+$dumpvars(0,`TB.interrupt_generator_1);
 `endif
 `endif
 
@@ -270,7 +277,6 @@ $dumpvars(1,`TB.A_3_unused_p1_3);
 $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
-$dumpvars(1,`TB.full_load);
 //$dumpvars(1,clk);
 
 
