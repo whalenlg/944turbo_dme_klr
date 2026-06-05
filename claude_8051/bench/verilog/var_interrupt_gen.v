@@ -1,7 +1,24 @@
-// Default RPM_RAMP_PCT if not set by the including testbench.
-// i8051_tb.v sets this via `undef/`define before each use.
+// Self-contained macro defaults.  In the dashboard build these come from
+// i8051_dashboard_tb.v / klr_defs.v upstream, but the non-dashboard files
+// list compiles this module before those defines exist — so guard them all
+// here.  Each is `ifndef so a real upstream/-D definition always wins.
 `ifndef RPM_RAMP_PCT
   `define RPM_RAMP_PCT 25
+`endif
+`ifndef DME_FREQ
+  `define DME_FREQ 6000        // DME master clock: half-cycles per ms (6 MHz)
+`endif
+`ifndef SIM_TIME
+  `define SIM_TIME 40000000000 // default 40 s (ns)
+`endif
+`ifndef RPMSTART
+  `define RPMSTART 840
+`endif
+`ifndef RPMEND
+  `define RPMEND 6500
+`endif
+`ifndef RPMCONST
+  `define RPMCONST 2727272     // (60*1000*DME_FREQ)/132 — clocks per tooth basis
 `endif
 
 module var_interrupt_generator (

@@ -39,6 +39,12 @@
   `define CL_FUEL_SCALE  14   // idle ~1.97ms → combustion≈27 > friction=26 → net≈+1
 `endif
 
+// Self-contained: the non-dashboard files list compiles this module before the
+// testbench defines RPMCONST.  `ifndef so a real upstream/-D definition wins.
+`ifndef RPMCONST
+  `define RPMCONST 2727272    // (60*1000*DME_FREQ)/132 — clocks per tooth basis
+`endif
+
 `ifdef DASHBOARD_TB
   `define CL_TB          i8051_dashboard_tb
 `else
