@@ -40,10 +40,6 @@ module dme_klr_tb;
     wire  klr_ign_in;     // DME A_1_tach_pulse  → KLR ign_in
     wire  klr_ign_out;    // KLR P2.7            → DME ign
     wire  full_load;      // KLR P1.5            → DME full_load
-    // TPS angle: DME AFM wiper → KLR TPS angle ch7
-    // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
-    wire [7:0] tps_wiper_sig;
-    assign tps_wiper_sig = u_dme.afm_wiper;
 
     // ── DME ───────────────────────────────────────────────
     i8051_tb u_dme (
@@ -57,12 +53,16 @@ module dme_klr_tb;
     // EXT_STIM=1: use ext_trigger/ext_ign ports instead of
     // internal var_timing_generator.  Signals are inverted
     // here since DME outputs are active-low.
+    // DME AFM wiper → KLR TPS angle (ch7).  afm_wiper is generated inside u_dme.
+    wire [7:0] tps_wiper_sig;
+    assign tps_wiper_sig = u_dme.afm_wiper;
+
     klr_tb #(.EXT_STIM(1)) u_klr (
         .ext_trigger ( ~klr_trigger  ),  // invert: DME active-low → KLR active-high
         .ext_ign     ( ~klr_ign_in   ),  // invert: DME active-low → KLR active-high
         .ign_out     ( klr_ign_out   ),  // KLR spark → DME
-        .full_load   ( full_load     ),   // KLR WOT flag → DME
-        .tps_wiper   ( tps_wiper_sig       )   // AFM → KLR TPS angle ch7
+        .full_load   ( full_load     ),  // KLR WOT flag → DME
+        .tps_wiper   ( tps_wiper_sig )   // AFM → KLR TPS angle ch7
     );
 
 
