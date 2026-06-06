@@ -188,6 +188,14 @@ module var_interrupt_generator (
                 // during FuelOffCoast (iram[23h].5) to prevent stall.
                 if (!synced_once || (`CL_IRAM(23) & 8'h20)) begin
                     // Pre-sync or fuel cut — clamp to target, no dynamics
+`ifdef CL_DEBUG
+                    // Diagnostic: report WHY the RPM was clamped to target.
+                    // EngineSync   = iram[21h].0   FuelOffCoast = iram[23h].5
+                    $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=%s  (synced_once=%0b iram21=%02h iram23=%02h)",
+                             ($time/1_000_000), `CL_RPM_TARGET,
+                             (!synced_once) ? "PRE-SYNC" : "FUEL-OFF-COAST",
+                             synced_once, `CL_IRAM(21), `CL_IRAM(23));
+`endif
                     rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
                     period_current <= `RPMCONST / `CL_RPM_TARGET;
                 end else begin

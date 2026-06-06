@@ -58,6 +58,13 @@ wire [7:0] r5 = `TB.i8051_top.u_cpu.iram[rb+5];
 wire [7:0] r6 = `TB.i8051_top.u_cpu.iram[rb+6];
 wire [7:0] r7 = `TB.i8051_top.u_cpu.iram[rb+7];
 
+// ── CL-mode diagnostic aliases (so individual iram bytes appear in the VCD;
+//    $dumpvars does not capture array elements directly) ──
+wire [7:0] cl_iram_21    = `TB.i8051_top.u_cpu.iram[8'h21];  // EngineSync byte
+wire [7:0] cl_iram_23    = `TB.i8051_top.u_cpu.iram[8'h23];  // FuelOffCoast byte
+wire       cl_enginesync = cl_iram_21[0];                    // iram[21h].0
+wire       cl_fueloffcoast = cl_iram_23[5];                  // iram[23h].5
+
 assign    rb0_0 = `TB.i8051_top.u_cpu.iram[0];
 assign    rb0_1 = `TB.i8051_top.u_cpu.iram[1];
 assign    rb0_2 = `TB.i8051_top.u_cpu.iram[2];
@@ -241,6 +248,11 @@ $dumpvars(0,`TB.adc_delay_8_1);
 `ifdef RPMRAMP
 $dumpvars(0,`TB.var_interrupt_generator_1);
 `endif
+// CL diagnostics: EngineSync / FuelOffCoast bytes and bits
+$dumpvars(0, cl_iram_21);
+$dumpvars(0, cl_iram_23);
+$dumpvars(0, cl_enginesync);
+$dumpvars(0, cl_fueloffcoast);
 `ifdef FLATRPM
 $dumpvars(0,`TB.interrupt_generator_1);
 `endif

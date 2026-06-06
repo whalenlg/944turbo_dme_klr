@@ -579,7 +579,7 @@ module i8051_dashboard_tb (
     input  wire ign,              // Ignition switch input
     output wire A_1_tach_pulse,   // Tachometer output (P1.1)
     output wire A_5_KLR_ign_out,  // KLR / ignition coil primary (P1.5)
-    input  wire full_load         // Full-load (WOT) switch → ADC ch6 / TPS
+    input  wire full_load         // Full-load (WOT) switch from KLR → ADC ch6 / TPS
 );
 
 `ifndef FRQ_SCALE
@@ -799,6 +799,10 @@ end
 `define AFM_IDLE_THR 8'h30
 
 wire [7:0] afm_wiper;
+// Idle switch derived from airflow: grounded (0) at idle, open (1) just
+// off idle.  afm_wiper idle = 0x28; opens at 0x2A.  This is the throttle
+// idle-stop contact — internal because afm_wiper is generated in this TB.
+wire idle_sw = (afm_wiper >= 8'h2A);
 reg  [7:0] adc_mux;
 
 always @(p2[2:0] or afm_wiper) begin
@@ -834,12 +838,15 @@ always @(p2[2:0] or afm_wiper) begin
 `ifdef TPS_FIXED
         3'b110: adc_mux = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-        3'b110: adc_mux = full_load ? 8'hDB : 8'h40;  // KLR full_load drives TPS: WOT=0xDB, else=0x40
+        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+                                  : 8'h85;                       // grounded: idle/closed=2.6V
 `elsif AFM_TIPPY
-        3'b110: adc_mux = full_load ? 8'hDB : 8'h40;  // KLR full_load drives TPS: WOT=0xDB, else=0x40
+        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+                                  : 8'h85;                       // grounded: idle/closed=2.6V
 `else
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
-        3'b110: adc_mux = full_load ? 8'hDB : 8'h40;
+        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+                                  : 8'h85;                       // grounded: idle/closed=2.6V
 `endif
         3'b111: adc_mux = `_FUEL_QUAL;
         default: adc_mux = 8'hF0;
