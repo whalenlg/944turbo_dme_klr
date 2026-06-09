@@ -178,8 +178,7 @@ module var_interrupt_generator_cl (
 `ifdef VERILATOR
                 int_1_prev_cl == 1'b1 &&  // vlt: prevent early ref (int_1 inits to 0)
 `endif
-                !ref_fired_this_rev &&
-                tick_counter >= (period_current/2 - 1 - period_current/5)) begin
+                !ref_fired_this_rev) begin
 
                 int_0          <= 1'b0;
                 ref_low_active <= 1'b1;
