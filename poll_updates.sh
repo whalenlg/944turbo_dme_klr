@@ -2,8 +2,6 @@
 # poll_updates.sh
 # Polls for git updates in 944turbo_dme_klr, then runs the build/test pipeline.
 
-set -euo pipefail
-
 REPO_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr"
 GEMINI_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr/gemini8048"
 CLAUDE_DIR="/Users/mike/coding_projects/DME_sim/claude_8051"
@@ -21,7 +19,14 @@ while true; do
     cd "$REPO_DIR"
 
     PULL_OUTPUT=$(git pull 2>&1)
+    PULL_EXIT=$?
     echo "$PULL_OUTPUT"
+
+    if [ $PULL_EXIT -ne 0 ]; then
+        log "WARNING: git pull exited with code $PULL_EXIT. Will retry in $POLL_INTERVAL seconds..."
+        sleep "$POLL_INTERVAL"
+        continue
+    fi
 
     if echo "$PULL_OUTPUT" | grep -q "Already up to date."; then
         log "No changes. Waiting $POLL_INTERVAL seconds before next check..."
@@ -40,7 +45,7 @@ while true; do
     fi
     log "run_48 completed successfully."
 
-    # Step 2: ren_reg in claude_8051
+    # Step 2: run_reg in claude_8051
     log "Running run_reg in $CLAUDE_DIR..."
     cd "$CLAUDE_DIR"
     if ! ./run_reg; then
