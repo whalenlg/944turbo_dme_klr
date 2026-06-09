@@ -18,9 +18,23 @@ while true; do
     log "Checking for updates in $REPO_DIR..."
     cd "$REPO_DIR"
 
+    # Stash any unstaged changes so rebase pull can proceed
+    STASH_OUTPUT=$(git stash 2>&1)
+    STASHED=0
+    if echo "$STASH_OUTPUT" | grep -q "Saved working directory"; then
+        log "Stashed local changes before pull."
+        STASHED=1
+    fi
+
     PULL_OUTPUT=$(git pull 2>&1)
     PULL_EXIT=$?
     echo "$PULL_OUTPUT"
+
+    # Restore stashed changes if we stashed anything
+    if [ $STASHED -eq 1 ]; then
+        log "Restoring stashed changes..."
+        git stash pop
+    fi
 
     if [ $PULL_EXIT -ne 0 ]; then
         log "WARNING: git pull exited with code $PULL_EXIT. Will retry in $POLL_INTERVAL seconds..."
