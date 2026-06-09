@@ -85,17 +85,19 @@ module var_interrupt_generator (
     // step_clocks = ramp_ms * 6000 / rpm_steps
     // ramp_ms = SIM_TIME_NS/1e6 * RPM_RAMP_PCT/100
     localparam rpm_steps    = 200;
-    localparam SIM_TIME_MS  = `SIM_TIME / 1_000_000;   // ns → ms, stays in 32-bit range
-    localparam ramp_ms      = SIM_TIME_MS * `RPM_RAMP_PCT / 100;
-    localparam step_clocks  = ramp_ms * `DME_FREQ / rpm_steps;  // FREQ in kHz → clocks/ms
+    // Use 64-bit arithmetic to avoid overflow with large SIM_TIME values.
+    // SIM_TIME is in ns (up to 60s = 60e9 > 32-bit max).
+    localparam [63:0] SIM_TIME_MS  = `SIM_TIME / 1_000_000;
+    localparam [63:0] ramp_ms      = SIM_TIME_MS * `RPM_RAMP_PCT / 100;
+    localparam [63:0] step_clocks  = ramp_ms * `DME_FREQ / rpm_steps;
 
     integer current_rpm;
     integer master_clk_count = 0;
     localparam rpm_inc_val = (`RPMEND - `RPMSTART) / rpm_steps;
 
-    always @(posedge clk or negedge rst) begin
+    always @(posedge clk) begin
         if (!rst) begin
-            int_1             <= 1;
+            int_1             <= 1;  // active-low INT1 — start deasserted
             tick_counter      <= 0;
             master_clk_count  <= 0;
             current_rpm        = `RPMSTART;
@@ -176,13 +178,20 @@ module var_interrupt_generator (
     // NOTE: also self-initialised above because rst is applied as a 0->1 pulse
     // at sim start (a posedge); the negedge-rst branch would otherwise never
     // fire, leaving counter at X and stalling the reference-sensor edge logic.
-    always @(posedge int_1 or negedge rst) begin : tooth_counter
-        if (!rst)
-            counter <= 8'd0;
-        else if (counter >= 8'd131)
-            counter <= 8'd0;
-        else
-            counter <= counter + 1'b1;
+    reg int_1_prev = 1'b0;  // edge detector for tooth counter
+    always @(posedge clk) begin : tooth_counter
+        if (!rst) begin
+            counter   <= 8'd0;
+            int_1_prev <= 1'b0;
+        end else begin
+            int_1_prev <= int_1;
+            if (int_1 && !int_1_prev) begin  // posedge int_1
+                if (counter >= 8'd131)
+                    counter <= 8'd0;
+                else
+                    counter <= counter + 1'b1;
+            end
+        end
     end
 
     // Reference sensor pulse — clock-accurate edge timing
@@ -198,23 +207,29 @@ module var_interrupt_generator (
     // (all initialised — the 0->1 rst pulse at sim start is a posedge, so the
     //  negedge-rst reset branch below does not fire at t=0)
 
-    always @(posedge clk or negedge rst) begin : ref_sensor_gen
+    always @(posedge clk) begin : ref_sensor_gen
         if (!rst) begin
-            int_0              <= 1'b1;
-            ref_low_active     <= 1'b0;
-            ref_low_cnt        <= 21'd0;
-            ref_fired_this_rev <= 1'b0;
+            int_0                <= 1'b1;
+            ref_low_active       <= 1'b0;
+            ref_low_cnt          <= 21'd0;
+            ref_fired_this_rev   <= 1'b0;
         end else begin
             // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
             if (counter != 8'd0)
                 ref_fired_this_rev <= 1'b0;
+`ifdef VERILATOR
+`endif
 
             // Falling edge: use a CROSSING (>=) test, not exact-match (==).
             // period_current steps every ~100ms during the RPM ramp; an exact
             // == target can be skipped when the threshold shifts mid-revolution,
             // causing a missed ref pulse → doubled measured period → half-RPM
             // sawtooth. A >= crossing plus a once-per-rev latch is robust.
-            if (counter == 8'd0 && int_1 == 1'b0 && !ref_fired_this_rev &&
+            if (counter == 8'd0 && int_1 == 1'b0 &&
+`ifdef VERILATOR
+                int_1_prev == 1'b1 &&  // vlt: prevent early ref (int_1 inits to 0)
+`endif
+                !ref_fired_this_rev &&
                 tick_counter >= (period_current/2 - 1 - period_current/5)) begin
                 // Falling edge: hold low for 66 tooth periods
                 int_0              <= 1'b0;

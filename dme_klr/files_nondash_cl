@@ -1,17 +1,28 @@
-  ../gemini8048/bench/verilog/klr_defs.v 
-  ../claude_8051/bench/verilog/timescale.v 
-  ../claude_8051/bench/verilog/vcd.v 
-../claude_8051/rtl/verilog/i8051_core.v 
-  ../claude_8051/rtl/verilog/i8051_top.v 
-  ../gemini8048/bench/verilog/klr_vcd.v 
-  ../gemini8048/bench/verilog/klr_tb.v 
-  ../gemini8048/rtl/verilog/i8048_core.v 
-  ../gemini8048/bench/verilog/adc_8090.v 
-  ../claude_8051/bench/verilog/adc_delay.v 
-  ../claude_8051/bench/verilog/var_interrupt_gen_cl.v
-  ../gemini8048/bench/verilog/var_timing_gen.v 
-  ../claude_8051/bench/verilog/interrupt_gen.v 
-  ../claude_8051/bench/verilog/o2_gen.v 
-  ../gemini8048/rtl/verilog/klr_top.v 
-  bench/verilog/klr_vcd_combined.v 
-  ../claude_8051/bench/verilog/i8051_tb.v
+// Verilator filelist — files_nondash_cl
+// Generated from original iverilog filelist.
+// +incdir+ lines make `include search self-contained.
+
++incdir+rtl/verilog
++incdir+bench/verilog
++incdir+../claude_8051/rtl/verilog
++incdir+../claude_8051/bench/verilog
++incdir+../gemini8048/rtl/verilog
++incdir+../gemini8048/bench/verilog
+
+../gemini8048/bench/verilog/klr_defs.v
+../claude_8051/bench/verilog/timescale.v
+../claude_8051/bench/verilog/vcd.v
+../claude_8051/rtl/verilog/i8051_core.v
+../claude_8051/rtl/verilog/i8051_top.v
+../gemini8048/bench/verilog/klr_vcd.v
+../gemini8048/bench/verilog/klr_tb.v
+../gemini8048/rtl/verilog/i8048_core.v
+../gemini8048/bench/verilog/adc_8090.v
+../claude_8051/bench/verilog/adc_delay.v
+../claude_8051/bench/verilog/var_interrupt_gen_cl.v
+../gemini8048/bench/verilog/var_timing_gen.v
+../claude_8051/bench/verilog/interrupt_gen.v
+../claude_8051/bench/verilog/o2_gen.v
+../gemini8048/rtl/verilog/klr_top.v
+bench/verilog/klr_vcd_combined.v
+../claude_8051/bench/verilog/i8051_tb.v

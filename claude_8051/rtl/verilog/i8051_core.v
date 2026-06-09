@@ -241,36 +241,37 @@ module i8051_core (
     // ----------------------------------------------------------------
     function [7:0] sfr_read_latch;
         input [7:0] addr;
-        reg   [7:0] sfr_read_latch;
+        reg   [7:0] sfr_read_latch_ret;
         begin
             case (addr)
-                8'h80: sfr_read_latch = p0;        // P0 latch (not &p0_in)
-                8'h81: sfr_read_latch = sp;
-                8'h82: sfr_read_latch = dpl;
-                8'h83: sfr_read_latch = dph;
-                8'h87: sfr_read_latch = pcon;
+                8'h80: sfr_read_latch_ret = p0;        // P0 latch (not &p0_in)
+                8'h81: sfr_read_latch_ret = sp;
+                8'h82: sfr_read_latch_ret = dpl;
+                8'h83: sfr_read_latch_ret = dph;
+                8'h87: sfr_read_latch_ret = pcon;
                 // TCON: OR in TF0/TF1 if timer overflows this same clock edge.
                 // t0_overflow_now / t1_overflow_now are combinatorial — no race.
-                8'h88: sfr_read_latch = tcon | {t1_overflow_now, 1'b0,
-                                                 t0_overflow_now, 3'b0,
-                                                 1'b0, 1'b0};
-                8'h89: sfr_read_latch = tmod;
-                8'h8A: sfr_read_latch = tl0;
-                8'h8B: sfr_read_latch = tl1;
-                8'h8C: sfr_read_latch = th0;
-                8'h8D: sfr_read_latch = th1;
-                8'h90: sfr_read_latch = p1;        // P1 latch (not &p1_in)
-                8'h98: sfr_read_latch = scon;
-                8'h99: sfr_read_latch = sbuf_rx;
-                8'hA0: sfr_read_latch = p2;        // P2 latch (not &p2_in)
-                8'hA8: sfr_read_latch = ie;
-                8'hB0: sfr_read_latch = p3;        // P3 latch (not &p3_in)
-                8'hB8: sfr_read_latch = ip;
-                8'hD0: sfr_read_latch = psw;
-                8'hE0: sfr_read_latch = acc;
-                8'hF0: sfr_read_latch = b_reg;
-                default: sfr_read_latch = 8'hFF;
+                8'h88: sfr_read_latch_ret = tcon | {t1_overflow_now, 1'b0,
+                                                     t0_overflow_now, 3'b0,
+                                                     1'b0, 1'b0};
+                8'h89: sfr_read_latch_ret = tmod;
+                8'h8A: sfr_read_latch_ret = tl0;
+                8'h8B: sfr_read_latch_ret = tl1;
+                8'h8C: sfr_read_latch_ret = th0;
+                8'h8D: sfr_read_latch_ret = th1;
+                8'h90: sfr_read_latch_ret = p1;        // P1 latch (not &p1_in)
+                8'h98: sfr_read_latch_ret = scon;
+                8'h99: sfr_read_latch_ret = sbuf_rx;
+                8'hA0: sfr_read_latch_ret = p2;        // P2 latch (not &p2_in)
+                8'hA8: sfr_read_latch_ret = ie;
+                8'hB0: sfr_read_latch_ret = p3;        // P3 latch (not &p3_in)
+                8'hB8: sfr_read_latch_ret = ip;
+                8'hD0: sfr_read_latch_ret = psw;
+                8'hE0: sfr_read_latch_ret = acc;
+                8'hF0: sfr_read_latch_ret = b_reg;
+                default: sfr_read_latch_ret = 8'hFF;
             endcase
+            sfr_read_latch = sfr_read_latch_ret;
         end
     endfunction
 

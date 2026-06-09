@@ -24,10 +24,11 @@ reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191],asmopcode,a
 // ======================================
 // Dump Waves to VCD File
 // ======================================
-`define VCD "1" 
+`define VCD "1"
 `ifndef VCD_FILE
-  `define VCD_FILE "claude_951dme.vcd"
+  `define VCD_FILE "sim.vcd"
 `endif
+reg [1023:0] vcd_path;
 wire [7:0] rb0_0,rb0_1,rb0_2,rb0_3,rb0_4,rb0_5,rb0_6,rb0_7;
 wire [7:0] rb1_0,rb1_1,rb1_2,rb1_3,rb1_4,rb1_5,rb1_6,rb1_7;
 wire [7:0] rb2_0,rb2_1,rb2_2,rb2_3,rb2_4,rb2_5,rb2_6,rb2_7;
@@ -228,9 +229,21 @@ initial
 
 //mem traces
 
-$display("DME: VCD Dump enabled");
-$dumpfile("sim.vcd");
-$dumpon;
+// ── Simulator identification ────────────────────────────────
+`ifdef VERILATOR
+$display("DME: [SIM] Verilator");
+`else
+$display("DME: [SIM] iverilog");
+`endif
+if (!$value$plusargs("vcd=%s", vcd_path))
+    vcd_path = `VCD_FILE;
+if (vcd_path != "/dev/null") begin
+    $display("DME: VCD Dump enabled -> %0s", vcd_path);
+    $dumpfile(vcd_path);
+    $dumpon;
+end else begin
+    $display("DME: VCD Dump suppressed (/dev/null)");
+end
 //$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
 //$dumpvars(1,`TB.var_interrupt_generator_1);

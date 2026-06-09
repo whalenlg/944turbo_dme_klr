@@ -41,6 +41,7 @@ reg        ph_klr_ign_in_prev;  // ign_in edge tracker (trigger reference)
 reg [63:0] ph_klr_ign_in_time;  // $time(ns) of last ign_in falling edge
 reg [63:0] ph_klr_ign_out_time; // $time(ns) of last ign_out assert
 reg [63:0] ph_klr_next_snap;
+reg        ph_klr_res_n_prev;   // reset-release edge detector
 
 initial begin
     ph_klr_ign_prev       = 1'b0;
@@ -53,19 +54,32 @@ initial begin
     ph_klr_ign_in_time    = 64'd0;
     ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
+    ph_klr_res_n_prev     = 1'b0;
 end
 
 // ── Unified monitor ───────────────────────────────────────
 always @(posedge clk) begin  // klr_phase_monitor
 
+    ph_klr_res_n_prev <= top.res_n;
+
     if (top.res_n === 1'b0) begin
-        // Hold prevs during reset — avoids false edges on release
-        ph_klr_ign_prev      <= 1'b0;
-        ph_klr_knock_prev    <= 1'b0;
-        ph_klr_fullload_prev <= 1'b0;
-        ph_klr_pc_prev       <= 12'h000;
-        ph_klr_ign_in_prev   <= 1'b0;
-        ph_klr_mb_prev       <= 1'b0;
+        // Hold prevs during reset
+        ph_klr_ign_prev      <= ign_out;
+        ph_klr_knock_prev    <= knock_out;
+        ph_klr_fullload_prev <= full_load;
+        ph_klr_pc_prev       <= top.i8048_core_1.pc;
+        ph_klr_ign_in_prev   <= ign_in_mux;
+        ph_klr_mb_prev       <= top.i8048_core_1.mb_latch;
+    end else if (!ph_klr_res_n_prev && top.res_n) begin
+        // Reset just released — sample actual signal values to prevent
+        // false edges. vlt inits all regs to 0 so signals may already
+        // be non-zero before the firmware runs.
+        ph_klr_ign_prev      <= ign_out;
+        ph_klr_knock_prev    <= knock_out;
+        ph_klr_fullload_prev <= full_load;
+        ph_klr_pc_prev       <= top.i8048_core_1.pc;
+        ph_klr_ign_in_prev   <= ign_in_mux;
+        ph_klr_mb_prev       <= top.i8048_core_1.mb_latch;
     end else begin
 
         // ── ign_in: track edge (trigger reference for spark-delay calc) ──

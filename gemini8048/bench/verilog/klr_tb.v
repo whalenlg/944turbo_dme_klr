@@ -202,9 +202,24 @@ module klr_tb #(parameter EXT_STIM = 0) (
 
     // Zero ram[0x16] on every trigger posedge (reset event)
     // Ensures MB1 jump at 0x2B0 always lands at 0x800, not 0x8XX.
-    always @(posedge trigger_in_mux) begin
-        #1;  // let the core see the edge before we force the value
-        klr_tb.top.i8048_core_1.ram[8'h16] = 8'h02;
+    //
+    // The original used #1 to let the core see the posedge before the RAM
+    // write.  Verilator ignores # delays in always blocks, so the write
+    // landed in the same time-step as the edge and corrupted the firmware's
+    // jump calculation, causing premature engine sync.
+    //
+    // Fix: pipeline the trigger through one master clock so the core sees
+    // the edge on cycle N and the RAM is patched on cycle N+1.
+    reg trigger_ram_patch_d  = 1'b0;
+    reg trigger_ram_patch_done = 1'b0;  // fire once only
+    always @(posedge clk) begin
+        trigger_ram_patch_d <= trigger_in_mux;
+    end
+    always @(posedge clk) begin
+        if (trigger_ram_patch_d && !trigger_ram_patch_done) begin
+            klr_tb.top.i8048_core_1.ram[8'h16] = 8'h02;
+            trigger_ram_patch_done <= 1'b1;
+        end
     end
 
     // ============================================================

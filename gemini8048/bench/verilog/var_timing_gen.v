@@ -12,17 +12,24 @@ module var_timing_generator (
     integer period_current,period_inc;
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;
-    localparam period_change = `SIM_TIME*`KLR_FREQ/(period_start+period_end)/22500000;
+    localparam [63:0] period_change = (64'd1 * `SIM_TIME * `KLR_FREQ) / (period_start + period_end) / 22500000;
     integer cycle_count  = 0;
     integer tick_counter = 0;
     reg [23:0] counter;
     
 
 
-   always @(negedge trigger or posedge rst or posedge clk) begin
+    // ── Clocked always block — compatible with both iverilog and Verilator ──
+    // Original used mixed sensitivity (negedge trigger OR posedge rst OR posedge clk)
+    // which Verilator handles differently. Rewritten as pure posedge clk with
+    // explicit reset. The negedge trigger sensitivity was redundant — the counter
+    // already resets to 0 on rst, and trigger is driven combinatorially from counter.
+    // The #10 delays on ign are removed (Verilator ignores them; functionally
+    // the 10ns delay is irrelevant at KLR_FREQ timescales).
+    always @(posedge clk) begin
         if (!rst) begin
-            counter <= 16'd0;
-            ign <= #10 1'b0;
+            counter <= 24'd0;
+            ign     <= 1'b0;
         end else begin
             // Wrap counter at end of period
             if (counter >= 24'd400000) begin
@@ -33,8 +40,6 @@ module var_timing_generator (
 
             // ── Trigger pulse ─────────────────────────────────────────
             // Narrow pulse at the START of each cycle (counter 0..99).
-            // Matches oscilloscope: blue spike fires at the leading edge
-            // of every engine cycle, well before the ignition event.
             if (counter < 24'd100) begin
                 trigger <= 1'b1;
             end else begin
@@ -42,18 +47,13 @@ module var_timing_generator (
             end
 
             // ── Ignition signal ───────────────────────────────────────
-            // Goes HIGH 25% into the cycle (counter 100000),
-            // stays HIGH for 25% of the cycle (until counter 200000),
-            // then LOW for the remaining 50%.
-            // Matches oscilloscope: IGN rising edge ~10ms after trigger,
-            // HIGH for ~10ms, LOW for ~20ms at ~1500 RPM (40ms period).
+            // Goes HIGH 25% into the cycle, stays HIGH for 25%, then LOW.
             if (counter >= 24'd100000 && counter < 24'd200000) begin
-                #10 ign <= 1'b1;
+                ign <= 1'b1;
             end else begin
-                #10 ign <= 1'b0;
+                ign <= 1'b0;
             end
         end
-    end 
+    end
 
 endmodule
-

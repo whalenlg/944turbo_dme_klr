@@ -52,7 +52,7 @@
 `endif
 `define CL_IRAM(n)       `CL_TB.i8051_top.u_cpu.iram[7'h``n]
 
-module var_interrupt_generator (
+module var_interrupt_generator_cl (
     input  wire clk,
     input  wire rst,
     output reg  int_0,
@@ -100,10 +100,10 @@ module var_interrupt_generator (
     end
 
     // ── Speed sensor ─────────────────────────────────────────────
-    always @(posedge clk or negedge rst) begin : speed_sensor_gen
+    always @(posedge clk) begin : speed_sensor_gen
         if (!rst) begin
             tick_counter <= 0;
-            int_1        <= 1'b1;
+            int_1        <= 1'b1;  // active-low INT1 — start deasserted
         end else begin
             if (tick_counter >= (period_current / 2) - 1) begin
                 tick_counter <= 0;
@@ -120,10 +120,18 @@ module var_interrupt_generator (
     // initialiser counter stays X, X+1=X, counter==0 never true, and the
     // reference-sensor edge logic stalls (no int_0 pulses → RPM never measured).
     reg [7:0] counter = 8'd0;
-    always @(posedge int_1 or negedge rst) begin : tooth_counter
-        if (!rst)          counter <= 8'd0;
-        else if (counter >= 8'd131) counter <= 8'd0;
-        else               counter <= counter + 1'b1;
+    reg int_1_prev_cl = 1'b0;  // edge detector for tooth counter
+    always @(posedge clk) begin : tooth_counter
+        if (!rst) begin
+            counter       <= 8'd0;
+            int_1_prev_cl <= 1'b0;
+        end else begin
+            int_1_prev_cl <= int_1;
+            if (int_1 && !int_1_prev_cl) begin  // posedge int_1
+                if (counter >= 8'd131) counter <= 8'd0;
+                else                   counter <= counter + 1'b1;
+            end
+        end
     end
 
     // ── Reference sensor + torque update ─────────────────────────
@@ -140,7 +148,7 @@ module var_interrupt_generator (
     reg        ref_low_active;
     reg        ref_fired_this_rev;   // once-per-rev latch for the ref pulse
 
-    always @(posedge clk or negedge rst) begin : ref_and_dynamics
+    always @(posedge clk) begin : ref_and_dynamics
         integer fuel_sample;
         integer combustion;
         integer friction;
@@ -166,12 +174,11 @@ module var_interrupt_generator (
             if (counter != 8'd0)
                 ref_fired_this_rev <= 1'b0;
 
-            // ── Reference pulse falling edge ──────────────────────
-            // Use a CROSSING (>=) test plus a once-per-rev latch instead of an
-            // exact-match (==).  period_current changes as RPM moves; an exact
-            // == target can be skipped when the threshold shifts between clocks,
-            // causing a missed ref pulse → doubled measured period → RPM glitch.
-            if (counter == 8'd0 && int_1 == 1'b0 && !ref_fired_this_rev &&
+            if (counter == 8'd0 && int_1 == 1'b0 &&
+`ifdef VERILATOR
+                int_1_prev_cl == 1'b1 &&  // vlt: prevent early ref (int_1 inits to 0)
+`endif
+                !ref_fired_this_rev &&
                 tick_counter >= (period_current/2 - 1 - period_current/5)) begin
 
                 int_0          <= 1'b0;

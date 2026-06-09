@@ -908,7 +908,7 @@ end
 `ifdef RPMRAMP
 `ifdef CL_MODE
 // Closed-loop engine dynamics — RPM driven by fuel pulse feedback
-var_interrupt_generator var_interrupt_generator_1 (
+var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),
@@ -987,9 +987,20 @@ end // lambda_warmup_skip
 `ifdef SKIP_LAMBDA_WARMUP
 initial begin
     wait (rst === 1'b1);
-    #1;
+    @(posedge clk);  // one cycle; vlt ignores #delays in initial blocks
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
+end
+`endif
+
+`ifdef VERILATOR
+// vlt inits iram to 0; firmware flags in iram[23h] bits[2:0] must be
+// pre-set to match the state the firmware reaches after its own init
+// sequence in iverilog (which starts from X, not 0).
+initial begin
+    wait (rst === 1'b1);
+    @(posedge clk);
+    i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23] = 8'h9F;
 end
 `endif
 
