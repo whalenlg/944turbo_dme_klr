@@ -255,12 +255,9 @@ compile_and_run_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module i8051_dashboard_tb \
-        -DVERILATOR \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
         --flatten \
-        --x-assign unique \
-        --x-initial unique \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \
@@ -382,13 +379,10 @@ compile_and_run_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module dme_klr_dashboard_tb \
-        -DVERILATOR \
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
         --flatten \
-        --x-assign unique \
-        --x-initial unique \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \
@@ -507,11 +501,8 @@ compile_and_run_nondash_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module dme_klr_tb \
-        -DVERILATOR \
         -DDME_KLR_COMBINED \
         --flatten \
-        --x-assign unique \
-        --x-initial unique \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \

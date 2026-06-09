@@ -58,6 +58,77 @@ def normalise_ds(line):
     """
     return re.sub(r'\bt=\d+\b', 't=T', line)
 
+def extract_status_fields(lines, prefix="DME: [STATUS]"):
+    """Return list of dicts, one per [STATUS] line, mapping field→value."""
+    result = []
+    for l in lines:
+        if not l.startswith(prefix):
+            continue
+        # Parse key=value and key(addr)=value patterns
+        # e.g. prpm(37)=0x15 (840 RPM) → prpm=21, rpm=840
+        # Numeric hex values: convert to int for comparison
+        d = {}
+        # Extract t= timestamp
+        tm = re.search(r't=(\d+)\s*ms', l)
+        if tm:
+            d['t'] = int(tm.group(1))
+        # Extract key(...)=0xHH style fields
+        for m in re.finditer(r'(\w+)\([^)]*\)=0x([0-9a-fA-F]+)', l):
+            d[m.group(1)] = int(m.group(2), 16)
+        # Extract (NNN degC) style RPM/temp values
+        for m in re.finditer(r'\((\d+)\s+(?:RPM|degC)\)', l):
+            pass  # already captured via key=value above
+        result.append(d)
+    return result
+
+def compare_status_series(iv_st, vl_st, prefix, tolerance=0.05):
+    """Compare two sequences of [STATUS] lines field-by-field."""
+    issues = []
+    iv_n, vl_n = len(iv_st), len(vl_st)
+    if iv_n == 0 and vl_n == 0:
+        return []
+    delta = abs(iv_n - vl_n)
+    if delta > max(2, int(max(iv_n, vl_n) * 0.01)):
+        issues.append(f"{prefix}: count iv={iv_n} vl={vl_n}")
+    field_mismatches = Counter()
+    for i in range(min(iv_n, vl_n)):
+        iv_row, vl_row = iv_st[i], vl_st[i]
+        for k in set(iv_row) | set(vl_row):
+            if k == 't': continue
+            iv_v = iv_row.get(k)
+            vl_v = vl_row.get(k)
+            if iv_v is None or vl_v is None: continue
+            if iv_v == vl_v: continue
+            denom = max(abs(iv_v), abs(vl_v), 1)
+            if abs(iv_v - vl_v) / denom <= tolerance: continue
+            field_mismatches[k] += 1
+    if field_mismatches:
+        top = sorted(field_mismatches.items(), key=lambda x: -x[1])[:5]
+        issues.append(f"{prefix} field mismatches: " +
+                      ", ".join(f"{k}({n})" for k, n in top))
+    return issues
+
+def compare_phase_sequence(iv_lines, vl_lines, prefix):
+    """Compare phase event sequences, stripping timestamps."""
+    _ts = re.compile(r't=\d+\s*ms\s*')
+    def normalise(lines):
+        return [_ts.sub('t=T ms  ', l.strip()) for l in lines if l.startswith(prefix)]
+    iv_p = normalise(iv_lines)
+    vl_p = normalise(vl_lines)
+    issues = []
+    if len(iv_p) != len(vl_p):
+        issues.append(f"{prefix}: count iv={len(iv_p)} vl={len(vl_p)}")
+    for i, (a, b) in enumerate(zip(iv_p, vl_p)):
+        if a != b:
+            # Re-attach original timestamps for reporting
+            iv_orig = [l.strip() for l in iv_lines if l.startswith(prefix)]
+            vl_orig = [l.strip() for l in vl_lines if l.startswith(prefix)]
+            iv_s = iv_orig[i] if i < len(iv_orig) else a
+            vl_s = vl_orig[i] if i < len(vl_orig) else b
+            issues.append(f"{prefix} diverges at entry {i}: iv={iv_s!r} vl={vl_s!r}")
+            break
+    return issues
+
 def extract_ds_fields(lines, prefix="DME: [DS]"):
     """Return a list of dicts, one per [DS] line, mapping field→value."""
     result = []
@@ -161,17 +232,21 @@ def compare_dash(iv_lines, vl_lines, name):
         ok2, kds_issues = compare_ds_series(iv_kds, vl_kds)
         issues.extend(["KLR: " + i for i in kds_issues])
 
-    # PHASE sequence comparison (order matters for engine state machine)
-    iv_phases = [l.strip() for l in iv_lines if l.startswith("DME: [PHASE]")]
-    vl_phases = [l.strip() for l in vl_lines if l.startswith("DME: [PHASE]")]
-    if iv_phases != vl_phases:
-        # Find first divergence
-        for i, (a, b) in enumerate(zip(iv_phases, vl_phases)):
-            if a != b:
-                issues.append(f"PHASE diverges at entry {i}: iv={a!r} vl={b!r}")
-                break
-        else:
-            issues.append(f"PHASE count mismatch iv={len(iv_phases)} vl={len(vl_phases)}")
+    # DME [PHASE] sequence — timestamp-normalised comparison
+    issues.extend(compare_phase_sequence(iv_lines, vl_lines, "DME: [PHASE]"))
+
+    # KLR [PHASE] sequence — timestamp-normalised comparison
+    issues.extend(compare_phase_sequence(iv_lines, vl_lines, "KLR: [PHASE]"))
+
+    # DME [STATUS] field comparison
+    iv_dme_st = extract_status_fields(iv_lines, "DME: [STATUS]")
+    vl_dme_st = extract_status_fields(vl_lines, "DME: [STATUS]")
+    issues.extend(compare_status_series(iv_dme_st, vl_dme_st, "DME: [STATUS]"))
+
+    # KLR [STATUS] field comparison
+    iv_klr_st = extract_status_fields(iv_lines, "KLR: [STATUS]")
+    vl_klr_st = extract_status_fields(vl_lines, "KLR: [STATUS]")
+    issues.extend(compare_status_series(iv_klr_st, vl_klr_st, "KLR: [STATUS]"))
 
     return issues
 
