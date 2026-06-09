@@ -993,17 +993,6 @@ initial begin
 end
 `endif
 
-`ifdef VERILATOR
-// vlt inits iram to 0; firmware flags in iram[23h] bits[2:0] must be
-// pre-set to match the state the firmware reaches after its own init
-// sequence in iverilog (which starts from X, not 0).
-initial begin
-    wait (rst === 1'b1);
-    @(posedge clk);
-    i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23] = 8'h9F;
-end
-`endif
-
 initial begin
     rst   = 1'b0;
     p2_in = 8'hFF;
@@ -1106,9 +1095,52 @@ end
 // ============================================================
 //  PHASE MONITOR (inlined — same events as phase_monitor.v)
 // ============================================================
+// ── NTC linearised-value → degrees Celsius ──────────────────────
+function automatic integer ntc_celsius;
+    input [7:0] lin;
+    integer diff;
+    begin
+        diff = $signed(9'd0 + lin) - 143;
+        ntc_celsius = 10 + (diff * 70) / 79;
+    end
+endfunction
+
+// Shadow registers — prevent ADC bleed in STATUS snapshots
+integer cool_c_disp;
+integer air_c_disp;
+reg [7:0] isv_shadow;
+reg [7:0] afm_raw_shadow;
+reg [7:0] coolant_shadow;
+reg [7:0] airtemp_shadow;
+
+always @(posedge clk) begin : isv_shadow_track
+    if (!rst) isv_shadow <= 8'hFF;
+    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] <= 8'h40)
+        isv_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F];
+end
+
+always @(posedge clk) begin : afm_raw_track
+    if (!rst) afm_raw_shadow <= 8'h00;
+    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h10] <= 8'h64)
+        afm_raw_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h10];
+end
+
+always @(posedge clk) begin : ntc_shadow_track
+    if (!rst) begin
+        coolant_shadow <= 8'hFF;
+        airtemp_shadow <= 8'hFF;
+    end else begin
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13] >= 8'h80)
+            coolant_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13];
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12] >= 8'h80)
+            airtemp_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12];
+    end
+end
+
 reg ph_sync_prev, ph_fuelcut_prev, ph_lambdaok_prev;
 reg ph_coldenrich_prev, ph_coldtiming_prev, ph_isvovf_prev;
 reg ph_usemap_prev, ph_intblock_prev;
+reg ph_intblock_set_seen;  // guards "cleared" until "set" has fired
 
 initial begin
     ph_sync_prev       = 1'b0;
@@ -1117,8 +1149,19 @@ initial begin
     ph_coldenrich_prev = 1'b0;
     ph_coldtiming_prev = 1'b0;
     ph_isvovf_prev     = 1'b0;
-    ph_usemap_prev     = 1'b0;
-    ph_intblock_prev   = 1'b0;
+    ph_usemap_prev         = 1'b0;
+    ph_intblock_set_seen   = 1'b0;
+    // NOTE: vlt inits all regs to 0; iverilog inits to X.
+    // The firmware sets iram[23h].4=1 at power-on (interrupt block).
+    // Pre-arm prev=1 so we only need to detect the falling edge.
+    ph_intblock_prev   = 1'b1;
+    cool_c_disp         = 9999;
+    air_c_disp          = 9999;
+    isv_shadow          = 8'hFF;
+    afm_raw_shadow      = 8'h00;
+    coolant_shadow      = 8'hFF;
+    airtemp_shadow      = 8'hFF;
+    ph_status_next_snap = 64'd18000;
 end
 
 always @(posedge clk) begin  // phase_monitor
@@ -1130,8 +1173,9 @@ always @(posedge clk) begin  // phase_monitor
         ph_coldenrich_prev <= 1'b0;
         ph_coldtiming_prev <= 1'b0;
         ph_isvovf_prev     <= 1'b0;
-        ph_usemap_prev     <= 1'b0;
-        ph_intblock_prev   <= 1'b0;
+        ph_usemap_prev       <= 1'b0;
+        ph_intblock_prev     <= 1'b1;  // firmware sets this bit at power-on
+        ph_intblock_set_seen <= 1'b0;
     end else if (!snapshot_busy) begin
 
         // EngineSync  iram[21h].0
@@ -1140,10 +1184,12 @@ always @(posedge clk) begin  // phase_monitor
         ph_sync_prev <= `IRAM(21)[0];
 
         // IntBlock  iram[23h].4 — set at power-on, cleared when engine synced
-        if (`IRAM(23)[4] && !ph_intblock_prev)
+        if (`IRAM(23)[4] && !ph_intblock_prev) begin
             $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK set      (watchdog or power-on reset)",
                      `DME_MS);
-        if (!`IRAM(23)[4] && ph_intblock_prev)
+            ph_intblock_set_seen <= 1'b1;
+        end
+        if (!`IRAM(23)[4] && ph_intblock_prev && ph_intblock_set_seen)
             $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK cleared  (engine synced — fully running)",
                      `DME_MS);
         ph_intblock_prev <= `IRAM(23)[4];
@@ -1193,6 +1239,32 @@ always @(posedge clk) begin  // phase_monitor
             $display("DME: [PHASE] t=%0d ms  ISV OVERFLOW end             (isv_step=0x%02X)",
                      `DME_MS, `IRAM(7F));
         ph_isvovf_prev <= `IRAM(20)[5];
+
+        // ── Periodic STATUS — every 100ms ─────────────────────────
+        if (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= ph_status_next_snap) begin
+            cool_c_disp = (coolant_shadow == 8'hFF) ? 9999 : ntc_celsius(coolant_shadow);
+            air_c_disp  = (airtemp_shadow == 8'hFF) ? 9999 : ntc_celsius(airtemp_shadow);
+            $display("DME: [STATUS] t=%0d ms  prpm(37)=0x%02X (%0d RPM)  fuel_hb(4B)=0x%02X  fuel_lb(4A)=0x%02X  afm_raw(10)=0x%02X  afm_peak(3D)=0x%02X  load(46:47)=0x%02X%02X  load_idx(49)=0x%02X  coolant(13)=0x%02X (%0d degC)  airtemp(12)=0x%02X (%0d degC)  dwell(2F)=0x%02X  isv(7F)=0x%02X  wdog(2A)=0x%02X  B(F0)=0x%02X  wu(58:59)=0x%02X%02X  flags(21)=0x%02X (23)=0x%02X (25)=0x%02X",
+                `DME_MS,
+                `IRAM(37),
+                `IRAM(37) * 40,
+                `IRAM(4B),
+                `IRAM(4A),
+                afm_raw_shadow,
+                `IRAM(3D),
+                `IRAM(46), `IRAM(47),
+                `IRAM(49),
+                coolant_shadow, cool_c_disp,
+                airtemp_shadow, air_c_disp,
+                `IRAM(2F),
+                isv_shadow,
+                `IRAM(2A),
+                i8051_dashboard_tb.i8051_top.u_cpu.b_reg,
+                `IRAM(58), `IRAM(59),
+                `IRAM(21), `IRAM(23), `IRAM(25));
+            ph_status_next_snap <= ph_status_next_snap + 64'd600_000;
+            $fflush();
+        end
 
     end
 end
