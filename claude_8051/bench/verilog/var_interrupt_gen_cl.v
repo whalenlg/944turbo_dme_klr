@@ -105,6 +105,7 @@ module var_interrupt_generator_cl (
             tick_counter <= 0;
             int_1        <= 1'b1;  // active-low INT1 — start deasserted
         end else begin
+            tick_counter_prev <= tick_counter;
             if (tick_counter >= (period_current / 2) - 1) begin
                 tick_counter <= 0;
                 int_1        <= ~int_1;
@@ -121,6 +122,7 @@ module var_interrupt_generator_cl (
     // reference-sensor edge logic stalls (no int_0 pulses → RPM never measured).
     reg [7:0] counter = 8'd0;
     reg int_1_prev_cl = 1'b0;  // edge detector for tooth counter
+    integer tick_counter_prev = 0;
     always @(posedge clk) begin : tooth_counter
         if (!rst) begin
             counter       <= 8'd0;
@@ -175,8 +177,9 @@ module var_interrupt_generator_cl (
                 ref_fired_this_rev <= 1'b0;
 
             if (counter == 8'd0 && int_1 == 1'b0 &&
-`ifdef VERILATOR
-                int_1_prev_cl == 1'b1 &&  // vlt: prevent early ref (int_1 inits to 0)
+`ifdef VLT_SIM
+                int_1_prev_cl == 1'b1 &&  // vlt_sim: prevent early ref
+                tick_counter_prev >= (period_current/2 - 1 - period_current/5) &&
 `endif
                 !ref_fired_this_rev) begin
 

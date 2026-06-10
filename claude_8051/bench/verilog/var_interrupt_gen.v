@@ -140,6 +140,7 @@ module var_interrupt_generator (
 `endif
 
             // Generate int_1 square wave at current period
+            tick_counter_prev <= tick_counter;
             if (tick_counter >= (period_current / 2) - 1) begin
                 tick_counter <= 0;
                 int_1 <= ~int_1;
@@ -179,6 +180,7 @@ module var_interrupt_generator (
     // at sim start (a posedge); the negedge-rst branch would otherwise never
     // fire, leaving counter at X and stalling the reference-sensor edge logic.
     reg int_1_prev = 1'b0;  // edge detector for tooth counter
+    integer tick_counter_prev = 0;  // one-cycle delayed — valid when int_1 just went low
     always @(posedge clk) begin : tooth_counter
         if (!rst) begin
             counter   <= 8'd0;
@@ -217,17 +219,15 @@ module var_interrupt_generator (
             // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
             if (counter != 8'd0)
                 ref_fired_this_rev <= 1'b0;
-`ifdef VERILATOR
-`endif
-
             // Falling edge: use a CROSSING (>=) test, not exact-match (==).
             // period_current steps every ~100ms during the RPM ramp; an exact
             // == target can be skipped when the threshold shifts mid-revolution,
             // causing a missed ref pulse → doubled measured period → half-RPM
             // sawtooth. A >= crossing plus a once-per-rev latch is robust.
             if (counter == 8'd0 && int_1 == 1'b0 &&
-`ifdef VERILATOR
-                int_1_prev == 1'b1 &&  // vlt: prevent early ref (int_1 inits to 0)
+`ifdef VLT_SIM
+                int_1_prev == 1'b1 &&  // vlt_sim: prevent early ref
+                tick_counter_prev >= (period_current/2 - 1 - period_current/5) &&
 `endif
                 !ref_fired_this_rev &&
                 tick_counter >= (period_current/2 - 1 - period_current/5)) begin

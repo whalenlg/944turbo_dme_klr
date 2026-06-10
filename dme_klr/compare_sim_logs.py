@@ -59,29 +59,42 @@ def normalise_ds(line):
     return re.sub(r'\bt=\d+\b', 't=T', line)
 
 def extract_status_fields(lines, prefix="DME: [STATUS]"):
-    """Return list of dicts, one per [STATUS] line, mapping field→value."""
+    """Return list of dicts, one per [STATUS] line, mapping field→value.
+
+    Handles two formats:
+      DME: key(addr)=0xHH  e.g.  prpm(37)=0x15 (840 RPM)
+      KLR: key=hexval      e.g.  pc=1a6  knock=1  tps_raw=77
+    Skips fields with value 'x', 'xx', 'xxx' (uninitialised).
+    """
     result = []
     for l in lines:
         if not l.startswith(prefix):
             continue
-        # Parse key=value and key(addr)=value patterns
-        # e.g. prpm(37)=0x15 (840 RPM) → prpm=21, rpm=840
-        # Numeric hex values: convert to int for comparison
         d = {}
-        # Extract t= timestamp
         tm = re.search(r't=(\d+)\s*ms', l)
         if tm:
             d['t'] = int(tm.group(1))
-        # Extract key(...)=0xHH style fields
-        for m in re.finditer(r'(\w+)\([^)]*\)=0x([0-9a-fA-F]+)', l):
-            d[m.group(1)] = int(m.group(2), 16)
-        # Extract (NNN degC) style RPM/temp values
-        for m in re.finditer(r'\((\d+)\s+(?:RPM|degC)\)', l):
-            pass  # already captured via key=value above
+
+        if prefix.startswith('DME'):
+            # DME format: key(addr)=0xHH
+            for m in re.finditer(r'(\w+)\([^)]*\)=0x([0-9a-fA-F]+)', l):
+                d[m.group(1)] = int(m.group(2), 16)
+        else:
+            # KLR format: key=hexval (no 0x prefix, no addr)
+            # Skip the t=NNN ms field already handled above
+            body = re.sub(r't=\d+\s*ms\s*', '', l[len(prefix):])
+            for m in re.finditer(r'(\w+)=([0-9a-fA-F]+)', body):
+                val_str = m.group(2)
+                if re.fullmatch(r'x+', val_str, re.IGNORECASE):
+                    continue  # uninitialised
+                try:
+                    d[m.group(1)] = int(val_str, 16)
+                except ValueError:
+                    pass
         result.append(d)
     return result
 
-def compare_status_series(iv_st, vl_st, prefix, tolerance=0.05):
+def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
     """Compare two sequences of [STATUS] lines field-by-field."""
     issues = []
     iv_n, vl_n = len(iv_st), len(vl_st)
@@ -139,7 +152,7 @@ def extract_ds_fields(lines, prefix="DME: [DS]"):
         result.append(dict(pairs))
     return result
 
-def compare_ds_series(iv_ds, vl_ds, tolerance=0.05):
+def compare_ds_series(iv_ds, vl_ds, tolerance=0.01):
     """Compare two sequences of [DS] snapshots.
 
     Returns (ok, issues) where issues is a list of human-readable strings.

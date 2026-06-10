@@ -255,6 +255,7 @@ compile_and_run_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module i8051_dashboard_tb \
+        -DVLT_SIM \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
         --flatten \
@@ -379,6 +380,7 @@ compile_and_run_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module dme_klr_dashboard_tb \
+        -DVLT_SIM \
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
@@ -501,6 +503,7 @@ compile_and_run_nondash_klr() {
         +incdir+"$RTLk" \
         +incdir+"$BENCHk" \
         --top-module dme_klr_tb \
+        -DVLT_SIM \
         -DDME_KLR_COMBINED \
         --flatten \
         -Wno-fatal \

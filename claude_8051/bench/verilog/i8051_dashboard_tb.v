@@ -1112,6 +1112,7 @@ reg [7:0] isv_shadow;
 reg [7:0] afm_raw_shadow;
 reg [7:0] coolant_shadow;
 reg [7:0] airtemp_shadow;
+reg [63:0] ph_status_next_snap;
 
 always @(posedge clk) begin : isv_shadow_track
     if (!rst) isv_shadow <= 8'hFF;
@@ -1121,7 +1122,7 @@ end
 
 always @(posedge clk) begin : afm_raw_track
     if (!rst) afm_raw_shadow <= 8'h00;
-    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h10] <= 8'h64)
+    else
         afm_raw_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h10];
 end
 
