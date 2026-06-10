@@ -24,7 +24,7 @@
 module var_interrupt_generator (
     input  wire clk,        // Fast Master Clock
     input  wire rst,        // Active high reset
-    output reg  int_0,int_1,// The slowing square wave
+    output reg  int_0 /* verilator public */,int_1 /* verilator public */,// The slowing square wave
     output reg  [7:0] afm_wiper // AFM wiper value tracking RPM ramp
 );
     integer period_current = `RPMCONST/`RPMSTART;  // initialised = no Z on afm_wiper at t=0
@@ -224,13 +224,14 @@ module var_interrupt_generator (
             // == target can be skipped when the threshold shifts mid-revolution,
             // causing a missed ref pulse → doubled measured period → half-RPM
             // sawtooth. A >= crossing plus a once-per-rev latch is robust.
+            // Use tick_counter_prev (sampled before reset) so the condition
+            // is true at the genuine int_1 negedge in both iverilog and Verilator.
+            // tick_counter resets to 0 on the same edge int_1 goes low, so
+            // tick_counter_prev holds the pre-reset max value.
             if (counter == 8'd0 && int_1 == 1'b0 &&
-`ifdef VLT_SIM
-                int_1_prev == 1'b1 &&  // vlt_sim: prevent early ref
-                tick_counter_prev >= (period_current/2 - 1 - period_current/5) &&
-`endif
+                int_1_prev == 1'b1 &&
                 !ref_fired_this_rev &&
-                tick_counter >= (period_current/2 - 1 - period_current/5)) begin
+                tick_counter_prev >= (period_current/2 - 1 - period_current/5)) begin
                 // Falling edge: hold low for 66 tooth periods
                 int_0              <= 1'b0;
                 ref_low_active     <= 1'b1;

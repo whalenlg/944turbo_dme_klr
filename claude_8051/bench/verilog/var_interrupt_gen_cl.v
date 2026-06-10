@@ -55,8 +55,8 @@
 module var_interrupt_generator_cl (
     input  wire clk,
     input  wire rst,
-    output reg  int_0,
-    output reg  int_1,
+    output reg  int_0 /* verilator public */,
+    output reg  int_1 /* verilator public */,
     output reg  [7:0] afm_wiper
 );
 
@@ -177,11 +177,9 @@ module var_interrupt_generator_cl (
                 ref_fired_this_rev <= 1'b0;
 
             if (counter == 8'd0 && int_1 == 1'b0 &&
-`ifdef VLT_SIM
-                int_1_prev_cl == 1'b1 &&  // vlt_sim: prevent early ref
-                tick_counter_prev >= (period_current/2 - 1 - period_current/5) &&
-`endif
-                !ref_fired_this_rev) begin
+                int_1_prev_cl == 1'b1 &&
+                !ref_fired_this_rev &&
+                tick_counter_prev >= (period_current/2 - 1 - period_current/5)) begin
 
                 int_0          <= 1'b0;
                 ref_low_active <= 1'b1;

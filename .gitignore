@@ -3,5 +3,14 @@
 *.vcd
 *.raw
 *.trace
+*old
+*~*xlsx
 trace
 node_modules/
+fstdumper/
+gemini8048/d52/
+gtkwave/
+iverilog/
+verilator/
+claude_8051/dashboard/
+extras/
