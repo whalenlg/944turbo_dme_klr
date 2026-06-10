@@ -85,12 +85,10 @@ module var_interrupt_generator (
     // step_clocks = ramp_ms * 6000 / rpm_steps
     // ramp_ms = SIM_TIME_NS/1e6 * RPM_RAMP_PCT/100
     localparam rpm_steps    = 200;
-    // step_clocks as runtime reg — avoids all Verilator localparam
-    // overflow issues with SIM_TIME > 32-bit.
-    reg [63:0] step_clocks;
-    initial
-        step_clocks = (`SIM_TIME / 1_000_000) * `RPM_RAMP_PCT / 100
-                      * `DME_FREQ / rpm_steps;
+    // step_clocks: passed as parameter from TB to avoid Verilator
+    // localparam overflow with large SIM_TIME values.
+    parameter STEP_CLOCKS = 150000;  // default: 10s sim, 50% ramp, 200 steps
+    localparam step_clocks = STEP_CLOCKS;
 
     reg [31:0] current_rpm;
     reg [63:0] master_clk_count = 0;
