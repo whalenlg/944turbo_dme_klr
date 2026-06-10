@@ -61,7 +61,7 @@ module var_interrupt_generator (
     localparam afm_adc_hi  = 235;   // 0xEB = 4.60V at 6500 RPM
 
     always @(*) begin : afm_calc
-        integer current_rpm;
+        reg [31:0] current_rpm;
         if (period_current <= period_end)
             current_rpm = `RPMEND;
         else
@@ -85,14 +85,15 @@ module var_interrupt_generator (
     // step_clocks = ramp_ms * 6000 / rpm_steps
     // ramp_ms = SIM_TIME_NS/1e6 * RPM_RAMP_PCT/100
     localparam rpm_steps    = 200;
-    // Use 64-bit arithmetic to avoid overflow with large SIM_TIME values.
-    // SIM_TIME is in ns (up to 60s = 60e9 > 32-bit max).
-    localparam [63:0] SIM_TIME_MS  = `SIM_TIME / 1_000_000;
-    localparam [63:0] ramp_ms      = SIM_TIME_MS * `RPM_RAMP_PCT / 100;
-    localparam [63:0] step_clocks  = ramp_ms * `DME_FREQ / rpm_steps;
+    // step_clocks as runtime reg — avoids all Verilator localparam
+    // overflow issues with SIM_TIME > 32-bit.
+    reg [63:0] step_clocks;
+    initial
+        step_clocks = (`SIM_TIME / 1_000_000) * `RPM_RAMP_PCT / 100
+                      * `DME_FREQ / rpm_steps;
 
-    integer current_rpm;
-    integer master_clk_count = 0;
+    reg [31:0] current_rpm;
+    reg [63:0] master_clk_count = 0;
     localparam rpm_inc_val = (`RPMEND - `RPMSTART) / rpm_steps;
 
     always @(posedge clk) begin

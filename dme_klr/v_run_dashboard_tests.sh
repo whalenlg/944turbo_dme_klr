@@ -13,7 +13,7 @@
 #
 #  Output: ../../tmp/dme_klr/v_dash_logs/<test>.log       (full sim output)
 #                                                 <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/v_dash_logs/vcd/<test>.vcd.gz
+#          ../../tmp/dme_klr/v_dash_logs/vcd/<test>.vcd
 #          ../../tmp/dme_klr/v_dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
@@ -258,7 +258,6 @@ compile_and_run_klr() {
         -DVLT_SIM \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
-        --flatten \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \
@@ -286,12 +285,10 @@ compile_and_run_klr() {
         return 1
     fi
 
-    # Move sim.vcd to named location; keep/gzip only when VCD_ENABLE=1
+    # Move sim.vcd to named location (no compression)
     if [ -f "$hexdir/sim.vcd" ]; then
         if [ "$VCD_ENABLE" = "1" ]; then
             mv "$hexdir/sim.vcd" "$vcdfile"
-            gzip -f "$vcdfile"
-            vcdfile="${vcdfile}.gz"
         else
             rm -f "$hexdir/sim.vcd"
         fi
@@ -306,7 +303,7 @@ compile_and_run_klr() {
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD.gz ${vcdsize})" \
+    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD ${vcdsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -384,7 +381,6 @@ compile_and_run_klr() {
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
-        --flatten \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \
@@ -413,19 +409,14 @@ compile_and_run_klr() {
         return 1
     fi
 
-    # Move any stray VCD to the canonical location, then gzip.
+    # Move any stray VCD to the canonical location.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
     # instead of honouring +vcd= if an older version is deployed.
     for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
         [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
     done
     if [ -f "$vcdfile" ]; then
-        if [ "$VCD_ENABLE" = "1" ]; then
-            gzip -f "$vcdfile"
-            vcdfile="${vcdfile}.gz"
-        else
-            rm -f "$vcdfile"
-        fi
+        [ "$VCD_ENABLE" != "1" ] && rm -f "$vcdfile"
     fi
 
     # Extract all DME: and KLR: lines into dashboard log.
@@ -439,7 +430,7 @@ compile_and_run_klr() {
     local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
+    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD ${vcdsize}" \
         | tee -a "$LOGDIR/summary.log"
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
@@ -505,7 +496,6 @@ compile_and_run_nondash_klr() {
         --top-module dme_klr_tb \
         -DVLT_SIM \
         -DDME_KLR_COMBINED \
-        --flatten \
         -Wno-fatal \
         -Wno-PINMISSING \
         -Wno-IMPLICIT \
@@ -529,17 +519,12 @@ compile_and_run_nondash_klr() {
     ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo /dev/null )" ) > "${log}" 2>&1
     local rc=$?
 
-    # Move any stray VCDs to canonical location then gzip
+    # Move any stray VCDs to canonical location
     for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
         [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
     done
     if [ -f "$vcdfile" ]; then
-        if [ "$VCD_ENABLE" = "1" ]; then
-            gzip -f "$vcdfile"
-            vcdfile="${vcdfile}.gz"
-        else
-            rm -f "$vcdfile"
-        fi
+        [ "$VCD_ENABLE" != "1" ] && rm -f "$vcdfile"
     fi
 
     if [ $rc -ne 0 ]; then
@@ -548,7 +533,7 @@ compile_and_run_nondash_klr() {
     fi
 
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name — VCD.gz ${vcdsize}" | tee -a "$NONDASH_LOGDIR/summary.log"
+    echo "  DONE: $name — VCD ${vcdsize}" | tee -a "$NONDASH_LOGDIR/summary.log"
 
     compare_with_iv --nondash "$name" \
         "$NONDASH_LOGDIR/${name}.log" \
