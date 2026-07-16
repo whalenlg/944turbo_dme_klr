@@ -14,3 +14,4 @@ iverilog/
 verilator/
 claude_8051/dashboard/
 extras/
+.DS_Store
