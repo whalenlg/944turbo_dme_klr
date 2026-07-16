@@ -1,5 +1,5 @@
 // ============================================================
-//  klr_vcd.v  —  VCD / disassembly monitor for KLR simulation
+//  klr_vcd.v  —  FST / disassembly monitor for KLR simulation
 //
 //  Derived from vcd.v — only the $dumpvars hierarchy paths and
 //  module name differ from the original DME version.
@@ -9,7 +9,7 @@
 //  128 continuous-assign wires (ram_00–ram_7f) mirror every byte
 //  of the 8049 internal RAM.  Because they live in this module and
 //  this module is swept by $dumpvars(1,`KLR_DUMPVCD_PATH), every
-//  RAM location is visible in the VCD waveform viewer at every
+//  RAM location is visible in the FST waveform viewer at every
 //  simulation timestep — no sampling gaps.
 //
 //  Per-instruction $display
@@ -58,7 +58,7 @@ reg [159:0] opcode[0:`MEMMAX], instr[0:`MEMMAX],
 //  inside `KLR_TB_PATH.i8048_core_1.ram[].  Being signals in this
 //  module they are captured by $dumpvars(1,`KLR_DUMPVCD_PATH) at
 //  every timestep, making all 128 bytes permanently visible in
-//  the VCD waveform viewer without any sampling gaps.
+//  the FST waveform viewer without any sampling gaps.
 //
 //  The always block below references these wires by name
 //  (e.g. ram_24) rather than hierarchical paths, for readability.
@@ -105,7 +105,7 @@ wire [7:0] ram_3a = `RAM[8'h3a]; wire [7:0] ram_3b = `RAM[8'h3b];
 wire [7:0] ram_3c = `RAM[8'h3c]; wire [7:0] ram_3d = `RAM[8'h3d];
 wire [7:0] ram_3e = `RAM[8'h3e]; wire [7:0] ram_3f = `RAM[8'h3f];
 
-// ── TPS named aliases (for readable VCD traces) ───────────────────────────
+// ── TPS named aliases (for readable FST traces) ───────────────────────────
 wire [7:0] tps_supply       = ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
 wire [7:0] tps_raw_angle    = ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
 wire [7:0] tps_degrees      = ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
@@ -190,15 +190,15 @@ always @(negedge `KLR_TB_PATH.res_n) begin
 `endif // KLR_DEBUG
 end
 `ifndef VCD_FILE
-  `define VCD_FILE "951klr.vcd"
+  `define VCD_FILE "951klr.fst"
 `endif
 
 initial begin
-    $display("KLR: VCD Dump enabled");
+    $display("KLR: FST Dump enabled");
     $dumpfile(`VCD_FILE);
     $dumpon;
 
-    // ── Always-on: minimal signal set (small VCD) ─────────────────
+    // ── Always-on: minimal signal set (small FST) ─────────────────
     // Key inter-ECU and output signals always captured regardless of
     // KLR_DEBUG flag — keeps the VCD loadable in GTKWave.
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.pc);
@@ -217,7 +217,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
 
-    // ── KLR_DEBUG: full core + ADC internals (large VCD) ──────────
+    // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
     // Compile with -DKLR_DEBUG to enable.
 `ifdef KLR_DEBUG
     $dumpvars(1, `KLR_TOP_TB);
@@ -396,7 +396,7 @@ end
 // ============================================================
 //  PHASE/STATUS monitoring now lives solely in klr_phase_monitor.v
 //  (removed from here to eliminate duplicate console output).
-//  This file is responsible for VCD waveform dump + per-instruction
+//  This file is responsible for FST waveform dump + per-instruction
 //  trace (KLR_DEBUG) + IRQ/reset/stack diagnostics only.
 // ============================================================
 

@@ -1,5 +1,5 @@
 // ============================================================
-//  klr_vcd.v  —  VCD / disassembly monitor for KLR simulation
+//  klr_vcd.v  —  FST / disassembly monitor for KLR simulation
 //
 //  Derived from vcd.v — only the $dumpvars hierarchy paths and
 //  module name differ from the original DME version.
@@ -9,7 +9,7 @@
 //  128 continuous-assign wires (ram_00–ram_7f) mirror every byte
 //  of the 8049 internal RAM.  Because they live in this module and
 //  this module is swept by $dumpvars(1,`KLR_TOP.u_klr_vcd), every
-//  RAM location is visible in the VCD waveform viewer at every
+//  RAM location is visible in the FST waveform viewer at every
 //  simulation timestep — no sampling gaps.
 //
 //  Per-instruction $display
@@ -58,7 +58,7 @@ reg [159:0] opcode[0:`MEMMAX], instr[0:`MEMMAX],
 //  inside `KLR_CORE.i8048_core_1.ram[].  Being signals in this
 //  module they are captured by $dumpvars(1,`KLR_TOP.u_klr_vcd) at
 //  every timestep, making all 128 bytes permanently visible in
-//  the VCD waveform viewer without any sampling gaps.
+//  the FST waveform viewer without any sampling gaps.
 //
 //  The always block below references these wires by name
 //  (e.g. ram_24) rather than hierarchical paths, for readability.
@@ -179,16 +179,16 @@ always @(negedge `KLR_CORE.res_n) begin
         $display("    *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
 end
 initial begin
-    // VCD filename from +vcd= runtime arg (set by run_dashboard_tests.sh)
+    // FST filename from +fst= runtime arg (set by run_dashboard_tests.sh)
     // Falls back to a default name if not supplied.
-    begin : vcd_setup
-        reg [1023:0] vcd_path;
-        if ($value$plusargs("vcd=%s", vcd_path))
-            $dumpfile(vcd_path);
+    begin : fst_setup
+        reg [1023:0] fst_path;
+        if ($value$plusargs("fst=%s", fst_path))
+            $dumpfile(fst_path);
         else
-            $dumpfile("klr_combined.vcd");
+            $dumpfile("klr_combined.fst");
     end
-    $display("VCD Dump enabled");
+    $display("FST Dump enabled");
     $dumpon;
     $dumpvars(1, dme_klr_tb);
 `ifdef DME_KLR_DEBUG
