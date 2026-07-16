@@ -7,7 +7,7 @@
 ////    iverilog -o sim i8051_regression_tb.v i8051_core.v       ////
 ////    vvp sim                                                   ////
 ////                                                              ////
-////  Waveform output: i8051_regression.vcd                      ////
+////  Waveform output: i8051_regression.fst                      ////
 ////                                                              ////
 //////////////////////////////////////////////////////////////////////
 
@@ -276,7 +276,7 @@ endtask
 // MAIN TEST SEQUENCE
 // ===========================================================================
 initial begin
-    $dumpfile("i8051_regression.vcd");
+    $dumpfile("i8051_regression.fst");
     $dumpvars(0, i8051_regression_tb);
 
     // Initialise counters and hold reset
