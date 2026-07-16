@@ -888,7 +888,7 @@ end
 `ifdef RPMRAMP
 `ifdef CL_MODE
 // Closed-loop engine dynamics — RPM driven by fuel pulse feedback
-var_interrupt_generator var_interrupt_generator_1 (
+var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),

@@ -242,6 +242,19 @@ compile_and_run_klr() {
 
     # Remove stale object dir to force clean recompile
     rm -rf "${VVP_DIR}/obj_${name}"
+    # Compute STEP_CLOCKS in bash to avoid Verilator localparam overflow
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
@@ -256,6 +269,7 @@ compile_and_run_klr() {
         +incdir+"$BENCHk" \
         --top-module i8051_dashboard_tb \
         -DVLT_SIM \
+        -DSTEP_CLOCKS="$_step_clocks" \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
         -Wno-fatal \
@@ -364,6 +378,18 @@ compile_and_run_klr() {
 
     # Remove stale object dir to force clean recompile
     rm -rf "${VVP_DIR}/obj_${name}"
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
@@ -378,6 +404,7 @@ compile_and_run_klr() {
         +incdir+"$BENCHk" \
         --top-module dme_klr_dashboard_tb \
         -DVLT_SIM \
+        -DSTEP_CLOCKS="$_step_clocks" \
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
@@ -481,6 +508,18 @@ compile_and_run_nondash_klr() {
 
     # Remove stale object dir to force clean recompile
     rm -rf "${VVP_DIR}/obj_${name}"
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
@@ -495,6 +534,7 @@ compile_and_run_nondash_klr() {
         +incdir+"$BENCHk" \
         --top-module dme_klr_tb \
         -DVLT_SIM \
+        -DSTEP_CLOCKS="$_step_clocks" \
         -DDME_KLR_COMBINED \
         -Wno-fatal \
         -Wno-PINMISSING \

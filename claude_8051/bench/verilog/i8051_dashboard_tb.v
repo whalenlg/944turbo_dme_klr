@@ -917,10 +917,8 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
 );
 `else
 // Open-loop RPM ramp — default
-// Compute STEP_CLOCKS in TB to avoid Verilator localparam overflow
-var_interrupt_generator #(
-    .STEP_CLOCKS ( (`SIM_TIME / 1_000_000) * `RPM_RAMP_PCT / 100 * `DME_FREQ / 200 )
-) var_interrupt_generator_1 (
+// Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
+var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),

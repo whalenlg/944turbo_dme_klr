@@ -182,6 +182,19 @@ compile_and_run_klr() {
         [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
     done
 
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     iverilog -o "$vvp" \
         -f "$files_list" \
         -I "$RTL" \
@@ -193,6 +206,7 @@ compile_and_run_klr() {
         -s i8051_dashboard_tb \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@"
     if [ $? -ne 0 ]; then
         echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
@@ -281,6 +295,19 @@ compile_and_run_klr() {
         [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
     done
 
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     iverilog -o "$vvp" \
         -f "$files_list" \
         -I "$RTL" \
@@ -293,6 +320,7 @@ compile_and_run_klr() {
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@"
     if [ $? -ne 0 ]; then
         echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
@@ -380,6 +408,19 @@ compile_and_run_nondash_klr() {
         files_list="$FILES"
     fi
 
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
+    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+    for _a in "$@"; do
+        case "$_a" in
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+        esac
+    done
+    _sim_time="${_sim_time:-40000000000}"
+    _ramp_pct="${_ramp_pct:-25}"
+    _sim_ms=$(( _sim_time / 1000000 ))
+    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
     iverilog -o "$vvp" \
         -f "$files_list" \
         -I "$RTL" \
@@ -390,6 +431,7 @@ compile_and_run_nondash_klr() {
         -I "$BENCHk" \
         -s dme_klr_tb \
         -DDME_KLR_COMBINED \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@" \
         "bench/verilog/dme_klr_tb.v"
     if [ $? -ne 0 ]; then

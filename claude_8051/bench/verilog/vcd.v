@@ -22,13 +22,13 @@ reg [255:0] memory_bit_map [0:255];
 reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191],asmopcode,asminstr,asmoperands,asmoperandnums;
 
 // ======================================
-// Dump Waves to VCD File
+// Dump Waves to FST File
 // ======================================
-`define VCD "1"
+`define FST "1"
 `ifndef VCD_FILE
-  `define VCD_FILE "sim.vcd"
+  `define VCD_FILE "sim.fst"
 `endif
-reg [1023:0] vcd_path;
+reg [1023:0] fst_path;
 wire [7:0] rb0_0,rb0_1,rb0_2,rb0_3,rb0_4,rb0_5,rb0_6,rb0_7;
 wire [7:0] rb1_0,rb1_1,rb1_2,rb1_3,rb1_4,rb1_5,rb1_6,rb1_7;
 wire [7:0] rb2_0,rb2_1,rb2_2,rb2_3,rb2_4,rb2_5,rb2_6,rb2_7;
@@ -235,14 +235,14 @@ $display("DME: [SIM] Verilator");
 `else
 $display("DME: [SIM] iverilog");
 `endif
-if (!$value$plusargs("vcd=%s", vcd_path))
-    vcd_path = `VCD_FILE;
-if (vcd_path != "/dev/null") begin
-    $display("DME: VCD Dump enabled -> %0s", vcd_path);
-    $dumpfile(vcd_path);
+if (!$value$plusargs("fst=%s", fst_path))
+    fst_path = `VCD_FILE;
+if (fst_path != "/dev/null") begin
+    $display("DME: FST Dump enabled -> %0s", fst_path);
+    $dumpfile(fst_path);
     $dumpon;
 end else begin
-    $display("DME: VCD Dump suppressed (/dev/null)");
+    $display("DME: FST Dump suppressed (/dev/null)");
 end
 //$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);

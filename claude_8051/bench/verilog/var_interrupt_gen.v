@@ -85,10 +85,12 @@ module var_interrupt_generator (
     // step_clocks = ramp_ms * 6000 / rpm_steps
     // ramp_ms = SIM_TIME_NS/1e6 * RPM_RAMP_PCT/100
     localparam rpm_steps    = 200;
-    // step_clocks: passed as parameter from TB to avoid Verilator
-    // localparam overflow with large SIM_TIME values.
-    parameter STEP_CLOCKS = 150000;  // default: 10s sim, 50% ramp, 200 steps
-    localparam step_clocks = STEP_CLOCKS;
+    // STEP_CLOCKS passed via -DSTEP_CLOCKS=N from the run script (computed
+    // in bash to avoid Verilator localparam overflow with large SIM_TIME).
+`ifndef STEP_CLOCKS
+  `define STEP_CLOCKS 150000
+`endif
+    localparam step_clocks = `STEP_CLOCKS;
 
     reg [31:0] current_rpm;
     reg [63:0] master_clk_count = 0;
