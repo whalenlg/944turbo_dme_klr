@@ -108,7 +108,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_COLD_START
@@ -121,7 +123,9 @@
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_HOT_IDLE
@@ -135,7 +139,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_IDLE_BATTERY_LOW
@@ -149,7 +155,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'h8C
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_IDLE_HIGH_ALT
@@ -163,7 +171,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'h00
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_IDLE_POOR_FUEL
@@ -177,7 +187,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_AC_ON_IDLE
@@ -192,7 +204,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_3000
@@ -207,7 +221,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_6000
@@ -222,7 +238,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_REDLINE
@@ -237,7 +255,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_CL_AC_HALFWAY
@@ -251,7 +271,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_CL_COLD_START
@@ -263,7 +285,9 @@
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_TIPPY_IN
@@ -280,7 +304,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_OVERRUN_CUTOFF
@@ -296,7 +322,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_WARMUP_ENRICHMENT
@@ -309,7 +337,9 @@
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_AFM_OPEN_CIRCUIT
@@ -324,7 +354,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_COOLANT_FAIL
@@ -338,7 +370,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_AIRTEMP_FAIL
@@ -352,7 +386,9 @@
   `define _AIRTEMP_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot air
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_O2_DISCONNECTED
@@ -367,7 +403,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_O2_RICH_STUCK
@@ -382,7 +420,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_O2_LEAN_STUCK
@@ -397,7 +437,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_TPS_FAIL
@@ -412,7 +454,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_3000
@@ -428,7 +472,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_6000
@@ -444,7 +490,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_REDLINE
@@ -460,7 +508,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_RAMP_6K_HOLD
@@ -476,7 +526,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_IGNITION_TIMING
@@ -492,7 +544,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_DWELL_SCALING
@@ -508,7 +562,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_ISV_COLD_IDLE
@@ -521,7 +577,9 @@
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 `ifdef TEST_ISV_LOAD_DROOP
@@ -536,7 +594,9 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 // ============================================================
@@ -555,7 +615,9 @@
   `define _ALTITUDE     8'hF8
 `endif
 `ifndef _FUEL_QUAL
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h80
+  `endif
 `endif
 
 // ============================================================
@@ -917,8 +979,10 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
 );
 `else
 // Open-loop RPM ramp — default
-// Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
-var_interrupt_generator var_interrupt_generator_1 (
+// Compute STEP_CLOCKS in TB to avoid Verilator localparam overflow
+var_interrupt_generator #(
+    .STEP_CLOCKS ( (`SIM_TIME / 1_000_000) * `RPM_RAMP_PCT / 100 * `DME_FREQ / 200 )
+) var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),

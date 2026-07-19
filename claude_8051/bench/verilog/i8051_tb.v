@@ -807,7 +807,7 @@ always @(p2[2:0] or afm_wiper) begin
     3'b011:  adc_mux = `_COOLANT_RAW;    // ch3: coolant NTC (static)
 `endif
     3'b100:  adc_mux = `_ALTITUDE;       // ch4: altitude switch
-    3'b101:  adc_mux = 8'hFF;            // ch5: unused
+    3'b101:  adc_mux = `_FUEL_QUAL;      // ch5: fuel quality sensor
     // ch6: TPS
 `ifdef TPS_FIXED
     3'b110:  adc_mux = `TPS_FIXED;
@@ -888,7 +888,7 @@ end
 `ifdef RPMRAMP
 `ifdef CL_MODE
 // Closed-loop engine dynamics — RPM driven by fuel pulse feedback
-var_interrupt_generator_cl var_interrupt_generator_1 (
+var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),

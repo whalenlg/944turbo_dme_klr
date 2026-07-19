@@ -27,12 +27,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="dash"
 if [ "$1" = "--nondash" ]; then MODE="nondash"; shift;
 elif [ "$1" = "--dash" ];    then MODE="dash";    shift; fi
+if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
 LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
+VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output
+FSTDIR="$LOGDIR/fst"
 HEXDIR="$LOGDIR/hex"
 NONDASH_LOGDIR="$VVP_DIR/logs"
 NONDASH_VCDDIR="$NONDASH_LOGDIR/vcd"
+NONDASH_FSTDIR="$NONDASH_LOGDIR/fst"
 NONDASH_HEXDIR="$NONDASH_LOGDIR/hex"
 FILES=files
 RTL=rtl/verilog
@@ -124,8 +128,8 @@ open_in_dashboard() {
     echo "  [DASHBOARD] Opened: $url"
 }
 
-mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
-mkdir -p "$NONDASH_LOGDIR" "$NONDASH_VCDDIR" "$NONDASH_HEXDIR"
+mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
+mkdir -p "$NONDASH_LOGDIR" "$NONDASH_VCDDIR" "$NONDASH_FSTDIR" "$NONDASH_HEXDIR"
 
 # Mode-specific aliases used by run_all and case block
 if [ "$MODE" = "nondash" ]; then
@@ -156,6 +160,7 @@ compile_and_run_klr() {
     local vvp="${VVP_DIR}/dash_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
+    local fstfile="${FSTDIR}/${name}.fst"
     local hexdir="${HEXDIR}/${name}"
 
     mkdir -p "$hexdir"
@@ -214,21 +219,30 @@ compile_and_run_klr() {
     fi
 
     echo "  Running → $log"
-    echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
+    [ "$VCD_ENABLE" = "1" ] && echo "  VCD     → $vcdfile"
     echo "  HEX     → $hexdir/{rom,ram}_out.hex"
 
     # Run from hexdir so VCD and hex dumps land there without conflicts
-    ( cd "$hexdir" && vvp "$vvp" ) > "$log" 2>&1
+    # FST always produced; VCD only if VCD_ENABLE=1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp "$vvp" ) > "$log" 2>&1
+    else
+        ( cd "$hexdir" && vvp "$vvp" ) > "$log" 2>&1
+    fi
     if [ $? -ne 0 ]; then
         echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
 
-    # Move sim.vcd to named location, then gzip it
+    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
     if [ -f "$hexdir/sim.vcd" ]; then
-        mv "$hexdir/sim.vcd" "$vcdfile"
-        gzip -f "$vcdfile"
-        vcdfile="${vcdfile}.gz"
+        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+        if [ "$VCD_ENABLE" = "1" ]; then
+            mv "$hexdir/sim.vcd" "$vcdfile"
+        else
+            rm -f "$hexdir/sim.vcd"
+        fi
     fi
 
     # Extract DME and KLR lines into dashboard log.
@@ -239,8 +253,8 @@ compile_and_run_klr() {
     local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
-    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD.gz ${vcdsize})" \
+    local fstsize=$(du -sh "$fstfile" 2>/dev/null | cut -f1 || echo "?")
+    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / FST ${fstsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -273,6 +287,7 @@ compile_and_run_klr() {
     local vvp="${VVP_DIR}/dash_klr_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
+    local fstfile="${FSTDIR}/${name}.fst"
     local hexdir="${HEXDIR}/${name}"
 
     mkdir -p "$hexdir"
@@ -329,9 +344,14 @@ compile_and_run_klr() {
 
     echo "  Running → $log"
     echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
     echo "  HEX     → $hexdir/{rom,ram,klr_rom,klr_ram}_out.hex"
 
-    ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    else
+        ( cd "$hexdir" && vvp -n "$vvp" ) > "${log}" 2>&1
+    fi
     local rc=$?
 
     if [ $rc -ne 0 ]; then
@@ -342,6 +362,15 @@ compile_and_run_klr() {
     # Move any stray VCD to the canonical location, then gzip.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
     # instead of honouring +vcd= if an older version is deployed.
+    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
+    if [ -f "$hexdir/sim.vcd" ]; then
+        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+        if [ "$VCD_ENABLE" = "1" ]; then
+            mv "$hexdir/sim.vcd" "$vcdfile"
+        else
+            rm -f "$hexdir/sim.vcd"
+        fi
+    fi
     for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
         [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
     done
@@ -383,6 +412,7 @@ compile_and_run_nondash_klr() {
     local vvp="${VVP_DIR}/nondash_klr_${name}.vvp"
     local log="${NONDASH_LOGDIR}/${name}.log"
     local vcdfile="${NONDASH_VCDDIR}/${name}.vcd"
+    local fstfile="${NONDASH_FSTDIR}/${name}.fst"
     local hexdir="${NONDASH_HEXDIR}/${name}"
 
     mkdir -p "$hexdir"
@@ -441,11 +471,25 @@ compile_and_run_nondash_klr() {
 
     echo "  Running → $log"
     echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
 
-    ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    else
+        ( cd "$hexdir" && vvp -n "$vvp" ) > "${log}" 2>&1
+    fi
     local rc=$?
 
     # Move any stray VCDs to canonical location then gzip
+    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
+    if [ -f "$hexdir/sim.vcd" ]; then
+        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+        if [ "$VCD_ENABLE" = "1" ]; then
+            mv "$hexdir/sim.vcd" "$vcdfile"
+        else
+            rm -f "$hexdir/sim.vcd"
+        fi
+    fi
     for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
         [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
     done
@@ -500,50 +544,146 @@ run_test cl_ramp_to_6000 \
 run_test cl_ramp_to_6000_FQS0 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h00" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS1 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h3B" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS2 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h5A" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS3 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h75" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS4 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h81" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS5 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h91" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS6 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h9C" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS7 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'hA7" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+
+# --- Short FQS sweep (4s sim for quick VCD analysis) ---
+run_test cl_ramp_to_6000_FQS0_short \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
+    "-D_FUEL_QUAL=8'h00" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000
+
+run_test cl_ramp_to_6000_FQS1_short \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
+    "-D_FUEL_QUAL=8'h3B" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000
+
+run_test cl_ramp_to_6000_FQS2_short \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
+    "-D_FUEL_QUAL=8'h5A" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000
+
+run_test cl_ramp_to_6000_FQS3_short \
+    -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
+    "-D_FUEL_QUAL=8'h75" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000
+
+
+# --- FQS ramp-to-3000 sweep ---
+run_test cl_ramp_to_3000_FQS0 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h00" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS1 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h3B" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS2 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h5A" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS3 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h75" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS4 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h81" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS5 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h91" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS6 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'h9C" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_ramp_to_3000_FQS7 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    "-D_FUEL_QUAL=8'hA7" \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
 run_test cl_ramp_to_redline \
     -DTEST_CL_RAMP_TO_REDLINE \
@@ -714,17 +854,29 @@ if [ -n "$1" ]; then
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS0_short) run_test cl_ramp_to_6000_FQS0_short $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000 ;;
+        cl_ramp_to_6000_FQS1_short) run_test cl_ramp_to_6000_FQS1_short $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000 ;;
+        cl_ramp_to_6000_FQS2_short) run_test cl_ramp_to_6000_FQS2_short $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000 ;;
+        cl_ramp_to_6000_FQS3_short) run_test cl_ramp_to_6000_FQS3_short $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=4000000000 ;;
+        cl_ramp_to_3000_FQS0) run_test cl_ramp_to_3000_FQS0 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS1) run_test cl_ramp_to_3000_FQS1 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS2) run_test cl_ramp_to_3000_FQS2 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS3) run_test cl_ramp_to_3000_FQS3 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS4) run_test cl_ramp_to_3000_FQS4 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS5) run_test cl_ramp_to_3000_FQS5 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS6) run_test cl_ramp_to_3000_FQS6 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
