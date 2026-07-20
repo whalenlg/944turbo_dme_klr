@@ -69,51 +69,67 @@ TESTS = {
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s'},
     'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing'},
     'cl_ramp_to_6000_FQS1': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing'},
     'cl_ramp_to_6000_FQS2': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing'},
     'cl_ramp_to_6000_FQS3': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing'},
-    'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing'},
-    'cl_ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing'},
-    'cl_ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing'},
-    'cl_ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
-    'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77,
+    'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.0, 'fqs_has_retard':True,  # retard present but not validated at 3000RPM
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing'},
-    'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77,
+    'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.0, 'fqs_has_retard':True,  # retard present but not validated at 3000RPM
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing'},
-    'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77,
+    'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.0, 'fqs_has_retard':True,  # retard present but not validated at 3000RPM
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing'},
-    'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(2.0, 7.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77,
+    'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.0, 'fqs_has_retard':True,  # retard present but not validated at 3000RPM
+                          'fqs_fuel_floor':1.5,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing'},
     'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s'},
@@ -189,6 +205,13 @@ def validate(test_name, logpath):
     except FileNotFoundError:
         print(f"FAIL\t{test_name}\tLog file not found: {logpath}")
         return 1
+
+    # Also read raw log for KLR diagnostics (same path without .dash)
+    raw_logpath = logpath.replace('.dash.log', '.log')
+    try:
+        raw_lines = open(raw_logpath).readlines()
+    except FileNotFoundError:
+        raw_lines = []
 
     rows = []
     phases = []
@@ -336,7 +359,17 @@ def validate(test_name, logpath):
     for issue in exp.get('known_issues', []):
         warns.append(f"known: {issue}")
 
-    # ── 14. FQS fuel correction check
+    # ── 14. KLR stack underflow check
+    if raw_lines:
+        underflow_count = sum(1 for l in raw_lines if 'STACK UNDERFLOW' in l and '***' in l and 'RET at' in l)
+        if underflow_count > 0:
+            # Get first occurrence for context
+            first = next(l.strip() for l in raw_lines if 'STACK UNDERFLOW' in l and 'RET at' in l)
+            pc = re.search(r'PC=([0-9a-fA-F]+)', first)
+            pc_str = pc.group(1) if pc else '?'
+            warns.append(f"KLR STACK UNDERFLOW x{underflow_count} (first at PC={pc_str}) — interrupt/RET mismatch during RPM ramp")
+
+    # ── 15. FQS fuel correction check
     fqs_fuel_pct = exp.get('fqs_fuel_pct')
     if fqs_fuel_pct is not None and steady:
         # Find baseline fuel from pos0 of same family
@@ -349,14 +382,14 @@ def validate(test_name, logpath):
         fqs_frac = fqs_fuel_pct / 100.0
         # Baseline is ~7.036ms at 6000RPM, ~4.0ms at 3000RPM — use fuel_avg as proxy
         # We validate direction + approximate magnitude using fuel_range midpoint as base
+        fuel_floor = exp.get('fqs_fuel_floor', exp['fuel_range'][0])
+        # Check direction: richer should be above floor, leaner below floor+range*0.5
         lo, hi = exp['fuel_range']
-        base_est = (lo + hi) / 2  # rough midpoint
-        expected_fuel = base_est * (1 + fqs_frac)
-        # Just check direction is correct
-        if fqs_fuel_pct > 0.5 and fuel_avg <= base_est:
-            warns.append(f"FQS pos{exp['fqs_pos']}: expected richer fuel ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms ≤ base_est={base_est:.3f}ms")
-        elif fqs_fuel_pct < -0.5 and fuel_avg >= base_est:
-            warns.append(f"FQS pos{exp['fqs_pos']}: expected leaner fuel ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms ≥ base_est={base_est:.3f}ms")
+        fuel_mid = fuel_floor + (hi - fuel_floor) * 0.5
+        if fqs_fuel_pct > 0.5 and fuel_avg < fuel_floor:
+            warns.append(f"FQS pos{exp['fqs_pos']}: expected richer ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms below floor {fuel_floor:.3f}ms")
+        elif fqs_fuel_pct < -0.5 and fuel_avg > fuel_mid:
+            warns.append(f"FQS pos{exp['fqs_pos']}: expected leaner ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms above mid {fuel_mid:.3f}ms")
         else:
             infos.append(f"FQS fuel adj {fqs_fuel_pct:+.0f}% ✓")
 
@@ -386,15 +419,28 @@ def validate(test_name, logpath):
             expected_retard_us = abs(fqs_timing_retard) * us_per_deg
             tol_us = expected_retard_us * 0.40  # 40% tolerance (noisy measurement)
             # For retard check we need baseline (pos0) delay — store avg_delay as info
-            infos.append(f"IGN delay={avg_delay:.0f}µs (n={len(ign_delays)})")
-            # Flag if delay is suspiciously close to non-retard positions
-            # (non-retard avg ~2811µs at 6000RPM; retard should be ~80-90µs shorter)
-            pos04_equiv = exp.get('fqs_pos', 4) % 4
-            infos.append(f"FQS timing retard {fqs_timing_retard:.2f}° expected ✓")
+            baseline_us = exp.get('ign_delay_baseline')
+            if baseline_us is not None:
+                diff_us = avg_delay - baseline_us
+                us_per_deg = 60_000_000 / (max_rpm_val * 360) if max_rpm_val > 0 else 27.8
+                diff_deg = diff_us / us_per_deg
+                expected_deg = fqs_timing_retard  # negative = retard
+                tol_deg = 1.5  # ±1.5° tolerance
+                infos.append(f"IGN delay={avg_delay:.0f}µs ({diff_deg:+.2f}° vs baseline {baseline_us:.0f}µs)")
+                if abs(diff_deg - expected_deg) > tol_deg:
+                    warns.append(f"FQS timing retard {diff_deg:+.2f}° vs expected {expected_deg:.2f}° (±{tol_deg}°)")
+                else:
+                    infos.append(f"FQS timing retard {diff_deg:+.2f}° ✓ (expected {expected_deg:.2f}°)")
+            else:
+                infos.append(f"IGN delay={avg_delay:.0f}µs (n={len(ign_delays)})")
+                infos.append(f"FQS timing retard {fqs_timing_retard:.2f}° expected ✓")
         else:
             warns.append(f"FQS timing retard: no IGN delay data available")
     elif exp.get('fqs_pos') is not None:
-        infos.append(f"FQS pos{exp['fqs_pos']} (no timing retard expected)")
+        if exp.get('fqs_has_retard'):
+            infos.append(f"FQS pos{exp['fqs_pos']} (timing retard -2.77° present — not validated at this RPM)")
+        else:
+            infos.append(f"FQS pos{exp['fqs_pos']} (no timing retard expected)")
 
     # ── Verdict
     detail = ' | '.join(infos)

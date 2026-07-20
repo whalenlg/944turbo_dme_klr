@@ -17,7 +17,7 @@ FQS_TESTS="cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ram
 FQS3K_TESTS="cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 \
              cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
 # Short 4s versions with CPU_DEBUG for VCD analysis
-FQS_SHORT="cl_ramp_to_6000_FQS0_short cl_ramp_to_6000_FQS1_short cl_ramp_to_6000_FQS2_short cl_ramp_to_6000_FQS3_short"
+#FQS_SHORT="cl_ramp_to_6000_FQS0_short cl_ramp_to_6000_FQS1_short cl_ramp_to_6000_FQS2_short cl_ramp_to_6000_FQS3_short"
 
 echo ""
 echo "============================================================"
@@ -30,13 +30,13 @@ echo "============================================================"
 echo ""
 echo "  [1/3] Running iverilog FQS sweep..."
 cd "$SCRIPT_DIR"
-bash run_dashboard_parallel.sh "$WORKERS" $FQS_TESTS $FQS3K_TESTS $FQS_SHORT
+bash run_dashboard_parallel.sh "$WORKERS" $FQS_TESTS $FQS3K_TESTS # $FQS_SHORT
 echo "  iverilog done."
 
 # ── 2. Verilator ─────────────────────────────────────────────────────────────
 echo ""
 echo "  [2/3] Running Verilator FQS sweep..."
-bash run_dashboard_parallel.sh --verilator "$WORKERS" $FQS_TESTS $FQS3K_TESTS $FQS_SHORT
+bash run_dashboard_parallel.sh --verilator "$WORKERS" $FQS_TESTS $FQS3K_TESTS # $FQS_SHORT
 echo "  Verilator done."
 
 # ── 3. Compare + analyse ─────────────────────────────────────────────────────

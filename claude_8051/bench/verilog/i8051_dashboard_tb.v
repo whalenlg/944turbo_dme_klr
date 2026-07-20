@@ -98,8 +98,9 @@
 `ifdef TEST_WARM_IDLE
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
   `undef  SIM_TIME
@@ -109,14 +110,15 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_COLD_START
   `define RPMRAMP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  120000000000
   `define _COOLANT_RAW  8'hC0
@@ -124,15 +126,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_HOT_IDLE
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  25000000000
   `define _COOLANT_RAW  8'h10
@@ -140,15 +143,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_IDLE_BATTERY_LOW
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -156,15 +160,16 @@
   `define _BATTERY      8'h8C
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_IDLE_HIGH_ALT
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -172,15 +177,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'h00
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_IDLE_POOR_FUEL
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -196,8 +202,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define AC_COMP_ON                 // T1=1: AC compressor active
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  10000000000      // 10s — enough to see ISV and fuel response to AC load
   `define _COOLANT_RAW  8'h20        // warm engine
@@ -205,7 +212,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -214,15 +221,18 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
+  `ifndef AFM_CL_TARGET
   `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72 (114)
-  `undef  SIM_TIME
-  `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
+  `endif
+  `ifndef SIM_TIME
+  `define SIM_TIME  40000000000     // 40s sim
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -231,15 +241,18 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
+  `ifndef AFM_CL_TARGET
   `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA (218)
-  `undef  SIM_TIME
-  `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
+  `endif
+  `ifndef SIM_TIME
+  `define SIM_TIME  40000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -256,7 +269,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -272,7 +285,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -286,7 +299,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -294,8 +307,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define AFM_TIPPY                  // enables step-change AFM override for accel enrichment
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840              // hold at idle — AFM spike drives enrichment, not RPM
+  `endif
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
   `undef  SIM_TIME
@@ -305,15 +319,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_OVERRUN_CUTOFF
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
   `undef  SIM_TIME
@@ -323,14 +338,15 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_WARMUP_ENRICHMENT
   `define RPMRAMP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  60000000000
   `define _COOLANT_RAW  8'hC0
@@ -338,7 +354,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -346,8 +362,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define AFM_FAULT
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -355,15 +372,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_COOLANT_FAIL
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot
@@ -371,15 +389,16 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_AIRTEMP_FAIL
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -387,7 +406,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -395,8 +414,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define O2_FLAT_RICH
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  25000000000
   `define _COOLANT_RAW  8'h20
@@ -404,7 +424,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -412,8 +432,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define O2_FLAT_RICH
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  25000000000
   `define _COOLANT_RAW  8'h20
@@ -421,7 +442,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -429,8 +450,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define O2_FLAT_LEAN
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  25000000000
   `define _COOLANT_RAW  8'h20
@@ -438,7 +460,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -446,8 +468,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define TPS_FIXED 8'h80
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  5000000000
   `define _COOLANT_RAW  8'h20
@@ -455,7 +478,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -473,7 +496,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -491,7 +514,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -509,7 +532,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -527,7 +550,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -545,7 +568,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -563,14 +586,15 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
 `ifdef TEST_ISV_COLD_IDLE
   `define RPMRAMP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  60000000000
   `define _COOLANT_RAW  8'h60
@@ -578,7 +602,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -586,8 +610,9 @@
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define ISV_LOAD_DROOP
-  `undef  RPMEND
+  `ifndef RPMEND
   `define RPMEND    840
+  `endif
   `undef  SIM_TIME
   `define SIM_TIME  12000000000
   `define _COOLANT_RAW  8'h20
@@ -595,7 +620,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
   `endif
 `endif
 
@@ -615,9 +640,7 @@
   `define _ALTITUDE     8'hF8
 `endif
 `ifndef _FUEL_QUAL
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
-  `endif
+  `define _FUEL_QUAL    8'h00
 `endif
 
 // ============================================================
