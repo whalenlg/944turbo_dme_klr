@@ -165,6 +165,10 @@ compile_and_run_klr() {
 
     mkdir -p "$hexdir"
 
+    # Clean old output files for this test
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
+
     # Extract SIM_TIME for display
     local sim_ns=0
     for arg in "$@"; do
@@ -292,6 +296,12 @@ compile_and_run_klr() {
 
     mkdir -p "$hexdir"
 
+    # Clean old output files for this test
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
+    rm -rf "$hexdir"
+    mkdir -p "$hexdir"
+
     local sim_ns=0
     for arg in "$@"; do
         case "$arg" in -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;; esac
@@ -374,12 +384,6 @@ compile_and_run_klr() {
     for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
         [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
     done
-    if [ -f "$vcdfile" ]; then
-        gzip -f "$vcdfile"
-        vcdfile="${vcdfile}.gz"
-    else
-        echo "  WARNING: no VCD found for $name" | tee -a "$LOGDIR/summary.log"
-    fi
 
     # Extract all DME: and KLR: lines into dashboard log.
     # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
@@ -415,6 +419,12 @@ compile_and_run_nondash_klr() {
     local fstfile="${NONDASH_FSTDIR}/${name}.fst"
     local hexdir="${NONDASH_HEXDIR}/${name}"
 
+    mkdir -p "$hexdir"
+
+    # Clean old output files for this test
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
+    rm -rf "$hexdir"
     mkdir -p "$hexdir"
 
     local sim_ns=0

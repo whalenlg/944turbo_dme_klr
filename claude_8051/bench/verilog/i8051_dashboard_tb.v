@@ -241,12 +241,9 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
-  `ifndef AFM_CL_TARGET
   `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA (218)
-  `endif
-  `ifndef SIM_TIME
-  `define SIM_TIME  40000000000
-  `endif
+  `undef  SIM_TIME
+  `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
@@ -1002,10 +999,8 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
 );
 `else
 // Open-loop RPM ramp — default
-// Compute STEP_CLOCKS in TB to avoid Verilator localparam overflow
-var_interrupt_generator #(
-    .STEP_CLOCKS ( (`SIM_TIME / 1_000_000) * `RPM_RAMP_PCT / 100 * `DME_FREQ / 200 )
-) var_interrupt_generator_1 (
+// Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
+var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),

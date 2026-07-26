@@ -359,15 +359,26 @@ def validate(test_name, logpath):
     for issue in exp.get('known_issues', []):
         warns.append(f"known: {issue}")
 
-    # ── 14. KLR stack underflow check
+    # ── 14. KLR unimplemented opcode check
+    # Stack underflows during RPM ramp are normal KLR behaviour.
+    # Unimplemented opcodes mean PC has gone to garbage after a bad RET.
     if raw_lines:
-        underflow_count = sum(1 for l in raw_lines if 'STACK UNDERFLOW' in l and '***' in l and 'RET at' in l)
-        if underflow_count > 0:
-            # Get first occurrence for context
-            first = next(l.strip() for l in raw_lines if 'STACK UNDERFLOW' in l and 'RET at' in l)
-            pc = re.search(r'PC=([0-9a-fA-F]+)', first)
-            pc_str = pc.group(1) if pc else '?'
-            warns.append(f"KLR STACK UNDERFLOW x{underflow_count} (first at PC={pc_str}) — interrupt/RET mismatch during RPM ramp")
+        unimp = [l.strip() for l in raw_lines if 'ERROR: Unimplemented Opcode' in l]
+        if unimp:
+            first = unimp[0]
+            # Parse timestamp from "at t=NNN ns" in the error message itself
+            # Find timestamp from nearest preceding DME/KLR line
+            first_idx = next((i for i,l in enumerate(raw_lines) if 'ERROR: Unimplemented Opcode' in l), 0)
+            t_ms = None
+            for l in reversed(raw_lines[:first_idx]):
+                tm = re.search(r't=(\d+)\s*ms', l)
+                if tm: t_ms = int(tm.group(1)); break
+            t_str = f"t={t_ms}ms " if t_ms is not None else ""
+            m = re.search(r'Unimplemented Opcode ([0-9a-fA-F]+) at PC ([0-9a-fA-F]+)', first)
+            if m:
+                fails.append(f"KLR Unimplemented Opcode 0x{m.group(1)} at PC={m.group(2)} {t_str}(x{len(unimp)}) — PC jumped to garbage after bad RET")
+            else:
+                fails.append(f"KLR Unimplemented Opcode {t_str}(x{len(unimp)}): {first}")
 
     # ── 15. FQS fuel correction check
     fqs_fuel_pct = exp.get('fqs_fuel_pct')

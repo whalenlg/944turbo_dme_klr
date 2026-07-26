@@ -215,8 +215,13 @@ compile_and_run_klr() {
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
     local hexdir="${HEXDIR}/${name}"
+    local fstfile="${FSTDIR}/${name}.fst"
 
     mkdir -p "$hexdir"
+
+    # Clean old output files for this test
+    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
 
     # Extract SIM_TIME for display
     local sim_ns=0
@@ -355,8 +360,13 @@ compile_and_run_klr() {
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
     local hexdir="${HEXDIR}/${name}"
+    local fstfile="${FSTDIR}/${name}.fst"
 
     mkdir -p "$hexdir"
+
+    # Clean old output files for this test
+    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
 
     local sim_ns=0
     for arg in "$@"; do
