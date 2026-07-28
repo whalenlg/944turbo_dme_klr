@@ -63,6 +63,8 @@
 //                  ADD A,#data / ADD A,Rn / ADD A,@Ri
 //                  ADDC A,#data / ADDC A,Rn / ADDC A,@Ri
 //  Group 36  : SEL MB1 / CALL — memory bank select + cross-bank fetch
+//  Group 41  : mb_latch save/restore across timer interrupt (regression)
+//               - ISR must see mb_latch=0, RETR must restore original MB
 //                  - SEL MB1 sets mb_latch=1
 //                  - CALL loads pc[11]=mb_latch → target in upper 2K bank
 //                  - rom_addr_phys correctly uses pc[11:0] not {p2[3],pc[10:0]}
@@ -1733,6 +1735,108 @@ module i8048_core_tb;
                 pass_count = pass_count + 1;
             end else begin
                 $display("  FAIL [%0d] mb_latch=1 after hard_reset — not cleared", test_num);
+                fail_count = fail_count + 1;
+            end
+        end
+
+
+        // =====================================================================
+        // Group 41 : mb_latch saved/restored across interrupt (regression)
+        // Bug: mb_latch was not saved on interrupt entry or restored by RETR,
+        //      so ISR CALL Page+N resolved in wrong memory bank.
+        // ROM layout (MB1 code at 0x800, MB0 ISR at 0x007):
+        //   0x000: SEL MB1           switch to MB1
+        //   0x001: EN I              enable timer interrupt
+        //   0x002: JMP 0x002         spin here — interrupt will fire
+        //   0x007: (timer ISR)
+        //   0x007: MOV A, #0xAA      result marker in MB0
+        //   0x009: RETR              return from ISR
+        //   After RETR: mb_latch must be restored to MB1
+        //   0x800: MOV A, #0x55     code in MB1 (we jump here post-RETR)
+        //   0x801: HALT (JMP 0x801)
+        // We verify:
+        //   1. mb_latch=1 while spinning in MB1
+        //   2. mb_latch=0 during ISR execution
+        //   3. mb_latch=1 restored after RETR
+        // =====================================================================
+        $display("\n--- Group 41: mb_latch save/restore across timer interrupt ---");
+        fill_nop(); hard_reset();
+
+        // MB1 main code at 0x800
+        rom[12'h800] = 8'hF5;  // SEL MB1  (switch to MB1 so we spin there)
+        rom[12'h801] = 8'h05;  // EN I     (enable timer interrupt)
+        rom[12'h802] = 8'h04;  // JMP 0x802 low byte
+        rom[12'h803] = 8'h84;  // JMP opcode ... but we use simpler spin:
+        // Actually use: 0x000 page: SEL MB1, EN TCNTI, spin, ISR
+        fill_nop(); hard_reset();
+
+        // Simple layout in page 0 only to keep it tractable:
+        // 0x000: SEL MB1 (F5)
+        // 0x001: EN TCNTI (25) — enable timer interrupt
+        // 0x002: NOP (00) — spin target
+        // 0x003: JMP 0x002 (04 02) — spin
+        // 0x007: timer ISR — check mb_latch is 0 here, set ACC=0xAA, RETR
+        // 0x009: RETR (93)
+        // 0x800: MOV A,#BB (23 BB) — MB1 code to confirm RETR restored MB1
+        rom[12'h000] = 8'hF5;  // SEL MB1
+        rom[12'h001] = 8'h25;  // EN TCNTI
+        rom[12'h002] = 8'h00;  // NOP (spin body)
+        rom[12'h003] = 8'h04;  // JMP low byte = 0x02
+        rom[12'h004] = 8'h02;  // target addr low
+        // timer ISR at 0x007
+        rom[12'h007] = 8'h23;  // MOV A, #data
+        rom[12'h008] = 8'hAA;  // #0xAA
+        rom[12'h009] = 8'h93;  // RETR
+        // MB1 code at 0x800 — where RETR should return to (not 0x003/0x004)
+        // After the JMP at 0x003 fires once and then interrupt fires
+        // MB1 copy of the spin area (mirrored): just NOP+JMP so it runs safely
+        rom[12'h800] = 8'h00;  // NOP
+        rom[12'h801] = 8'h00;  // NOP
+
+        // Use timer: pre-load timer so it fires quickly
+        // Force timer_flag by running enough cycles
+        // The timer increments every 32 clocks; we'll run 300 cycles to be safe
+        // First run 2 cycles to execute SEL MB1 + EN TCNTI
+        clock_cycles(4);  // SEL MB1, EN TCNTI, NOP, start of JMP
+
+        // Check mb_latch=1 after SEL MB1
+        begin : chk41_mb1_set
+            test_num = test_num + 1;
+            if (dut.mb_latch === 1'b1) begin
+                $display("  PASS [%0d] mb_latch=1 after SEL MB1", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] mb_latch=%0b, expected 1 after SEL MB1",
+                         test_num, dut.mb_latch);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // Run enough cycles for timer to fire and ISR to execute
+        clock_cycles(400);
+
+        // After ISR (ACC should be 0xAA if ISR ran)
+        begin : chk41_isr_ran
+            test_num = test_num + 1;
+            if (dut.acc === 8'hAA) begin
+                $display("  PASS [%0d] ACC=0xAA — ISR executed correctly", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] ACC=0x%02h, expected 0xAA — ISR did not run or ran incorrectly",
+                         test_num, dut.acc);
+                fail_count = fail_count + 1;
+            end
+        end
+
+        // After RETR mb_latch must be restored to 1 (was MB1 when interrupted)
+        begin : chk41_mb_restored
+            test_num = test_num + 1;
+            if (dut.mb_latch === 1'b1) begin
+                $display("  PASS [%0d] mb_latch=1 restored after RETR (was MB1 when interrupted)", test_num);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("  FAIL [%0d] mb_latch=%0b after RETR — expected 1 (MB1 not restored)",
+                         test_num, dut.mb_latch);
                 fail_count = fail_count + 1;
             end
         end

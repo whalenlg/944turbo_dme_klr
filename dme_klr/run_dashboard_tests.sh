@@ -230,22 +230,26 @@ compile_and_run_klr() {
     # Run from hexdir so VCD and hex dumps land there without conflicts
     # FST always produced; VCD only if VCD_ENABLE=1
     if [ "$VCD_ENABLE" = "1" ]; then
-        ( cd "$hexdir" && vvp "$vvp" ) > "$log" 2>&1
+        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
     else
-        ( cd "$hexdir" && vvp "$vvp" ) > "$log" 2>&1
+        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
     fi
     if [ $? -ne 0 ]; then
         echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
 
-    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
-    if [ -f "$hexdir/sim.vcd" ]; then
-        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
         if [ "$VCD_ENABLE" = "1" ]; then
-            mv "$hexdir/sim.vcd" "$vcdfile"
+            mv "$_raw" "$vcdfile"
         else
-            rm -f "$hexdir/sim.vcd"
+            rm -f "$_raw"
         fi
     fi
 
@@ -372,17 +376,26 @@ compile_and_run_klr() {
     # Move any stray VCD to the canonical location, then gzip.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
     # instead of honouring +vcd= if an older version is deployed.
-    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
-    if [ -f "$hexdir/sim.vcd" ]; then
-        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
         if [ "$VCD_ENABLE" = "1" ]; then
-            mv "$hexdir/sim.vcd" "$vcdfile"
+            mv "$_raw" "$vcdfile"
         else
-            rm -f "$hexdir/sim.vcd"
+            rm -f "$_raw"
         fi
     fi
-    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
-        [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
+    # Clean up any remaining stray VCD files
+    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd" "$hexdir/sim.fst"; do
+        if [ -f "$_stray" ]; then
+            vcd2fst "$_stray" "$fstfile" 2>/dev/null
+            [ "$VCD_ENABLE" = "1" ] && mv "$_stray" "$vcdfile" || rm -f "$_stray"
+            break
+        fi
     done
 
     # Extract all DME: and KLR: lines into dashboard log.
@@ -491,17 +504,26 @@ compile_and_run_nondash_klr() {
     local rc=$?
 
     # Move any stray VCDs to canonical location then gzip
-    # Convert sim.vcd → FST; keep VCD only if VCD_ENABLE=1
-    if [ -f "$hexdir/sim.vcd" ]; then
-        vcd2fst "$hexdir/sim.vcd" "$fstfile" 2>/dev/null
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
         if [ "$VCD_ENABLE" = "1" ]; then
-            mv "$hexdir/sim.vcd" "$vcdfile"
+            mv "$_raw" "$vcdfile"
         else
-            rm -f "$hexdir/sim.vcd"
+            rm -f "$_raw"
         fi
     fi
-    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
-        [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
+    # Clean up any remaining stray VCD files
+    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd" "$hexdir/sim.fst"; do
+        if [ -f "$_stray" ]; then
+            vcd2fst "$_stray" "$fstfile" 2>/dev/null
+            [ "$VCD_ENABLE" = "1" ] && mv "$_stray" "$vcdfile" || rm -f "$_stray"
+            break
+        fi
     done
     if [ -f "$vcdfile" ]; then
         gzip -f "$vcdfile"

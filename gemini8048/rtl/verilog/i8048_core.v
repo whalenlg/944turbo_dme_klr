@@ -15,6 +15,8 @@ module i8048_core (
     reg [7:0] ram [0:127];          
     reg       irq_in_progress, irq_en_ext, irq_en_timer;
     reg       timer_en, timer_flag,timer_running,timer_mode,mb_latch;
+    reg       mb_latch_r;    // mb_latch captured at state1 fetch — race-free for CALL/JMP
+    reg       saved_mb_latch; // mb_latch saved on interrupt entry, restored by RETR
     reg [7:0] timer_val;
     reg [4:0] prescaler;
     // Timer cross-block requests (single owner = timer engine block)
@@ -98,7 +100,10 @@ task service_interrupt;
         ram[{psw[2:0], 1'b0} + 6'h08] <= return_addr[7:0];
         ram[{psw[2:0], 1'b1} + 6'h08] <= {psw[7:4], return_addr[11:8]};
         psw[2:0] <= psw[2:0] + 1'b1; // Move Stack Pointer
-        pc <= vector;                // Jump to ISR
+        saved_mb_latch <= mb_latch;
+        mb_latch   <= 1'b0;
+        mb_latch_r <= 1'b0;
+        pc <= vector;
     end
 endtask
 
@@ -138,13 +143,15 @@ end
             timer_en <= 0; timer_running <= 0;
             timer_load_req <= 0; timer_flag_clr_req <= 0;
             f1 <= 0;f0 <= 0;
-            mb_latch <= 0;
+            mb_latch <= 0; mb_latch_r <= 0; saved_mb_latch <= 0;
             p1 <= 8'hFF;  // 8048 open-drain: all bits float high on reset
             p2 <= 8'hFF;  // same for P2
             {ale, psen_n, rd_n, wr_n, prog} <= 5'b01111;
         end else begin
             case (state)
-                3'd1: begin ale <= 1; psen_n <= 0; rd_n <= 1; wr_n <= 1; prog <= 1; state <= 3'd2; end
+                3'd1: begin ale <= 1; psen_n <= 0; rd_n <= 1; wr_n <= 1; prog <= 1;
+                          mb_latch_r <= mb_latch;
+                          state <= 3'd2; end
                 3'd2: begin ale <= 0; state <= 3'd3; end
                 3'd3: begin 
 //                    if (!cycle_2) ir <= rom_data; 
@@ -535,7 +542,7 @@ task execute_instruction;
                 end else begin 
                     pc[7:0] <= rom_data;
                     pc[10:8] <= ir[7:5]; 
-                    pc[11] <= mb_latch; 
+                    pc[11] <= mb_latch_r; 
                     cycle_2 <= 0; 
                 end
             end
@@ -658,7 +665,7 @@ task execute_instruction;
                     wmem_dat2 <= {psw[7:4], next_pc[11:8]};
                     ram[{(psw[2:0] - 1'b1), 1'b0} + 6'h08] <= next_pc[7:0];
                     ram[{(psw[2:0] - 1'b1), 1'b1} + 6'h08] <= {psw[7:4], next_pc[11:8]};
-                    pc <= {mb_latch, ir[7:5], rom_data[7:0]};
+                    pc <= {mb_latch_r, ir[7:5], rom_data[7:0]};
                     #10 display_read_status(pc,ir,wmem_dat,wmem_dat2,8'hXX,pc);
                     cycle_2 <= 1'b0;
                 end
@@ -701,6 +708,8 @@ task execute_instruction;
                     rmem_dat <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
                     psw[7:4] <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][7:4];
                     pc[11:8] <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
+                    mb_latch   <= saved_mb_latch;
+                    mb_latch_r <= saved_mb_latch;
                     retmem2 <= {psw[2:0] - 1'b1, 1'b1} + 6'h08;
                     rmem_dat2 <= ram[{psw[2:0] - 1'b1, 1'b1} + 6'h08][3:0];
                     psw[2:0] <= psw[2:0] - 1'b1;
