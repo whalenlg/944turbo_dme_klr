@@ -144,7 +144,7 @@ def main():
     print(f"{'='*80}\n")
 
     print(f"{'Test':<30} {'FQ_VAL':>6} {'Dec':>4}  "
-          f"{'IV fuel_ms':>12}  {'VL fuel_ms':>12}  {'Diff%':>6}  {'IV RPM':>7}  {'IV timing':>10}")
+          f"{'IV fuel_ms':>12}  {'VL fuel_ms':>12}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>12}")
     print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*12}  {'-'*12}  {'-'*6}  {'-'*7}  {'-'*10}")
 
     results = []
@@ -154,7 +154,15 @@ def main():
 
         iv_snaps = parse_status_lines(iv_path)
         vl_snaps = parse_status_lines(vl_path)
-        iv_delays = parse_ign_delays(iv_path)
+        # Find mid-RPM window (3000-5000 RPM) for timing measurement
+        # At high RPM firmware suppresses FQS timing retard via knock counter
+        mid_t_start, mid_t_end = None, None
+        for s in iv_snaps:
+            if s['rpm'] >= 3000 and mid_t_start is None: mid_t_start = s['t']
+            if s['rpm'] >= 5000 and mid_t_end is None:   mid_t_end   = s['t']; break
+        if mid_t_start is None: mid_t_start = 0
+        if mid_t_end   is None: mid_t_end   = 999999
+        iv_delays = parse_ign_delays(iv_path, t_start=mid_t_start, t_end=mid_t_end)
 
         rpm_thresh = RPM_STEADY_3K if 'ramp_to_3000' in test else RPM_STEADY
         iv_ss = steady_state_stats(iv_snaps, rpm_thresh)

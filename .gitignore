@@ -18,3 +18,4 @@ extras/
 *.swp
 *.fst
 *.swo
+gemini8048/bench/verilog/i8048_regression
