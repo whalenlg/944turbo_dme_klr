@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip,
+  LineChart, ComposedChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine
 } from "recharts";
 
@@ -711,6 +711,15 @@ export default function DMEDashboard() {
   const lmbd16   = ((iram[0x1B]||0)<<8)|(iram[0x1C]||0);
 
   const chartData = useMemo(() => {
+    // Compute timing advance baseline from first stable snapshots (RPM > 1000)
+    // Used to show FQS timing retard as deviation from no-retard baseline
+    const stableAdvs = data.snapshots
+      .filter(s => (s.refRpm ?? s.explicitRpm ?? 0) > 1000 && s.iram?.[0x31] != null)
+      .slice(0, 30)
+      .map(s => s.iram[0x31]);
+    const advBaseline = stableAdvs.length
+      ? stableAdvs.reduce((a,b)=>a+b,0) / stableAdvs.length
+      : null;
     // Merge DS + STATUS snapshots at same timestamp.
     // DS has full iram[0x00-0x7F]; STATUS has shadowed ADC values.
     // Merged: start with DS iram, overlay STATUS iram on top.
@@ -779,6 +788,11 @@ export default function DMEDashboard() {
         afm:       afmNow,
         afm_delta: afmDelta,
         tps:       (() => { const v = ir[0x16] != null && ir[0x16] >= 0x50 ? ir[0x16] : (s._prevTps ?? null); if (v !== null) lastTps = v; return lastTps; })(),
+        timingAdv: ir[0x31] != null ? +(ir[0x31] * 360 / 264).toFixed(1) : null,  // half-teeth → degrees BTDC
+        fqsAdv:      ir[0x17] ?? null,  // FQS ADC raw value (0x00=pos0 … 0xA7=pos7)
+        timingRetard: (ir[0x31] != null && advBaseline != null)
+                        ? +((advBaseline - ir[0x31]) * 360 / 264).toFixed(2)
+                        : null,  // degrees retarded vs baseline (positive = retard)
       };
     });
   }, [data.snapshots]);
@@ -1645,8 +1659,11 @@ function ChartsTab({ chartData, currentT }) {
     {title:'TPS RAW (16h)',          k:'tps',     col:'#ffcc44', unit:'hex',     dom:[0,255],    cn:true},
     {title:'ISV STEP POSITION',      k:'isv',     col:'#ff44aa', unit:'hex',     dom:[0,255],    cn:true},
     {title:'LAMBDA ADJ — LEAN (19)', k:'lmbdLn',  col:'#cc66ff', unit:'hex',     dom:[0,255],    cn:true},
-    {title:'DWELL TIME (2F)',         k:'dwell',   col:'#ff8844', unit:'ms', dom:[0,'auto'],  cn:true},
-    {title:'COOLANT TEMP (13)',      k:'coolant', col:C.blue,    unit:'°C',      dom:[-20,120],  cn:true},
+    {title:'DWELL TIME (2F)',         k:'dwell',      col:'#ff8844', unit:'ms',  dom:[0,'auto'],    cn:true},
+    {title:'COOLANT TEMP (13)',       k:'coolant',    col:C.blue,    unit:'°C',  dom:[-20,120],     cn:true},
+    {title:'IGNITION ADVANCE (31)',   k:'timingAdv',    col:'#ff4444', unit:'°BTDC',    dom:[0,'auto'],      cn:true},
+    {title:'FQS TIMING RETARD (°)',   k:'timingRetard', col:'#ff8800', unit:'°retard',  dom:['auto','auto'], cn:true},
+    {title:'FQS ADC RAW (17h)',       k:'fqsAdv',       col:'#aaffaa', unit:'hex',      dom:[0,255],         cn:true},
   ];
 
   return (
@@ -1655,21 +1672,26 @@ function ChartsTab({ chartData, currentT }) {
         <div key={c.k} style={S.panel}>
           <div style={S.panelTitle}>{c.title}</div>
           <ResponsiveContainer width="100%" height={150}>
-            <LineChart data={chartData} margin={{top:2,right:8,bottom:0,left:0}}>
+            <ComposedChart data={chartData} margin={{top:2,right:36,bottom:0,left:0}}>
               <CartesianGrid strokeDasharray="2 4" stroke="#0d2e0d" />
               <XAxis dataKey="t" tick={ax} tickFormatter={v=>`${v}ms`} stroke={C.textDim} />
-              <YAxis tick={ax} domain={c.dom} stroke={C.textDim} />
+              <YAxis yAxisId="left"  tick={ax} domain={c.dom} stroke={C.textDim} />
+              <YAxis yAxisId="right" tick={ax} domain={[0,7000]} stroke="#888855"
+                     orientation="right" tickFormatter={v=>`${v}`} width={36}/>
               <Tooltip
                 contentStyle={{background:'#060e06',border:`1px solid ${c.col}55`,
                                color:c.col,fontSize:'11px',fontFamily:'inherit'}}
-                formatter={(v,n)=>[c.unit==='hex'?`0x${v.toString(16).toUpperCase().padStart(2,'0')} (${v}d)`:v, n]}
+                formatter={(v,n)=>n==='rpm'?[`${v} RPM`,'RPM']:c.unit==='hex'?[`0x${v.toString(16).toUpperCase().padStart(2,'0')} (${v}d)`,n]:c.unit==='°BTDC'?[`${v}°BTDC`,n]:c.unit==='°retard'?[`${v}° retard`,n]:[v,n]}
                 labelFormatter={t=>`t=${t} ms`}
               />
               {currentT !== undefined &&
-                <ReferenceLine x={currentT} stroke={C.textDim} strokeDasharray="3 3" />}
-              <Line type="monotone" dataKey={c.k} stroke={c.col}
+                <ReferenceLine yAxisId="left" x={currentT} stroke={C.textDim} strokeDasharray="3 3" />}
+              <Line yAxisId="left"  type="monotone" dataKey={c.k}    stroke={c.col}
                     dot={false} strokeWidth={1.5} connectNulls={c.cn??false} />
-            </LineChart>
+              {c.k !== 'rpm' &&
+                <Line yAxisId="right" type="monotone" dataKey="rpm" stroke="#888855"
+                      dot={false} strokeWidth={1} connectNulls={false} strokeDasharray="4 2" />}
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       ))}

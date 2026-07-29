@@ -139,8 +139,8 @@ always @(posedge clk) begin  // klr_phase_monitor
 
         // ── mb_latch: bank switch ─────────────────────────
         if (top.i8048_core_1.mb_latch && !ph_klr_mb_prev) begin
-            $display("KLR: [PHASE] t=%0d ms  SEL MB1             (housekeeping bank selected)",
-                     `KLR_MS(0));
+            //$display("KLR: [PHASE] t=%0d ms  SEL MB1             (housekeeping bank selected)",
+            //         `KLR_MS(0));
             if (!ph_klr_mb1_reached) begin
                 ph_klr_mb1_reached <= 1'b1;
                 $display("KLR: [PHASE] t=%0d ms  MB1 FIRST ENTRY     (housekeeping loop starting)",
@@ -148,8 +148,8 @@ always @(posedge clk) begin  // klr_phase_monitor
             end
         end
         if (!top.i8048_core_1.mb_latch && ph_klr_mb_prev)
-            $display("KLR: [PHASE] t=%0d ms  SEL MB0             (main loop bank selected)",
-                     `KLR_MS(0));
+        //    $display("KLR: [PHASE] t=%0d ms  SEL MB0             (main loop bank selected)",
+        //             `KLR_MS(0));
         ph_klr_mb_prev <= top.i8048_core_1.mb_latch;
 
         // ── Periodic STATUS snapshot ──────────────────────

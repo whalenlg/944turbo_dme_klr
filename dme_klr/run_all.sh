@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  DME 951 + KLR — Full Test Suite
+#  Runs: i8048 regression, i8051 regression, Verilator suite, iverilog suite,
+#        iverilog/Verilator comparison, FQS analysis
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DME_KLR="$ROOT/dme_klr"
+PASS=0; WARN=0; FAIL=0
+START_TIME=$(date +%s)
+WORKERS="${1:-8}"
+
+# Colours
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+log()  { echo -e "${CYAN}[run_all]${NC} $*"; }
+ok()   { echo -e "${GREEN}  ✓ PASS${NC}  $*"; ((PASS++)); }
+warn() { echo -e "${YELLOW}  ⚠ WARN${NC}  $*"; ((WARN++)); }
+fail() { echo -e "${RED}  ✗ FAIL${NC}  $*"; ((FAIL++)); }
+hdr()  { echo -e "\n${BOLD}══════════════════════════════════════════════════════${NC}"; \
+          echo -e "${BOLD}  $*${NC}"; \
+          echo -e "${BOLD}══════════════════════════════════════════════════════${NC}"; }
+
+# ── 1. i8048 KLR regression ───────────────────────────────────────────────────
+log "Workers: $WORKERS"
+hdr "1/5  i8048 KLR Regression"
+cd "$ROOT/gemini8048"
+if bash run_48 2>&1 | tee /tmp/run48.log | grep -q "ALL TESTS PASSED"; then
+    TOTAL=$(grep -oP 'Total\s*:\s*\K\d+' /tmp/run48.log | tail -1)
+    ok "i8048 regression — $TOTAL tests passed"
+else
+    FAILED=$(grep -oP 'FAILED:\s*\K\d+' /tmp/run48.log | tail -1)
+    fail "i8048 regression — $FAILED test(s) FAILED (see /tmp/run48.log)"
+fi
+
+# ── 2. i8051 DME regression ───────────────────────────────────────────────────
+hdr "2/5  i8051 DME Regression"
+cd "$ROOT/claude_8051"
+if bash run_reg 2>&1 | tee /tmp/run_reg.log | grep -q "ALL TESTS PASSED"; then
+    TOTAL=$(grep -oP 'Total\s*:\s*\K\d+' /tmp/run_reg.log | tail -1)
+    ok "i8051 regression — $TOTAL tests passed"
+else
+    FAILED=$(grep -oP 'FAILED:\s*\K\d+' /tmp/run_reg.log | tail -1)
+    fail "i8051 regression — $FAILED test(s) FAILED (see /tmp/run_reg.log)"
+fi
+
+# ── 3. Verilator full suite ───────────────────────────────────────────────────
+hdr "3/5  Verilator Dashboard Test Suite"
+cd "$DME_KLR"
+log "Running Verilator suite (--verilator --all) ..."
+bash run_dashboard_parallel.sh --verilator --all --workers "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
+VL_PASS=$(grep -oP 'PASS:\s*\K\d+' /tmp/vl_suite.log | tail -1)
+VL_WARN=$(grep -oP 'WARN:\s*\K\d+' /tmp/vl_suite.log | tail -1)
+VL_FAIL=$(grep -oP 'FAIL:\s*\K\d+' /tmp/vl_suite.log | tail -1)
+VL_TOTAL=$(grep -oP 'Total:\s*\K\d+' /tmp/vl_suite.log | tail -1)
+if [ "${VL_FAIL:-0}" -eq 0 ]; then
+    ok "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
+elif [ "${VL_FAIL:-0}" -le 3 ]; then
+    warn "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
+else
+    fail "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
+fi
+
+# ── 4. iverilog full suite ────────────────────────────────────────────────────
+hdr "4/5  iverilog Dashboard Test Suite"
+cd "$DME_KLR"
+log "Running iverilog suite (--all) ..."
+bash run_dashboard_parallel.sh --all --workers "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
+IV_PASS=$(grep -oP 'PASS:\s*\K\d+' /tmp/iv_suite.log | tail -1)
+IV_WARN=$(grep -oP 'WARN:\s*\K\d+' /tmp/iv_suite.log | tail -1)
+IV_FAIL=$(grep -oP 'FAIL:\s*\K\d+' /tmp/iv_suite.log | tail -1)
+IV_TOTAL=$(grep -oP 'Total:\s*\K\d+' /tmp/iv_suite.log | tail -1)
+if [ "${IV_FAIL:-0}" -eq 0 ]; then
+    ok "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
+elif [ "${IV_FAIL:-0}" -le 3 ]; then
+    warn "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
+else
+    fail "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
+fi
+
+# ── 5. iverilog vs Verilator comparison ───────────────────────────────────────
+hdr "5/5  iverilog vs Verilator Comparison + FQS Analysis"
+cd "$DME_KLR"
+log "Comparing iverilog vs Verilator logs ..."
+DIFF_OUT=$(bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log)
+MISMATCHES=$(echo "$DIFF_OUT" | grep -c "MISMATCH\|DIFFER" || true)
+if [ "$MISMATCHES" -eq 0 ]; then
+    ok "iverilog == Verilator — no mismatches"
+else
+    warn "iverilog vs Verilator — $MISMATCHES mismatch(es) (see /tmp/compare.log)"
+fi
+
+log "Running FQS analysis ..."
+python3 fqs_analysis.py 2>&1 | tee /tmp/fqs_analysis.log
+echo ""
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+MINS=$(( ELAPSED / 60 ))
+SECS=$(( ELAPSED % 60 ))
+
+hdr "SUMMARY"
+echo -e "  Wall time : ${MINS}m${SECS}s"
+echo -e "  ${GREEN}PASS${NC} : $PASS"
+echo -e "  ${YELLOW}WARN${NC} : $WARN"
+echo -e "  ${RED}FAIL${NC} : $FAIL"
+echo ""
+if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
+    echo -e "${GREEN}${BOLD}  *** ALL CHECKS PASSED ***${NC}"
+elif [ "$FAIL" -eq 0 ]; then
+    echo -e "${YELLOW}${BOLD}  *** PASSED WITH WARNINGS ***${NC}"
+else
+    echo -e "${RED}${BOLD}  *** ${FAIL} CHECK(S) FAILED ***${NC}"
+fi
+echo ""
+exit $(( FAIL > 0 ? 1 : 0 ))

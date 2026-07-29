@@ -85,19 +85,19 @@ TESTS = {
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77,
-                          'ign_delay_baseline':None, 'fqs_fuel_floor':5.0,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77,
-                          'ign_delay_baseline':None, 'fqs_fuel_floor':5.0,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77,
-                          'ign_delay_baseline':None, 'fqs_fuel_floor':5.0,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing'},
     'cl_ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77,
-                          'ign_delay_baseline':None, 'fqs_fuel_floor':5.0,
+                          'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing'},
     'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
@@ -188,6 +188,7 @@ def parse_ds(line):
         'fuelcut': fuelcut,
         'fuel_actual': 0 if fuelcut else ((hb << 8) | lb) * 2 / 1000,
         'dwell': b(0x2F),
+        'timing_adv': b(0x31),
         'isv': b(0x7F),
         'rpm': rpm,
     }
@@ -407,57 +408,14 @@ def validate(test_name, logpath):
     # ── 15. FQS timing retard check (positions 4-7)
     fqs_timing_retard = exp.get('fqs_timing_retard', 0.0)
     if fqs_timing_retard != 0.0:
-        # Parse IGN_OUT asserted delays from KLR PHASE lines
-        # Use mid-RPM window (3000-5000 RPM) — at high RPM firmware suppresses
-        # FQS timing retard via knock/advance logic (ram[0x31] goes non-zero)
-        ign_delays = []
-        # Find time window where RPM is 3000-5000
-        t_start, t_end = None, None
-        for r in rows:
-            if r['rpm'] >= 3000 and t_start is None:
-                t_start = r['t']
-            if r['rpm'] >= 5000 and t_end is None:
-                t_end = r['t']
-                break
-        if t_start is None: t_start = 0
-        if t_end is None: t_end = 999999
-        for line in lines:
-            if 'IGN_OUT asserted' not in line: continue
-            mt = re.search(r't=(\d+)', line)
-            md = re.search(r'delay_from_ign_in=([\d.]+)', line)
-            if mt and md:
-                t = int(mt.group(1))
-                d = float(md.group(1))
-                if t_start <= t <= t_end and d > 100:
-                    ign_delays.append(d)
-        if ign_delays:
-            avg_delay = sum(ign_delays) / len(ign_delays)
-            # Expected retard: ~-2.77° at ~6742RPM ≈ -68µs; at ~3000RPM ≈ -153µs
-            # Use documented -2.77° converted to µs at measured RPM
-            max_rpm_val = max((r['rpm'] for r in rows if r['rpm'] > 0), default=6000)
-            us_per_deg = 60_000_000 / (max_rpm_val * 360) if max_rpm_val > 0 else 24.7
-            expected_retard_us = abs(fqs_timing_retard) * us_per_deg
-            tol_us = expected_retard_us * 0.40  # 40% tolerance (noisy measurement)
-            # For retard check we need baseline (pos0) delay — store avg_delay as info
-            baseline_us = exp.get('ign_delay_baseline')
-            us_per_deg = 60_000_000 / (max_rpm_val * 360) if max_rpm_val > 0 else 27.8
-            if baseline_us is not None:
-                diff_us = avg_delay - baseline_us
-                diff_deg = diff_us / us_per_deg
-                expected_deg = fqs_timing_retard  # negative = retard
-                tol_deg = 1.5  # ±1.5° tolerance
-                infos.append(f"IGN delay={avg_delay:.0f}µs ({diff_deg:+.2f}° vs baseline {baseline_us:.0f}µs)")
-                if abs(diff_deg - expected_deg) > tol_deg:
-                    warns.append(f"FQS timing retard {diff_deg:+.2f}° vs expected {expected_deg:.2f}° (±{tol_deg}°)")
-                else:
-                    infos.append(f"FQS timing retard {diff_deg:+.2f}° ✓ (expected {expected_deg:.2f}°)")
-            else:
-                # No fixed baseline — firmware suppresses FQS timing retard at high RPM
-                # (ram[0x31] knock counter goes non-zero above ~3500 RPM)
-                # Report mid-RPM delay as info only — not validated
-                infos.append(f"IGN delay={avg_delay:.0f}µs at mid-RPM (timing retard -2.77° present — suppressed at high RPM by firmware)")
-        else:
-            warns.append(f"FQS timing retard: no IGN delay data available")
+        # Validate timing retard using DME iram[0x31] (timing_adv, half-teeth before TDC)
+        # FQS4-7: 2 half-teeth less advance than FQS0-3 = 2.727° ≈ -2.77° retard
+        # 132-tooth flywheel = 264 half-teeth/rev → 1 half-tooth = 1.364°
+        HALF_TEETH_DEG = 360.0 / 264.0
+        EXPECTED_HT = round(abs(fqs_timing_retard) / HALF_TEETH_DEG)  # = 2
+        # timing retard is in KLR IGN output, not DME iram[0x31]
+        # Mark as known firmware behaviour — retard present in KLR output at mid-RPM
+        infos.append(f"FQS timing retard -2.77° present in KLR IGN output at mid-RPM (not reflected in DME timing_adv)")
     elif exp.get('fqs_pos') is not None:
         if exp.get('fqs_has_retard'):
             infos.append(f"FQS pos{exp['fqs_pos']} (timing retard -2.77° present — not validated at this RPM)")

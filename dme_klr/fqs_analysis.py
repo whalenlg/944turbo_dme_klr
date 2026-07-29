@@ -97,8 +97,9 @@ def parse_status_lines(path):
                     ('fuel_lb', r'fuel_lb\(4A\)=0x([0-9a-fA-F]+)'),
                     ('prpm',    r'prpm\(37\)=0x([0-9a-fA-F]+)'),
                     ('load',    r'load\(46:47\)=0x([0-9a-fA-F]+)'),
-                    ('dwell',   r'dwell\(2F\)=0x([0-9a-fA-F]+)'),
-                    ('wu',      r'wu\(58:59\)=0x([0-9a-fA-F]+)'),
+                    ('dwell',      r'dwell\(2F\)=0x([0-9a-fA-F]+)'),
+                    ('timing_adv', r'timing_adv\(31\)=0x([0-9a-fA-F]+)'),
+                    ('wu',         r'wu\(58:59\)=0x([0-9a-fA-F]+)'),
                 ]:
                     mm = re.search(pat, line)
                     if mm:
@@ -154,20 +155,16 @@ def main():
 
         iv_snaps = parse_status_lines(iv_path)
         vl_snaps = parse_status_lines(vl_path)
-        # Find mid-RPM window (3000-5000 RPM) for timing measurement
-        # At high RPM firmware suppresses FQS timing retard via knock counter
-        mid_t_start, mid_t_end = None, None
-        for s in iv_snaps:
-            if s['rpm'] >= 3000 and mid_t_start is None: mid_t_start = s['t']
-            if s['rpm'] >= 5000 and mid_t_end is None:   mid_t_end   = s['t']; break
-        if mid_t_start is None: mid_t_start = 0
-        if mid_t_end   is None: mid_t_end   = 999999
-        iv_delays = parse_ign_delays(iv_path, t_start=mid_t_start, t_end=mid_t_end)
+        # Extract steady-state timing_adv (iram[0x31]) from STATUS lines
+        # This is the clean half-teeth measurement — no IGN delay noise
+        HALF_TEETH_DEG = 360.0 / 264.0
+        ss_adv = [s['timing_adv'] for s in iv_snaps
+                  if s.get('rpm',0) >= 5000 and 'timing_adv' in s]
+        iv_timing_adv = (sum(ss_adv)/len(ss_adv)) if ss_adv else None
 
         rpm_thresh = RPM_STEADY_3K if 'ramp_to_3000' in test else RPM_STEADY
         iv_ss = steady_state_stats(iv_snaps, rpm_thresh)
         vl_ss = steady_state_stats(vl_snaps, rpm_thresh)
-        iv_timing = steady_state_timing(iv_delays)
 
         iv_str = f"{iv_ss['fuel_avg']:.3f}ms ({iv_ss['n']}pts)" if iv_ss else "  no data"
         vl_str = f"{vl_ss['fuel_avg']:.3f}ms ({vl_ss['n']}pts)" if vl_ss else "  no data"
@@ -182,14 +179,18 @@ def main():
         iv_rpm = f"{iv_ss['rpm_avg']:.0f}" if iv_ss else "N/A"
         vl_rpm = f"{vl_ss['rpm_avg']:.0f}" if vl_ss else "N/A"
 
-        timing_str = f"{iv_timing['avg']:.0f}us({iv_timing['n']})" if iv_timing else "  N/A"
+        if iv_timing_adv is not None:
+            adv_deg = iv_timing_adv * HALF_TEETH_DEG
+            timing_str = f"{iv_timing_adv:.1f}ht ({adv_deg:.1f}°)"
+        else:
+            timing_str = "  N/A"
         # Suppress VL column if diff is implausibly large (>50%) — VL test not run yet
         if diff_pct is not None and abs(diff_pct) > 50:
             vl_str = "  (not run)"
             diff_str = "   N/A"
         print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>12}  {vl_str:>12}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>10}")
 
-        results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing))
+        results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
 
     # ── FQS effect analysis ───────────────────────────────────────────────────
     print(f"\n{'='*80}")
@@ -215,14 +216,16 @@ def main():
         vl_base = f"{(vl_f-base_fuel)/base_fuel*100:+.1f}%" if vl_f and base_fuel else "  N/A"
         iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
         vl_str = f"{vl_f:.3f}ms" if vl_f else "  N/A"
-        t_avg = iv_t["avg"] if iv_t else None
+        t_avg = iv_t  # now half-teeth count (float)
         if t_avg is not None and base_timing is None and fqs_num == "0": base_timing = t_avg
-        t_str = f"{t_avg:.0f}us" if t_avg is not None else "  N/A"
-        # Convert delay difference to degrees at ~6742 RPM
-        # 1° = 60/(RPM*360) sec = 24.7µs at 6742 RPM
-        us_per_deg = 60_000_000 / (6742 * 360)
-        t_vs_deg = f"{(t_avg-base_timing)/us_per_deg:+.2f}°" if t_avg is not None and base_timing is not None else "  N/A"
-        t_vs = f"{t_avg-base_timing:+.0f}µs ({t_vs_deg})"
+        t_str = f"{t_avg:.1f}ht" if t_avg is not None else "  N/A"
+        HALF_TEETH_DEG = 360.0 / 264.0
+        if t_avg is not None and base_timing is not None:
+            diff_ht = base_timing - t_avg
+            t_vs_deg = f"{diff_ht*HALF_TEETH_DEG:+.2f}°"
+            t_vs = f"{diff_ht:+.1f}ht ({t_vs_deg})"
+        else:
+            t_vs = "  N/A"
         print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_base:>8}  {vl_str:>10}  {vl_base:>8}  {t_str:>10}  {t_vs:>18}")
 
     # Check if FQS is having any effect
