@@ -420,10 +420,10 @@ def validate(test_name, logpath):
                   if r["rpm"] >= 5000 and r.get("timing_adv") is not None]
         if ss_adv:
             avg_adv = sum(ss_adv) / len(ss_adv)
-            diff_ht = BASELINE_HT - avg_adv
+            diff_ht = avg_adv - BASELINE_HT  # negative = retard
             diff_deg = diff_ht * HALF_TEETH_DEG
             tol_ht = 1
-            infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° retard vs baseline {BASELINE_HT:.0f}ht)")
+            infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° vs baseline {BASELINE_HT:.0f}ht)")
             if abs(diff_ht - EXPECTED_HT) <= tol_ht:
                 infos.append(f"FQS timing retard {diff_deg:.2f}° ✓ ({diff_ht:.0f} half-teeth, expected {EXPECTED_HT})")
             else:
