@@ -413,9 +413,23 @@ def validate(test_name, logpath):
         # 132-tooth flywheel = 264 half-teeth/rev → 1 half-tooth = 1.364°
         HALF_TEETH_DEG = 360.0 / 264.0
         EXPECTED_HT = round(abs(fqs_timing_retard) / HALF_TEETH_DEG)  # = 2
-        # timing retard is in KLR IGN output, not DME iram[0x31]
-        # Mark as known firmware behaviour — retard present in KLR output at mid-RPM
-        infos.append(f"FQS timing retard -2.77° present in KLR IGN output at mid-RPM (not reflected in DME timing_adv)")
+        HALF_TEETH_DEG = 360.0 / 264.0
+        EXPECTED_HT = round(abs(fqs_timing_retard) / HALF_TEETH_DEG)  # = 2
+        BASELINE_HT = 21.0  # FQS0-3 timing_adv at 6000 RPM steady state
+        ss_adv = [r["timing_adv"] for r in rows
+                  if r["rpm"] >= 5000 and r.get("timing_adv") is not None]
+        if ss_adv:
+            avg_adv = sum(ss_adv) / len(ss_adv)
+            diff_ht = BASELINE_HT - avg_adv
+            diff_deg = diff_ht * HALF_TEETH_DEG
+            tol_ht = 1
+            infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° retard vs baseline {BASELINE_HT:.0f}ht)")
+            if abs(diff_ht - EXPECTED_HT) <= tol_ht:
+                infos.append(f"FQS timing retard {diff_deg:.2f}° ✓ ({diff_ht:.0f} half-teeth, expected {EXPECTED_HT})")
+            else:
+                warns.append(f"FQS timing retard {diff_deg:.2f}° ({diff_ht:.0f}ht) vs expected {fqs_timing_retard:.2f}° ({EXPECTED_HT}ht)")
+        else:
+            infos.append(f"FQS timing retard -2.77° expected — no steady-state timing_adv data (rerun needed)")
     elif exp.get('fqs_pos') is not None:
         if exp.get('fqs_has_retard'):
             infos.append(f"FQS pos{exp['fqs_pos']} (timing retard -2.77° present — not validated at this RPM)")
