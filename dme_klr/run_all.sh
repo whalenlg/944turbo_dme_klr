@@ -29,23 +29,25 @@ hdr()  { echo -e "\n${BOLD}═════════════════�
 log "Workers: $WORKERS"
 hdr "1/5  i8048 KLR Regression"
 cd "$ROOT/gemini8048"
-if bash run_48 2>&1 | tee /tmp/run48.log | grep -q "ALL TESTS PASSED"; then
-    TOTAL=$(grep -oP 'Total\s*:\s*\K\d+' /tmp/run48.log | tail -1)
+bash run_48 2>&1 | tee /tmp/run48.log
+if grep -q "ALL TESTS PASSED" /tmp/run48.log; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
     ok "i8048 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -oP 'FAILED:\s*\K\d+' /tmp/run48.log | tail -1)
-    fail "i8048 regression — $FAILED test(s) FAILED (see /tmp/run48.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
+    fail "i8048 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run48.log)"
 fi
 
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
 cd "$ROOT/claude_8051"
-if bash run_reg 2>&1 | tee /tmp/run_reg.log | grep -q "ALL TESTS PASSED"; then
-    TOTAL=$(grep -oP 'Total\s*:\s*\K\d+' /tmp/run_reg.log | tail -1)
+bash run_reg 2>&1 | tee /tmp/run_reg.log
+if grep -q "ALL TESTS PASSED" /tmp/run_reg.log; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
     ok "i8051 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -oP 'FAILED:\s*\K\d+' /tmp/run_reg.log | tail -1)
-    fail "i8051 regression — $FAILED test(s) FAILED (see /tmp/run_reg.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
+    fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_reg.log)"
 fi
 
 # ── 3. Verilator full suite ───────────────────────────────────────────────────
@@ -53,10 +55,10 @@ hdr "3/5  Verilator Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running Verilator suite (--verilator --all) ..."
 bash run_dashboard_parallel.sh --verilator --all --workers "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
-VL_PASS=$(grep -oP 'PASS:\s*\K\d+' /tmp/vl_suite.log | tail -1)
-VL_WARN=$(grep -oP 'WARN:\s*\K\d+' /tmp/vl_suite.log | tail -1)
-VL_FAIL=$(grep -oP 'FAIL:\s*\K\d+' /tmp/vl_suite.log | tail -1)
-VL_TOTAL=$(grep -oP 'Total:\s*\K\d+' /tmp/vl_suite.log | tail -1)
+VL_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
+VL_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
+VL_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
+VL_TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
 if [ "${VL_FAIL:-0}" -eq 0 ]; then
     ok "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
 elif [ "${VL_FAIL:-0}" -le 3 ]; then
@@ -70,10 +72,10 @@ hdr "4/5  iverilog Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running iverilog suite (--all) ..."
 bash run_dashboard_parallel.sh --all --workers "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
-IV_PASS=$(grep -oP 'PASS:\s*\K\d+' /tmp/iv_suite.log | tail -1)
-IV_WARN=$(grep -oP 'WARN:\s*\K\d+' /tmp/iv_suite.log | tail -1)
-IV_FAIL=$(grep -oP 'FAIL:\s*\K\d+' /tmp/iv_suite.log | tail -1)
-IV_TOTAL=$(grep -oP 'Total:\s*\K\d+' /tmp/iv_suite.log | tail -1)
+IV_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
+IV_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
+IV_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
+IV_TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
 if [ "${IV_FAIL:-0}" -eq 0 ]; then
     ok "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
 elif [ "${IV_FAIL:-0}" -le 3 ]; then

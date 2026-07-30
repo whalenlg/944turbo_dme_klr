@@ -190,7 +190,7 @@ always @(negedge `KLR_TB_PATH.res_n) begin
 `endif // KLR_DEBUG
 end
 `ifndef VCD_FILE
-  `define VCD_FILE "951klr.fst"
+  `define VCD_FILE "../../tmp/gemini8048/fst/951klr.fst"
 `endif
 
 initial begin

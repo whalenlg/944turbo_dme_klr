@@ -315,7 +315,7 @@ module i8048_core_tb;
     // MAIN TEST SEQUENCE
     // -------------------------------------------------------------------------
     initial begin
-        $dumpfile("i8048_regression_tb.fst");
+        $dumpfile("../../tmp/gemini8048/fst/i8048_regression_tb.fst");
         $dumpvars(0, i8048_core_tb);
 
         pass_count = 0; fail_count = 0; test_num = 0;
