@@ -221,7 +221,7 @@ def main():
         t_str = f"{t_avg:.1f}ht" if t_avg is not None else "  N/A"
         HALF_TEETH_DEG = 360.0 / 264.0
         if t_avg is not None and base_timing is not None:
-            diff_ht = base_timing - t_avg
+            diff_ht = t_avg - base_timing
             t_vs_deg = f"{diff_ht*HALF_TEETH_DEG:+.2f}°"
             t_vs = f"{diff_ht:+.1f}ht ({t_vs_deg})"
         else:

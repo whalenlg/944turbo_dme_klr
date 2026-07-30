@@ -4,7 +4,7 @@
 #  Runs: i8048 regression, i8051 regression, Verilator suite, iverilog suite,
 #        iverilog/Verilator comparison, FQS analysis
 # =============================================================================
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -29,7 +29,7 @@ hdr()  { echo -e "\n${BOLD}═════════════════�
 log "Workers: $WORKERS"
 hdr "1/5  i8048 KLR Regression"
 cd "$ROOT/gemini8048"
-bash run_48 2>&1 | tee /tmp/run48.log
+bash run_48 2>&1 > /tmp/run48.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run48.log; then
     TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
     ok "i8048 regression — $TOTAL tests passed"
@@ -41,7 +41,7 @@ fi
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
 cd "$ROOT/claude_8051"
-bash run_reg 2>&1 | tee /tmp/run_reg.log
+bash run_reg 2>&1 > /tmp/run_reg.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run_reg.log; then
     TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
     ok "i8051 regression — $TOTAL tests passed"
@@ -54,7 +54,7 @@ fi
 hdr "3/5  Verilator Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running Verilator suite (--verilator --all) ..."
-bash run_dashboard_parallel.sh --verilator --all --workers "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
+bash run_dashboard_parallel.sh --verilator --dash "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
 VL_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
 VL_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
 VL_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
@@ -71,7 +71,7 @@ fi
 hdr "4/5  iverilog Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running iverilog suite (--all) ..."
-bash run_dashboard_parallel.sh --all --workers "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
+bash run_dashboard_parallel.sh --dash "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
 IV_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
 IV_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
 IV_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)

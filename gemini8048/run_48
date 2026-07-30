@@ -5,9 +5,11 @@ rm ../../tmp/gemini8048/i8048_regression_tb.vvp
 
 iverilog -o ../../tmp/gemini8048/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 vvp ../../tmp/gemini8048/i8048_regression_tb.vvp +fst=../../tmp/gemini8048/fst/i8048_regression_tb.fst
+source  ../8051_Debug/bin/activate
 python3 ../disassemble/xlsx2veriloghex.py bin/87KLR951.xlsx bin/test_sim.hex 
 python3 ../disassemble/xlsxmembyte2veriloghex.py  bin/87KLR951.xlsx bin/memory_byte_map.hex
 python3 ../disassemble/xlsxinstr2veriloghex.py  bin/87KLR951.xlsx 
+deactivate
 mv asm_instr.hex bin
 mv asm_opcode_ins.hex bin
 mv asm_operands_numeric.hex bin

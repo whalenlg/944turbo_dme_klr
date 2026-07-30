@@ -19,3 +19,4 @@ extras/
 *.fst
 *.swo
 gemini8048/bench/verilog/i8048_regression
+__pycache__/
