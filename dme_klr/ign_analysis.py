@@ -11,13 +11,11 @@ from pathlib import Path
 # ── Argument parsing ──────────────────────────────────────────────────────────
 ap = argparse.ArgumentParser(description='IGN_OUT delay/pulse analysis from KLR PHASE log')
 ap.add_argument('logs', nargs='*', help='dash.log files to analyse')
-ap.add_argument('--dir', help='Directory of dash.log files')
-ap.add_argument('--rpm-min', type=int, default=0,   help='Min RPM filter (default 0)')
-ap.add_argument('--rpm-max', type=int, default=9999, help='Max RPM filter (default 9999)')
-ap.add_argument('--t-min',   type=int, default=0,   help='Min sim time ms (default 0)')
+ap.add_argument('--dir',     help='Directory of dash.log files')
+ap.add_argument('--rpm-min', type=int, default=0,      help='Min RPM filter (default 0)')
+ap.add_argument('--rpm-max', type=int, default=9999,   help='Max RPM filter (default 9999)')
+ap.add_argument('--t-min',   type=int, default=0,      help='Min sim time ms (default 0)')
 ap.add_argument('--t-max',   type=int, default=999999, help='Max sim time ms')
-ap.add_argument('--no-spurious', action='store_true', default=True,
-                help='Exclude spurious pulses (default True)')
 args = ap.parse_args()
 
 logs = list(args.logs)
@@ -32,23 +30,26 @@ if not logs:
 def parse_log(path):
     path = str(path)
     events = []
-    rpm_by_t = {}  # t_ms → rpm
+    rpm_by_t = {}
 
     with open(path) as f:
         for line in f:
-            # Build RPM lookup from DS snapshots
-            m = re.search(r'(?:DME|KLR): \[(?:DS|STATUS)\].*?t=(\d+)', line)
+            # RPM from STATUS lines
+            m = re.search(r'(?:DME|KLR): \[STATUS\].*?t=(\d+).*?\((\d+) RPM\)', line)
             if m:
-                t = int(m.group(1))
-                rpm_m = re.search(r'\((\d+) RPM\)', line)
-                if rpm_m:
-                    rpm_by_t[t] = int(rpm_m.group(1))
+                rpm_by_t[int(m.group(1))] = int(m.group(2))
+            # RPM from DS lines (iram[0x37]*40)
+            m2 = re.match(r'DME: \[DS\] (\d+),([0-9a-fx]+)', line)
+            if m2:
+                _t = int(m2.group(1)); _h = m2.group(2)
+                if len(_h) >= 0x38*2+2 and 'x' not in _h[0x37*2:0x37*2+2]:
+                    rpm_by_t[_t] = int(_h[0x37*2:0x37*2+2], 16) * 40
 
+            # IGN_OUT events
             if 'KLR: [PHASE]' not in line or 'IGN_OUT' not in line:
                 continue
-            if args.no_spurious and 'spurious' in line:
+            if 'spurious' in line:
                 continue
-
             t_m = re.search(r't=(\d+)', line)
             if not t_m:
                 continue
@@ -86,10 +87,9 @@ def analyse(events, label):
               if e['type'] == 'pulse'
               and args.rpm_min <= e['rpm'] <= args.rpm_max]
 
-    # Separate dwell pulses (short) from inter-spark intervals (long)
-    # Dwell: typically < 20ms; inter-spark: > 20ms
-    dwell   = [p for p in pulses if p < 20.0]
-    inter   = [p for p in pulses if p >= 20.0]
+    # Dwell: short pulse (<20ms); inter-spark: longer interval (>=20ms)
+    dwell = [p for p in pulses if p < 20.0]
+    inter = [p for p in pulses if p >= 20.0]
 
     print(f"\n{'─'*70}")
     print(f"  {label}")
@@ -110,16 +110,54 @@ def analyse(events, label):
               f"σ={std:6.3f}{unit}")
 
     stats(delays, 'IGN delay (crank→spark)', 'µs')
-    stats(dwell,  'Dwell pulse width',       'ms')
-    stats(inter,  'Inter-spark interval',    'ms')
+    stats(dwell,  'Short pulse (<20ms)',       'ms')
+    stats(inter,  'Coil-off interval (>=20ms)',    'ms')
 
-    # RPM distribution of delay events
     if delays:
         rpms = [e['rpm'] for e in events
                 if e['type'] == 'delay'
                 and args.rpm_min <= e['rpm'] <= args.rpm_max]
         if rpms:
             print(f"  {'RPM range':25s}: {min(rpms)} – {max(rpms)} RPM")
+
+    # RPM bin table
+    rpm_bins   = [(0,1000),(1000,2000),(2000,3000),(3000,4000),
+                  (4000,5000),(5000,6000),(6000,9999)]
+    bin_labels = ['<1k','1-2k','2-3k','3-4k','4-5k','5-6k','>6k']
+    delay_by_rpm = {b: [] for b in rpm_bins}
+    dwell_by_rpm = {b: [] for b in rpm_bins}
+
+    for e in events:
+        if not (args.rpm_min <= e['rpm'] <= args.rpm_max):
+            continue
+        for b in rpm_bins:
+            if b[0] <= e['rpm'] < b[1]:
+                if e['type'] == 'delay':
+                    delay_by_rpm[b].append(e['val'])
+                elif e['type'] == 'pulse' and e['val'] < 20.0:
+                    dwell_by_rpm[b].append(e['val'])
+                break
+
+    has_data = [b for b in rpm_bins if delay_by_rpm[b] or dwell_by_rpm[b]]
+    if has_data:
+        inter_by_rpm = {b: [] for b in rpm_bins}
+        for e in events:
+            if not (args.rpm_min <= e['rpm'] <= args.rpm_max): continue
+            for b in rpm_bins:
+                if b[0] <= e['rpm'] < b[1]:
+                    if e['type'] == 'pulse' and e['val'] >= 20.0:
+                        inter_by_rpm[b].append(e['val'])
+                    break
+        print(f"\n  {'RPM':<8s} {'n(delay)':<10s} {'delay avg(µs)':<16s} "
+              f"{'n(dwell)':<10s} {'dwell avg(ms)':<14s} {'coil-off(ms)':<14s}")
+        print(f"  {'─'*8} {'─'*10} {'─'*16} {'─'*10} {'─'*14} {'─'*14}")
+        for b, lbl in zip(rpm_bins, bin_labels):
+            dl = delay_by_rpm[b]; dw = dwell_by_rpm[b]; it = inter_by_rpm[b]
+            if not dl and not dw: continue
+            d_str = f"{statistics.mean(dl):8.2f}" if dl else "     N/A"
+            w_str = f"{statistics.mean(dw):8.3f}" if dw else "     N/A"
+            i_str = f"{statistics.mean(it):8.3f}" if it else "     N/A"
+            print(f"  {lbl:<8s} {len(dl):<10d} {d_str:<16s} {len(dw):<10d} {w_str:<14s} {i_str:<14s}")
 
     return {'delays': delays, 'dwell': dwell, 'inter': inter}
 
