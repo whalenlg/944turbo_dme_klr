@@ -66,6 +66,12 @@ def parse_log(path):
                 if d_m:
                     events.append({'t': t, 'type': 'delay', 'val': float(d_m.group(1))})
 
+    # Compute coil-off = gap between consecutive IGN assertions
+    asserted_ts = [e['t'] for e in events if e['type'] == 'delay']
+    for i in range(1, len(asserted_ts)):
+        gap_ms = asserted_ts[i] - asserted_ts[i-1]
+        events.append({'t': asserted_ts[i-1], 'type': 'coiloff', 'val': float(gap_ms)})
+
     # Attach nearest RPM to each event
     rpm_times = sorted(rpm_by_t.keys())
     def nearest_rpm(t):
@@ -87,9 +93,9 @@ def analyse(events, label):
               if e['type'] == 'pulse'
               and args.rpm_min <= e['rpm'] <= args.rpm_max]
 
-    # Dwell: short pulse (<20ms); inter-spark: longer interval (>=20ms)
-    dwell = [p for p in pulses if p < 20.0]
-    inter = [p for p in pulses if p >= 20.0]
+    # All deasserted pulse widths = dwell time (IGN_OUT was HIGH)
+    dwell = pulses  # all pulse widths
+    inter = []
 
     print(f"\n{'─'*70}")
     print(f"  {label}")
@@ -110,8 +116,13 @@ def analyse(events, label):
               f"σ={std:6.3f}{unit}")
 
     stats(delays, 'IGN delay (crank→spark)', 'µs')
-    stats(dwell,  'Short pulse (<20ms)',       'ms')
-    stats(inter,  'Coil-off interval (>=20ms)',    'ms')
+    dwell_filt = [p for p in dwell if p < 20.0]
+    stats(dwell_filt, 'IGN dwell pulse width',   'ms')
+    coiloff = [e['val'] for e in events
+               if e['type'] == 'coiloff'
+               and args.rpm_min <= e.get('rpm',0) <= args.rpm_max
+               and 1.0 < e['val'] < 200.0]
+    stats(coiloff, 'Coil-off interval',      'ms')
 
     if delays:
         rpms = [e['rpm'] for e in events
@@ -124,8 +135,9 @@ def analyse(events, label):
     rpm_bins   = [(0,1000),(1000,2000),(2000,3000),(3000,4000),
                   (4000,5000),(5000,6000),(6000,9999)]
     bin_labels = ['<1k','1-2k','2-3k','3-4k','4-5k','5-6k','>6k']
-    delay_by_rpm = {b: [] for b in rpm_bins}
-    dwell_by_rpm = {b: [] for b in rpm_bins}
+    delay_by_rpm   = {b: [] for b in rpm_bins}
+    dwell_by_rpm   = {b: [] for b in rpm_bins}
+    coiloff_by_rpm = {b: [] for b in rpm_bins}
 
     for e in events:
         if not (args.rpm_min <= e['rpm'] <= args.rpm_max):
@@ -136,28 +148,22 @@ def analyse(events, label):
                     delay_by_rpm[b].append(e['val'])
                 elif e['type'] == 'pulse' and e['val'] < 20.0:
                     dwell_by_rpm[b].append(e['val'])
+                elif e['type'] == 'coiloff' and 1.0 < e['val'] < 200.0:
+                    coiloff_by_rpm[b].append(e['val'])
                 break
 
     has_data = [b for b in rpm_bins if delay_by_rpm[b] or dwell_by_rpm[b]]
     if has_data:
-        inter_by_rpm = {b: [] for b in rpm_bins}
-        for e in events:
-            if not (args.rpm_min <= e['rpm'] <= args.rpm_max): continue
-            for b in rpm_bins:
-                if b[0] <= e['rpm'] < b[1]:
-                    if e['type'] == 'pulse' and e['val'] >= 20.0:
-                        inter_by_rpm[b].append(e['val'])
-                    break
         print(f"\n  {'RPM':<8s} {'n(delay)':<10s} {'delay avg(µs)':<16s} "
-              f"{'n(dwell)':<10s} {'dwell avg(ms)':<14s} {'coil-off(ms)':<14s}")
-        print(f"  {'─'*8} {'─'*10} {'─'*16} {'─'*10} {'─'*14} {'─'*14}")
+              f"{'n(dwell)':<10s} {'dwell avg(ms)':<14s} {'coil-off(ms)':<13s}")
+        print(f"  {'─'*8} {'─'*10} {'─'*16} {'─'*10} {'─'*14} {'─'*13}")
         for b, lbl in zip(rpm_bins, bin_labels):
-            dl = delay_by_rpm[b]; dw = dwell_by_rpm[b]; it = inter_by_rpm[b]
+            dl = delay_by_rpm[b]; dw = dwell_by_rpm[b]; co = coiloff_by_rpm[b]
             if not dl and not dw: continue
             d_str = f"{statistics.mean(dl):8.2f}" if dl else "     N/A"
             w_str = f"{statistics.mean(dw):8.3f}" if dw else "     N/A"
-            i_str = f"{statistics.mean(it):8.3f}" if it else "     N/A"
-            print(f"  {lbl:<8s} {len(dl):<10d} {d_str:<16s} {len(dw):<10d} {w_str:<14s} {i_str:<14s}")
+            c_str = f"{statistics.mean(co):8.3f}" if co else "     N/A"
+            print(f"  {lbl:<8s} {len(dl):<10d} {d_str:<16s} {len(dw):<10d} {w_str:<14s} {c_str:<13s}")
 
     return {'delays': delays, 'dwell': dwell, 'inter': inter}
 
