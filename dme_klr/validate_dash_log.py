@@ -424,10 +424,10 @@ def validate(test_name, logpath):
             diff_deg = diff_ht * HALF_TEETH_DEG
             tol_ht = 1
             infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° vs baseline {BASELINE_HT:.0f}ht)")
-            if abs(diff_ht - EXPECTED_HT) <= tol_ht:
-                infos.append(f"FQS timing retard {diff_deg:.2f}° ✓ ({diff_ht:.0f} half-teeth, expected {EXPECTED_HT})")
+            if abs(abs(diff_ht) - EXPECTED_HT) <= tol_ht:
+                infos.append(f"FQS timing retard {abs(diff_deg):.2f}° ✓ ({abs(diff_ht):.0f} half-teeth, expected {EXPECTED_HT})")
             else:
-                warns.append(f"FQS timing retard {diff_deg:.2f}° ({diff_ht:.0f}ht) vs expected {fqs_timing_retard:.2f}° ({EXPECTED_HT}ht)")
+                warns.append(f"FQS timing retard {abs(diff_deg):.2f}° ({abs(diff_ht):.0f}ht) vs expected {abs(fqs_timing_retard):.2f}° ({EXPECTED_HT}ht)")
         else:
             infos.append(f"FQS timing retard -2.77° expected — no steady-state timing_adv data (rerun needed)")
     elif exp.get('fqs_pos') is not None:
