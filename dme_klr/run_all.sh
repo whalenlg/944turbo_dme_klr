@@ -56,8 +56,8 @@ fi
 hdr "3/5  Verilator Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running Verilator suite (--verilator --all) ..."
-log "Running: bash run_dashboard_parallel.sh --verilator --dash $WORKERS"
-bash run_dashboard_parallel.sh --verilator --dash "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
+log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
+bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
 VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log 2>/dev/null | tail -1)
 VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
 VL_WARN=$(echo "$VL_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
@@ -75,8 +75,8 @@ fi
 hdr "4/5  iverilog Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running iverilog suite (--all) ..."
-log "Running: bash run_dashboard_parallel.sh --dash $WORKERS"
-bash run_dashboard_parallel.sh --dash "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
+log "Running: bash run_dashboard_parallel.sh $WORKERS"
+bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
 IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log 2>/dev/null | tail -1)
 IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
 IV_WARN=$(echo "$IV_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
