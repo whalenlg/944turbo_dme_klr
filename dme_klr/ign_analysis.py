@@ -117,7 +117,7 @@ def analyse(events, label):
 
     stats(delays, 'IGN delay (crank→spark)', 'µs')
     dwell_filt = [p for p in dwell if p < 20.0]
-    stats(dwell_filt, 'IGN dwell pulse width',   'ms')
+    stats(dwell_filt, 'IGN dwell pulse width (<20ms)', 'ms')
     coiloff = [e['val'] for e in events
                if e['type'] == 'coiloff'
                and args.rpm_min <= e.get('rpm',0) <= args.rpm_max
@@ -165,7 +165,7 @@ def analyse(events, label):
             c_str = f"{statistics.mean(co):8.3f}" if co else "     N/A"
             print(f"  {lbl:<8s} {len(dl):<10d} {d_str:<16s} {len(dw):<10d} {w_str:<14s} {c_str:<13s}")
 
-    return {'delays': delays, 'dwell': dwell, 'inter': inter}
+    return {'delays': delays, 'dwell': [p for p in dwell if p < 20.0], 'inter': inter}
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 print(f"\n{'═'*70}")
@@ -190,15 +190,16 @@ if len(results) > 1:
     print(f"\n{'═'*70}")
     print(f"  COMPARISON — avg IGN delay (µs)")
     print(f"{'═'*70}")
-    print(f"  {'Test':<35s}  {'Delay avg':>10s}  {'vs first':>10s}  {'Dwell avg':>10s}")
+    print(f"  {'Test':<35s}  {'Delay avg':>10s}  {'advance↑':>10s}  {'Dwell avg':>10s}")
     print(f"  {'─'*35}  {'─'*10}  {'─'*10}  {'─'*10}")
     base_delay = None
     for name, r in results.items():
         if r['delays']:
             avg = statistics.mean(r['delays'])
             if base_delay is None: base_delay = avg
-            diff = avg - base_delay
-            dwell_avg = statistics.mean(r['dwell']) if r['dwell'] else float('nan')
+            diff = base_delay - avg  # positive = more advance than baseline
+            dwell_filt = [p for p in r['dwell'] if p < 20.0]
+            dwell_avg = statistics.mean(dwell_filt) if dwell_filt else float('nan')
             print(f"  {name:<35s}  {avg:>10.3f}µs  {diff:>+10.3f}µs  {dwell_avg:>10.3f}ms")
         else:
             print(f"  {name:<35s}  {'N/A':>10s}")
