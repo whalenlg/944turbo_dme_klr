@@ -55,16 +55,17 @@ hdr "3/5  Verilator Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running Verilator suite (--verilator --all) ..."
 bash run_dashboard_parallel.sh --verilator --dash "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
-VL_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
-VL_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
-VL_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
-VL_TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/vl_suite.log | grep -o '[0-9]*' | tail -1)
-if [ "${VL_FAIL:-0}" -eq 0 ]; then
-    ok "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
-elif [ "${VL_FAIL:-0}" -le 3 ]; then
-    warn "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
+VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" /tmp/vl_suite.log | tail -1)
+VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
+VL_WARN=$(echo "$VL_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
+VL_FAIL=$(echo "$VL_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
+VL_TOTAL=$(echo "$VL_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
+if [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
+    ok "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
+elif [ "${VL_FAIL:-0}" -eq 0 ]; then
+    warn "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
 else
-    fail "Verilator — ${VL_PASS}P ${VL_WARN}W ${VL_FAIL}F / ${VL_TOTAL} tests"
+    fail "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
 fi
 
 # ── 4. iverilog full suite ────────────────────────────────────────────────────
@@ -72,16 +73,17 @@ hdr "4/5  iverilog Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running iverilog suite (--all) ..."
 bash run_dashboard_parallel.sh --dash "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
-IV_PASS=$(grep -o 'PASS: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
-IV_WARN=$(grep -o 'WARN: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
-IV_FAIL=$(grep -o 'FAIL: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
-IV_TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/iv_suite.log | grep -o '[0-9]*' | tail -1)
-if [ "${IV_FAIL:-0}" -eq 0 ]; then
-    ok "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
-elif [ "${IV_FAIL:-0}" -le 3 ]; then
-    warn "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
+IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" /tmp/iv_suite.log | tail -1)
+IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
+IV_WARN=$(echo "$IV_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
+IV_FAIL=$(echo "$IV_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
+IV_TOTAL=$(echo "$IV_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
+if [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
+    ok "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
+elif [ "${IV_FAIL:-0}" -eq 0 ]; then
+    warn "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
 else
-    fail "iverilog — ${IV_PASS}P ${IV_WARN}W ${IV_FAIL}F / ${IV_TOTAL} tests"
+    fail "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
 fi
 
 # ── 5. iverilog vs Verilator comparison ───────────────────────────────────────
