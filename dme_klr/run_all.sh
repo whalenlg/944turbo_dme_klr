@@ -29,6 +29,7 @@ hdr()  { echo -e "\n${BOLD}═════════════════�
 log "Workers: $WORKERS"
 hdr "1/5  i8048 KLR Regression"
 cd "$ROOT/gemini8048"
+log "Running: bash run_48"
 bash run_48 2>&1 > /tmp/run48.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run48.log; then
     TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
@@ -41,6 +42,7 @@ fi
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
 cd "$ROOT/claude_8051"
+log "Running: bash run_reg"
 bash run_reg 2>&1 > /tmp/run_reg.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run_reg.log; then
     TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
@@ -54,6 +56,7 @@ fi
 hdr "3/5  Verilator Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running Verilator suite (--verilator --all) ..."
+log "Running: bash run_dashboard_parallel.sh --verilator --dash $WORKERS"
 bash run_dashboard_parallel.sh --verilator --dash "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
 VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" /tmp/vl_suite.log | tail -1)
 VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
@@ -72,6 +75,7 @@ fi
 hdr "4/5  iverilog Dashboard Test Suite"
 cd "$DME_KLR"
 log "Running iverilog suite (--all) ..."
+log "Running: bash run_dashboard_parallel.sh --dash $WORKERS"
 bash run_dashboard_parallel.sh --dash "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
 IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" /tmp/iv_suite.log | tail -1)
 IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
@@ -90,7 +94,8 @@ fi
 hdr "5/5  iverilog vs Verilator Comparison + FQS Analysis"
 cd "$DME_KLR"
 log "Comparing iverilog vs Verilator logs ..."
-DIFF_OUT=$(bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log)
+DIFF_OUT=$(log "Running: bash compare_all_logs.sh"
+bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log)
 MISMATCHES=$(echo "$DIFF_OUT" | grep -c "MISMATCH\|DIFFER" || true)
 if [ "$MISMATCHES" -eq 0 ]; then
     ok "iverilog == Verilator — no mismatches"
@@ -99,6 +104,7 @@ else
 fi
 
 log "Running FQS analysis ..."
+log "Running: python3 fqs_analysis.py"
 python3 fqs_analysis.py 2>&1 | tee /tmp/fqs_analysis.log
 echo ""
 
