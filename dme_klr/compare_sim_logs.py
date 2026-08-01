@@ -121,6 +121,23 @@ def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
                       ", ".join(f"{k}({n})" for k, n in top))
     return issues
 
+def verbose_status_diff(iv_st, vl_st, prefix, tolerance=0.01, max_show=5):
+    """Print first differing values per field for verbose mode."""
+    shown = {}
+    for i in range(min(len(iv_st), len(vl_st))):
+        iv_row, vl_row = iv_st[i], vl_st[i]
+        t = iv_row.get("t", i)
+        for k in sorted(set(iv_row) | set(vl_row)):
+            if k == "t": continue
+            if shown.get(k, 0) >= max_show: continue
+            iv_v = iv_row.get(k); vl_v = vl_row.get(k)
+            if iv_v is None or vl_v is None: continue
+            if iv_v == vl_v: continue
+            denom = max(abs(iv_v), abs(vl_v), 1)
+            if abs(iv_v - vl_v) / denom <= tolerance: continue
+            shown[k] = shown.get(k, 0) + 1
+            print(f"    {prefix} t={t}ms  {k}: iv={iv_v} vl={vl_v}")
+
 def compare_phase_sequence(iv_lines, vl_lines, prefix):
     """Compare phase event sequences, stripping timestamps."""
     _ts  = re.compile(r't=\d+\s*ms\s*')
@@ -233,7 +250,7 @@ def compare_ds_series(iv_ds, vl_ds, tolerance=0.01):
 
 # ── Dashboard mode comparison ────────────────────────────────────────────────
 
-def compare_dash(iv_lines, vl_lines, name):
+def compare_dash(iv_lines, vl_lines, name, verbose=False):
     """Compare .dash.log files (DME:/KLR: structured lines)."""
     # Strip lines expected to differ between simulators
     _skip = re.compile(r'DME: \[SIM\]|VCD info:|dumpfile|Info:.*ignored|Simulated \d|\$finish|\bvvp\b', re.IGNORECASE)
@@ -287,6 +304,9 @@ def compare_dash(iv_lines, vl_lines, name):
     # DME [STATUS] field comparison
     iv_dme_st = extract_status_fields(iv_lines, "DME: [STATUS]")
     vl_dme_st = extract_status_fields(vl_lines, "DME: [STATUS]")
+    if verbose:
+        print(f"\n  --- DME STATUS field diffs (first 5 per field) ---")
+        verbose_status_diff(iv_dme_st, vl_dme_st, "DME: [STATUS]")
     issues.extend(compare_status_series(iv_dme_st, vl_dme_st, "DME: [STATUS]"))
 
     # KLR [STATUS] field comparison
@@ -369,6 +389,7 @@ def main():
     parser.add_argument('iv_log',   help='iverilog log file')
     parser.add_argument('vl_log',   help='Verilator log file')
     parser.add_argument('name',     nargs='?', default='test', help='Test name for reporting')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Show first differing values per field')
     args = parser.parse_args()
 
     iv_lines = read_lines(args.iv_log)
@@ -382,7 +403,7 @@ def main():
         sys.exit(2)
 
     if args.dash:
-        issues = compare_dash(iv_lines, vl_lines, args.name)
+        issues = compare_dash(iv_lines, vl_lines, args.name, verbose=args.verbose)
     else:
         issues = compare_nondash(iv_lines, vl_lines, args.name)
 

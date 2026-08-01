@@ -165,7 +165,8 @@ def analyse(events, label):
             c_str = f"{statistics.mean(co):8.3f}" if co else "     N/A"
             print(f"  {lbl:<8s} {len(dl):<10d} {d_str:<16s} {len(dw):<10d} {w_str:<14s} {c_str:<13s}")
 
-    return {'delays': delays, 'dwell': [p for p in dwell if p < 20.0], 'inter': inter}
+    avg_rpm = int(statistics.mean([e['rpm'] for e in events if e['rpm'] > 0])) if events else 0
+    return {'delays': delays, 'dwell': [p for p in dwell if p < 20.0], 'inter': inter, 'avg_rpm': avg_rpm}
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 print(f"\n{'═'*70}")
@@ -190,9 +191,12 @@ if len(results) > 1:
     print(f"\n{'═'*70}")
     print(f"  COMPARISON — avg IGN delay (µs)")
     print(f"{'═'*70}")
-    print(f"  {'Test':<35s}  {'Delay avg':>10s}  {'advance↑':>10s}  {'Dwell avg':>10s}")
-    print(f"  {'─'*35}  {'─'*10}  {'─'*10}  {'─'*10}")
+    print(f"  {'Test':<35s}  {'Delay avg':>10s}  {'advance↑(µs)':>13s}  {'advance↑(°)':>12s}  {'avg RPM':>8s}  {'Dwell avg':>10s}")
+    print(f"  {'─'*35}  {'─'*10}  {'─'*13}  {'─'*12}  {'─'*8}  {'─'*10}")
     base_delay = None
+    # Use cl_warm_idle as baseline if present, else first test
+    if "cl_warm_idle" in results and results["cl_warm_idle"]["delays"]:
+        base_delay = statistics.mean(results["cl_warm_idle"]["delays"])
     for name, r in results.items():
         if r['delays']:
             avg = statistics.mean(r['delays'])
@@ -200,7 +204,10 @@ if len(results) > 1:
             diff = base_delay - avg  # positive = more advance than baseline
             dwell_filt = [p for p in r['dwell'] if p < 20.0]
             dwell_avg = statistics.mean(dwell_filt) if dwell_filt else float('nan')
-            print(f"  {name:<35s}  {avg:>10.3f}µs  {diff:>+10.3f}µs  {dwell_avg:>10.3f}ms")
+            test_rpm = r.get('avg_rpm', 0)
+            us_per_deg = 60_000_000 / (test_rpm * 360) if test_rpm > 0 else 27.78
+            diff_deg = diff / us_per_deg
+            print(f"  {name:<35s}  {avg:>10.3f}µs  {diff:>+13.3f}µs  {diff_deg:>+12.2f}°  {test_rpm:>8d}  {dwell_avg:>10.3f}ms")
         else:
             print(f"  {name:<35s}  {'N/A':>10s}")
 
