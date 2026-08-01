@@ -1175,9 +1175,8 @@ reg [7:0] airtemp_shadow;
 reg [63:0] ph_status_next_snap;
 
 always @(posedge clk) begin : isv_shadow_track
-    if (!rst) isv_shadow <= 8'hFF;
-    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] <= 8'h40
-             && i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23] != 8'h00)
+    if (!rst) isv_shadow <= 8'h00;
+    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] <= 8'h40)
         isv_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F];
 end
 
