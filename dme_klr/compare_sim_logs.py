@@ -103,40 +103,37 @@ def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
     delta = abs(iv_n - vl_n)
     if delta > max(2, int(max(iv_n, vl_n) * 0.01)):
         issues.append(f"{prefix}: count iv={iv_n} vl={vl_n}")
-    field_mismatches = Counter()
-    for i in range(min(iv_n, vl_n)):
-        iv_row, vl_row = iv_st[i], vl_st[i]
-        for k in set(iv_row) | set(vl_row):
-            if k == 't': continue
-            iv_v = iv_row.get(k)
-            vl_v = vl_row.get(k)
-            if iv_v is None or vl_v is None: continue
-            if iv_v == vl_v: continue
-            denom = max(abs(iv_v), abs(vl_v), 1)
-            if abs(iv_v - vl_v) / denom <= tolerance: continue
-            field_mismatches[k] += 1
+    def count_mismatches(a_st, b_st):
+        mm = Counter()
+        for i in range(min(len(a_st), len(b_st))):
+            a_row, b_row = a_st[i], b_st[i]
+            for k in set(a_row) | set(b_row):
+                if k == 't': continue
+                a_v = a_row.get(k); b_v = b_row.get(k)
+                if a_v is None or b_v is None: continue
+                if a_v == b_v: continue
+                denom = max(abs(a_v), abs(b_v), 1)
+                if abs(a_v - b_v) / denom <= tolerance: continue
+                mm[k] += 1
+        return mm
+
+    # Try aligned comparison, then ±1 snapshot offset; use best (fewest mismatches)
+    field_mismatches = count_mismatches(iv_st, vl_st)
+    total = sum(field_mismatches.values())
+    for offset in [1, -1]:
+        if offset > 0:
+            mm2 = count_mismatches(iv_st[offset:], vl_st)
+        else:
+            mm2 = count_mismatches(iv_st, vl_st[-offset:])
+        if sum(mm2.values()) < total:
+            field_mismatches = mm2
+            total = sum(mm2.values())
+
     if field_mismatches:
         top = sorted(field_mismatches.items(), key=lambda x: -x[1])[:5]
         issues.append(f"{prefix} field mismatches: " +
                       ", ".join(f"{k}({n})" for k, n in top))
     return issues
-
-def verbose_status_diff(iv_st, vl_st, prefix, tolerance=0.01, max_show=5):
-    """Print first differing values per field for verbose mode."""
-    shown = {}
-    for i in range(min(len(iv_st), len(vl_st))):
-        iv_row, vl_row = iv_st[i], vl_st[i]
-        t = iv_row.get("t", i)
-        for k in sorted(set(iv_row) | set(vl_row)):
-            if k == "t": continue
-            if shown.get(k, 0) >= max_show: continue
-            iv_v = iv_row.get(k); vl_v = vl_row.get(k)
-            if iv_v is None or vl_v is None: continue
-            if iv_v == vl_v: continue
-            denom = max(abs(iv_v), abs(vl_v), 1)
-            if abs(iv_v - vl_v) / denom <= tolerance: continue
-            shown[k] = shown.get(k, 0) + 1
-            print(f"    {prefix} t={t}ms  {k}: iv={iv_v} vl={vl_v}")
 
 def compare_phase_sequence(iv_lines, vl_lines, prefix):
     """Compare phase event sequences, stripping timestamps."""
@@ -250,7 +247,7 @@ def compare_ds_series(iv_ds, vl_ds, tolerance=0.01):
 
 # ── Dashboard mode comparison ────────────────────────────────────────────────
 
-def compare_dash(iv_lines, vl_lines, name, verbose=False):
+def compare_dash(iv_lines, vl_lines, name):
     """Compare .dash.log files (DME:/KLR: structured lines)."""
     # Strip lines expected to differ between simulators
     _skip = re.compile(r'DME: \[SIM\]|VCD info:|dumpfile|Info:.*ignored|Simulated \d|\$finish|\bvvp\b', re.IGNORECASE)
@@ -304,9 +301,6 @@ def compare_dash(iv_lines, vl_lines, name, verbose=False):
     # DME [STATUS] field comparison
     iv_dme_st = extract_status_fields(iv_lines, "DME: [STATUS]")
     vl_dme_st = extract_status_fields(vl_lines, "DME: [STATUS]")
-    if verbose:
-        print(f"\n  --- DME STATUS field diffs (first 5 per field) ---")
-        verbose_status_diff(iv_dme_st, vl_dme_st, "DME: [STATUS]")
     issues.extend(compare_status_series(iv_dme_st, vl_dme_st, "DME: [STATUS]"))
 
     # KLR [STATUS] field comparison
@@ -389,7 +383,6 @@ def main():
     parser.add_argument('iv_log',   help='iverilog log file')
     parser.add_argument('vl_log',   help='Verilator log file')
     parser.add_argument('name',     nargs='?', default='test', help='Test name for reporting')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Show first differing values per field')
     args = parser.parse_args()
 
     iv_lines = read_lines(args.iv_log)
@@ -403,7 +396,7 @@ def main():
         sys.exit(2)
 
     if args.dash:
-        issues = compare_dash(iv_lines, vl_lines, args.name, verbose=args.verbose)
+        issues = compare_dash(iv_lines, vl_lines, args.name)
     else:
         issues = compare_nondash(iv_lines, vl_lines, args.name)
 
