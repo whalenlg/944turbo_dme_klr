@@ -299,7 +299,9 @@
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
   `undef  SIM_TIME
-  `define SIM_TIME  10000000000
+  `define SIM_TIME  20000000000      // 20s — DFCO decay after the AFM spike
+                                      // needs more than 10s to fully return
+                                      // to idle before steady-state is judged
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
@@ -860,12 +862,37 @@ end
 
 wire [7:0] afm_wiper;
 // Idle switch derived from airflow: grounded (0) at idle, open (1) just
-// off idle.  afm_wiper idle = 0x28; opens at 0x2A.  This is the throttle
-// idle-stop contact — internal because afm_wiper is generated in this TB.
-wire idle_sw = (afm_wiper >= 8'h2A);
+// off idle.  This is the throttle idle-stop contact — internal because
+// afm_wiper/afm_tippy/afm_cl are all generated in this TB.
+//
+// idle_sw must track whichever signal is actually driving the AFM ADC
+// channel (adc_mux case 3'b000 below) — NOT always afm_wiper. Under
+// AFM_TIPPY/AFM_CL_RAMP the real AFM reading comes from an override
+// signal (afm_tippy / afm_cl) that afm_wiper knows nothing about;
+// wiring idle_sw to afm_wiper unconditionally desyncs TPS from the
+// AFM event it's supposed to follow (e.g. tippy_in/cl_tippy_in: AFM
+// steps via afm_tippy while afm_wiper — and hence TPS — moves on its
+// own unrelated timeline).
+`ifdef AFM_FAULT
+wire [7:0] afm_effective = 8'hFF;
+`elsif AFM_CL_RAMP
+wire [7:0] afm_effective = afm_cl;
+`elsif AFM_TIPPY
+wire [7:0] afm_effective = afm_tippy;
+`else
+wire [7:0] afm_effective = afm_wiper;
+`endif
+
+wire idle_sw = (afm_effective >= `AFM_IDLE_THR);
 reg  [7:0] adc_mux;
 
-always @(p2[2:0] or afm_wiper) begin
+// NOTE: was previously `@(p2[2:0] or afm_wiper)`. Now that idle_sw can
+// depend on afm_tippy/afm_cl (not just afm_wiper) under AFM_TIPPY/
+// AFM_CL_RAMP, an explicit sensitivity list would go stale on every
+// signal that idle_sw transitively depends on unless each one is added
+// here too. `always @(*)` re-evaluates on any input change and avoids
+// re-introducing the same class of staleness bug this file just had.
+always @(*) begin
     case (p2[2:0])
 `ifdef AFM_FAULT
         3'b000: adc_mux = 8'hFF;

@@ -1,8 +1,0 @@
-rm *vvp
-iverilog -DSIM_TIME=5000000000 -DRAMPRPM -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP  -o dme_klr.vvp -f files -s dme_klr_tb \
-  -I ../claude_8051/rtl/verilog \
-  -I ../gemini8048/rtl/verilog \
-  -I ../claude_8051/bench/verilog \
-  -I ../gemini8048/bench/verilog \
-  -I bench/verilog 
-time vvp dme_klr.vvp > test.log

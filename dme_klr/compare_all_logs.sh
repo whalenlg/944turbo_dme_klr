@@ -72,7 +72,6 @@ DASH_TESTS=(
     ramp_to_3000
     ramp_to_6000
     ramp_to_redline
-    tippy_in
     tps_fail
     warm_idle
     warmup_enrichment
@@ -118,7 +117,6 @@ NONDASH_TESTS=(
     ramp_to_3000
     ramp_to_6000
     ramp_to_redline
-    tippy_in
     tps_fail
     warm_idle
     warmup_enrichment

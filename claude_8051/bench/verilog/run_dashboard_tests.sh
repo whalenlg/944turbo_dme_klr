@@ -2,7 +2,7 @@
 # ============================================================
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
-#  Uses Verilator (replaces iverilog/vvp) with i8051_tb (dashboard edition)
+#  Uses i8051_tb (dashboard edition) instead of the standard i8051_tb,
 #  compact DME: [DS] snapshot lines for the React dashboard.
 #  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
@@ -11,10 +11,10 @@
 #    ./run_dashboard_tests.sh warm_idle         # single test
 #    ./run_dashboard_tests.sh warm_idle 50      # single test, 50ms interval
 #
-#  Output: ../../tmp/dme_klr/v_dash_logs/<test>.log       (full sim output)
-#                                                 <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/v_dash_logs/vcd/<test>.vcd
-#          ../../tmp/dme_klr/v_dash_logs/hex/<test>/{rom,ram}_out.hex
+#  Output: ../../tmp/dme_klr/dash_logs/<test>.log       (full sim output)
+#                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
+#          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd.gz
+#          ../../tmp/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -27,17 +27,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="dash"
 if [ "$1" = "--nondash" ]; then MODE="nondash"; shift;
 elif [ "$1" = "--dash" ];    then MODE="dash";    shift; fi
+if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
-# VVP_DIR is kept as the name for compatibility but now holds Verilator-compiled executables
-LOGDIR="$VVP_DIR/v_dash_logs"
+LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
+VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output
+FSTDIR="$LOGDIR/fst"
 HEXDIR="$LOGDIR/hex"
-NONDASH_LOGDIR="$VVP_DIR/v_logs"
+NONDASH_LOGDIR="$VVP_DIR/logs"
 NONDASH_VCDDIR="$NONDASH_LOGDIR/vcd"
+NONDASH_FSTDIR="$NONDASH_LOGDIR/fst"
 NONDASH_HEXDIR="$NONDASH_LOGDIR/hex"
-# iverilog reference log dirs (for compare_with_iv)
-IV_LOGDIR="$VVP_DIR/dash_logs"
-IV_NONDASH_LOGDIR="$VVP_DIR/logs"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
@@ -52,13 +52,6 @@ FILES_NONDASH=files_nondash    # non-dashboard combined DME+KLR (uses i8051_tb n
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
-
-# VCD: off by default — enable with VCD=1 env var or --vcd flag.
-# Compile always includes --trace for deterministic scheduling;
-# at runtime +vcd=/dev/null suppresses actual file writes.
-VCD_ENABLE=0
-if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
-VCD_ENABLE="${VCD:-$VCD_ENABLE}"
 
 # Dashboard URL — set DASHBOARD_URL env var to override
 DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:5173}"
@@ -135,8 +128,8 @@ open_in_dashboard() {
     echo "  [DASHBOARD] Opened: $url"
 }
 
-mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
-mkdir -p "$NONDASH_LOGDIR" "$NONDASH_VCDDIR" "$NONDASH_HEXDIR"
+mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
+mkdir -p "$NONDASH_LOGDIR" "$NONDASH_VCDDIR" "$NONDASH_FSTDIR" "$NONDASH_HEXDIR"
 
 # Mode-specific aliases used by run_all and case block
 if [ "$MODE" = "nondash" ]; then
@@ -150,54 +143,7 @@ else
 fi
 
 # --------------------------------------------------------
-#  compare_with_iv <mode> <name> <vl_log> <iv_log>
-#
-#  Diffs Verilator output against the iverilog reference.
-#  Skipped silently if the iverilog log does not exist.
-#  mode: --dash or --nondash
-# --------------------------------------------------------
-compare_with_iv() {
-    local mode="$1"
-    local name="$2"
-    local vl_log="$3"
-    local iv_log="$4"
-    local cmp_dir
-
-    if [ "$mode" = "--dash" ]; then
-        cmp_dir="$LOGDIR"
-    else
-        cmp_dir="$NONDASH_LOGDIR"
-    fi
-
-    if [ ! -f "$iv_log" ]; then
-        echo "  [CMP]    $name — no iverilog reference (skipping)"
-        return 0
-    fi
-    if [ ! -f "$vl_log" ]; then
-        echo "  [CMP]    $name — verilator log missing (skipping)"
-        return 0
-    fi
-
-    local result verdict detail colour reset="[0m"
-    result=$(python3 "$SCRIPT_DIR/compare_sim_logs.py" "$mode" "$iv_log" "$vl_log" "$name" 2>&1)
-    verdict=$(echo "$result" | cut -f1)
-    detail=$(echo "$result"  | cut -f3-)
-
-    case "$verdict" in
-        MATCH)      colour="[32m" ;;
-        NEAR-MATCH) colour="[33m" ;;
-        DIFF)       colour="[31m" ;;
-        *)          colour="" ;;
-    esac
-
-    printf "  [CMP]    ${colour}%-10s${reset} %-22s %s
-" "$verdict" "$name" "$detail"
-    printf "%s	%-22s	%s
-" "$verdict" "$name" "$detail" >> "${cmp_dir}/compare.log"
-}
-
-# --------------------------------------------------------
-#  compile_and_run_klr <short_name> [interval_ms] <verilator -D flags...>
+#  compile_and_run_klr <short_name> [interval_ms] <iverilog -D flags...>
 #
 #  If second argument is a plain integer it overrides the
 #  snapshot interval for this test only.
@@ -211,16 +157,16 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
-    local exe="${VVP_DIR}/dash_${name}"
+    local vvp="${VVP_DIR}/dash_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
-    local hexdir="${HEXDIR}/${name}"
     local fstfile="${FSTDIR}/${name}.fst"
+    local hexdir="${HEXDIR}/${name}"
 
     mkdir -p "$hexdir"
 
     # Clean old output files for this test
-    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
     rm -f "${vcdfile}.gz"
 
     # Extract SIM_TIME for display
@@ -238,20 +184,18 @@ compile_and_run_klr() {
     echo "  TEST: $name  [${sim_sec}s sim / ~${sim_sec}m wall / interval=${interval}ms / ~${n_snaps} snapshots]"
     echo "======================================================"
 
-    # Compile — all sources including TB via -f files; top selected by --top-module.
+    # Compile — all sources including TB via -f files; top selected by -s.
     # When -DCL_MODE is present, swap var_interrupt_gen.v for var_interrupt_gen_cl.v
     local files_list="$FILES"
     for arg in "$@"; do
         [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
     done
 
-    # Remove stale object dir to force clean recompile
-    rm -rf "${VVP_DIR}/obj_${name}"
-    # Compute STEP_CLOCKS in bash to avoid Verilator localparam overflow
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
     local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
     for _a in "$@"; do
         case "$_a" in
-            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
             -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
         esac
     done
@@ -260,33 +204,18 @@ compile_and_run_klr() {
     _sim_ms=$(( _sim_time / 1000000 ))
     _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
     _step_clocks=$(( _ramp_ms * 6000 / 200 ))
-    local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
-    # shellcheck disable=SC2086
-    verilator --binary $trace_flag \
-        -o "$exe" \
-        --Mdir "${VVP_DIR}/obj_${name}" \
+    iverilog -o "$vvp" \
         -f "$files_list" \
-        +incdir+"$RTL" \
-        +incdir+"$BENCH" \
-        +incdir+"$RTLd" \
-        +incdir+"$BENCHd" \
-        +incdir+"$RTLk" \
-        +incdir+"$BENCHk" \
-        --top-module i8051_dashboard_tb \
-        -DVLT_SIM \
-        -DSTEP_CLOCKS="$_step_clocks" \
+        -I "$RTL" \
+        -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
+        -s i8051_dashboard_tb \
         -DDASHBOARD_TB \
         -DDASH_INTERVAL_MS="$interval" \
-        -Wno-fatal \
-        -Wno-PINMISSING \
-        -Wno-IMPLICIT \
-        -Wno-WIDTHTRUNC \
-        -Wno-WIDTHEXPAND \
-        -Wno-REDEFMACRO \
-        -Wno-DEFOVERRIDE \
-        -Wno-CASEINCOMPLETE \
-        -Wno-LATCH \
-        -Wno-MULTIDRIVEN \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@"
     if [ $? -ne 0 ]; then
         echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
@@ -294,22 +223,33 @@ compile_and_run_klr() {
     fi
 
     echo "  Running → $log"
-    echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
+    [ "$VCD_ENABLE" = "1" ] && echo "  VCD     → $vcdfile"
     echo "  HEX     → $hexdir/{rom,ram}_out.hex"
 
     # Run from hexdir so VCD and hex dumps land there without conflicts
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "$vcdfile" || echo /dev/null )" ) > "$log" 2>&1
+    # FST always produced; VCD only if VCD_ENABLE=1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
+    else
+        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
+    fi
     if [ $? -ne 0 ]; then
         echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
 
-    # Move sim.vcd to named location (no compression)
-    if [ -f "$hexdir/sim.vcd" ]; then
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
         if [ "$VCD_ENABLE" = "1" ]; then
-            mv "$hexdir/sim.vcd" "$vcdfile"
+            mv "$_raw" "$vcdfile"
         else
-            rm -f "$hexdir/sim.vcd"
+            rm -f "$_raw"
         fi
     fi
 
@@ -321,8 +261,8 @@ compile_and_run_klr() {
     local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
-    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD ${vcdsize})" \
+    local fstsize=$(du -sh "$fstfile" 2>/dev/null | cut -f1 || echo "?")
+    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / FST ${fstsize})" \
         | tee -a "$LOGDIR/summary.log"
 
     # Validate
@@ -334,10 +274,6 @@ compile_and_run_klr() {
 
     # Open in dashboard browser if running a single test
     open_in_dashboard "$LOGDIR/${name}.dash.log"
-
-    compare_with_iv --dash "$name" \
-        "$LOGDIR/${name}.dash.log" \
-        "$IV_LOGDIR/${name}.dash.log"
 }
 
 # --------------------------------------------------------
@@ -356,17 +292,19 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
-    local exe="${VVP_DIR}/dash_klr_${name}"
+    local vvp="${VVP_DIR}/dash_klr_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
-    local hexdir="${HEXDIR}/${name}"
     local fstfile="${FSTDIR}/${name}.fst"
+    local hexdir="${HEXDIR}/${name}"
 
     mkdir -p "$hexdir"
 
     # Clean old output files for this test
-    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
     rm -f "${vcdfile}.gz"
+    rm -rf "$hexdir"
+    mkdir -p "$hexdir"
 
     local sim_ns=0
     for arg in "$@"; do
@@ -386,12 +324,11 @@ compile_and_run_klr() {
         [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
     done
 
-    # Remove stale object dir to force clean recompile
-    rm -rf "${VVP_DIR}/obj_${name}"
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
     local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
     for _a in "$@"; do
         case "$_a" in
-            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
             -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
         esac
     done
@@ -400,34 +337,19 @@ compile_and_run_klr() {
     _sim_ms=$(( _sim_time / 1000000 ))
     _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
     _step_clocks=$(( _ramp_ms * 6000 / 200 ))
-    local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
-    # shellcheck disable=SC2086
-    verilator --binary $trace_flag \
-        -o "$exe" \
-        --Mdir "${VVP_DIR}/obj_${name}" \
+    iverilog -o "$vvp" \
         -f "$files_list" \
-        +incdir+"$RTL" \
-        +incdir+"$BENCH" \
-        +incdir+"$RTLd" \
-        +incdir+"$BENCHd" \
-        +incdir+"$RTLk" \
-        +incdir+"$BENCHk" \
-        --top-module dme_klr_dashboard_tb \
-        -DVLT_SIM \
-        -DSTEP_CLOCKS="$_step_clocks" \
+        -I "$RTL" \
+        -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
+        -s dme_klr_dashboard_tb \
         -DDASHBOARD_TB \
         -DDME_KLR_COMBINED \
         -DDASH_INTERVAL_MS="$interval" \
-        -Wno-fatal \
-        -Wno-PINMISSING \
-        -Wno-IMPLICIT \
-        -Wno-WIDTHTRUNC \
-        -Wno-WIDTHEXPAND \
-        -Wno-REDEFMACRO \
-        -Wno-DEFOVERRIDE \
-        -Wno-CASEINCOMPLETE \
-        -Wno-LATCH \
-        -Wno-MULTIDRIVEN \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@"
     if [ $? -ne 0 ]; then
         echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
@@ -436,9 +358,14 @@ compile_and_run_klr() {
 
     echo "  Running → $log"
     echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
     echo "  HEX     → $hexdir/{rom,ram,klr_rom,klr_ram}_out.hex"
 
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo /dev/null )" ) > "${log}" 2>&1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    else
+        ( cd "$hexdir" && vvp -n "$vvp" ) > "${log}" 2>&1
+    fi
     local rc=$?
 
     if [ $rc -ne 0 ]; then
@@ -446,15 +373,30 @@ compile_and_run_klr() {
         return 1
     fi
 
-    # Move any stray VCD to the canonical location.
+    # Move any stray VCD to the canonical location, then gzip.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
     # instead of honouring +vcd= if an older version is deployed.
-    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
-        [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
-    done
-    if [ -f "$vcdfile" ]; then
-        [ "$VCD_ENABLE" != "1" ] && rm -f "$vcdfile"
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
+        if [ "$VCD_ENABLE" = "1" ]; then
+            mv "$_raw" "$vcdfile"
+        else
+            rm -f "$_raw"
+        fi
     fi
+    # Clean up any remaining stray VCD files
+    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd" "$hexdir/sim.fst"; do
+        if [ -f "$_stray" ]; then
+            vcd2fst "$_stray" "$fstfile" 2>/dev/null
+            [ "$VCD_ENABLE" = "1" ] && mv "$_stray" "$vcdfile" || rm -f "$_stray"
+            break
+        fi
+    done
 
     # Extract all DME: and KLR: lines into dashboard log.
     # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
@@ -467,14 +409,10 @@ compile_and_run_klr() {
     local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD ${vcdsize}" \
+    echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
         | tee -a "$LOGDIR/summary.log"
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
-
-    compare_with_iv --dash "$name" \
-        "$LOGDIR/${name}.dash.log" \
-        "$IV_LOGDIR/${name}.dash.log"
 }
 
 # --------------------------------------------------------
@@ -488,11 +426,18 @@ compile_and_run_klr() {
 compile_and_run_nondash_klr() {
     local name="$1"; shift
 
-    local exe="${VVP_DIR}/nondash_klr_${name}"
+    local vvp="${VVP_DIR}/nondash_klr_${name}.vvp"
     local log="${NONDASH_LOGDIR}/${name}.log"
     local vcdfile="${NONDASH_VCDDIR}/${name}.vcd"
+    local fstfile="${NONDASH_FSTDIR}/${name}.fst"
     local hexdir="${NONDASH_HEXDIR}/${name}"
 
+    mkdir -p "$hexdir"
+
+    # Clean old output files for this test
+    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "${vcdfile}.gz"
+    rm -rf "$hexdir"
     mkdir -p "$hexdir"
 
     local sim_ns=0
@@ -516,12 +461,11 @@ compile_and_run_nondash_klr() {
         files_list="$FILES"
     fi
 
-    # Remove stale object dir to force clean recompile
-    rm -rf "${VVP_DIR}/obj_${name}"
+    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
     local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
     for _a in "$@"; do
         case "$_a" in
-            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
             -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
         esac
     done
@@ -530,32 +474,17 @@ compile_and_run_nondash_klr() {
     _sim_ms=$(( _sim_time / 1000000 ))
     _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
     _step_clocks=$(( _ramp_ms * 6000 / 200 ))
-    local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
-    # shellcheck disable=SC2086
-    verilator --binary $trace_flag \
-        -o "$exe" \
-        --Mdir "${VVP_DIR}/obj_${name}" \
+    iverilog -o "$vvp" \
         -f "$files_list" \
-        +incdir+"$RTL" \
-        +incdir+"$BENCH" \
-        +incdir+"$RTLd" \
-        +incdir+"$BENCHd" \
-        +incdir+"$RTLk" \
-        +incdir+"$BENCHk" \
-        --top-module dme_klr_tb \
-        -DVLT_SIM \
-        -DSTEP_CLOCKS="$_step_clocks" \
+        -I "$RTL" \
+        -I "$BENCH" \
+        -I "$RTLd" \
+        -I "$BENCHd" \
+        -I "$RTLk" \
+        -I "$BENCHk" \
+        -s dme_klr_tb \
         -DDME_KLR_COMBINED \
-        -Wno-fatal \
-        -Wno-PINMISSING \
-        -Wno-IMPLICIT \
-        -Wno-WIDTHTRUNC \
-        -Wno-WIDTHEXPAND \
-        -Wno-REDEFMACRO \
-        -Wno-DEFOVERRIDE \
-        -Wno-CASEINCOMPLETE \
-        -Wno-LATCH \
-        -Wno-MULTIDRIVEN \
+        -DSTEP_CLOCKS="$_step_clocks" \
         "$@" \
         "bench/verilog/dme_klr_tb.v"
     if [ $? -ne 0 ]; then
@@ -565,16 +494,40 @@ compile_and_run_nondash_klr() {
 
     echo "  Running → $log"
     echo "  VCD     → $vcdfile"
+    echo "  FST     → $fstfile"
 
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo /dev/null )" ) > "${log}" 2>&1
+    if [ "$VCD_ENABLE" = "1" ]; then
+        ( cd "$hexdir" && vvp -n "$vvp" +vcd="${vcdfile}" ) > "${log}" 2>&1
+    else
+        ( cd "$hexdir" && vvp -n "$vvp" ) > "${log}" 2>&1
+    fi
     local rc=$?
 
-    # Move any stray VCDs to canonical location
-    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
-        [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
+    # Move any stray VCDs to canonical location then gzip
+    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+    # regardless of the +fst= filename. The file is VCD data named .fst.
+    # Rename it to .vcd then convert to real FST binary format.
+    _raw="$hexdir/sim.fst"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    if [ -f "$_raw" ]; then
+        vcd2fst "$_raw" "$fstfile" 2>/dev/null
+        if [ "$VCD_ENABLE" = "1" ]; then
+            mv "$_raw" "$vcdfile"
+        else
+            rm -f "$_raw"
+        fi
+    fi
+    # Clean up any remaining stray VCD files
+    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd" "$hexdir/sim.fst"; do
+        if [ -f "$_stray" ]; then
+            vcd2fst "$_stray" "$fstfile" 2>/dev/null
+            [ "$VCD_ENABLE" = "1" ] && mv "$_stray" "$vcdfile" || rm -f "$_stray"
+            break
+        fi
     done
     if [ -f "$vcdfile" ]; then
-        [ "$VCD_ENABLE" != "1" ] && rm -f "$vcdfile"
+        gzip -f "$vcdfile"
+        vcdfile="${vcdfile}.gz"
     fi
 
     if [ $rc -ne 0 ]; then
@@ -583,11 +536,7 @@ compile_and_run_nondash_klr() {
     fi
 
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name — VCD ${vcdsize}" | tee -a "$NONDASH_LOGDIR/summary.log"
-
-    compare_with_iv --nondash "$name" \
-        "$NONDASH_LOGDIR/${name}.log" \
-        "$IV_NONDASH_LOGDIR/${name}.log"
+    echo "  DONE: $name — VCD.gz ${vcdsize}" | tee -a "$NONDASH_LOGDIR/summary.log"
 }
 
 # --------------------------------------------------------
@@ -610,7 +559,7 @@ run_test cl_warm_idle \
 run_test cl_tippy_in \
     -DTEST_TIPPY_IN \
     -DRPMRAMP -DCL_MODE \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
 run_test cl_ramp_to_3000 \
     -DTEST_CL_RAMP_TO_3000  \
@@ -627,116 +576,59 @@ run_test cl_ramp_to_6000 \
 run_test cl_ramp_to_6000_FQS0 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h00" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS1 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h3B" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS2 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h5A" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS3 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h75" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS4 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h81" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS5 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h91" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS6 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h9C" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS7 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'hA7" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-
-# --- FQS ramp-to-3000 sweep ---
-run_test cl_ramp_to_3000_FQS0 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h00" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS1 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h3B" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS2 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h5A" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS3 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h75" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS4 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h81" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS5 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h91" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS6 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'h9C" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test cl_ramp_to_3000_FQS7 \
-    -DTEST_CL_RAMP_TO_3000 \
-    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DRPMEND=3000 \
-    -DRPM_RAMP_PCT=20 \
-    "-D_FUEL_QUAL=8'hA7" \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_redline \
     -DTEST_CL_RAMP_TO_REDLINE \
@@ -901,17 +793,17 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
-        cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCPU_DEBUG -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DCL_DEBUG -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCPU_DEEP_DEBUG -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS0) run_test cl_ramp_to_3000_FQS0 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS1) run_test cl_ramp_to_3000_FQS1 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS2) run_test cl_ramp_to_3000_FQS2 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -920,7 +812,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_FQS5) run_test cl_ramp_to_3000_FQS5 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS6) run_test cl_ramp_to_3000_FQS6 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
@@ -938,7 +830,7 @@ if [ -n "$1" ]; then
         o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DCPU_DEEP_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;

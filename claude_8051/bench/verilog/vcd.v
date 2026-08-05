@@ -134,15 +134,29 @@ assign    r1c = `TB.i8051_top.u_cpu.iram[7'h1c];
 assign    r1d = `TB.i8051_top.u_cpu.iram[7'h1d];
 assign    r1e = `TB.i8051_top.u_cpu.iram[7'h1e];
 assign    r1f = `TB.i8051_top.u_cpu.iram[7'h1f];
+assign    r20 = `TB.i8051_top.u_cpu.iram[32];
+assign    r21 = `TB.i8051_top.u_cpu.iram[33];
 assign    r22 = `TB.i8051_top.u_cpu.iram[34];
 assign    r23 = `TB.i8051_top.u_cpu.iram[35];
+assign    r24 = `TB.i8051_top.u_cpu.iram[36];
+assign    r25 = `TB.i8051_top.u_cpu.iram[37];
+assign    r26 = `TB.i8051_top.u_cpu.iram[38];
+assign    r27 = `TB.i8051_top.u_cpu.iram[39];
+assign    r28 = `TB.i8051_top.u_cpu.iram[40];
+assign    r29 = `TB.i8051_top.u_cpu.iram[41];
+assign    r2a = `TB.i8051_top.u_cpu.iram[42];
 assign    r2b = `TB.i8051_top.u_cpu.iram[43];
 assign    r2d = `TB.i8051_top.u_cpu.iram[45];
 assign    r2f = `TB.i8051_top.u_cpu.iram[47];
 
+assign    r30 = `TB.i8051_top.u_cpu.iram[48];
+assign    r31 = `TB.i8051_top.u_cpu.iram[49];
+assign    r32 = `TB.i8051_top.u_cpu.iram[50];
+assign    r33 = `TB.i8051_top.u_cpu.iram[51];
 assign    r34 = `TB.i8051_top.u_cpu.iram[52];
 assign    r36 = `TB.i8051_top.u_cpu.iram[54];
 assign    r37 = `TB.i8051_top.u_cpu.iram[55];
+assign    r3c = `TB.i8051_top.u_cpu.iram[7'h3C];
 assign    r3d = `TB.i8051_top.u_cpu.iram[7'h3D];
 assign    r3f = `TB.i8051_top.u_cpu.iram[63];
 
@@ -247,8 +261,14 @@ end
 //$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
-
 `ifdef CPU_DEBUG
+`define DO_CPU_DEBUG_DUMP
+`endif
+`ifdef CPU_DEEP_DEBUG
+`define DO_CPU_DEBUG_DUMP
+`endif
+
+`ifdef DO_CPU_DEBUG_DUMP
 $dumpvars(1,`TB);
 $dumpvars(1,`TB.i8051_top.u_cpu);
 $dumpvars(0,`TB.u_dumpvcd);
