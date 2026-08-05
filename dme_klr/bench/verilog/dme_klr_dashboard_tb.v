@@ -68,8 +68,12 @@ module dme_klr_dashboard_tb;
             $write("DME: [DS] %0d,", `DME_KLR_MS);
             for (i = 0; i < 128; i = i + 1)
                 $write("%02h", u_dme.i8051_top.u_cpu.iram[i[6:0]]);
-            $write(",%02h%02h%02h", u_dme.p1, u_dme.p2,
-               {u_dme.p3[7:6], u_dme.t1, u_dme.t0, u_dme.speed_sensor, u_dme.reference_sensor, u_dme.p3[1:0]});
+            // Source input-only pins from driven *_in signals (not the CPU
+            // output latch) so O2 (P1.7:6) and serial (P3.1:0) don't emit X.
+            $write(",%02h%02h%02h",
+               {u_dme.p1_in[7:6], u_dme.p1[5:0]},
+               u_dme.p2,
+               {u_dme.p3[7:6], u_dme.t1, u_dme.t0, u_dme.speed_sensor, u_dme.reference_sensor, u_dme.p3_in[1:0]});
 	    //$write(",%02h%02h%02h", u_dme.p1, u_dme.p2, u_dme.p3_in);
             $write(",%0d\n", u_dme.ref_rpm);
 
