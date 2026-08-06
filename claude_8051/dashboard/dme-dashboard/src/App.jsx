@@ -770,10 +770,18 @@ export default function DMEDashboard() {
       if (rawAir     !== null) lastAir     = rawAir;
       // AFM from STATUS shadow register (afm_raw_shadow) — always correct.
       // _prevAfm is set only from STATUS snapshots in parseLog.
+      // AFM: prefer the STATUS shadow register (_prevAfm) when present, but
+      // fall back to the DS snapshot's iram[0x10] so the series still populates
+      // on logs that have no STATUS lines (e.g. combined DME+KLR dash logs).
       const afmPrev  = lastAfm;
-      if (s._prevAfm != null) lastAfm = s._prevAfm;
+      const afmSrc   = (s._prevAfm != null) ? s._prevAfm
+                     : (ir[0x10]   != null) ? ir[0x10]
+                     : null;
+      if (afmSrc !== null) lastAfm = afmSrc;
       const afmNow   = lastAfm;
       const afmDelta = (afmNow !== null && afmPrev !== null) ? afmNow - afmPrev : 0;
+
+
       return {
         t:         s.t,
         fuel,
