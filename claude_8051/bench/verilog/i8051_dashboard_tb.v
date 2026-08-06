@@ -102,26 +102,32 @@
   `define RPMEND    840
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  60000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_COLD_START
   `define RPMRAMP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  120000000000
+  `endif
   `define _COOLANT_RAW  8'hC0
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_HOT_IDLE
@@ -129,13 +135,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  25000000000
+  `endif
   `define _COOLANT_RAW  8'h10
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_IDLE_BATTERY_LOW
@@ -143,13 +152,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'h8C
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_IDLE_HIGH_ALT
@@ -157,13 +169,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'h00
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_IDLE_POOR_FUEL
@@ -171,13 +186,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_AC_ON_IDLE
@@ -186,13 +204,16 @@
   `define AC_COMP_ON                 // T1=1: AC compressor active
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  10000000000      // 10s — enough to see ISV and fuel response to AC load
+  `endif
   `define _COOLANT_RAW  8'h20        // warm engine
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_3000
@@ -201,13 +222,16 @@
   `define CL_MODE
   `define AFM_CL_RAMP
   `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72 (114)
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_6000
@@ -216,13 +240,16 @@
   `define CL_MODE
   `define AFM_CL_RAMP
   `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA (218)
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_CL_RAMP_TO_REDLINE
@@ -231,13 +258,16 @@
   `define CL_MODE
   `define AFM_CL_RAMP
   `define AFM_CL_TARGET  8'hEB      // 6500 RPM → ADC=0xEB (235, max)
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  40000000000     // 40s
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_CL_AC_HALFWAY
@@ -245,25 +275,31 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2 (~10s)
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  20000000000     // 20s — 10s pre-AC, 10s with AC
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_CL_COLD_START
   `define RPMRAMP
   `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  60000000000     // 60s — observe cold enrichment decay
+  `endif
   `define _COOLANT_RAW  8'hC0       // cold — above 0x8F threshold for cold-start enrich
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_TIPPY_IN
@@ -274,13 +310,18 @@
   `define RPMEND    840              // hold at idle — AFM spike drives enrichment, not RPM
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
-  `undef  SIM_TIME
-  `define SIM_TIME  10000000000
+  `ifndef SIM_TIME
+  `define SIM_TIME  20000000000      // 20s — DFCO decay after the AFM spike
+                                      // needs more than 10s to fully return
+                                      // to idle before steady-state is judged
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_OVERRUN_CUTOFF
@@ -290,26 +331,32 @@
   `define RPMEND    840
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 10
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  30000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_WARMUP_ENRICHMENT
   `define RPMRAMP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  60000000000
+  `endif
   `define _COOLANT_RAW  8'hC0
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_AFM_OPEN_CIRCUIT
@@ -318,13 +365,16 @@
   `define AFM_FAULT
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_COOLANT_FAIL
@@ -332,13 +382,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_AIRTEMP_FAIL
@@ -346,13 +399,16 @@
   `define SKIP_LAMBDA_WARMUP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot air
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_O2_DISCONNECTED
@@ -361,13 +417,16 @@
   `define O2_FLAT_RICH
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  25000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_O2_RICH_STUCK
@@ -376,13 +435,16 @@
   `define O2_FLAT_RICH
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  25000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_O2_LEAN_STUCK
@@ -391,13 +453,16 @@
   `define O2_FLAT_LEAN
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  25000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_TPS_FAIL
@@ -406,13 +471,16 @@
   `define TPS_FIXED 8'h80
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  5000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_3000
@@ -422,13 +490,16 @@
   `define RPMEND    3000
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 50
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  10000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_6000
@@ -438,13 +509,16 @@
   `define RPMEND    6000
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 25
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  10000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_RAMP_TO_REDLINE
@@ -454,13 +528,16 @@
   `define RPMEND    6500
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 25
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  10000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_RAMP_6K_HOLD
@@ -470,13 +547,16 @@
   `define RPMEND    6000
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 25
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  15000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_IGNITION_TIMING
@@ -486,13 +566,16 @@
   `define RPMEND    6000
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 50
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  15000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_DWELL_SCALING
@@ -502,26 +585,32 @@
   `define RPMEND    6000
   `undef  RPM_RAMP_PCT
   `define RPM_RAMP_PCT 80
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  15000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_ISV_COLD_IDLE
   `define RPMRAMP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  60000000000
+  `endif
   `define _COOLANT_RAW  8'h60
   `define _AIRTEMP_RAW  8'h70
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 `ifdef TEST_ISV_LOAD_DROOP
@@ -530,13 +619,16 @@
   `define ISV_LOAD_DROOP
   `undef  RPMEND
   `define RPMEND    840
-  `undef  SIM_TIME
+  `ifndef SIM_TIME
   `define SIM_TIME  12000000000
+  `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
-  `define _FUEL_QUAL    8'h80
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
 `endif
 
 // ============================================================
@@ -555,7 +647,7 @@
   `define _ALTITUDE     8'hF8
 `endif
 `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h80
+  `define _FUEL_QUAL    8'h00
 `endif
 
 // ============================================================
@@ -800,12 +892,37 @@ end
 
 wire [7:0] afm_wiper;
 // Idle switch derived from airflow: grounded (0) at idle, open (1) just
-// off idle.  afm_wiper idle = 0x28; opens at 0x2A.  This is the throttle
-// idle-stop contact — internal because afm_wiper is generated in this TB.
-wire idle_sw = (afm_wiper >= 8'h2A);
+// off idle.  This is the throttle idle-stop contact — internal because
+// afm_wiper/afm_tippy/afm_cl are all generated in this TB.
+//
+// idle_sw must track whichever signal is actually driving the AFM ADC
+// channel (adc_mux case 3'b000 below) — NOT always afm_wiper. Under
+// AFM_TIPPY/AFM_CL_RAMP the real AFM reading comes from an override
+// signal (afm_tippy / afm_cl) that afm_wiper knows nothing about;
+// wiring idle_sw to afm_wiper unconditionally desyncs TPS from the
+// AFM event it's supposed to follow (e.g. tippy_in/cl_tippy_in: AFM
+// steps via afm_tippy while afm_wiper — and hence TPS — moves on its
+// own unrelated timeline).
+`ifdef AFM_FAULT
+wire [7:0] afm_effective = 8'hFF;
+`elsif AFM_CL_RAMP
+wire [7:0] afm_effective = afm_cl;
+`elsif AFM_TIPPY
+wire [7:0] afm_effective = afm_tippy;
+`else
+wire [7:0] afm_effective = afm_wiper;
+`endif
+
+wire idle_sw = (afm_effective >= `AFM_IDLE_THR);
 reg  [7:0] adc_mux;
 
-always @(p2[2:0] or afm_wiper) begin
+// NOTE: was previously `@(p2[2:0] or afm_wiper)`. Now that idle_sw can
+// depend on afm_tippy/afm_cl (not just afm_wiper) under AFM_TIPPY/
+// AFM_CL_RAMP, an explicit sensitivity list would go stale on every
+// signal that idle_sw transitively depends on unless each one is added
+// here too. `always @(*)` re-evaluates on any input change and avoids
+// re-introducing the same class of staleness bug this file just had.
+always @(*) begin
     case (p2[2:0])
 `ifdef AFM_FAULT
         3'b000: adc_mux = 8'hFF;
@@ -916,7 +1033,7 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
     .afm_wiper ( afm_wiper        )
 );
 `else
-// Open-loop RPM ramp — default
+// Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
 var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
@@ -987,7 +1104,7 @@ end // lambda_warmup_skip
 `ifdef SKIP_LAMBDA_WARMUP
 initial begin
     wait (rst === 1'b1);
-    #1;
+    @(posedge clk);  // one cycle; vlt ignores #delays in initial blocks
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
 end
@@ -1102,9 +1219,53 @@ end
 // ============================================================
 //  PHASE MONITOR (inlined — same events as phase_monitor.v)
 // ============================================================
+// ── NTC linearised-value → degrees Celsius ──────────────────────
+function automatic integer ntc_celsius;
+    input [7:0] lin;
+    integer diff;
+    begin
+        diff = $signed(9'd0 + lin) - 143;
+        ntc_celsius = 10 + (diff * 70) / 79;
+    end
+endfunction
+
+// Shadow registers — prevent ADC bleed in STATUS snapshots
+integer cool_c_disp;
+integer air_c_disp;
+reg [7:0] isv_shadow;
+reg [7:0] afm_raw_shadow;
+reg [7:0] coolant_shadow;
+reg [7:0] airtemp_shadow;
+reg [63:0] ph_status_next_snap;
+
+always @(posedge clk) begin : isv_shadow_track
+    if (!rst) isv_shadow <= 8'h00;
+    else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] <= 8'h40)
+        isv_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F];
+end
+
+always @(posedge clk) begin : afm_raw_track
+    if (!rst) afm_raw_shadow <= 8'h00;
+    else
+        afm_raw_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h10];
+end
+
+always @(posedge clk) begin : ntc_shadow_track
+    if (!rst) begin
+        coolant_shadow <= 8'hFF;
+        airtemp_shadow <= 8'hFF;
+    end else begin
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13] >= 8'h80)
+            coolant_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13];
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12] >= 8'h80)
+            airtemp_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12];
+    end
+end
+
 reg ph_sync_prev, ph_fuelcut_prev, ph_lambdaok_prev;
 reg ph_coldenrich_prev, ph_coldtiming_prev, ph_isvovf_prev;
 reg ph_usemap_prev, ph_intblock_prev;
+reg ph_intblock_set_seen;  // guards "cleared" until "set" has fired
 
 initial begin
     ph_sync_prev       = 1'b0;
@@ -1113,8 +1274,19 @@ initial begin
     ph_coldenrich_prev = 1'b0;
     ph_coldtiming_prev = 1'b0;
     ph_isvovf_prev     = 1'b0;
-    ph_usemap_prev     = 1'b0;
-    ph_intblock_prev   = 1'b0;
+    ph_usemap_prev         = 1'b0;
+    ph_intblock_set_seen   = 1'b0;
+    // NOTE: vlt inits all regs to 0; iverilog inits to X.
+    // The firmware sets iram[23h].4=1 at power-on (interrupt block).
+    // Pre-arm prev=1 so we only need to detect the falling edge.
+    ph_intblock_prev   = 1'b1;
+    cool_c_disp         = 9999;
+    air_c_disp          = 9999;
+    isv_shadow          = 8'hFF;
+    afm_raw_shadow      = 8'h00;
+    coolant_shadow      = 8'hFF;
+    airtemp_shadow      = 8'hFF;
+    ph_status_next_snap = 64'd18000;
 end
 
 always @(posedge clk) begin  // phase_monitor
@@ -1126,8 +1298,9 @@ always @(posedge clk) begin  // phase_monitor
         ph_coldenrich_prev <= 1'b0;
         ph_coldtiming_prev <= 1'b0;
         ph_isvovf_prev     <= 1'b0;
-        ph_usemap_prev     <= 1'b0;
-        ph_intblock_prev   <= 1'b0;
+        ph_usemap_prev       <= 1'b0;
+        ph_intblock_prev     <= 1'b1;  // firmware sets this bit at power-on
+        ph_intblock_set_seen <= 1'b0;
     end else if (!snapshot_busy) begin
 
         // EngineSync  iram[21h].0
@@ -1136,10 +1309,12 @@ always @(posedge clk) begin  // phase_monitor
         ph_sync_prev <= `IRAM(21)[0];
 
         // IntBlock  iram[23h].4 — set at power-on, cleared when engine synced
-        if (`IRAM(23)[4] && !ph_intblock_prev)
+        if (`IRAM(23)[4] && !ph_intblock_prev) begin
             $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK set      (watchdog or power-on reset)",
                      `DME_MS);
-        if (!`IRAM(23)[4] && ph_intblock_prev)
+            ph_intblock_set_seen <= 1'b1;
+        end
+        if (!`IRAM(23)[4] && ph_intblock_prev && ph_intblock_set_seen)
             $display("DME: [PHASE] t=%0d ms  INTERRUPT BLOCK cleared  (engine synced — fully running)",
                      `DME_MS);
         ph_intblock_prev <= `IRAM(23)[4];
@@ -1189,6 +1364,33 @@ always @(posedge clk) begin  // phase_monitor
             $display("DME: [PHASE] t=%0d ms  ISV OVERFLOW end             (isv_step=0x%02X)",
                      `DME_MS, `IRAM(7F));
         ph_isvovf_prev <= `IRAM(20)[5];
+
+        // ── Periodic STATUS — every 100ms ─────────────────────────
+        if (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= ph_status_next_snap) begin
+            cool_c_disp = (coolant_shadow == 8'hFF) ? 9999 : ntc_celsius(coolant_shadow);
+            air_c_disp  = (airtemp_shadow == 8'hFF) ? 9999 : ntc_celsius(airtemp_shadow);
+            $display("DME: [STATUS] t=%0d ms  prpm(37)=0x%02X (%0d RPM)  fuel_hb(4B)=0x%02X  fuel_lb(4A)=0x%02X  afm_raw(10)=0x%02X  afm_peak(3D)=0x%02X  load(46:47)=0x%02X%02X  load_idx(49)=0x%02X  coolant(13)=0x%02X (%0d degC)  airtemp(12)=0x%02X (%0d degC)  dwell(2F)=0x%02X  timing_adv(31)=0x%02X  isv(7F)=0x%02X  wdog(2A)=0x%02X  B(F0)=0x%02X  wu(58:59)=0x%02X%02X  flags(21)=0x%02X (23)=0x%02X (25)=0x%02X",
+                `DME_MS,
+                `IRAM(37),
+                `IRAM(37) * 40,
+                `IRAM(4B),
+                `IRAM(4A),
+                afm_raw_shadow,
+                `IRAM(3D),
+                `IRAM(46), `IRAM(47),
+                `IRAM(49),
+                coolant_shadow, cool_c_disp,
+                airtemp_shadow, air_c_disp,
+                `IRAM(2F),
+                `IRAM(31),
+                isv_shadow,
+                `IRAM(2A),
+                i8051_dashboard_tb.i8051_top.u_cpu.b_reg,
+                `IRAM(58), `IRAM(59),
+                `IRAM(21), `IRAM(23), `IRAM(25));
+            ph_status_next_snap <= ph_status_next_snap + 64'd600_000;
+            $fflush();
+        end
 
     end
 end
