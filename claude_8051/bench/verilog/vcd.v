@@ -33,12 +33,18 @@ wire [7:0] rb0_0,rb0_1,rb0_2,rb0_3,rb0_4,rb0_5,rb0_6,rb0_7;
 wire [7:0] rb1_0,rb1_1,rb1_2,rb1_3,rb1_4,rb1_5,rb1_6,rb1_7;
 wire [7:0] rb2_0,rb2_1,rb2_2,rb2_3,rb2_4,rb2_5,rb2_6,rb2_7;
 wire [7:0] rb3_0,rb3_1,rb3_2,rb3_3,rb3_4,rb3_5,rb3_6,rb3_7;
-wire [7:0] r22,r23,r2b,r2d,r2f,r34,r36,r37,r3d,r3f,r42,r43,r44,r45,r46,r47,r48,r49,r4a,r4b,r4c,r4d,r4e,r4f,r53,r54,r58,r59,r7f;
 
 wire [7:0] r00,r01,r02,r03,r04,r05,r06,r07;
 wire [7:0] r08,r09,r0a,r0b,r0c,r0d,r0e,r0f;
 wire [7:0] r10,r11,r12,r13,r14,r15,r16,r17;
 wire [7:0] r18,r19,r1a,r1r,r1c,r1d,r1e,r1f;
+wire [7:0] r20,r21,r22,r23,r24,r25,r26,r27;
+wire [7:0] r28,r29,r2a,r2b,r2c,r2d,r2e,r2f;
+wire [7:0] r30,r31,r32,r33,r34,r35,r36,r37;
+wire [7:0] r38,r39,r3a,r3b,r3c,r3d,r3e,r3f;
+wire [7:0] r40,r41,r42,r43,r44,r45,r46,r47;
+wire [7:0] r48,r49,r4a,r4b,r4c,r4d,r4e,r4f;
+wire [7:0] r53,r54,r58,r59,r7f;
 
 wire b00,b01,b02,b03,b04,b05,b06,b07;
 wire b08,b09,b0a,b0b,b0c,b0d,b0e,b0f;
@@ -49,7 +55,6 @@ wire b28,b29,b2a,b2b,b2c,b2d,b2e,b2f;
 
 wire [4:0] rb = {`TB.i8051_top.u_cpu.psw[4],
                           `TB.i8051_top.u_cpu.psw[3], 3'b000};
-
 wire [7:0] r0 = `TB.i8051_top.u_cpu.iram[rb+0];
 wire [7:0] r1 = `TB.i8051_top.u_cpu.iram[rb+1];
 wire [7:0] r2 = `TB.i8051_top.u_cpu.iram[rb+2];
@@ -146,6 +151,7 @@ assign    r28 = `TB.i8051_top.u_cpu.iram[40];
 assign    r29 = `TB.i8051_top.u_cpu.iram[41];
 assign    r2a = `TB.i8051_top.u_cpu.iram[42];
 assign    r2b = `TB.i8051_top.u_cpu.iram[43];
+assign    r2c = `TB.i8051_top.u_cpu.iram[44];
 assign    r2d = `TB.i8051_top.u_cpu.iram[45];
 assign    r2f = `TB.i8051_top.u_cpu.iram[47];
 
@@ -154,6 +160,7 @@ assign    r31 = `TB.i8051_top.u_cpu.iram[49];
 assign    r32 = `TB.i8051_top.u_cpu.iram[50];
 assign    r33 = `TB.i8051_top.u_cpu.iram[51];
 assign    r34 = `TB.i8051_top.u_cpu.iram[52];
+assign    r35 = `TB.i8051_top.u_cpu.iram[53];
 assign    r36 = `TB.i8051_top.u_cpu.iram[54];
 assign    r37 = `TB.i8051_top.u_cpu.iram[55];
 assign    r3c = `TB.i8051_top.u_cpu.iram[7'h3C];
@@ -322,7 +329,10 @@ $dumpvars(1,`TB.A_3_unused_p1_3);
 $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
+$dumpvars(1,`TB.tdc);
 //$dumpvars(1,clk);
+
+
 
 
     clk_count=0;

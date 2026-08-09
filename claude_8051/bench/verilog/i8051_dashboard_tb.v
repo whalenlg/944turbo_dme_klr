@@ -671,7 +671,12 @@ module i8051_dashboard_tb (
     input  wire ign,              // Ignition switch input
     output wire A_1_tach_pulse,   // Tachometer output (P1.1)
     output wire A_5_KLR_ign_out,  // KLR / ignition coil primary (P1.5)
-    input  wire full_load         // Full-load (WOT) switch from KLR → ADC ch6 / TPS
+    input  wire full_load,        // Full-load (WOT) switch from KLR → ADC ch6 / TPS
+    output wire tdc               // Top Dead Center marker (crank model —
+                                   // see var_interrupt_generator/_cl). Driven
+                                   // 0 when RPMRAMP/CL_MODE crank models
+                                   // aren't in use (plain interrupt_generator
+                                   // or NOINT builds have no TDC concept).
 );
 
 `ifndef FRQ_SCALE
@@ -710,6 +715,8 @@ wire [15:0] ext_addr;
 wire        write, write_uart;
 wire        rxd, int_uart, bit_out;
 wire        reference_sensor, speed_sensor;
+wire        tdc_marker;   // drives the tdc output port
+assign      tdc = tdc_marker;
 // T0 (P3.4) and T1 (P3.5) are separate top-level ports on i8051_top —
 // not derived from p3_in. Must be driven explicitly or the timer module
 // sees X and MOV C,bitaddr reads of port-derived bits are corrupted.
@@ -1030,6 +1037,7 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),
     .int_1     ( speed_sensor     ),
+    .tdc       ( tdc_marker       ),
     .afm_wiper ( afm_wiper        )
 );
 `else
@@ -1039,6 +1047,7 @@ var_interrupt_generator var_interrupt_generator_1 (
     .rst       ( rst              ),
     .int_0     ( reference_sensor ),
     .int_1     ( speed_sensor     ),
+    .tdc       ( tdc_marker       ),
     .afm_wiper ( afm_wiper        )
 );
 `endif
@@ -1046,6 +1055,7 @@ var_interrupt_generator var_interrupt_generator_1 (
   `ifdef NOINT
     assign reference_sensor = 1'b1;
     assign speed_sensor     = 1'b1;
+    assign tdc_marker       = 1'b0;   // no crank model in NOINT builds
   `else
 interrupt_generator interrupt_generator_1 (
     .clk   ( clk              ),
@@ -1053,6 +1063,7 @@ interrupt_generator interrupt_generator_1 (
     .int_0 ( reference_sensor ),
     .int_1 ( speed_sensor     )
 );
+    assign tdc_marker = 1'b0;   // plain interrupt_generator has no TDC concept
   `endif
 `endif
 
