@@ -25,6 +25,10 @@ module var_interrupt_generator (
     input  wire clk,        // Fast Master Clock
     input  wire rst,        // Active high reset
     output reg  int_0 /* verilator public */,int_1 /* verilator public */,// The slowing square wave
+    output reg  tdc  /* verilator public */,  // Top Dead Center marker —
+                                               // 21.5 speed-sensor cycles
+                                               // after int_0 falling edge,
+                                               // held for 1 cycle
     output reg  [7:0] afm_wiper // AFM wiper value tracking RPM ramp
 );
     integer period_current = `RPMCONST/`RPMSTART;  // initialised = no Z on afm_wiper at t=0
@@ -36,6 +40,7 @@ module var_interrupt_generator (
     initial begin
         int_0 = 1'b1;
         int_1 = 1'b1;
+        tdc   = 1'b0;
     end
     localparam period_start = `RPMCONST/`RPMSTART;
     localparam period_end =   `RPMCONST/`RPMEND;
@@ -159,20 +164,18 @@ module var_interrupt_generator (
     //    Firmware counts falling edges (INT1 ISR on falling edge).
     //
     //  int_0 (reference_sensor / INT0):
-    //    Single pulse per revolution, 50% duty cycle of one tooth period.
+    //    Single pulse per revolution. HIGH for 45 tooth periods, LOW for
+    //    the remaining 87 tooth periods of the 132-tooth wheel (real DME
+    //    scope measurement — not the 50%/66-tooth figure originally
+    //    assumed here, and not an exact 3/8 fraction either).
     //    Firmware triggers on falling edge (INT0 ISR).
     //
     //  Reference pulse timing:
     //    Falling edge: period/5 clocks before the speed sensor RISING edge,
     //      i.e. tick_counter == period/2 - 1 - period/5  during LOW phase of tooth 0.
     //      At ~909 RPM (0.5ms tooth): period/5 = 600 clocks = 0.1ms.
-    //
-    //    Rising edge: 50% duty cycle = period/2 clocks after the falling edge.
-    //      The LOW phase only provides period/5 clocks remaining, so the
-    //      rising edge spills into the HIGH phase of tooth 0:
-    //        clocks remaining in LOW phase : period/5
-    //        clocks needed in HIGH phase   : period/2 - period/5 = 3*period/10
-    //      Rising edge fires at tick_counter == 3*period/10 - 1 in the HIGH phase.
+    //      (Falling-edge phase/alignment is unchanged — only the LOW
+    //      duration below was adjusted to match the 45-tooth HIGH period.)
     // --------------------------------------------------------
     reg [7:0] counter = 8'd0;   // init: avoids X until first negedge rst
 
@@ -199,12 +202,14 @@ module var_interrupt_generator (
 
     // Reference sensor pulse — clock-accurate edge timing
     //
-    //  The ref pulse is LOW for half a revolution (66 tooth periods),
-    //  falling period/5 clocks before the speed sensor rising edge at
-    //  tooth 0.  This gives a 50% duty cycle across the full 132-tooth
-    //  revolution, matching the scope trace where the ref signal is low
-    //  for roughly half the flywheel rotation.
-    reg [20:0] ref_low_cnt = 21'd0;   // 21-bit: fits up to 66*(2727272/100)
+    //  The ref pulse is LOW for 87 tooth periods (HIGH for the remaining
+    //  45), falling period/5 clocks before the speed sensor rising edge
+    //  at tooth 0. Matches a real DME scope measurement (45-tooth HIGH
+    //  period), not the 50%/66-tooth figure originally used here.
+    reg [21:0] ref_low_cnt = 22'd0;   // 22-bit: fits up to 87*(2727272/100) —
+                                       // widened from 21-bit since 87 > the
+                                       // old 66-tooth multiplier would have
+                                       // overflowed 21 bits at RPMSTART=100
     reg        ref_low_active = 1'b0;
     reg        ref_fired_this_rev = 1'b0;  // latch: ref pulse fired for tooth 0
     // (all initialised — the 0->1 rst pulse at sim start is a posedge, so the
@@ -214,7 +219,7 @@ module var_interrupt_generator (
         if (!rst) begin
             int_0                <= 1'b1;
             ref_low_active       <= 1'b0;
-            ref_low_cnt          <= 21'd0;
+            ref_low_cnt          <= 22'd0;
             ref_fired_this_rev   <= 1'b0;
         end else begin
             // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
@@ -233,14 +238,15 @@ module var_interrupt_generator (
                 int_1_prev == 1'b1 &&
                 !ref_fired_this_rev &&
                 tick_counter_prev >= (period_current/2 - 1 - period_current/5)) begin
-                // Falling edge: hold low for 66 tooth periods
+                // Falling edge: hold low for 87 tooth periods (45-tooth
+                // HIGH period, per real DME scope measurement)
                 int_0              <= 1'b0;
                 ref_low_active     <= 1'b1;
                 ref_fired_this_rev <= 1'b1;
-                ref_low_cnt        <= 66 * period_current - 1;
+                ref_low_cnt        <= 87 * period_current - 1;
             end else if (ref_low_active) begin
                 int_0 <= 1'b0;
-                if (ref_low_cnt == 21'd0) begin
+                if (ref_low_cnt == 22'd0) begin
                     int_0          <= 1'b1;
                     ref_low_active <= 1'b0;
                 end else begin
@@ -248,6 +254,74 @@ module var_interrupt_generator (
                 end
             end else begin
                 int_0 <= 1'b1;
+            end
+        end
+    end
+
+    // ------------------------------------------------------------
+    //  TDC (Top Dead Center) marker
+    //  Asserted on the 22nd FALLING edge of int_1 (speed sensor) after
+    //  the reference sensor (int_0) falling edge, held for 1 more full
+    //  speed-sensor cycle (deasserted on the 23rd falling edge).
+    //
+    //  Counts int_1 FALLING edges only — same convention int_0 itself
+    //  uses to transition (see ref_sensor_gen: triggers on int_1's
+    //  falling edge) — so tdc's assert/deassert points land on exactly
+    //  the same class of edge as the reference pulse, not an arbitrary
+    //  half-tooth point. Counting actual edges (not a clock-length
+    //  countdown) is also immune to period_current changing between
+    //  pulses, which a fixed-clock-count approach is not.
+    //
+    //  Armed directly off int_0's own falling edge (not off the internal
+    //  ref_sensor_gen state machine), so this block is fully independent
+    //  and can't interact with or destabilize the ref-pulse logic above.
+    //  22+1 = 23 tooth periods total span is well inside one 132-tooth
+    //  revolution, so there's no risk of overlapping into the next rev.
+    // ------------------------------------------------------------
+    localparam TDC_DELAY_PULSES  = 22;  // falling edges of int_1 before assert
+    localparam TDC_ACTIVE_PULSES = 1;   // falling edges of int_1 held asserted
+
+    reg       int_0_prev_tdc = 1'b1;
+    reg       int_1_prev_tdc = 1'b1;
+    reg       tdc_pending    = 1'b0;
+    reg       tdc_active     = 1'b0;
+    reg [7:0] tdc_pulse_cnt  = 8'd0;   // falling edges counted since arming/asserting
+
+    always @(posedge clk) begin : tdc_gen
+        if (!rst) begin
+            tdc            <= 1'b0;
+            int_0_prev_tdc <= 1'b1;
+            int_1_prev_tdc <= 1'b1;
+            tdc_pending    <= 1'b0;
+            tdc_active     <= 1'b0;
+            tdc_pulse_cnt  <= 8'd0;
+        end else begin
+            int_0_prev_tdc <= int_0;
+            int_1_prev_tdc <= int_1;
+
+            if (int_0 == 1'b0 && int_0_prev_tdc == 1'b1) begin
+                // int_0 falling edge — arm the TDC pulse-count
+                tdc_pending   <= 1'b1;
+                tdc_pulse_cnt <= 8'd0;
+            end else if (tdc_pending && int_1 == 1'b0 && int_1_prev_tdc == 1'b1) begin
+                // int_1 falling edge, counted while pending
+                if (tdc_pulse_cnt == TDC_DELAY_PULSES - 1) begin
+                    tdc           <= 1'b1;
+                    tdc_pending   <= 1'b0;
+                    tdc_active    <= 1'b1;
+                    tdc_pulse_cnt <= 8'd0;
+                end else begin
+                    tdc_pulse_cnt <= tdc_pulse_cnt + 1'b1;
+                end
+            end else if (tdc_active && int_1 == 1'b0 && int_1_prev_tdc == 1'b1) begin
+                // int_1 falling edge, counted while asserted
+                if (tdc_pulse_cnt == TDC_ACTIVE_PULSES - 1) begin
+                    tdc           <= 1'b0;
+                    tdc_active    <= 1'b0;
+                    tdc_pulse_cnt <= 8'd0;
+                end else begin
+                    tdc_pulse_cnt <= tdc_pulse_cnt + 1'b1;
+                end
             end
         end
     end

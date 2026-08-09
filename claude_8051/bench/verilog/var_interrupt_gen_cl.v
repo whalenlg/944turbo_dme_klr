@@ -103,16 +103,33 @@
 `ifndef CL_FUEL_SCALE
   `define CL_FUEL_SCALE  14   // idle ~1.97ms → combustion≈27 > friction=26 → net≈+1
 `endif
+`ifndef CL_FUEL_ENERGY_PCT
+  `define CL_FUEL_ENERGY_PCT 0  // FQS: manual fuel-quality switch the driver
+                                 // sets when fuel is off-spec. Positive = weak
+                                 // fuel (firmware widens the injector pulse to
+                                 // compensate) => LOWER energy density per unit
+                                 // of pulse width. Negative = potent fuel =>
+                                 // HIGHER energy density. Defaults to 0 (normal
+                                 // fuel, FQS position 0) if not overridden.
+`endif
 `ifndef CL_FRICTION_RPM2_DIV
-  `define CL_FRICTION_RPM2_DIV   760000   // quadratic term: rpm*rpm/DIV — fit
-                                           // through idle+3000, loosened from
-                                           // 675819 after the full FQS batch
-                                           // showed cl_ramp_to_3000_FQS4 (leaner
-                                           // real fuel than the baseline anchor)
-                                           // failing by 32rpm — this gives every
-                                           // observed 3000-family variant real
-                                           // margin (~57rpm+) instead of an exact
-                                           // single-point fit with zero slack.
+  `define CL_FRICTION_RPM2_DIV   890000   // quadratic term: rpm*rpm/DIV — fit
+                                           // through idle+3000. Re-tuned again:
+                                           // the previous 760000 was margin-
+                                           // checked with base=25 in the search
+                                           // script, but base=26 was what actually
+                                           // shipped (needed for exact idle
+                                           // match) — that mismatch was never
+                                           // re-verified, silently costing the
+                                           // 3000 family ~140rpm of margin
+                                           // uniformly. Real CL_TRAJ data on
+                                           // cl_ramp_to_3000_FQS2 confirmed a
+                                           // genuine, stable equilibrium at
+                                           // ~2610rpm (not a coupling/drift
+                                           // issue — net dithers tightly around
+                                           // 0, friction matched the formula
+                                           // exactly). This value was margin-
+                                           // checked with the ACTUAL base=26.
 `endif
 `ifndef CL_FRICTION_HIGHRPM_THRESHOLD
   `define CL_FRICTION_HIGHRPM_THRESHOLD  4000  // cubic term is exactly zero at/below
@@ -121,14 +138,12 @@
                                                 // touch that anchor's margin at all.
 `endif
 `ifndef CL_FRICTION_CUBIC_DIV
-  `define CL_FRICTION_CUBIC_DIV  400000000  // cubic term: (rpm-THRESHOLD)^3/DIV,
+  `define CL_FRICTION_CUBIC_DIV  320000000  // cubic term: (rpm-THRESHOLD)^3/DIV,
                                              // only applied above THRESHOLD.
                                              // Re-tuned alongside CL_FRICTION_RPM2_DIV
-                                             // to keep cl_ramp_to_6000's full FQS
-                                             // range (including the richest +6%
-                                             // variant) comfortably under the
-                                             // 6600 ceiling after loosening the
-                                             // shared quadratic term for 3000.
+                                             // (see that comment) with base=26
+                                             // held fixed throughout the search
+                                             // this time.
 `endif
 
 
@@ -150,6 +165,10 @@ module var_interrupt_generator_cl (
     input  wire rst,
     output reg  int_0 /* verilator public */,
     output reg  int_1 /* verilator public */,
+    output reg  tdc   /* verilator public */,  // Top Dead Center marker —
+                                                // 21.5 speed-sensor cycles
+                                                // after int_0 falling edge,
+                                                // held for 1 cycle
     output reg  [7:0] afm_wiper
 );
 
@@ -190,6 +209,7 @@ module var_interrupt_generator_cl (
         fuel_ms_x100    = 0;
         int_0           = 1'b1;
         int_1           = 1'b1;
+        tdc             = 1'b0;
     end
 
     // ── Speed sensor ─────────────────────────────────────────────
@@ -242,7 +262,10 @@ module var_interrupt_generator_cl (
     // instant, which would cause the live CL_IRAM(21) read to return 0 on
     // every event and permanently hold RPM at target.
     reg        synced_once;
-    reg [20:0] ref_low_cnt;
+    reg [21:0] ref_low_cnt;   // 22-bit: fits up to 87*(2727272/100) —
+                               // widened from 21-bit since 87 > the old
+                               // 66-tooth multiplier would have overflowed
+                               // 21 bits at RPMSTART=100
     reg        ref_low_active;
     reg        ref_fired_this_rev;   // once-per-rev latch for the ref pulse
 
@@ -263,7 +286,7 @@ module var_interrupt_generator_cl (
         if (!rst) begin
             int_0          <= 1'b1;
             ref_low_active <= 1'b0;
-            ref_low_cnt    <= 21'd0;
+            ref_low_cnt    <= 22'd0;
             ref_fired_this_rev <= 1'b0;
             rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
             period_current <= `RPMCONST / `CL_RPM_TARGET;
@@ -283,10 +306,13 @@ module var_interrupt_generator_cl (
                 !ref_fired_this_rev &&
                 tick_counter_prev >= (period_current/2 - 1 - period_current/5)) begin
 
+                // Falling edge: hold low for 87 tooth periods (45-tooth
+                // HIGH period, per real DME scope measurement — not the
+                // 50%/66-tooth figure this was originally based on).
                 int_0          <= 1'b0;
                 ref_low_active <= 1'b1;
                 ref_fired_this_rev <= 1'b1;
-                ref_low_cnt    <= 66 * period_current - 1;
+                ref_low_cnt    <= 87 * period_current - 1;
 
                 // ── Torque update ─────────────────────────────────
                 fuel_sample = {`CL_IRAM(4B), `CL_IRAM(4A)};
@@ -308,7 +334,18 @@ module var_interrupt_generator_cl (
                     rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
                     period_current <= `RPMCONST / `CL_RPM_TARGET;
                 end else begin
-                    combustion = (fuel_sample / 5 * `CL_FUEL_SCALE) / 100;
+                    // Fuel-quality compensation (FQS driver switch): firmware
+                    // widens/narrows the injector pulse to compensate for
+                    // off-spec fuel, so a working compensation system should
+                    // deliver roughly the SAME combustion energy regardless
+                    // of fuel quality — not more energy just because the
+                    // pulse got wider. Scale by the inverse of the pulse-
+                    // width compensation (CL_FUEL_ENERGY_PCT) so richer
+                    // pulse width (weak fuel, +pct) and leaner pulse width
+                    // (potent fuel, -pct) roughly cancel, leaving combustion
+                    // close to the FQS0/normal-fuel baseline. Deliberately
+                    // imperfect — real compensation isn't exact either.
+                    combustion = (fuel_sample / 5 * `CL_FUEL_SCALE * 100) / (100 + `CL_FUEL_ENERGY_PCT) / 100;
 
                     friction = `CL_FRICTION;
                     if (`CL_TB.t1 == 1'b1)
@@ -361,7 +398,7 @@ module var_interrupt_generator_cl (
 
             end else if (ref_low_active) begin
                 int_0 <= 1'b0;
-                if (ref_low_cnt == 21'd0) begin
+                if (ref_low_cnt == 22'd0) begin
                     int_0          <= 1'b1;
                     ref_low_active <= 1'b0;
                 end else begin
@@ -369,6 +406,76 @@ module var_interrupt_generator_cl (
                 end
             end else begin
                 int_0 <= 1'b1;
+            end
+        end
+    end
+
+    // ------------------------------------------------------------
+    //  TDC (Top Dead Center) marker
+    //  Asserted on the 22nd FALLING edge of int_1 (speed sensor) after
+    //  the reference sensor (int_0) falling edge, held for 1 more full
+    //  speed-sensor cycle (deasserted on the 23rd falling edge).
+    //
+    //  Counts int_1 FALLING edges only — same convention int_0 itself
+    //  uses to transition (see the ref-pulse logic above: triggers on
+    //  int_1's falling edge) — so tdc's assert/deassert points land on
+    //  exactly the same class of edge as the reference pulse, not an
+    //  arbitrary half-tooth point. Counting actual edges (not a clock-
+    //  length countdown) is also immune to period_current changing
+    //  between pulses — which happens essentially every cycle here,
+    //  since RPM is a live physics output, not just during a scripted
+    //  ramp — whereas a fixed-clock-count approach is not immune to it.
+    //
+    //  Armed directly off int_0's own falling edge (not off the internal
+    //  ref-pulse state machine above), so this block is fully independent
+    //  and can't interact with or destabilize the CL dynamics/ref logic.
+    //  22+1 = 23 tooth periods total span is well inside one 132-tooth
+    //  revolution, so there's no risk of overlapping into the next rev.
+    // ------------------------------------------------------------
+    localparam TDC_DELAY_PULSES  = 22;  // falling edges of int_1 before assert
+    localparam TDC_ACTIVE_PULSES = 1;   // falling edges of int_1 held asserted
+
+    reg       int_0_prev_tdc = 1'b1;
+    reg       int_1_prev_tdc = 1'b1;
+    reg       tdc_pending    = 1'b0;
+    reg       tdc_active     = 1'b0;
+    reg [7:0] tdc_pulse_cnt  = 8'd0;   // falling edges counted since arming/asserting
+
+    always @(posedge clk) begin : tdc_gen
+        if (!rst) begin
+            tdc            <= 1'b0;
+            int_0_prev_tdc <= 1'b1;
+            int_1_prev_tdc <= 1'b1;
+            tdc_pending    <= 1'b0;
+            tdc_active     <= 1'b0;
+            tdc_pulse_cnt  <= 8'd0;
+        end else begin
+            int_0_prev_tdc <= int_0;
+            int_1_prev_tdc <= int_1;
+
+            if (int_0 == 1'b0 && int_0_prev_tdc == 1'b1) begin
+                // int_0 falling edge — arm the TDC pulse-count
+                tdc_pending   <= 1'b1;
+                tdc_pulse_cnt <= 8'd0;
+            end else if (tdc_pending && int_1 == 1'b0 && int_1_prev_tdc == 1'b1) begin
+                // int_1 falling edge, counted while pending
+                if (tdc_pulse_cnt == TDC_DELAY_PULSES - 1) begin
+                    tdc           <= 1'b1;
+                    tdc_pending   <= 1'b0;
+                    tdc_active    <= 1'b1;
+                    tdc_pulse_cnt <= 8'd0;
+                end else begin
+                    tdc_pulse_cnt <= tdc_pulse_cnt + 1'b1;
+                end
+            end else if (tdc_active && int_1 == 1'b0 && int_1_prev_tdc == 1'b1) begin
+                // int_1 falling edge, counted while asserted
+                if (tdc_pulse_cnt == TDC_ACTIVE_PULSES - 1) begin
+                    tdc           <= 1'b0;
+                    tdc_active    <= 1'b0;
+                    tdc_pulse_cnt <= 8'd0;
+                end else begin
+                    tdc_pulse_cnt <= tdc_pulse_cnt + 1'b1;
+                end
             end
         end
     end
