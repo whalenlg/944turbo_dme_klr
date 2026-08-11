@@ -558,12 +558,12 @@ run_test cl_warm_idle \
 
 run_test cl_tippy_in \
     -DTEST_TIPPY_IN \
-    -DRPMRAMP -DCL_MODE \
+    -DRPMRAMP -DCL_MODE  -DCPU_DEBUG -DCPU_DEBUG \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
 run_test cl_ramp_to_3000 \
     -DTEST_CL_RAMP_TO_3000  \
-    -DRPMRAMP -DCPU_DEBUG -DCPU_DEEP_DEBUG -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
 run_test cl_ramp_to_6000 \
@@ -712,7 +712,7 @@ run_test airtemp_fail \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
 run_test o2_disconnected \
-    -DTEST_O2_DISCONNECTED -DO2_FLAT_RICH  -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG -DCPU_DEEP_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
@@ -723,6 +723,11 @@ run_test o2_rich_stuck \
 
 run_test o2_lean_stuck \
     -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN  -DCPU_DEBUG  -DCPU_DEEP_DEBUG \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+
+run_test o2_baseline \
+    -DCPU_DEBUG  -DCPU_DEEP_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
@@ -801,8 +806,8 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
-        cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEEP_DEBUG -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEBUG       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
+        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -834,11 +839,12 @@ if [ -n "$1" ]; then
         afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         coolant_fail)     run_test coolant_fail     $IARG -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         airtemp_fail)     run_test airtemp_fail     $IARG -DTEST_AIRTEMP_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_RICH  -DCPU_DEBUG  -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG  -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH  -DCPU_DEBUG  -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DCPU_DEBUG -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_baseline)      run_test o2_baseline      $IARG                                                        -DCPU_DEBUG -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000      -DCPU_DEBUG  -DCPU_DEEP_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000      -DCPU_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
@@ -858,7 +864,7 @@ if [ -n "$1" ]; then
             echo "               ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
             echo "  Ignition:    ignition_timing dwell_scaling"
             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
-            echo "               o2_disconnected o2_rich_stuck o2_lean_stuck"
+            echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"
             echo "  ISV:         isv_cold_idle isv_load_droop"
             echo "  Closed-loop: cl_warm_idle cl_tippy_in"
             echo "               cl_ramp_to_3000 cl_ramp_to_6000 cl_ramp_to_redline"

@@ -107,6 +107,32 @@ else
     fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} DIFF=${CMP_DIFF:-?} (see /tmp/compare.log)"
 fi
 
+log "Generating detailed compare_sim_logs.py reports for differing tests ..."
+IV_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/dash_logs"
+VL_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/v_dash_logs"
+DIFF_TESTS=$(grep -oP '^\s+(DIFF|ERROR)\s+\K\S+' /tmp/compare.log | sort -u)
+if [ -n "$DIFF_TESTS" ]; then
+    > /tmp/compare_detail.log
+    for t in $DIFF_TESTS; do
+        iv_log="$IV_DASH_DIR/${t}.dash.log"
+        vl_log="$VL_DASH_DIR/${t}.dash.log"
+        if [ -f "$iv_log" ] && [ -f "$vl_log" ]; then
+            log "  compare_sim_logs.py: $t"
+            {
+                echo "===== $t ====="
+                python3 "$DME_KLR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$t" \
+                    -v --plot --plot-dir "$IV_DASH_DIR"
+                echo ""
+            } 2>&1 | tee -a /tmp/compare_detail.log
+        else
+            warn "  skipping $t (log file missing: $iv_log or $vl_log)"
+        fi
+    done
+    log "Per-test detail: /tmp/compare_detail.log   Plots: $IV_DASH_DIR"
+else
+    log "No differing tests — skipping detailed compare_sim_logs.py reports"
+fi
+
 log "Running FQS analysis ..."
 log "Running: python3 fqs_analysis.py"
 python3 fqs_analysis.py 2>&1 | tee /tmp/fqs_analysis.log

@@ -414,7 +414,7 @@
 `ifdef TEST_O2_DISCONNECTED
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `define O2_FLAT_RICH
+  `define O2_FLAT_DISCONNECTED
   `undef  RPMEND
   `define RPMEND    840
   `ifndef SIM_TIME
@@ -990,12 +990,22 @@ adc_delay_8 adc_delay_8_1 (
 );
 
 // ─── O2 sensor ──────────────────────────────────────────────
-`ifdef O2_FLAT_LEAN
-    assign o2_6 = 1'b1;
-    assign o2_7 = 1'b0;
-`elsif O2_FLAT_RICH
+// Encoding (matches o2_gen.v):
+//   Rich (~0.9V):         o2_6=1, o2_7=1
+//   Crossover (~0.5V):    o2_6=1, o2_7=0
+//   Lean (~0.1V):         o2_6=0, o2_7=0
+//   Disconnected (open):  o2_6=0, o2_7=0  — confirmed via analog recovery-
+//                          circuit sim: an open input floats both comparator
+//                          outputs low, electrically identical to Lean.
+`ifdef O2_FLAT_DISCONNECTED
     assign o2_6 = 1'b0;
     assign o2_7 = 1'b0;
+`elsif O2_FLAT_LEAN
+    assign o2_6 = 1'b0;
+    assign o2_7 = 1'b0;
+`elsif O2_FLAT_RICH
+    assign o2_6 = 1'b1;
+    assign o2_7 = 1'b1;
 `else
     wire _o2_6, _o2_7;
     o2_generator o2_generator_1 (

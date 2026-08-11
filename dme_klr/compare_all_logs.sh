@@ -64,6 +64,7 @@ DASH_TESTS=(
     ignition_timing
     isv_cold_idle
     isv_load_droop
+    o2_baseline
     o2_disconnected
     o2_lean_stuck
     o2_rich_stuck
@@ -109,6 +110,7 @@ NONDASH_TESTS=(
     ignition_timing
     isv_cold_idle
     isv_load_droop
+    o2_baseline
     o2_disconnected
     o2_lean_stuck
     o2_rich_stuck

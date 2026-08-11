@@ -40,11 +40,14 @@ TESTS = {
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
     'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+                          'expect_o2':'lean_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+                          'expect_o2':'rich'},
     'o2_lean_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'known_issues':['O2 signal not diverging lambda (firmware issue)']},
+                          'expect_o2':'lean_or_disconnected'},
+    'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'No O2 fault injected — baseline for differential comparison against '
+                                  'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
@@ -183,6 +186,15 @@ def parse_ds(line):
     hb = b(0x4B); lb = b(0x4A)
     f23 = b(0x23)
     fuelcut = (f23 >> 5) & 1
+    # O2 sensor status bytes:
+    #   R3e (iram 0x3E) — raw O2/lambda reading; should vary over time if the
+    #                     sensor is switching normally in closed loop.
+    #   B26 (iram 0x24 bit 6) — when R3e is stuck, distinguishes
+    #                           fixed-lean-or-disconnected (B26=1, these two
+    #                           faults are indistinguishable from this byte
+    #                           alone) from fixed-rich (B26=0)
+    o2_val = b(0x3E)
+    o2_b26 = (b(0x24) >> 6) & 1
     # RPM field: extract leading digits, validate plausible RPM range (0–9000).
     # If the field has extra data concatenated (field misalignment), the integer
     # will be out of range and we fall back to 0 rather than crashing.
@@ -201,7 +213,42 @@ def parse_ds(line):
         'timing_adv': b(0x31),
         'isv': b(0x7F),
         'rpm': rpm,
+        'o2_val': o2_val,
+        'o2_b26': o2_b26,
     }
+
+
+def detect_o2_status(rows):
+    """Classify O2 sensor behaviour from post-startup [DS] snapshots.
+
+    Returns one of 'ok', 'lean_or_disconnected', 'rich', or None if there
+    aren't enough post-startup snapshots to judge.
+
+      R3e changes after startup  -> 'ok' (sensor switching normally)
+      R3e stuck, B26=1           -> 'lean_or_disconnected' (fixed-lean and
+                                     disconnected are indistinguishable from
+                                     this byte alone)
+      R3e stuck, B26=0           -> 'rich'
+    """
+    # "After startup" = everything past the same startup window used
+    # elsewhere in this script for steady-state windows (last/first 20%,
+    # min 10 snapshots) — here taken from the start rather than the end.
+    skip = min(len(rows), max(10, len(rows) // 5))
+    post_startup = rows[skip:]
+    o2_vals = [r['o2_val'] for r in post_startup]
+    if not o2_vals:
+        return None, None, None
+
+    if len(set(o2_vals)) > 1:
+        return 'ok', o2_vals[-1], None
+
+    # R3e is stuck at a constant value — use the last post-startup row's
+    # flag bit (it should be stable once the condition is latched).
+    b26 = post_startup[-1]['o2_b26']
+    if b26 == 1:
+        return 'lean_or_disconnected', o2_vals[-1], b26
+    else:
+        return 'rich', o2_vals[-1], b26
 
 # ─── Main validator ───────────────────────────────────────────────────────────
 
@@ -472,6 +519,25 @@ def validate(test_name, logpath):
             infos.append(f"FQS pos{exp['fqs_pos']} (timing retard -2.77° present — not validated at this RPM)")
         else:
             infos.append(f"FQS pos{exp['fqs_pos']} (no timing retard expected)")
+
+    # ── 16. O2 sensor status check
+    # Detects whether the O2/lambda sensor is switching normally (R3e
+    # varies) or stuck, and if stuck, classifies via B26. Tests that
+    # intentionally inject an O2 fault (o2_disconnected/o2_lean_stuck/
+    # o2_rich_stuck) expect that specific stuck state via 'expect_o2' in
+    # their TESTS entry; every other test defaults to expecting 'ok'.
+    # Note: 'lean_or_disconnected' is a single detected category — B26
+    # alone can't tell a disconnected sensor apart from one stuck lean.
+    o2_status, o2_last_val, o2_b26 = detect_o2_status(rows)
+    expect_o2 = exp.get('expect_o2', 'ok')
+    if o2_status is None:
+        infos.append("O2 check skipped — not enough post-startup DS snapshots")
+    else:
+        o2_desc = o2_status if o2_status == 'ok' else f"{o2_status} (R3e stuck=0x{o2_last_val:02X}, B26={o2_b26})"
+        if o2_status == expect_o2:
+            infos.append(f"O2 {o2_desc} ✓" + ("" if expect_o2 == 'ok' else " (expected fault confirmed)"))
+        else:
+            fails.append(f"O2 status '{o2_status}' does not match expected '{expect_o2}' — {o2_desc}")
 
     # ── Verdict
     detail = ' | '.join(infos)
