@@ -96,21 +96,22 @@ cd "$DME_KLR"
 log "Comparing iverilog vs Verilator logs ..."
 log "Running: bash compare_all_logs.sh"
 bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log
-CMP_MATCH=$(grep -c "MATCH" /tmp/compare.log || true)
-CMP_DIFF=$(grep -c "^  DIFF" /tmp/compare.log || true)
-CMP_TOTAL=$(grep "Complete.*MATCH" /tmp/compare.log | grep -o "MATCH=[0-9]*" | grep -o "[0-9]*" | tail -1)
+CMP_MATCH=$(grep -oE "MATCH=[0-9]+" /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
+CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
+CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
+CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
 if [ "${CMP_DIFF:-0}" -eq 0 ]; then
     ok "iverilog == Verilator — ${CMP_MATCH:-?} tests match"
 elif [ "${CMP_DIFF:-0}" -le 4 ]; then
-    warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} DIFF=${CMP_DIFF:-?} (known timing-sensitive tests)"
+    warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
 else
-    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} DIFF=${CMP_DIFF:-?} (see /tmp/compare.log)"
+    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see /tmp/compare.log)"
 fi
 
 log "Generating detailed compare_sim_logs.py reports for differing tests ..."
 IV_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/dash_logs"
 VL_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/v_dash_logs"
-DIFF_TESTS=$(grep -oP '^\s+(DIFF|ERROR)\s+\K\S+' /tmp/compare.log | sort -u)
+DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' /tmp/compare.log | sort -u)
 if [ -n "$DIFF_TESTS" ]; then
     > /tmp/compare_detail.log
     for t in $DIFF_TESTS; do

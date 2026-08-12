@@ -2,20 +2,18 @@
 # ============================================================
 #  compare_all_logs.sh
 #
-#  Compares all iverilog vs Verilator simulation logs using
-#  compare_sim_logs.py.  Handles both dashboard (.dash.log)
-#  and non-dashboard (.log) files automatically.
+#  Compares all iverilog vs Verilator dashboard (.dash.log)
+#  simulation logs using compare_sim_logs.py.
 #
 #  Usage:
-#    ./compare_all_logs.sh [--nondash] [test1 test2 ...]
+#    ./compare_all_logs.sh [test1 test2 ...]
 #
 #  By default compares all known tests.  Pass test names to
-#  compare a subset.  Use --nondash to compare plain logs
-#  instead of .dash.log files.
+#  compare a subset.
 #
 #  Output:
 #    Prints MATCH/NEAR-MATCH/DIFF/SKIP per test.
-#    Writes summary to $VL_LOGDIR/compare_all.log
+#    Writes summary to $VL_DASH_DIR/compare_all.log
 #    Exit code 0 if all MATCH/NEAR-MATCH, 1 if any DIFF.
 # ============================================================
 
@@ -28,11 +26,8 @@ BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
 
 IV_DASH_DIR="$BASE/dash_logs"
 VL_DASH_DIR="$BASE/v_dash_logs"
-IV_LOG_DIR="$BASE/logs"
-VL_LOG_DIR="$BASE/v_logs"
 
 # ── All known tests ───────────────────────────────────────────
-# Dash tests (have .dash.log files)
 DASH_TESTS=(
     ac_on_idle
     afm_open_circuit
@@ -40,52 +35,14 @@ DASH_TESTS=(
     cl_ac_halfway
     cl_cold_start
     cl_ramp_to_3000
-    cl_ramp_to_6000
-    cl_ramp_to_6000_FQS0
-    cl_ramp_to_6000_FQS1
-    cl_ramp_to_6000_FQS2
-    cl_ramp_to_6000_FQS3
-    cl_ramp_to_6000_FQS4
-    cl_ramp_to_6000_FQS5
-    cl_ramp_to_6000_FQS6
-    cl_ramp_to_6000_FQS7
-    cl_ramp_to_redline
-    cl_tippy_in
-    cl_warm_idle
-    cold_start
-    coolant_fail
-    dme_klr_ramp_to_3000
-    dme_klr_warm_idle
-    dwell_scaling
-    hot_idle
-    idle_battery_low
-    idle_high_alt
-    idle_poor_fuel
-    ignition_timing
-    isv_cold_idle
-    isv_load_droop
-    o2_baseline
-    o2_disconnected
-    o2_lean_stuck
-    o2_rich_stuck
-    overrun_cutoff
-    ramp_6k_hold
-    ramp_to_3000
-    ramp_to_6000
-    ramp_to_redline
-    tps_fail
-    warm_idle
-    warmup_enrichment
-)
-
-# Non-dash tests (plain .log files only)
-NONDASH_TESTS=(
-    ac_on_idle
-    afm_open_circuit
-    airtemp_fail
-    cl_ac_halfway
-    cl_cold_start
-    cl_ramp_to_3000
+    cl_ramp_to_3000_FQS0
+    cl_ramp_to_3000_FQS1
+    cl_ramp_to_3000_FQS2
+    cl_ramp_to_3000_FQS3
+    cl_ramp_to_3000_FQS4
+    cl_ramp_to_3000_FQS5
+    cl_ramp_to_3000_FQS6
+    cl_ramp_to_3000_FQS7
     cl_ramp_to_6000
     cl_ramp_to_6000_FQS0
     cl_ramp_to_6000_FQS1
@@ -126,30 +83,17 @@ NONDASH_TESTS=(
 
 # ── Parse arguments ───────────────────────────────────────────
 MODE="--dash"
-if [ "$1" = "--nondash" ]; then
-    MODE="--nondash"
-    shift
-fi
 
 if [ $# -gt 0 ]; then
     TESTS=("$@")
-elif [ "$MODE" = "--nondash" ]; then
-    TESTS=("${NONDASH_TESTS[@]}")
 else
     TESTS=("${DASH_TESTS[@]}")
 fi
 
-if [ "$MODE" = "--nondash" ]; then
-    IV_DIR="$IV_LOG_DIR"
-    VL_DIR="$VL_LOG_DIR"
-    SUFFIX=".log"
-    OUT_LOG="$VL_LOG_DIR/compare_all.log"
-else
-    IV_DIR="$IV_DASH_DIR"
-    VL_DIR="$VL_DASH_DIR"
-    SUFFIX=".dash.log"
-    OUT_LOG="$VL_DASH_DIR/compare_all.log"
-fi
+IV_DIR="$IV_DASH_DIR"
+VL_DIR="$VL_DASH_DIR"
+SUFFIX=".dash.log"
+OUT_LOG="$VL_DASH_DIR/compare_all.log"
 
 mkdir -p "$(dirname "$OUT_LOG")"
 > "$OUT_LOG"

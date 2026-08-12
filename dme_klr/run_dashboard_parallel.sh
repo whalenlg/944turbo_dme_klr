@@ -13,7 +13,6 @@
 #    ./run_dashboard_parallel.sh 4              # all tests, 4 at a time
 #    ./run_dashboard_parallel.sh 2 warm_idle cold_start hot_idle
 #    ./run_dashboard_parallel.sh 8              # maximum parallelism
-#
 #  Snapshot interval: set DASH_INTERVAL_MS env var before running.
 #    DASH_INTERVAL_MS=50 ./run_dashboard_parallel.sh 4
 #  Default is 100ms.
@@ -25,7 +24,7 @@ RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
 VALIDATE="$SCRIPT_DIR/validate_dash_log.py"
 _BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
          { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
-# LOGDIR and dash.log lookup are mode-dependent — set after MODE_FLAG is parsed below
+# LOGDIR is simulator-dependent — set after --verilator is parsed below
 
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
@@ -43,7 +42,7 @@ ALL_TESTS=(
     cl_ramp_to_redline cl_ac_halfway cl_cold_start
     warm_idle cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle
     overrun_cutoff warmup_enrichment afm_open_circuit
-    coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail
+    coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline tps_fail
     ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
@@ -51,8 +50,6 @@ ALL_TESTS=(
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
-# ── Mode switch — must parse before workers check ───────────────────────────
-MODE_FLAG=""
 # --verilator may appear in any position among the mode flags
 for _arg in "$@"; do
     [ "$_arg" = "--verilator" ] && USE_VERILATOR=1
@@ -66,11 +63,10 @@ if [ "$USE_VERILATOR" = "1" ]; then
     set -- "${_NEW_ARGS[@]}"
 fi
 
-if [ "$1" = "--nondash" ]; then MODE_FLAG="--nondash"; shift;
-elif [ "$1" = "--dash" ];    then MODE_FLAG="--dash";    shift; fi
+if [ "$1" = "--dash" ]; then shift; fi
 
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 [--verilator] [--nondash|--dash] <workers 1-8> [test1 test2 ...]"
+    echo "Usage: $0 [--verilator] <workers 1-8> [test1 test2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
@@ -80,14 +76,8 @@ if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
     exit 1
 fi
 
-# Set LOGDIR based on mode and simulator
-if [ "$MODE_FLAG" = "--nondash" ]; then
-    LOGDIR="$_BASE/$( [ "$USE_VERILATOR" = "1" ] && echo v_logs || echo logs )"
-    DASHLOG_SUFFIX=".log"        # nondash has no .dash.log — skip validation
-else
-    LOGDIR="$_BASE/$( [ "$USE_VERILATOR" = "1" ] && echo v_dash_logs || echo dash_logs )"
-    DASHLOG_SUFFIX=".dash.log"
-fi
+# Set LOGDIR based on simulator
+LOGDIR="$_BASE/$( [ "$USE_VERILATOR" = "1" ] && echo v_dash_logs || echo dash_logs )"
 
 WORKERS="$1"; shift
 if [ $# -gt 0 ]; then
@@ -106,7 +96,7 @@ VALIDATION_LOG="$LOGDIR/validation.log"
 
 echo ""
 echo "============================================================"
-echo "  DME 951 + KLR Parallel Test Runner  [mode: ${MODE_FLAG:---dash}]"
+echo "  DME 951 + KLR Parallel Test Runner"
 printf "  Simulator        : %s\n" "$( [ "$USE_VERILATOR" = "1" ] && echo verilator || echo iverilog )"
 printf "  Workers          : %s\n" "$WORKERS"
 printf "  Tests            : %s\n" "$TOTAL"
@@ -117,19 +107,6 @@ echo "============================================================"
 # ── validate_one <test_name> ──────────────────────────────────────────────────
 validate_one() {
     local name="$1"
-
-    # Non-dashboard mode: no .dash.log produced — just check sim completed
-    if [ "$MODE_FLAG" = "--nondash" ]; then
-        local simlog="$LOGDIR/${name}.log"
-        if [ -f "$simlog" ]; then
-            printf "  [PASS]   %-22s sim completed (nondash — no snapshot validation)\n" "$name"
-            printf "PASS\t%-22s\tsim completed (nondash mode)\n" "$name" >> "$VALIDATION_LOG"
-        else
-            printf "  [FAIL]   %-22s sim log missing\n" "$name"
-            printf "FAIL\t%-22s\tsim log not found — simulation may have crashed\n"                    "$name" >> "$VALIDATION_LOG"
-        fi
-        return 0
-    fi
 
     local dashlog="$LOGDIR/${name}.dash.log"
 
@@ -205,7 +182,7 @@ for test in "${TESTS[@]}"; do
     printf "  [START]  %s  (%ss sim)\n" "$test" "$(sim_secs $test)"
     (
         cd "$SCRIPT_DIR"
-        bash "$RUN_TESTS" $MODE_FLAG "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
+        bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
     ) &
     PIDS+=("$!")
     PID_NAMES+=("$test")

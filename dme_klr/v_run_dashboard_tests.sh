@@ -23,21 +23,16 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ── Mode switch: --dash (default) or --nondash ────────────────────────────────
+# ── Mode: dashboard-only ─────────────────────────────────────────────────────
 MODE="dash"
-if [ "$1" = "--nondash" ]; then MODE="nondash"; shift;
-elif [ "$1" = "--dash" ];    then MODE="dash";    shift; fi
+if [ "$1" = "--dash" ]; then shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
 # VVP_DIR is kept as the name for compatibility but now holds Verilator-compiled executables
 LOGDIR="$VVP_DIR/v_dash_logs"
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
-NONDASH_LOGDIR="$VVP_DIR/v_logs"
-NONDASH_VCDDIR="$NONDASH_LOGDIR/vcd"
-NONDASH_HEXDIR="$NONDASH_LOGDIR/hex"
-# iverilog reference log dirs (for compare_with_iv)
+# iverilog reference log dir (for compare_with_iv)
 IV_LOGDIR="$VVP_DIR/dash_logs"
-IV_NONDASH_LOGDIR="$VVP_DIR/logs"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
@@ -48,7 +43,6 @@ BENCHk=../gemini8048/bench/verilog
 
 #KLR_BENCH=bench/verilog/i8048_tb.v
 FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
-FILES_NONDASH=files_nondash    # non-dashboard combined DME+KLR (uses i8051_tb not i8051_dashboard_tb)
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
@@ -136,38 +130,23 @@ open_in_dashboard() {
 }
 
 mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
-mkdir -p "$NONDASH_LOGDIR" "$NONDASH_VCDDIR" "$NONDASH_HEXDIR"
 
-# Mode-specific aliases used by run_all and case block
-if [ "$MODE" = "nondash" ]; then
-    run_test()  { compile_and_run_nondash_klr "$@"; }
-    ACTIVE_LOG="$NONDASH_LOGDIR/summary.log"
-    echo "  Mode: NON-DASHBOARD (dme_klr_tb, no snapshots)"
-else
-    run_test()  { compile_and_run_klr "$@"; }
-    ACTIVE_LOG="$LOGDIR/summary.log"
-    echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
-fi
+# Mode alias used by run_all and case block
+run_test()  { compile_and_run_klr "$@"; }
+ACTIVE_LOG="$LOGDIR/summary.log"
+echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
 
 # --------------------------------------------------------
-#  compare_with_iv <mode> <name> <vl_log> <iv_log>
+#  compare_with_iv <name> <vl_log> <iv_log>
 #
 #  Diffs Verilator output against the iverilog reference.
 #  Skipped silently if the iverilog log does not exist.
-#  mode: --dash or --nondash
 # --------------------------------------------------------
 compare_with_iv() {
-    local mode="$1"
-    local name="$2"
-    local vl_log="$3"
-    local iv_log="$4"
-    local cmp_dir
-
-    if [ "$mode" = "--dash" ]; then
-        cmp_dir="$LOGDIR"
-    else
-        cmp_dir="$NONDASH_LOGDIR"
-    fi
+    local name="$1"
+    local vl_log="$2"
+    local iv_log="$3"
+    local cmp_dir="$LOGDIR"
 
     if [ ! -f "$iv_log" ]; then
         echo "  [CMP]    $name — no iverilog reference (skipping)"
@@ -335,7 +314,7 @@ compile_and_run_klr() {
     # Open in dashboard browser if running a single test
     open_in_dashboard "$LOGDIR/${name}.dash.log"
 
-    compare_with_iv --dash "$name" \
+    compare_with_iv "$name" \
         "$LOGDIR/${name}.dash.log" \
         "$IV_LOGDIR/${name}.dash.log"
 }
@@ -472,122 +451,9 @@ compile_and_run_klr() {
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
 
-    compare_with_iv --dash "$name" \
+    compare_with_iv "$name" \
         "$LOGDIR/${name}.dash.log" \
         "$IV_LOGDIR/${name}.dash.log"
-}
-
-# --------------------------------------------------------
-#  compile_and_run_nondash_klr <name> [defines...]
-#
-#  Compiles and runs the non-dashboard combined DME+KLR TB
-#  (dme_klr_tb.v with i8051_tb + klr_tb).  No dashboard
-#  snapshot output — for regression and waveform analysis.
-#  VCDs land in logs/vcd/, hex in logs/hex/.
-# --------------------------------------------------------
-compile_and_run_nondash_klr() {
-    local name="$1"; shift
-
-    local exe="${VVP_DIR}/nondash_klr_${name}"
-    local log="${NONDASH_LOGDIR}/${name}.log"
-    local vcdfile="${NONDASH_VCDDIR}/${name}.vcd"
-    local hexdir="${NONDASH_HEXDIR}/${name}"
-
-    mkdir -p "$hexdir"
-
-    local sim_ns=0
-    for arg in "$@"; do
-        case "$arg" in -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;; esac
-    done
-    local sim_sec=$(( sim_ns / 1000000000 ))
-
-    echo ""
-    echo "======================================================"
-    echo "  TEST (NONDASH KLR): $name  [${sim_sec}s sim]"
-    echo "======================================================"
-
-    local files_list="$FILES_NONDASH"
-    for arg in "$@"; do
-        [[ "$arg" == "-DCL_MODE" ]] && files_list="${FILES_NONDASH}_cl"
-    done
-    # If files_nondash does not exist, fall back to files with a warning
-    if [ ! -f "$files_list" ]; then
-        echo "  NOTE: $files_list not found — falling back to $FILES" | tee -a "$NONDASH_LOGDIR/summary.log"
-        files_list="$FILES"
-    fi
-
-    # Remove stale object dir to force clean recompile
-    rm -rf "${VVP_DIR}/obj_${name}"
-    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
-    for _a in "$@"; do
-        case "$_a" in
-            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
-            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
-        esac
-    done
-    _sim_time="${_sim_time:-40000000000}"
-    _ramp_pct="${_ramp_pct:-25}"
-    _sim_ms=$(( _sim_time / 1000000 ))
-    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
-    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
-    local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
-    # shellcheck disable=SC2086
-    verilator --binary $trace_flag \
-        -o "$exe" \
-        --Mdir "${VVP_DIR}/obj_${name}" \
-        -f "$files_list" \
-        +incdir+"$RTL" \
-        +incdir+"$BENCH" \
-        +incdir+"$RTLd" \
-        +incdir+"$BENCHd" \
-        +incdir+"$RTLk" \
-        +incdir+"$BENCHk" \
-        --top-module dme_klr_tb \
-        -DVLT_SIM \
-        -DSTEP_CLOCKS="$_step_clocks" \
-        -DDME_KLR_COMBINED \
-        -Wno-fatal \
-        -Wno-PINMISSING \
-        -Wno-IMPLICIT \
-        -Wno-WIDTHTRUNC \
-        -Wno-WIDTHEXPAND \
-        -Wno-REDEFMACRO \
-        -Wno-DEFOVERRIDE \
-        -Wno-CASEINCOMPLETE \
-        -Wno-LATCH \
-        -Wno-MULTIDRIVEN \
-        "$@" \
-        "bench/verilog/dme_klr_tb.v"
-    if [ $? -ne 0 ]; then
-        echo "  COMPILE FAILED: $name" | tee -a "$NONDASH_LOGDIR/summary.log"
-        return 1
-    fi
-
-    echo "  Running → $log"
-    echo "  VCD     → $vcdfile"
-
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo /dev/null )" ) > "${log}" 2>&1
-    local rc=$?
-
-    # Move any stray VCDs to canonical location
-    for _stray in "$hexdir/sim.vcd" "$hexdir/951klr_combined.vcd" "$hexdir/klr_combined.vcd"; do
-        [ -f "$_stray" ] && mv "$_stray" "$vcdfile" && break
-    done
-    if [ -f "$vcdfile" ]; then
-        [ "$VCD_ENABLE" != "1" ] && rm -f "$vcdfile"
-    fi
-
-    if [ $rc -ne 0 ]; then
-        echo "  SIM FAILED: $name (exit $rc)" | tee -a "$NONDASH_LOGDIR/summary.log"
-        return 1
-    fi
-
-    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name — VCD ${vcdsize}" | tee -a "$NONDASH_LOGDIR/summary.log"
-
-    compare_with_iv --nondash "$name" \
-        "$NONDASH_LOGDIR/${name}.log" \
-        "$IV_NONDASH_LOGDIR/${name}.log"
 }
 
 # --------------------------------------------------------
@@ -761,7 +627,7 @@ run_test cl_ramp_to_redline \
 
 run_test cl_ac_halfway \
     -DTEST_CL_AC_HALFWAY \
-    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY \
+    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DCPU_DEBUG -DCPU_DEEP_DEBUG \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
 run_test cl_cold_start \
@@ -813,7 +679,7 @@ run_test warmup_enrichment \
 
 run_test afm_open_circuit \
     -DTEST_AFM_OPEN_CIRCUIT \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DCPU_DEBUG -DCPU_DEEP_DEBUG \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
 # --- Sensor failure tests ---
@@ -828,22 +694,23 @@ run_test airtemp_fail \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
 run_test o2_disconnected \
-    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED -DCPU_DEEP_DEBUG -DCPU_DEBUG \
+    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED -DCPU_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_rich_stuck \
-    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH -DCPU_DEEP_DEBUG -DCPU_DEBUG \
+    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH -DCPU_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_lean_stuck \
-    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN -DCPU_DEEP_DEBUG -DCPU_DEBUG \
+    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN -DCPU_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_baseline \
-    -DCPU_DEEP_DEBUG -DCPU_DEBUG \
+    -DTEST_O2_BASELINE \
+    -DCPU_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
@@ -942,7 +809,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_FQS6) run_test cl_ramp_to_3000_FQS6 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DCPU_DEBUG -DCPU_DEEP_DEBUG -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
         hot_idle)         run_test hot_idle         $IARG -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000   ;;
@@ -952,13 +819,13 @@ if [ -n "$1" ]; then
         ac_on_idle)       run_test ac_on_idle       $IARG -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         warmup_enrichment)run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25                       -DSIM_TIME=60000000000   ;;
-        afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+        afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DCPU_DEBUG -DCPU_DEEP_DEBUG  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         coolant_fail)     run_test coolant_fail     $IARG -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         airtemp_fail)     run_test airtemp_fail     $IARG -DTEST_AIRTEMP_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_DISCONNECTED -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_baseline)      run_test o2_baseline      $IARG                                                -DCPU_DEEP_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_DISCONNECTED  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_baseline)      run_test o2_baseline      $IARG -DTEST_O2_BASELINE                              -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
@@ -988,7 +855,6 @@ if [ -n "$1" ]; then
             echo "               cl_ac_halfway cl_cold_start"
             echo "  DME+KLR:     cl_tippy_in dme_klr_warm_idle dme_klr_ramp_to_3000"
             echo ""
-            echo "  Prefix --nondash to run any test without dashboard snapshot output"
             exit 1
             ;;
     esac

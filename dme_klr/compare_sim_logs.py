@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-compare_sim_logs.py  —  Compare iverilog and Verilator simulation log outputs.
-
-Works for both dashboard (.dash.log) and non-dashboard (.log) files.
+compare_sim_logs.py  —  Compare iverilog and Verilator dashboard (.dash.log)
+simulation log outputs.
 
 Usage:
-    python3 compare_sim_logs.py --dash   <iv_log> <vl_log> [test_name]
-    python3 compare_sim_logs.py --nondash <iv_log> <vl_log> [test_name]
+    python3 compare_sim_logs.py --dash <iv_log> <vl_log> [test_name]
 
 Exit codes:
     0  MATCH  — outputs are functionally equivalent
@@ -35,19 +33,6 @@ def read_lines(path):
 
 def count_prefix(lines, prefix):
     return sum(1 for l in lines if l.startswith(prefix))
-
-def strip_timestamps(line):
-    """Remove leading simulation-time fields that differ between simulators.
-
-    iverilog prints absolute sim-time in $display; Verilator may differ by
-    a few ticks due to scheduling.  We strip patterns like:
-        [  12345ns]   or   t=12345   or   @12345
-    so structural comparisons aren't derailed by minor timing deltas.
-    """
-    line = re.sub(r'\[\s*\d+\s*ns\]', '[Tns]', line)
-    line = re.sub(r'\bt\s*=\s*\d+\b', 't=T', line)
-    line = re.sub(r'@\d+\b', '@T', line)
-    return line
 
 def normalise_ds(line):
     """Strip the sim-time field from a [DS] snapshot line so we can compare
@@ -661,68 +646,6 @@ def compare_dash(iv_lines, vl_lines, name):
     return issues
 
 
-# ── Non-dashboard mode comparison ────────────────────────────────────────────
-
-# Lines that are expected to differ between simulators (timing noise, VCD paths, etc.)
-_NONDASH_SKIP_RE = re.compile(
-    r'VCD info:|dumpfile|^\s*$|Simulated \d|simulation complete|'
-    r'\$finish|\bvvp\b|verilator|DME: \[SIM\]',
-    re.IGNORECASE
-)
-
-def normalise_nondash_line(line):
-    line = strip_timestamps(line)
-    # Normalise hex addresses that may be printed differently
-    line = re.sub(r'\b0x([0-9a-fA-F]+)\b', lambda m: str(int(m.group(1), 16)), line)
-    return line.rstrip()
-
-def compare_nondash(iv_lines, vl_lines, name):
-    """Compare plain .log files from non-dashboard runs."""
-    issues = []
-
-    def filtered(lines):
-        out = []
-        for l in lines:
-            if _NONDASH_SKIP_RE.search(l):
-                continue
-            n = normalise_nondash_line(l)
-            if n:
-                out.append(n)
-        return out
-
-    iv_f = filtered(iv_lines)
-    vl_f = filtered(vl_lines)
-
-    if iv_f == vl_f:
-        return []
-
-    # Count differences
-    iv_set  = Counter(iv_f)
-    vl_set  = Counter(vl_f)
-    only_iv = {k: v for k, v in iv_set.items() if k not in vl_set}
-    only_vl = {k: v for k, v in vl_set.items() if k not in iv_set}
-    shared  = sum(min(iv_set[k], vl_set[k]) for k in iv_set if k in vl_set)
-    total   = max(len(iv_f), len(vl_f), 1)
-
-    match_pct = 100.0 * shared / total
-    issues.append(f"line match {match_pct:.1f}% ({shared}/{total})")
-
-    if only_iv:
-        sample = list(only_iv.keys())[:3]
-        issues.append(f"only in iv ({len(only_iv)} unique): " +
-                       " | ".join(repr(s[:60]) for s in sample))
-    if only_vl:
-        sample = list(only_vl.keys())[:3]
-        issues.append(f"only in vl ({len(only_vl)} unique): " +
-                       " | ".join(repr(s[:60]) for s in sample))
-
-    # If >95% match, downgrade to near-match
-    if match_pct >= 95.0:
-        return ["NEAR-MATCH: " + "; ".join(issues)]
-
-    return issues
-
-
 def list_fields(iv_lines, vl_lines):
     """Print every field discovered per prefix (DME/KLR × STATUS/DS),
     marking which are excluded via IGNORED_STATUS_FIELDS so it's clear
@@ -766,24 +689,22 @@ def list_fields(iv_lines, vl_lines):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare iverilog vs Verilator sim logs")
-    mode_grp = parser.add_mutually_exclusive_group(required=True)
-    mode_grp.add_argument('--dash',    action='store_true', help='Dashboard .dash.log comparison')
-    mode_grp.add_argument('--nondash', action='store_true', help='Non-dashboard .log comparison')
+    parser.add_argument('--dash', action='store_true',
+                         help='Dashboard .dash.log comparison (default; only mode supported)')
     parser.add_argument('iv_log',   help='iverilog log file')
     parser.add_argument('vl_log',   help='Verilator log file')
     parser.add_argument('name',     nargs='?', default='test', help='Test name for reporting')
     parser.add_argument('-v', '--verbose', action='store_true',
-                         help='Print row-level iv-vs-vl values for every mismatching field '
-                              '(dash mode) or a unified diff of filtered lines (nondash mode)')
+                         help='Print row-level iv-vs-vl values for every mismatching field')
     parser.add_argument('--field', metavar='NAME',
-                         help='Dump row-level iv-vs-vl values for just this field (dash mode only). '
+                         help='Dump row-level iv-vs-vl values for just this field. '
                               'Implies --verbose.')
     parser.add_argument('--max-rows', type=int, default=20,
                          help='Max diff rows to print per field when using --verbose/--field (default 20)')
     parser.add_argument('--plot', action='store_true',
                          help='Render two JPEG reports (one for DME fields, one for KLR fields), '
                               'each with one subplot per mismatching field showing (vl - iv) vs. '
-                              'simulation time. Dash mode only. Combine with --field to plot just '
+                              'simulation time. Combine with --field to plot just '
                               'one field. Files are named "<name>_DME_diff.jpg" / "<name>_KLR_diff.jpg" '
                               'inside --plot-dir.')
     parser.add_argument('--plot-dir', default='/Users/Mike/coding_projects/944/tmp/dme_klr/dash_logs',
@@ -794,7 +715,7 @@ def main():
                          help='After --plot writes the JPEGs, open them in macOS Preview.')
     parser.add_argument('--list-fields', action='store_true',
                          help='List every field found in the logs, marking which are excluded '
-                              'via IGNORED_STATUS_FIELDS, then exit. Dash mode only.')
+                              'via IGNORED_STATUS_FIELDS, then exit.')
     args = parser.parse_args()
     if args.field:
         args.verbose = True
@@ -813,16 +734,10 @@ def main():
         sys.exit(2)
 
     if args.list_fields:
-        if not args.dash:
-            print("--list-fields is only supported in --dash mode")
-            sys.exit(2)
         list_fields(iv_lines, vl_lines)
         sys.exit(0)
 
-    if args.dash:
-        issues = compare_dash(iv_lines, vl_lines, args.name)
-    else:
-        issues = compare_nondash(iv_lines, vl_lines, args.name)
+    issues = compare_dash(iv_lines, vl_lines, args.name)
 
     if not issues:
         print(f"MATCH\t{args.name}\toutputs equivalent")
@@ -834,28 +749,12 @@ def main():
     print(f"{verdict}\t{args.name}\t{detail}")
 
     if args.verbose:
-        if args.dash:
-            dump_dash_details(iv_lines, vl_lines, field=args.field, max_rows=args.max_rows)
-        else:
-            import difflib
-            _skip = _NONDASH_SKIP_RE
-            iv_f = [normalise_nondash_line(l) for l in iv_lines if not _skip.search(l) and normalise_nondash_line(l)]
-            vl_f = [normalise_nondash_line(l) for l in vl_lines if not _skip.search(l) and normalise_nondash_line(l)]
-            diff_lines = list(difflib.unified_diff(
-                iv_f, vl_f, fromfile='iverilog', tofile='verilator', lineterm=''))
-            if diff_lines:
-                print(f"\n--- unified diff (first {args.max_rows} lines) ---")
-                print("\n".join(diff_lines[:args.max_rows]))
-            else:
-                print("\n(no line-level diff — mismatch may be in ordering/dedup only)")
+        dump_dash_details(iv_lines, vl_lines, field=args.field, max_rows=args.max_rows)
 
     if args.plot:
-        if not args.dash:
-            print("\n(--plot is only supported in --dash mode)")
-        else:
-            written = plot_dash_diffs(iv_lines, vl_lines, args.plot_dir, args.name, field=args.field)
-            if written and args.open_plot:
-                open_in_preview(written)
+        written = plot_dash_diffs(iv_lines, vl_lines, args.plot_dir, args.name, field=args.field)
+        if written and args.open_plot:
+            open_in_preview(written)
 
     sys.exit(0 if is_near_match else 1)
 
