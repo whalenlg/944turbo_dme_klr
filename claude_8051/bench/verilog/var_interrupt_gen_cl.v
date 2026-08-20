@@ -173,10 +173,34 @@ module var_interrupt_generator_cl (
 );
 
     // ── AFM calibration ─────────────────────────────────────────
-    localparam afm_rpm_lo  = 840;
-    localparam afm_adc_lo  = 40;
-    localparam afm_rpm_hi  = 6500;
-    localparam afm_adc_hi  = 235;
+    //  Real settled operating points (per closed-loop test type):
+    //    cl_ramp_to_6000 (+ FQS family, AFM_CL_TARGET=0xDA) settle
+    //      at ~6432rpm in practice — capped at afm_adc_mid (0xD8)
+    //      here, since the KLR flags a TPS error above that.
+    //    cl_ramp_to_redline (AFM_CL_TARGET=0xEB) settles at
+    //      ~6818rpm — allowed to reach the higher afm_adc_hi (0xEB)
+    //      ceiling; it's the one CL test that legitimately needs to
+    //      push higher.
+    //  Non-CL tests (ramp_to_6100/6200/6300, plain ramp_to_redline,
+    //  etc.) do NOT go through this file — they use the separate
+    //  non-CL interrupt generator — so this change doesn't affect
+    //  them.
+    //
+    //  Shape: idle -> rise -> flat plateau at 0xD8 (covers the
+    //  6000-family's ~6432rpm settle point with margin either side
+    //  for normal closed-loop fluctuation) -> short final rise ->
+    //  0xEB ceiling (reached by redline's ~6818rpm settle point).
+    //  The plateau bounds (afm_rpm_mid/afm_rpm_plateau_end) are a
+    //  reasonable-margin choice, not exact data — adjust if you
+    //  have tighter bounds on the 6000-family's real fluctuation
+    //  band around 6432rpm.
+    localparam afm_rpm_lo          = 840;
+    localparam afm_adc_lo          = 40;
+    localparam afm_rpm_mid         = 6432;  // cl_ramp_to_6000-family settle point
+    localparam afm_adc_mid         = 216;   // 0xD8 — max TPS for CL 6000-target tests
+    localparam afm_rpm_plateau_end = 6700;  // margin before climbing toward redline's ceiling
+    localparam afm_rpm_hi          = 6818;  // cl_ramp_to_redline settle point
+    localparam afm_adc_hi          = 235;   // 0xEB — redline's own (unchanged) ceiling
 
     // ── State ────────────────────────────────────────────────────
     integer period_current;
@@ -191,11 +215,25 @@ module var_interrupt_generator_cl (
     always @(*) begin : afm_calc
         integer crpm;
         crpm = rpm_fp / `CL_INERTIA;
-        if      (crpm <= afm_rpm_lo) afm_wiper = afm_adc_lo;
-        else if (crpm >= afm_rpm_hi) afm_wiper = afm_adc_hi;
-        else afm_wiper = afm_adc_lo +
-                         ((afm_adc_hi - afm_adc_lo) * (crpm - afm_rpm_lo))
-                         / (afm_rpm_hi - afm_rpm_lo);
+        if (crpm <= afm_rpm_lo) begin
+            afm_wiper = afm_adc_lo;
+        end else if (crpm <= afm_rpm_mid) begin
+            // Rising segment 1: idle -> cl_ramp_to_6000-family cap
+            afm_wiper = afm_adc_lo +
+                        ((afm_adc_mid - afm_adc_lo) * (crpm - afm_rpm_lo))
+                        / (afm_rpm_mid - afm_rpm_lo);
+        end else if (crpm <= afm_rpm_plateau_end) begin
+            // Flat plateau: holds at the 0xD8 cap through the
+            // 6000-family's realistic operating range
+            afm_wiper = afm_adc_mid;
+        end else if (crpm >= afm_rpm_hi) begin
+            afm_wiper = afm_adc_hi;
+        end else begin
+            // Rising segment 2: plateau end -> redline's ceiling
+            afm_wiper = afm_adc_mid +
+                        ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
+                        / (afm_rpm_hi - afm_rpm_plateau_end);
+        end
     end
 
     // ── Initial state ────────────────────────────────────────────

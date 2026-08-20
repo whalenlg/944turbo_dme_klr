@@ -12,15 +12,25 @@ module adc_8090 (
     reg [2:0] addr_reg;
     integer i;
 
-    always @(posedge clk or posedge start) begin
+    reg start_prev;  // registered start, for rising-edge detection
+
+    always @(posedge clk) begin
+        start_prev <= start;
+
         if (ale) begin
            addr_reg <= addr;
         end 
-        if (start) begin
+        if (start && !start_prev) begin
+            // Rising edge of start — this branch runs exactly ONCE per
+            // pulse, even if start stays high for multiple clock cycles
+            // (start_prev catches up to start on the very next edge, so
+            // this condition is only ever true for one cycle).
             // Synchronous reset of all stages in the pipe
             for (i = 0; i < 8; i = i + 1) begin
                 delay_pipe[i] <= 8'h00;
             end
+            // Shifting is intentionally skipped this cycle — it begins
+            // on the next clk edge, once start_prev == start again.
         end else begin
             // Load the first stage with p0_in
             case (addr_reg) 

@@ -51,6 +51,9 @@ TESTS = {
     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ramp_to_6100':      {'rpm_target': 6100, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ramp_to_6200':      {'rpm_target': 6200, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':97},
     'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ignition_timing':   {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True},
@@ -251,6 +254,30 @@ def detect_o2_status(rows):
         return 'rich', o2_vals[-1], b26
 
 # ─── Main validator ───────────────────────────────────────────────────────────
+
+def parse_klr_ram33(line):
+    """Extract (t_ms, value) for ram[33] from a 'KLR: [STATUS]' line.
+
+    Returns None if the line isn't a KLR STATUS line or doesn't carry
+    a ram[33] field. value is None if the field is still uninitialised
+    (prints as 'x'/'xx' — Verilog's unknown state — before the firmware
+    has ever written that RAM location), distinct from a real 0.
+    """
+    if not line.startswith('KLR: [STATUS]'):
+        return None
+    m = re.search(r'ram\[33\]=([0-9a-fA-Fx]+)', line)
+    if not m:
+        return None
+    tm = re.search(r't=(\d+)\s*ms', line)
+    t = int(tm.group(1)) if tm else None
+    val_str = m.group(1)
+    if re.fullmatch(r'x+', val_str, re.IGNORECASE):
+        return (t, None)  # still uninitialised
+    try:
+        return (t, int(val_str, 16))
+    except ValueError:
+        return (t, None)
+
 
 def validate(test_name, logpath):
     exp = TESTS.get(test_name)
@@ -538,6 +565,30 @@ def validate(test_name, logpath):
             infos.append(f"O2 {o2_desc} ✓" + ("" if expect_o2 == 'ok' else " (expected fault confirmed)"))
         else:
             fails.append(f"O2 status '{o2_status}' does not match expected '{expect_o2}' — {o2_desc}")
+
+    # ── 17. KLR ram[33] should stay zero once initialised
+    # ram[33] prints as 'xx' (Verilog X) before the firmware has ever
+    # written it — that's normal startup, not a fault, so those samples
+    # are skipped. Once it holds a real (non-X) value, any non-zero
+    # reading is unexpected and flagged as a WARN (not a FAIL, since
+    # the exact significance of this location isn't nailed down yet).
+    klr_ram33_nonzero_first = None  # (t, value) of first bad reading
+    klr_ram33_seen_defined = False
+    for line in lines:
+        r = parse_klr_ram33(line)
+        if r is None:
+            continue
+        t, val = r
+        if val is None:
+            continue  # still uninitialised — not yet meaningful
+        klr_ram33_seen_defined = True
+        if val != 0 and klr_ram33_nonzero_first is None:
+            klr_ram33_nonzero_first = (t, val)
+    if klr_ram33_nonzero_first is not None:
+        t, val = klr_ram33_nonzero_first
+        warns.append(f"KLR ram[33] went non-zero: 0x{val:02X} at t={t}ms (expected 0 once initialised)")
+    elif klr_ram33_seen_defined:
+        infos.append("KLR ram[33] stayed 0 ✓")
 
     # ── Verdict
     detail = ' | '.join(infos)

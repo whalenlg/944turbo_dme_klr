@@ -28,6 +28,10 @@ module dme_klr_dashboard_tb;
     wire ign_out_dme_to_klr;  // DME A_5_KLR_ign_out (active-high)
     wire klr_ign_out;         // KLR spark output (NOT connected to DME ign)
     wire full_load;            // KLR full_load → DME TPS ch6
+    wire tdc;                  // DME crank-model TDC marker (see
+                                // var_interrupt_generator/_cl) — not
+                                // connected to the KLR, exposed for
+                                // observation/logging at this top level
     // TPS angle: DME AFM wiper → KLR TPS angle ch7
     // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
     wire [7:0] tps_wiper_sig;
@@ -40,7 +44,8 @@ module dme_klr_dashboard_tb;
         .ign            ( 1'b1               ),
         .A_1_tach_pulse ( tach_dme_to_klr    ),
         .A_5_KLR_ign_out( ign_out_dme_to_klr ),
-        .full_load      ( full_load          )
+        .full_load      ( full_load          ),
+        .tdc            ( tdc                )
     );
 
     // ── KLR sub-TB ───────────────────────────────────────────

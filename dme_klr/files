@@ -21,6 +21,7 @@
 ../claude_8051/bench/verilog/adc_delay.v
 ../claude_8051/bench/verilog/var_interrupt_gen.v
 ../gemini8048/bench/verilog/var_timing_gen.v
+../gemini8048/bench/verilog/knock_gen.v
 ../claude_8051/bench/verilog/interrupt_gen.v
 ../claude_8051/bench/verilog/o2_gen.v
 ../gemini8048/rtl/verilog/klr_top.v

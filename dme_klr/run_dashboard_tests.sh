@@ -41,7 +41,6 @@ BENCHd=../claude_8051/bench/verilog
 RTLk=../gemini8048/rtl/verilog
 BENCHk=../gemini8048/bench/verilog
 
-#KLR_BENCH=bench/verilog/i8048_tb.v
 FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
 
 # Default snapshot interval (ms of simulated time between [DS] lines)
@@ -128,140 +127,6 @@ mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
 run_test()  { compile_and_run_klr "$@"; }
 ACTIVE_LOG="$LOGDIR/summary.log"
 echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
-
-# --------------------------------------------------------
-#  compile_and_run_klr <short_name> [interval_ms] <iverilog -D flags...>
-#
-#  If second argument is a plain integer it overrides the
-#  snapshot interval for this test only.
-# --------------------------------------------------------
-compile_and_run_klr() {
-    local name="$1"; shift
-
-    # Optional per-test interval override as second positional arg
-    local interval="$DASH_INTERVAL_MS"
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        interval="$1"; shift
-    fi
-
-    local vvp="${VVP_DIR}/dash_${name}.vvp"
-    local log="${LOGDIR}/${name}.log"
-    local vcdfile="${VCDDIR}/${name}.vcd"
-    local fstfile="${FSTDIR}/${name}.fst"
-    local hexdir="${HEXDIR}/${name}"
-
-    mkdir -p "$hexdir"
-
-    # Clean old output files for this test
-    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
-    rm -f "${vcdfile}.gz"
-
-    # Extract SIM_TIME for display
-    local sim_ns=0
-    for arg in "$@"; do
-        case "$arg" in
-            -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;;
-        esac
-    done
-    local sim_sec=$(( sim_ns / 1000000000 ))
-    local n_snaps=$(( sim_sec * 1000 / interval ))
-
-    echo ""
-    echo "======================================================"
-    echo "  TEST: $name  [${sim_sec}s sim / ~${sim_sec}m wall / interval=${interval}ms / ~${n_snaps} snapshots]"
-    echo "======================================================"
-
-    # Compile — all sources including TB via -f files; top selected by -s.
-    # When -DCL_MODE is present, swap var_interrupt_gen.v for var_interrupt_gen_cl.v
-    local files_list="$FILES"
-    for arg in "$@"; do
-        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
-    done
-
-    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
-    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
-    for _a in "$@"; do
-        case "$_a" in
-            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
-            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
-        esac
-    done
-    _sim_time="${_sim_time:-40000000000}"
-    _ramp_pct="${_ramp_pct:-25}"
-    _sim_ms=$(( _sim_time / 1000000 ))
-    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
-    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
-    iverilog -o "$vvp" \
-        -f "$files_list" \
-        -I "$RTL" \
-        -I "$BENCH" \
-        -I "$RTLd" \
-        -I "$BENCHd" \
-        -I "$RTLk" \
-        -I "$BENCHk" \
-        -s i8051_dashboard_tb \
-        -DDASHBOARD_TB \
-        -DDASH_INTERVAL_MS="$interval" \
-        -DSTEP_CLOCKS="$_step_clocks" \
-        "$@"
-    if [ $? -ne 0 ]; then
-        echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
-        return 1
-    fi
-
-    echo "  Running → $log"
-    echo "  FST     → $fstfile"
-    [ "$VCD_ENABLE" = "1" ] && echo "  VCD     → $vcdfile"
-    echo "  HEX     → $hexdir/{rom,ram}_out.hex"
-
-    # Run from hexdir so VCD and hex dumps land there without conflicts
-    # FST always produced; VCD only if VCD_ENABLE=1
-    if [ "$VCD_ENABLE" = "1" ]; then
-        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
-    else
-        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
-    fi
-    if [ $? -ne 0 ]; then
-        echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
-        return 1
-    fi
-
-    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
-    # regardless of the +fst= filename. The file is VCD data named .fst.
-    # Rename it to .vcd then convert to real FST binary format.
-    _raw="$hexdir/sim.fst"
-    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
-    if [ -f "$_raw" ]; then
-        vcd2fst "$_raw" "$fstfile" 2>/dev/null
-        if [ "$VCD_ENABLE" = "1" ]; then
-            mv "$_raw" "$vcdfile"
-        else
-            rm -f "$_raw"
-        fi
-    fi
-
-    # Extract DME and KLR lines into dashboard log.
-    # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
-    grep -E "^DME: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
-
-    local nds=$(grep -c "^DME: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
-    local fstsize=$(du -sh "$fstfile" 2>/dev/null | cut -f1 || echo "?")
-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / FST ${fstsize})" \
-        | tee -a "$LOGDIR/summary.log"
-
-    # Validate
-    local val_result
-    val_result=$(python3 "$SCRIPT_DIR/validate_dash_log.py" "$name" "$LOGDIR/${name}.dash.log" 2>&1)
-    local verdict=$(echo "$val_result" | cut -f1)
-    local val_detail=$(echo "$val_result" | cut -f3-)
-    echo "  ${verdict}: $name — $val_detail" | tee -a "$LOGDIR/validation.log"
-
-    # Open in dashboard browser if running a single test
-    open_in_dashboard "$LOGDIR/${name}.dash.log"
-}
 
 # --------------------------------------------------------
 #  compile_and_run_klr <name> [defines...]
@@ -426,7 +291,7 @@ run_test cl_tippy_in \
 
 run_test cl_ramp_to_3000 \
     -DTEST_CL_RAMP_TO_3000  \
-    -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
 run_test cl_ramp_to_6000 \
@@ -437,9 +302,8 @@ run_test cl_ramp_to_6000 \
 
 # --- Fuel quality sweep (cl_ramp_to_6000 with _FUEL_QUAL sweep) ---
 run_test cl_ramp_to_6000_FQS0 \
-    -DTEST_CL_RAMP_TO_6000 \
+    -DTEST_CL_RAMP_TO_6000 -DDEBUG_KLR \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h00" \
     -DCL_FUEL_ENERGY_PCT=0 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -447,7 +311,6 @@ run_test cl_ramp_to_6000_FQS0 \
 run_test cl_ramp_to_6000_FQS1 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h3B" \
     -DCL_FUEL_ENERGY_PCT=3 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -455,7 +318,6 @@ run_test cl_ramp_to_6000_FQS1 \
 run_test cl_ramp_to_6000_FQS2 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h5A" \
     -DCL_FUEL_ENERGY_PCT=-3 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -463,7 +325,6 @@ run_test cl_ramp_to_6000_FQS2 \
 run_test cl_ramp_to_6000_FQS3 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h75" \
     -DCL_FUEL_ENERGY_PCT=6 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -471,7 +332,6 @@ run_test cl_ramp_to_6000_FQS3 \
 run_test cl_ramp_to_6000_FQS4 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h81" \
     -DCL_FUEL_ENERGY_PCT=0 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -479,7 +339,6 @@ run_test cl_ramp_to_6000_FQS4 \
 run_test cl_ramp_to_6000_FQS5 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h91" \
     -DCL_FUEL_ENERGY_PCT=3 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -487,15 +346,87 @@ run_test cl_ramp_to_6000_FQS5 \
 run_test cl_ramp_to_6000_FQS6 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
     "-D_FUEL_QUAL=8'h9C" \
     -DCL_FUEL_ENERGY_PCT=-3 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test cl_ramp_to_6000_FQS7 \
-    -DTEST_CL_RAMP_TO_6000 \
+    -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG\
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
-    -DCPU_DEBUG \
+    "-D_FUEL_QUAL=8'hA7" \
+    -DCL_FUEL_ENERGY_PCT=6 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+
+# --- FQS ramp-to-3000 sweep ---
+run_test cl_ramp_to_3000_FQS0 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h00" \
+    -DCL_FUEL_ENERGY_PCT=0 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS1 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h3B" \
+    -DCL_FUEL_ENERGY_PCT=3 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS2 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h5A" \
+    -DCL_FUEL_ENERGY_PCT=-3 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS3 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h75" \
+    -DCL_FUEL_ENERGY_PCT=6 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS4 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h81" \
+    -DCL_FUEL_ENERGY_PCT=0 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS5 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h91" \
+    -DCL_FUEL_ENERGY_PCT=3 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS6 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
+    "-D_FUEL_QUAL=8'h9C" \
+    -DCL_FUEL_ENERGY_PCT=-3 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_FQS7 \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+    -DRPMEND=3000 \
+    -DRPM_RAMP_PCT=20 \
     "-D_FUEL_QUAL=8'hA7" \
     -DCL_FUEL_ENERGY_PCT=6 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
@@ -575,23 +506,22 @@ run_test airtemp_fail \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
 run_test o2_disconnected \
-    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG \
+    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_rich_stuck \
-    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH  -DCPU_DEBUG \
+    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_lean_stuck \
-    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN  -DCPU_DEBUG \
+    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
 run_test o2_baseline \
     -DTEST_O2_BASELINE \
-    -DCPU_DEBUG \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
 
@@ -609,6 +539,21 @@ run_test ramp_to_3000 \
 run_test ramp_to_6000 \
     -DTEST_RAMP_TO_6000 -DKLR_DEBUG\
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test ramp_to_6100 \
+    -DTEST_RAMP_TO_6100 -DKLR_DEBUG\
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test ramp_to_6200 \
+    -DTEST_RAMP_TO_6200 -DKLR_DEBUG\
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test ramp_to_6300 \
+    -DTEST_RAMP_TO_6300 -DKLR_DEBUG\
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
 run_test ramp_to_redline \
@@ -671,16 +616,16 @@ if [ -n "$1" ]; then
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000) run_test cl_ramp_to_6000 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DKLR_DEBUG;;
         cl_ramp_to_3000_FQS0) run_test cl_ramp_to_3000_FQS0 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS1) run_test cl_ramp_to_3000_FQS1 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS2) run_test cl_ramp_to_3000_FQS2 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -689,7 +634,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_FQS5) run_test cl_ramp_to_3000_FQS5 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS6) run_test cl_ramp_to_3000_FQS6 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DCPU_DEBUG -DCPU_DEEP_DEBUG -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
@@ -703,13 +648,16 @@ if [ -n "$1" ]; then
         afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DCPU_DEBUG -DCPU_DEEP_DEBUG  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         coolant_fail)     run_test coolant_fail     $IARG -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         airtemp_fail)     run_test airtemp_fail     $IARG -DTEST_AIRTEMP_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
-        o2_baseline)      run_test o2_baseline      $IARG -DTEST_O2_BASELINE                                     -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_disconnected) run_test o2_disconnected $IARG -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_rich_stuck) run_test o2_rich_stuck $IARG -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_lean_stuck) run_test o2_lean_stuck $IARG -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+        o2_baseline) run_test o2_baseline $IARG -DTEST_O2_BASELINE -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000      -DCPU_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        ramp_to_3000) run_test ramp_to_3000 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        ramp_to_6100)     run_test ramp_to_6100     $IARG -DTEST_RAMP_TO_6100     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        ramp_to_6200)     run_test ramp_to_6200     $IARG -DTEST_RAMP_TO_6200     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        ramp_to_6300)     run_test ramp_to_6300     $IARG -DTEST_RAMP_TO_6300     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
         ignition_timing)  run_test ignition_timing  $IARG -DTEST_IGNITION_TIMING  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
@@ -725,7 +673,7 @@ if [ -n "$1" ]; then
             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
             echo "  Ignition:    ignition_timing dwell_scaling"
             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
             echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"

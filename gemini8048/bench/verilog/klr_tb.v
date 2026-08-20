@@ -10,11 +10,18 @@
 //    var_timing_gen.v       — variable-RPM crank/ign generator
 //    klr_top.v              — klr_system + klr_eprom
 //    klr_vcd.v              — updated VCD/disassembly monitor
+//    knock_gen.v            — knock_sum (ch5) = !knock_reset ? 0d :
+//                              (fake_knock burst-stretched to >=2.4ms
+//                              ? knock_sensor+145d : knock_sensor);
+//                              knock_noise (ch0) = fake_knock (raw) ?
+//                              knock_sensor+145d : knock_sensor
+//                              (knock_sensor currently a fixed 110d
+//                              placeholder — real model TBD)
 //
 //  Compile:
 //    iverilog -o klr.vvp -s klr_tb \
 //      timescale.v i8048_core.v adc_8090.v adc_delay.v \
-//      var_timing_gen.v klr_top.v klr_vcd.v klr_tb.v
+//      var_timing_gen.v klr_top.v klr_vcd.v knock_gen.v klr_tb.v
 //
 //  Simulate:
 //    vvp klr.vvp
@@ -88,14 +95,64 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ── ADC channel stimulus ──────────────────────────────
     //  Initial values match i8048_tb.v: static signed constants so
     //  the firmware can run its conversion loop immediately.
-    //  Replace with knock_sensor_gen / boost_pressure_gen outputs
-    //  once those modules are written.
-    reg [7:0] adc_ch0 = 8'h81;  // conn 14  — knock sensor 1 amplified
-    reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
-    reg [7:0] adc_ch2 = 8'h83;  // conn 17
-    reg [7:0] adc_ch4 = 8'h85;  // conn 23
-    reg [7:0] adc_ch5 = 8'h86;  // lm2902.14 — comparator output
+    //  Replace with boost_pressure_gen output once that module is written.
+// this is wrong - pin 1 is the KLR pin 1    #reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
+    reg [7:0] adc_ch1 = 8'hd8;  // battery
+//this is also wrong    reg [7:0] adc_ch2 = 8'h83;  // conn 17
+    reg [7:0] adc_ch2 = 8'h00;  // ground
+    reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
+
+    // ── Knock signal generation (ch0 — noise-level indicator;
+    //    ch5 — lm2902.14 comparator output) ──
+    //  fake_knock: klr_system's own P1.7 self-test output (see
+    //    klr_top.v) — the firmware sets this pin to inject a fake
+    //    knock reading into its own adc_ch5. NOT testbench-driven;
+    //    it's wired below from the klr_system instance's fake_knock
+    //    output port. 1 bit (single I/O pin). Feeds knock_sum (ch5)
+    //    ONLY (via a burst-stretcher — see knock_gen.v: guarantees a
+    //    2.4ms minimum low-to-high burst duration on ch5, while any
+    //    brief transient pulses within the first 1.3ms after the
+    //    falling edge stay visible unmodified).
+    //  knock_reset: klr_system's P2.5 output, broken out from the
+    //    p2_mon bus (declared further below; forward reference is
+    //    fine here — Verilog resolves wire connections at
+    //    elaboration, not by textual order). 1 bit. Gates knock_sum
+    //    only (see formulas below) — knock_noise is unaffected.
+    //  knock_sensor: real knock sensor input — not yet modeled, held
+    //    at a fixed 8'd110 placeholder for now (real variation
+    //    planned as future work). This is the baseline value for
+    //    both outputs; 8'd145 is added on top only while fake_knock
+    //    is asserted — see formulas below.
+    //  knock_gen is clocked (needs .clk below) only for the
+    //    fake_knock burst-stretcher; everything else is combinational:
+    //    knock_sum   = !knock_reset ? 0 (highest priority — forces 0
+    //                  regardless of fake_knock) : fake_knock_stretched
+    //                  ? (knock_sensor + 145) : knock_sensor — drives
+    //                  adc_ch5. With knock_sensor=110: 0 / 110 / 255.
+    //    knock_noise = fake_knock ? (knock_sensor + 145) : knock_sensor —
+    //                  drives adc_ch0. Note: uses the RAW fake_knock
+    //                  here, not the stretched version knock_sum
+    //                  uses — knock_noise is not affected by the
+    //                  burst-stretcher, and not gated by knock_reset
+    //                  at all.
+    wire       fake_knock;
+    wire       knock_reset = p2_mon[5];
+    wire [7:0] knock_sensor = 8'd110;
+    wire [7:0] knock_sum;
+    wire [7:0] knock_noise;
+
+    knock_gen u_knock_gen (
+        .clk          ( clk          ),
+        .fake_knock   ( fake_knock   ),
+        .knock_reset  ( knock_reset  ),
+        .knock_sensor ( knock_sensor ),
+        .knock_sum    ( knock_sum    ),
+        .knock_noise  ( knock_noise  )
+    );
+
+    wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator
+    wire [7:0] adc_ch5 = knock_sum;    // lm2902.14 — comparator output
 
     // ── TPS Supply (ch3) and TPS Angle (ch7) ─────────────────
     // TPS supply (ch3/ram[39h]): fixed 201 — KLR has an onboard 5V regulator
@@ -106,7 +163,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //   AFM idle (0x28=40) → TPS 0x28 (40), AFM WOT (0xEB=235) → TPS 0xC8 (200)
     //   Linear: tps_angle = 40 + (afm - 40) * 160 / 195
     //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
-    wire [7:0] adc_ch3 = 8'd201;   // conn 1  TPS 5V supply — fixed regulated value
+    wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
 
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
     // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
@@ -120,6 +177,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [11:0] pc;
     wire [7:0]  ir, acc, p1_mon, p2_mon;
     wire [10:0] ext_addr;   // {P1[2:0], bus_addr} — full MOVX address
+
+    // Diagnostic LED output — P2.4, broken out from the p2_mon bus
+    // (klr_system exposes full P2 via p2_mon; no new port needed).
+    wire diag_led_out = p2_mon[4];
 
     // ============================================================
     //  VCD / disassembly monitor
@@ -157,6 +218,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         .ign_out     ( ign_out  ),
         .ign_out_n   ( ign_out_n ),
         .full_load   ( full_load ),
+        .fake_knock  ( fake_knock ),
         .adc_ch0     ( adc_ch0  ),
         .adc_ch1     ( adc_ch1  ),
         .adc_ch2     ( adc_ch2  ),
@@ -223,21 +285,27 @@ module klr_tb #(parameter EXT_STIM = 0) (
     end
 
     // ============================================================
-    //  Optional: inject knock event on ADC ch0/ch1 at mid-sim
+    //  Optional: inject a knock event on ADC ch1 + knock_sensor at mid-sim
     //  Uncomment to exercise the knock detection loop.
-    //  The comparator output (ch5) is raised simultaneously to
-    //  simulate the LM2902 threshold being exceeded.
+    //
+    //  Note: fake_knock and knock_reset can NOT be driven here —
+    //  both are continuously driven by klr_system's own P1.7/P2.5
+    //  outputs (firmware-controlled self-test signals; see
+    //  klr_top.v / knock_gen.v). adc_ch0/adc_ch5 (knock_noise/
+    //  knock_sum) are also not directly drivable. To vary the
+    //  ch0/ch5 baseline from the testbench, change knock_sensor
+    //  above from a tied wire to a reg and drive it here instead —
+    //  it's ALWAYS the baseline value for both outputs (145 is added
+    //  on top only while fake_knock=1).
     // ============================================================
     // initial begin
     //     #(`SIM_TIME / 2);
-    //     $display("[TB] Injecting knock event on CH0/CH1 at t=%0t", $time);
-    //     adc_ch0 = 8'hF0;   // strong knock on sensor 1
-    //     adc_ch1 = 8'hE8;   // strong knock on sensor 2
-    //     adc_ch5 = 8'hFF;   // LM2902 comparator trips
-    //     #200000;            // hold for 200 µs (~2 engine cycles at idle)
-    //     adc_ch0 = 8'h81;   // return to quiescent
-    //     adc_ch1 = 8'h82;
-    //     adc_ch5 = 8'h86;
+    //     $display("[TB] Injecting knock event on adc_ch1 at t=%0t", $time);
+    //     knock_sensor = 8'd60;  // requires knock_sensor to be a reg (see note above)
+    //     adc_ch1 = 8'hE8;       // strong knock on sensor 2
+    //     #200000;               // hold for 200 µs (~2 engine cycles at idle)
+    //     knock_sensor = 8'd110;
+    //     adc_ch1 = 8'hd8;       // return to quiescent (battery)
     // end
 
 `include "klr_phase_monitor.v"

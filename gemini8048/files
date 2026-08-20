@@ -5,5 +5,6 @@ rtl/verilog/klr_top.v
 bench/verilog/klr_defs.v
 bench/verilog/adc_8090.v
 bench/verilog/var_timing_gen.v
+bench/verilog/knock_gen.v
 bench/verilog/klr_vcd.v
 bench/verilog/klr_tb.v

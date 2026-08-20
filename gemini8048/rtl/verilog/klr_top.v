@@ -155,6 +155,7 @@ module klr_system (
     assign CV_PWM    = p1[4];
     assign knock_out = p1[6];
     assign fake_knock= p1[7];
+    assign adc_ale = p1[3];
     assign p1_mon    = p1;
     assign p2_mon    = p2;
     assign ext_addr  = {p1[2:0], bus_addr};  // A10–A8 from P1, A7–A0 from Ri via BUS
@@ -279,8 +280,8 @@ module klr_system (
     adc_8090 u_adc_mux (
         .clk      ( ale         ),   // ALE clocks the pipeline
         .oe       ( 1'b1        ),   // output always enabled
-        .start    ( 1'b0        ),   // free-running
-        .ale      ( ale         ),   // ALE latches channel address
+        .start    ( adc_ale     ),   // free-running
+        .ale      ( adc_ale     ),   // ALE latches channel address
         .addr     ( p1[2:0]     ),   // P1[2:0] = channel select
         .data_in0 ( adc_ch0     ),
         .data_in1 ( adc_ch1     ),

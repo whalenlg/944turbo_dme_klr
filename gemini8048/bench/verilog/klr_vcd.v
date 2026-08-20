@@ -152,6 +152,17 @@ wire [7:0] ram_7a = `RAM[8'h7a]; wire [7:0] ram_7b = `RAM[8'h7b];
 wire [7:0] ram_7c = `RAM[8'h7c]; wire [7:0] ram_7d = `RAM[8'h7d];
 wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
 
+    wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
+    wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
+    wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
+    wire [7:0] r3 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1b] : `RAM[7'h3];
+    wire [7:0] r4 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1c] : `RAM[7'h4];
+    wire [7:0] r5 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1d] : `RAM[7'h5];
+    wire [7:0] r6 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1e] : `RAM[7'h6];
+    wire [7:0] r7 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1f] : `RAM[7'h7];
+    wire [7:0] r_at_0 = `RAM[r0];
+    wire [7:0] r_at_1 = `RAM[r1];
+
 // ============================================================
 //  Interrupt entry tracker
 //  service_interrupt() pushes to the stack and sets irq_in_progress.
@@ -225,6 +236,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
     $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
+    $dumpvars(1, `KLR_TOP_TB.u_knock_gen);
 `endif
 
     clk_count = 0;

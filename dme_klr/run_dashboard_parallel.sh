@@ -28,22 +28,15 @@ _BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
 
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
-# Look up simulated seconds for a test from the run script
-sim_secs() {
-    local ns
-    ns=$(grep -m1 "${1})" "$RUN_TESTS" 2>/dev/null | grep -oE 'DSIM_TIME=[0-9]+' | grep -oE '[0-9]+')
-    [ -n "$ns" ] && echo $(( ns / 1000000000 )) || echo "?"
-}
-
 ALL_TESTS=(
-    cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
+    ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
     cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3
     cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7
     cl_ramp_to_redline cl_ac_halfway cl_cold_start
     warm_idle cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle
     overrun_cutoff warmup_enrichment afm_open_circuit
     coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline tps_fail
-    ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold
+    ramp_to_redline ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
     dme_klr_warm_idle dme_klr_ramp_to_3000
@@ -145,6 +138,7 @@ validate_one() {
 
 # ── Worker pool ───────────────────────────────────────────────────────────────
 RUNNING=0
+COMPLETED=0
 declare -a PIDS=()
 declare -a PID_NAMES=()
 declare -a SIM_FAILED=()
@@ -162,6 +156,8 @@ reap_finished() {
                 SIM_FAILED+=("$name")
             fi
             validate_one "$name"
+            COMPLETED=$(( COMPLETED + 1 ))
+            printf "  [%d of %d completed]\n" "$COMPLETED" "$TOTAL"
         else
             NEW_PIDS+=("$pid")
             NEW_NAMES+=("$name")
@@ -179,7 +175,6 @@ for test in "${TESTS[@]}"; do
         [ "$RUNNING" -ge "$WORKERS" ] && sleep 1
     done
 
-    printf "  [START]  %s  (%ss sim)\n" "$test" "$(sim_secs $test)"
     (
         cd "$SCRIPT_DIR"
         bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
