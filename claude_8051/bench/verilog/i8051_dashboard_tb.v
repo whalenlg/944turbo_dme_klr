@@ -239,7 +239,9 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'hDA      // 6000 RPM → ADC≈0xDA (218)
+  `define AFM_CL_TARGET  8'hD8      // 6000 RPM → capped at 0xD8 (was 0xDA;
+                                     // 0xDA let the closed loop converge
+                                     // too high — see var_interrupt_gen_cl.v)
   `ifndef SIM_TIME
   `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
   `endif
@@ -878,17 +880,129 @@ always @(posedge reference_sensor) begin
 end
 `endif
 
-// ─── CL ramp AFM override ────────────────────────────────────
-// Steps AFM to AFM_CL_TARGET at t=2000ms, driving firmware load
-// calc to compute high fuel — CL dynamics then accelerates RPM.
-// TPS also follows the AFM override for correct throttle sensing.
+// ─── CL ramp AFM/TPS override ─────────────────────────────────
+// Driver-commanded throttle event at t=2000ms (past fuel cut/ASE):
+// TPS (afm_wiper) ramps toward the commanded target at a FIXED
+// per-count rate (~1.42ms/count, matching the 6000-family's
+// original cadence — see STEP_NS below for why this is fixed
+// rather than scaled per-target). AFM (afm_cl) gets its OWN
+// identical ramp, triggered on an ADDITIONAL ~250ms delay (airflow
+// reacting to the throttle change) — so AFM's whole trajectory is
+// TPS's trajectory, time-shifted ~250ms later, not AFM chasing
+// TPS's live value at matching speed (that only ever falls ~1 step
+// behind, since a same-speed follower starting from equal position
+// never accumulates real separation from a moving target — verified
+// this doesn't produce a meaningful lag before settling on the
+// time-shifted-trigger approach instead). This replaces the old
+// instant-step-to-AFM_CL_TARGET behavior for BOTH signals.
+//
+// Target is `AFM_CL_TARGET — the SAME per-test macro already used by
+// every CL ramp test (0x72 for 3000rpm, 0xD8 for the 6000-family
+// after the fix above, 0xEB for redline) — not a new hardcoded
+// value, so cl_ramp_to_3000 and cl_ramp_to_redline are completely
+// unaffected by this change; only the 6000-family's target actually
+// moved (via the `define change above).
+//
+// The per-count rate (STEP_NS) is now FIXED across every target,
+// not scaled to force a fixed total ramp time — total ramp time
+// instead varies with each target's range (~105ms for the
+// 3000-family, ~250ms for 6000, ~277ms for redline). Originally
+// every target was scaled to complete in exactly 250ms, which meant
+// the 3000-family's smaller range (74 counts) used ~2.4x coarser
+// step spacing than the 6000-family's (176 counts) to hit that same
+// total time. That coarser command-update cadence was suspected of
+// disturbing the 3000-family's RPM convergence (noisier steady-state
+// RPM, and a lost timing-retard differentiation that traced back
+// through timing_adv_next to an RPM/load-dependent shift, not a
+// direct bug) — while the 6000-family's finer cadence stayed
+// unaffected, matching old vs new comparisons for that family being
+// nearly identical. The fixed-rate values here are still not exact
+// data — adjust STEP_NS/AFM_LAG_NS if you have real numbers.
+//
+// Scope: AFM_CL_RAMP only — every other mode (default/idle,
+// AFM_TIPPY, AFM_FAULT) is unaffected; afm_wiper there still comes
+// straight from the crpm-based generator curve, unchanged.
 `ifdef AFM_CL_RAMP
-reg [7:0] afm_cl;
-initial begin
-    afm_cl = 8'h28;   // idle until engine settled
-    #2_000_000_000;   // 2000ms — past fuel cut and ASE
-    afm_cl = `AFM_CL_TARGET;
-end
+    localparam integer      STEP_NS        = 1_420_454;                // fixed per-count rate (matches the 6000-family's
+                                                                          // original 250ms/176-count cadence) — NOT scaled
+                                                                          // per-target, so total ramp time now varies with
+                                                                          // each target's range instead of being forced to a
+                                                                          // fixed 250ms. A fixed 250ms total forced the
+                                                                          // 3000-family's ramp (a smaller range, 74 counts)
+                                                                          // to use ~2.4x coarser step spacing than the
+                                                                          // 6000-family's (176 counts) to hit the same total
+                                                                          // time — suspected of disturbing that family's RPM
+                                                                          // convergence. Fixed rate keeps every family's
+                                                                          // command-update cadence identical instead.
+    localparam integer      AFM_LAG_NS     = 250_000_000;            // additional AFM reaction lag behind TPS's own trigger
+
+    // TPS commanded target -- driver presses the gas at t=2000ms
+    reg [7:0] tps_commanded;
+    initial begin
+        tps_commanded = 8'h28;         // idle until engine settled
+        #2_000_000_000;                // 2000ms — past fuel cut and ASE
+        tps_commanded = `AFM_CL_TARGET;   // driver presses the gas
+    end
+
+    // AFM commanded target -- triggers on TPS's OWN event, but an
+    // additional ~250ms later (airflow reacting to a throttle
+    // position CHANGE, on top of the throttle linkage's own response
+    // time). Using its own time-shifted trigger (rather than chasing
+    // TPS's live value at the same speed) is deliberate: chasing a
+    // moving target at matching speed only ever falls ~1 step behind,
+    // not a genuine ~250ms lag — this instead gives AFM's entire
+    // trajectory as a clean time-shifted copy of TPS's, which is what
+    // "reacts to that, with about 250ms of its own lag" actually
+    // means here.
+    reg [7:0] afm_commanded;
+    initial begin
+        afm_commanded = 8'h28;
+        #2_000_000_000;
+        #AFM_LAG_NS;
+        afm_commanded = `AFM_CL_TARGET;
+    end
+
+    // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
+    // This IS the afm_wiper used everywhere else in the file/hierarchy
+    // (including the hierarchical u_dme.afm_wiper reference that feeds
+    // the KLR's TPS input) — see the `ifndef AFM_CL_RAMP fallback wire
+    // declaration near the ADC mux section below.
+    reg        [7:0]  afm_wiper;
+    reg        [63:0] tps_last_step_time;
+    initial begin
+        afm_wiper          = 8'h28;
+        tps_last_step_time = 0;
+    end
+    always @(posedge clk) begin
+        if (afm_wiper < tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
+            afm_wiper          <= afm_wiper + 8'd1;
+            tps_last_step_time <= $time;
+        end else if (afm_wiper > tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
+            afm_wiper          <= afm_wiper - 8'd1;
+            tps_last_step_time <= $time;
+        end
+    end
+
+    // AFM (afm_cl): slews toward afm_commanded (its own time-shifted
+    // trigger — see above), at the SAME per-count rate as TPS. Net
+    // effect: AFM's entire trajectory is TPS's trajectory, shifted
+    // ~250ms later — a genuine sustained lag through the transient,
+    // closing back to zero once both reach the same final target.
+    reg        [7:0]  afm_cl;
+    reg        [63:0] afm_last_step_time;
+    initial begin
+        afm_cl             = 8'h28;
+        afm_last_step_time = 0;
+    end
+    always @(posedge clk) begin
+        if (afm_cl < afm_commanded && ($time - afm_last_step_time) >= STEP_NS) begin
+            afm_cl             <= afm_cl + 8'd1;
+            afm_last_step_time <= $time;
+        end else if (afm_cl > afm_commanded && ($time - afm_last_step_time) >= STEP_NS) begin
+            afm_cl             <= afm_cl - 8'd1;
+            afm_last_step_time <= $time;
+        end
+    end
 `endif
 
 // ─── ADC mux ────────────────────────────────────────────────
@@ -897,7 +1011,12 @@ end
 // At spike afm_tippy=0x78 >> threshold so TPS correctly reads open.
 `define AFM_IDLE_THR 8'h30
 
+// Under AFM_CL_RAMP, afm_wiper is declared above (as a reg, driven by
+// the TPS ramp). Every other mode still gets the plain wire, fed by
+// the crpm-based generator curve via the port connection below.
+`ifndef AFM_CL_RAMP
 wire [7:0] afm_wiper;
+`endif
 // Idle switch derived from airflow: grounded (0) at idle, open (1) just
 // off idle.  This is the throttle idle-stop contact — internal because
 // afm_wiper/afm_tippy/afm_cl are all generated in this TB.
@@ -1041,7 +1160,26 @@ end
 // ─── RPM / crank generator ──────────────────────────────────
 `ifdef RPMRAMP
 `ifdef CL_MODE
-// Closed-loop engine dynamics — RPM driven by fuel pulse feedback
+// Closed-loop engine dynamics — RPM driven by fuel pulse feedback.
+// RPM physics (rpm_fp/crpm) run identically regardless of what its
+// afm_wiper OUTPUT port connects to below — that output is a
+// read-only derived value, not a feedback input to the module's own
+// RPM computation, so discarding it under AFM_CL_RAMP is safe.
+`ifdef AFM_CL_RAMP
+// TPS/AFM come from the driver-commanded ramp above under
+// AFM_CL_RAMP (afm_wiper is a reg there, not a wire) — route this
+// generator's raw crpm-based curve output to an unused wire instead
+// of the real afm_wiper.
+wire [7:0] afm_wiper_curve_unused;
+var_interrupt_generator_cl var_interrupt_generator_1 (
+    .clk       ( clk                    ),
+    .rst       ( rst                    ),
+    .int_0     ( reference_sensor       ),
+    .int_1     ( speed_sensor           ),
+    .tdc       ( tdc_marker             ),
+    .afm_wiper ( afm_wiper_curve_unused )
+);
+`else
 var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk              ),
     .rst       ( rst              ),
@@ -1050,6 +1188,7 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
     .tdc       ( tdc_marker       ),
     .afm_wiper ( afm_wiper        )
 );
+`endif
 `else
 // Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
 var_interrupt_generator var_interrupt_generator_1 (
