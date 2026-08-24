@@ -186,17 +186,51 @@ module var_interrupt_generator_cl (
     //  non-CL interrupt generator — so this change doesn't affect
     //  them.
     //
-    //  Shape: idle -> rise -> flat plateau at 0xD8 (covers the
-    //  6000-family's ~6432rpm settle point with margin either side
-    //  for normal closed-loop fluctuation) -> short final rise ->
-    //  0xEB ceiling (reached by redline's ~6818rpm settle point).
-    //  The plateau bounds (afm_rpm_mid/afm_rpm_plateau_end) are a
+    //  Shape: idle -> rise (ORIGINAL slope, see below) -> capped at
+    //  0xD8 (covers the 6000-family's ~6432rpm settle point with
+    //  margin either side for normal closed-loop fluctuation) ->
+    //  short final rise -> 0xEB ceiling (reached by redline's
+    //  ~6818rpm settle point).
+    //
+    //  IMPORTANT: the rising segment below uses the ORIGINAL
+    //  single-segment slope (the (840,40)->(6500,235) two-point
+    //  line this module used before the 0xD8 cap was added), not a
+    //  new shallower slope aimed directly at (6432,216). An earlier
+    //  version of this fix redefined the slope itself to hit
+    //  (afm_rpm_mid, afm_adc_mid) exactly, which quietly shifted
+    //  afm_wiper ~6 counts LOWER across the entire 3000-family's
+    //  operating range (e.g. 107->101 at 2800rpm) as a side effect —
+    //  confirmed via git bisect to be what broke cl_ramp_to_3000's
+    //  FQS timing-retard differentiation and RPM convergence
+    //  (afm_wiper feeds TPS, and the KLR's full_load latch depends
+    //  on a transient overshoot crossing a threshold during ramp-up;
+    //  the shallower slope's uniformly-lower values apparently no
+    //  longer crossed it). This version keeps the ORIGINAL slope
+    //  and just clamps/caps its output at afm_adc_mid once it would
+    //  naturally exceed that — so the 3000-family sees EXACTLY the
+    //  same values as before the 0xD8 cap was ever introduced, while
+    //  the 6000-family still gets capped correctly (the cap only
+    //  actually engages once crpm is high enough that the original
+    //  line would exceed 216 anyway, i.e. above ~5948rpm — nowhere
+    //  near the 3000-family's range).
+    //
+    //  IMPORTANT (2nd note): this exact fix was applied once before
+    //  but never committed to git — a later `git bisect`/`git bisect
+    //  reset` cycle silently discarded it, so every test run between
+    //  then and whenever this comment was re-added was still running
+    //  the buggy shallower-slope version despite appearing to have
+    //  the fix. Commit this change before doing anything with git
+    //  bisect/checkout again.
+    //  The plateau bounds (afm_rpm_plateau_end) are a
     //  reasonable-margin choice, not exact data — adjust if you
     //  have tighter bounds on the 6000-family's real fluctuation
     //  band around 6432rpm.
     localparam afm_rpm_lo          = 840;
     localparam afm_adc_lo          = 40;
-    localparam afm_rpm_mid         = 6432;  // cl_ramp_to_6000-family settle point
+    localparam afm_rpm_orig_hi     = 6500;  // ORIGINAL slope's own reference endpoint
+    localparam afm_adc_orig_hi     = 235;   // (used only to compute the line's slope —
+                                             // NOT a plateau boundary; the cap below
+                                             // kicks in well before crpm reaches this)
     localparam afm_adc_mid         = 216;   // 0xD8 — max TPS for CL 6000-target tests
     localparam afm_rpm_plateau_end = 6700;  // margin before climbing toward redline's ceiling
     localparam afm_rpm_hi          = 6818;  // cl_ramp_to_redline settle point
@@ -214,22 +248,29 @@ module var_interrupt_generator_cl (
     // ── AFM combinational ────────────────────────────────────────
     always @(*) begin : afm_calc
         integer crpm;
-        crpm = rpm_fp / `CL_INERTIA;
+        integer uncapped;
+        crpm     = rpm_fp / `CL_INERTIA;
+        // ORIGINAL two-point line — matches this module's behavior
+        // before the 0xD8 cap existed. Only meaningful/used once
+        // crpm > afm_rpm_lo (see below); harmless if computed
+        // (unused) otherwise.
+        uncapped = afm_adc_lo +
+                   ((afm_adc_orig_hi - afm_adc_lo) * (crpm - afm_rpm_lo))
+                   / (afm_rpm_orig_hi - afm_rpm_lo);
+
         if (crpm <= afm_rpm_lo) begin
             afm_wiper = afm_adc_lo;
-        end else if (crpm <= afm_rpm_mid) begin
-            // Rising segment 1: idle -> cl_ramp_to_6000-family cap
-            afm_wiper = afm_adc_lo +
-                        ((afm_adc_mid - afm_adc_lo) * (crpm - afm_rpm_lo))
-                        / (afm_rpm_mid - afm_rpm_lo);
         end else if (crpm <= afm_rpm_plateau_end) begin
-            // Flat plateau: holds at the 0xD8 cap through the
-            // 6000-family's realistic operating range
-            afm_wiper = afm_adc_mid;
+            // ORIGINAL slope, capped at the 6000-family's D8 ceiling.
+            // Below ~5948rpm the uncapped line is already under 216
+            // anyway, so the cap only actually engages above that —
+            // the 3000-family's entire range sits well under it,
+            // seeing exactly the original (uncapped) values.
+            afm_wiper = (uncapped > afm_adc_mid) ? afm_adc_mid : uncapped;
         end else if (crpm >= afm_rpm_hi) begin
             afm_wiper = afm_adc_hi;
         end else begin
-            // Rising segment 2: plateau end -> redline's ceiling
+            // Rising segment: plateau end -> redline's ceiling
             afm_wiper = afm_adc_mid +
                         ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
                         / (afm_rpm_hi - afm_rpm_plateau_end);
