@@ -96,9 +96,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  Initial values match i8048_tb.v: static signed constants so
     //  the firmware can run its conversion loop immediately.
     //  Replace with boost_pressure_gen output once that module is written.
-// this is wrong - pin 1 is the KLR pin 1    #reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
     reg [7:0] adc_ch1 = 8'hd8;  // battery
-//this is also wrong    reg [7:0] adc_ch2 = 8'h83;  // conn 17
     reg [7:0] adc_ch2 = 8'h00;  // ground
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
@@ -291,12 +289,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  Note: fake_knock and knock_reset can NOT be driven here —
     //  both are continuously driven by klr_system's own P1.7/P2.5
     //  outputs (firmware-controlled self-test signals; see
-    //  klr_top.v / knock_gen.v). adc_ch0/adc_ch5 (knock_noise/
-    //  knock_sum) are also not directly drivable. To vary the
-    //  ch0/ch5 baseline from the testbench, change knock_sensor
-    //  above from a tied wire to a reg and drive it here instead —
-    //  it's ALWAYS the baseline value for both outputs (145 is added
-    //  on top only while fake_knock=1).
+    //  klr_top.v / knock_gen.v). adc_ch0/adc_ch5 are wired to
+    //  knock_gen's knock_noise/knock_sum outputs (not directly
+    //  drivable here). To vary the ch0/ch5 baseline from the
+    //  testbench, change knock_sensor above from a tied wire to a
+    //  reg and drive it here instead — it's ALWAYS the baseline
+    //  value for both outputs (145 is added on top only while
+    //  fake_knock=1).
     // ============================================================
     // initial begin
     //     #(`SIM_TIME / 2);

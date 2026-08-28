@@ -13,7 +13,7 @@ Output (one line per verdict, tab-separated):
     PASS|WARN|FAIL  <test_name>  <detail>
 """
 
-import sys, re
+import sys, re, os
 
 # ─── Per-test expectations ──────────────────────────────────────────────────
 # fuel_range     : (min_ms, max_ms) of steady-state injected fuel
@@ -116,35 +116,35 @@ TESTS = {
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':12.90,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing'},
     'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':12.90,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing'},
     'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':12.90,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing'},
     'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':12.90,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.560,
+                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing'},
     'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s',
@@ -219,6 +219,88 @@ def parse_ds(line):
         'o2_val': o2_val,
         'o2_b26': o2_b26,
     }
+
+
+def settled_window_for_fit(rows, rpm_band=15.0):
+    """Tail 30% (same convention as the rest of this file), fuel>0 only,
+    further filtered to within rpm_band of that window's own final RPM —
+    drops still-converging/transient rows a plain tail window can't tell
+    apart from real steady state. Used by the FQS-family fuel fit below;
+    see analyze_fqs_fuel.py for the standalone diagnostic this was built
+    from and the fuller rationale."""
+    if not rows:
+        return []
+    cutoff_idx = max(0, len(rows) - max(10, len(rows) * 3 // 10))
+    tail = [r for r in rows[cutoff_idx:] if r['fuel_actual'] > 0]
+    if not tail:
+        return []
+    ref_rpm = tail[-1]['rpm']
+    return [r for r in tail if abs(r['rpm'] - ref_rpm) <= rpm_band]
+
+
+def discover_fqs_family(test_name, logpath):
+    """If test_name looks like a '..._FQSN' position, return
+    [(sibling_name, sibling_logpath), ...] for every FQS0-7 position in
+    the same family, in the same directory as logpath. Returns [] if
+    test_name isn't part of an FQS family."""
+    m = re.match(r'^(.+_FQS)(\d+)$', test_name)
+    if not m:
+        return []
+    base = m.group(1)
+    directory = os.path.dirname(logpath)
+    suffix = '.dash.log'
+    # logpath's own suffix might not be exactly '.dash.log' if called
+    # unusually — derive it from the actual filename instead of assuming.
+    fname = os.path.basename(logpath)
+    if fname.startswith(test_name):
+        suffix = fname[len(test_name):]
+    return [(f"{base}{i}", os.path.join(directory, f"{base}{i}{suffix}"))
+            for i in range(8)]
+
+
+def build_fqs_fuel_fit(test_name, logpath, rpm_band=15.0):
+    """Build the RPM-normalized fuel/RPM fit across every available
+    sibling in this test's FQS family (see analyze_fqs_fuel.py for the
+    full rationale). Returns (slope, intercept, n_siblings_used) or None
+    if fewer than 2 siblings have usable data (e.g. run in isolation)."""
+    siblings = discover_fqs_family(test_name, logpath)
+    if not siblings:
+        return None
+
+    points = []
+    for sib_name, sib_path in siblings:
+        sib_exp = TESTS.get(sib_name)
+        if sib_exp is None or sib_exp.get('fqs_fuel_pct') is None:
+            continue
+        try:
+            sib_lines = open(sib_path).readlines()
+        except FileNotFoundError:
+            continue
+        sib_rows = [r for r in (parse_ds(l) for l in sib_lines) if r]
+        ss = settled_window_for_fit(sib_rows, rpm_band)
+        if not ss:
+            continue
+        n = len(ss)
+        rpm_avg = sum(r['rpm'] for r in ss) / n
+        fuel_avg = sum(r['fuel_actual'] for r in ss) / n
+        exp_pct = sib_exp['fqs_fuel_pct']
+        norm_fuel = fuel_avg / (1 + exp_pct / 100.0)
+        points.append((rpm_avg, norm_fuel))
+
+    if len(points) < 2:
+        return None
+
+    n = len(points)
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    den = sum((x - mean_x) ** 2 for x in xs)
+    if den == 0:
+        return None
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / den
+    intercept = mean_y - slope * mean_x
+    return (slope, intercept, n)
 
 
 def detect_o2_status(rows):
@@ -361,8 +443,8 @@ def validate(test_name, logpath):
             if m:
                 infos.append(f"FuelCut→end={m.group(1)}ms")
 
-    # ── 6. Steady-state fuel (last 20% of snapshots, injection only)
-    cutoff_idx = max(0, len(rows) - max(10, len(rows) // 5))
+    # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
+    cutoff_idx = max(0, len(rows) - max(10, len(rows) * 3 // 10))
     steady = [r for r in rows[cutoff_idx:] if r['fuel_actual'] > 0]
     if steady:
         fuel_min = min(r['fuel_actual'] for r in steady)
@@ -390,7 +472,7 @@ def validate(test_name, logpath):
         if max_rpm < lo_bound:
             fails.append(f"RPM never reached target {rpm_target} ±{tol_pct}% (max {max_rpm}, min acceptable {lo_bound:.0f})")
         else:
-            # Overshoot: check the SETTLED RPM (last 20% of snapshots), not
+            # Overshoot: check the SETTLED RPM (last 30% of snapshots), not
             # the transient peak. Closed-loop tests legitimately overshoot
             # during approach before settling near target — that's normal
             # control-loop step response, not a bug. Only a sustained
@@ -488,13 +570,38 @@ def validate(test_name, logpath):
     fqs_fuel_baseline = exp.get('fqs_fuel_baseline')
     if fqs_fuel_pct is not None and steady:
         tol = 5.0  # +/- percentage points, tightened from the old direction-only check
-        if fqs_fuel_baseline:
+
+        # Prefer the RPM-normalized family fit (see analyze_fqs_fuel.py):
+        # different FQS positions can settle at meaningfully different
+        # closed-loop RPMs even with an identical AFM_CL_TARGET, and fuel
+        # need scales with RPM — comparing raw fuel averages at mismatched
+        # RPMs confounds the fuel-quality effect with that RPM difference.
+        # The fit factors RPM out by using every available sibling
+        # position together. Falls back to the old fixed-baseline compare
+        # if sibling logs aren't available (e.g. this test run in
+        # isolation) or there's no fqs_fuel_baseline configured at all.
+        fit = build_fqs_fuel_fit(test_name, logpath)
+        own_settled = settled_window_for_fit(rows)
+
+        if fit and own_settled:
+            slope, intercept, n_siblings = fit
+            rpm_avg_own = sum(r['rpm'] for r in own_settled) / len(own_settled)
+            fuel_avg_own = sum(r['fuel_actual'] for r in own_settled) / len(own_settled)
+            predicted = slope * rpm_avg_own + intercept
+            measured_pct = (fuel_avg_own / predicted - 1) * 100.0 if predicted else float('nan')
+            diff = measured_pct - fqs_fuel_pct
+            method_note = f"RPM-normalized, {n_siblings} siblings, own rpm_avg={rpm_avg_own:.0f}"
+            if abs(diff) > tol:
+                fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — {method_note}")
+            else:
+                infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [{method_note}]")
+        elif fqs_fuel_baseline:
             measured_pct = (fuel_avg - fqs_fuel_baseline) / fqs_fuel_baseline * 100.0
             diff = measured_pct - fqs_fuel_pct
             if abs(diff) > tol:
-                fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — fuel_avg={fuel_avg:.3f}ms baseline={fqs_fuel_baseline:.3f}ms")
+                fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — fuel_avg={fuel_avg:.3f}ms baseline={fqs_fuel_baseline:.3f}ms [fixed baseline — sibling logs unavailable for RPM-normalized fit]")
             else:
-                infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓")
+                infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [fixed baseline — sibling logs unavailable]")
         else:
             # No baseline configured for this test — fall back to the coarse
             # direction/floor check rather than skip validation entirely.

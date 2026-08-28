@@ -54,13 +54,12 @@ def parse_status_lines(path):
 
 
 def steady_state(rows, rpm_thresh):
-    # Tail-of-log window, same convention validate_dash_log.py uses
-    # (last 20% of samples, min 10) — NOT "any sample where RPM happened
-    # to be above threshold", which also catches ramp-up transient rows
-    # the moment RPM first crosses the threshold, before timing_adv (or
-    # fuel) has actually settled. An RPM floor alone isn't enough to
-    # isolate genuine steady state.
-    cutoff_idx = max(0, len(rows) - max(10, len(rows) // 5))
+    # Tail-of-log window (last 30% of samples, min 10) — NOT "any sample
+    # where RPM happened to be above threshold", which also catches
+    # ramp-up transient rows the moment RPM first crosses the threshold,
+    # before timing_adv (or fuel) has actually settled. An RPM floor
+    # alone isn't enough to isolate genuine steady state.
+    cutoff_idx = max(0, len(rows) - max(10, len(rows) * 3 // 10))
     tail = rows[cutoff_idx:]
     return [r for r in tail if r['rpm'] >= rpm_thresh]
 
