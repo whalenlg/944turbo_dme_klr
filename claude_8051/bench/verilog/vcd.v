@@ -300,6 +300,20 @@ assign    b2d = `TB.i8051_top.u_cpu.iram[37][5];
 assign    b2e = `TB.i8051_top.u_cpu.iram[37][6];
 assign    b2f = `TB.i8051_top.u_cpu.iram[37][7];
 
+// data_from_rom: XOR of the instruction-fetch address (pc) and the
+// external bus address (`TB.i8051_top.u_cpu.addr_bus). During a normal
+// instruction fetch the bus address tracks pc, so this reads 0; during a
+// MOVX-style data fetch from EPROM, addr_bus diverges from the current pc
+// and this goes non-zero — a quick way to spot data-fetch addresses in
+// the waveform separately from instruction fetches. 16-bit, matching
+// both pc and addr_bus's own width. Module-level continuous assignment —
+// must NOT be inside the initial block below (which is a procedural
+// context; a wire declaration with continuous assignment isn't legal
+// there — this caused the original "syntax error... l-value" compile
+// failure when it was placed inline with the $dumpvars calls).
+`ifdef CPU_DEEP_DEBUG
+wire [15:0] data_from_rom = pc ^ `TB.i8051_top.u_cpu.addr_bus;
+`endif
 
 
 initial
@@ -357,6 +371,9 @@ $dumpvars(0,`TB.interrupt_generator_1);
 
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
 $dumpvars(1,pc);
+`ifdef CPU_DEEP_DEBUG
+$dumpvars(1,data_from_rom);
+`endif
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 $dumpvars(1,`TB.i8051_top.u_cpu.t0);
 $dumpvars(1,`TB.i8051_top.u_cpu.t1);

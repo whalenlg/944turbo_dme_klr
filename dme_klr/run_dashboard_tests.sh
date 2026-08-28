@@ -294,6 +294,16 @@ run_test cl_ramp_to_3000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
+run_test cl_condition_cycle \
+    -DTEST_CL_CONDITION_CYCLE \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=66000000000
+
+run_test cl_condition_cycle_idle \
+    -DTEST_CL_CONDITION_CYCLE_IDLE \
+    -DRPMRAMP -DCL_MODE \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
 run_test cl_ramp_to_6000 \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
@@ -617,6 +627,8 @@ if [ -n "$1" ]; then
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=66000000000 ;;
+        cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000) run_test cl_ramp_to_6000 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP  -DCPU_DEBUG -DCPU_DEEP_DEBUG -DKLR_DEBUG -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -679,7 +691,7 @@ if [ -n "$1" ]; then
             echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"
             echo "  ISV:         isv_cold_idle isv_load_droop"
             echo "  Closed-loop: cl_warm_idle cl_tippy_in"
-            echo "               cl_ramp_to_3000 cl_ramp_to_6000 cl_ramp_to_redline"
+            echo "               cl_ramp_to_3000 cl_ramp_to_6000 cl_ramp_to_redline cl_condition_cycle cl_condition_cycle_idle"
             echo "  Fuel qual:   cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "               cl_ac_halfway cl_cold_start"
             echo "  DME+KLR:     cl_tippy_in dme_klr_warm_idle dme_klr_ramp_to_3000"

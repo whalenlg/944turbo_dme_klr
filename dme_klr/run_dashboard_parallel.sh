@@ -29,7 +29,7 @@ _BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
 ALL_TESTS=(
-    ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
+    ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_condition_cycle cl_condition_cycle_idle cl_ramp_to_6000
     cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3
     cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7
     cl_ramp_to_redline cl_ac_halfway cl_cold_start

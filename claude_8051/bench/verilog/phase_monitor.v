@@ -280,3 +280,79 @@ always @(posedge clk) begin  // lambda_warmup_skip
 end    // lambda_warmup_skip
 `endif // SKIP_LAMBDA_WARMUP
 
+// ----------------------------------------------------------------
+//  Condition-cycle phase announcements (TEST_CL_CONDITION_CYCLE /
+//  TEST_CL_CONDITION_CYCLE_IDLE) — announces each of the 5 segments
+//  (air temp, coolant temp, altitude, cat, AC) as it starts and ends,
+//  so the log clearly marks what each upcoming window is testing.
+//
+//  Unlike the edge-detected phase messages above (which watch
+//  firmware-internal signals via the cycle_count-derived clock), these
+//  fire at fixed, known-in-advance simulation times matching the
+//  #delay values in the testbench's own dynamic signal / t0 / t1
+//  sequencing exactly — so plain $time-based initial blocks are used
+//  here instead, with $time/1_000_000 for the ms conversion (this
+//  project's timescale is ns, matching the raw #delay literals used
+//  throughout the testbench, e.g. #2_000_000_000 = 2000ms).
+//
+//  Timing differs between the two variants (idle has no ~25-30s ramp
+//  to wait through first) — selected internally below, matching
+//  i8051_dashboard_tb.v's own TEST_CL_CONDITION_CYCLE_IDLE selection.
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(2_000_000_000);
+`else
+    #(31_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", $time/1_000_000);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", $time/1_000_000);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(9_000_000_000);
+`else
+    #(38_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", $time/1_000_000);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", $time/1_000_000);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(16_000_000_000);
+`else
+    #(45_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", $time/1_000_000);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", $time/1_000_000);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(23_000_000_000);
+`else
+    #(52_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", $time/1_000_000);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", $time/1_000_000);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(30_000_000_000);
+`else
+    #(59_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", $time/1_000_000);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", $time/1_000_000);
+end
+`endif // CL_CONDITION_CYCLE_ACTIVE
+
+

@@ -234,6 +234,84 @@
   `endif
 `endif
 
+// TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
+// TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
+// time), then five sequential 7-second condition-cycle phases, each
+// 1s nominal / 5s test-condition-active / 1s nominal:
+//   t=30-37s: air temp  -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
+//   t=37-44s: coolant   -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
+//   t=44-51s: altitude  -> 0x00 (high altitude, same as TEST_IDLE_HIGH_ALT)
+//   t=51-58s: cat (T0)  -> 1 (no cat fitted)
+//   t=58-65s: AC (T1)   -> 1 (AC compressor on)
+// Phases run sequentially, not simultaneously — only one condition is
+// ever active at a time, bookended by nominal baseline on each side so
+// the response to each individual change (and recovery back to
+// nominal) is separately observable. See the dynamic signal
+// declarations near coolant_dynamic/t0/t1 below for the actual timed
+// sequencing, and the adc_mux section for how each dynamic signal
+// gets wired to its ADC channel.
+`ifdef TEST_CL_CONDITION_CYCLE
+  `define CL_CONDITION_CYCLE_ACTIVE  // shared marker — see dynamic signal
+                                      // declarations, t0/t1, and adc_mux
+                                      // wiring below, which key off this
+                                      // rather than either specific flag,
+                                      // so TEST_CL_CONDITION_CYCLE and
+                                      // TEST_CL_CONDITION_CYCLE_IDLE share
+                                      // one set of signal declarations
+                                      // (with different timing selected
+                                      // internally by whichever flag is
+                                      // actually active).
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h72      // 3000 RPM target, same as TEST_CL_RAMP_TO_3000
+  `ifndef SIM_TIME
+  `define SIM_TIME  66000000000     // 66s — ~30s ramp/settle + 5x7s phases + 1s buffer
+  `endif
+  `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
+                                     // during the coolant-temp phase, see coolant_dynamic_cycle
+  `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically during
+                                     // the air-temp phase, see airtemp_dynamic_cycle
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
+                                     // during the altitude phase, see altitude_dynamic_cycle
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
+// TEST_CL_CONDITION_CYCLE_IDLE: same 5-phase condition cycle as
+// TEST_CL_CONDITION_CYCLE, but held at idle instead of ramped to
+// 3000rpm — no AFM_CL_RAMP/AFM_CL_TARGET, matching how cl_warm_idle
+// itself is built (RPMRAMP+CL_MODE, no ramp override — the closed
+// loop just settles at idle on its own). No ~25-30s ramp to wait
+// through, so the phases start much sooner (t=2s, past fuel
+// cut/ASE, vs t=30s for the ramped version):
+//   t=2-9s:   air temp  -> 0x68 (~5C)
+//   t=9-16s:  coolant   -> 0x68 (~5C)
+//   t=16-23s: altitude  -> 0x00 (high altitude)
+//   t=23-30s: cat (T0)  -> 1 (no cat fitted)
+//   t=30-37s: AC (T1)   -> 1 (AC compressor on)
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+  `define CL_CONDITION_CYCLE_ACTIVE  // see note on the marker above
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `ifndef SIM_TIME
+  `define SIM_TIME  40000000000     // 40s — 2s settle + 5x7s phases + 3s buffer
+  `endif
+  `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
+  `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
+
+
 `ifdef TEST_CL_RAMP_TO_6000
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
@@ -733,6 +811,22 @@ initial begin
     #(`SIM_TIME / 2);   // switch AC on halfway through simulation
     t1 = 1'b1;
 end
+`elsif CL_CONDITION_CYCLE_ACTIVE
+// AC phase — timing depends on which variant is active: the idle
+// version starts phases much sooner since there's no ramp to wait
+// through. See the compile-flag blocks above for the full schedule.
+reg t1;
+initial begin
+    t1 = 1'b0;                  // nominal (AC off)
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(30_000_000_000);          // t=30s
+`else
+    #(59_000_000_000);          // t=59s
+`endif
+    t1 = 1'b1;                  // AC on
+    #(5_000_000_000);           // 5s later
+    t1 = 1'b0;                  // back to nominal
+end
 `elsif AC_COMP_ON
 wire t1;
 assign t1 = 1'b1;   // T1 = AC compressor active
@@ -741,8 +835,26 @@ wire t1;
 assign t1 = 1'b0;   // T1 = AC compressor off (default)
 `endif
 
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+// Cat phase — timing depends on which variant is active: the idle
+// version starts phases much sooner since there's no ramp to wait
+// through. See the compile-flag blocks above for the full schedule.
+reg t0;
+initial begin
+    t0 = 1'b0;                  // nominal (has cat)
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(23_000_000_000);          // t=23s
+`else
+    #(52_000_000_000);          // t=52s
+`endif
+    t0 = 1'b1;                  // no cat
+    #(5_000_000_000);           // 5s later
+    t0 = 1'b0;                  // back to nominal
+end
+`else
 wire        t0;
 assign t0 = 1'b0;   // T0 = has catalytic converter (0 = fitted)
+`endif
 wire        stb_o, ack_i, ack_uart;
 wire        cyc_o, iack_i, istb_o, icyc_o;
 wire [7:0]  data_in, data_out, data_out_uart;
@@ -843,6 +955,62 @@ always @(posedge clk) begin : coolant_warmup
 end
 `endif
 `endif
+`endif
+
+// ─── Condition-cycle dynamic signals (CL_CONDITION_CYCLE_ACTIVE) ─
+// Air temp, coolant temp, and altitude each get their own timed
+// step-and-revert sequence here; T0 (cat) and T1 (AC) are handled
+// near their own existing declarations above, following the same
+// schedule. Shared by TEST_CL_CONDITION_CYCLE (ramped to 3000rpm) and
+// TEST_CL_CONDITION_CYCLE_IDLE (held at idle) — see both compile-flag
+// blocks near the top of the file for their respective full phase
+// timelines; only the delay before each phase starts differs between
+// them (idle has no ~25-30s ramp to wait through first). Values
+// reused from existing precedent: 0x68 (~5C) matches
+// TEST_ISV_COLD_IDLE's cold value; 0x00 altitude matches
+// TEST_IDLE_HIGH_ALT.
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+// Air temp phase.
+reg [7:0] airtemp_dynamic_cycle;
+initial begin
+    airtemp_dynamic_cycle = 8'h50;   // nominal
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(2_000_000_000);                // t=2s
+`else
+    #(31_000_000_000);               // t=31s
+`endif
+    airtemp_dynamic_cycle = 8'h68;   // cold (~5C)
+    #(5_000_000_000);                // 5s later
+    airtemp_dynamic_cycle = 8'h50;   // back to nominal
+end
+
+// Coolant temp phase.
+reg [7:0] coolant_dynamic_cycle;
+initial begin
+    coolant_dynamic_cycle = 8'h20;   // nominal (warm)
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(9_000_000_000);                // t=9s
+`else
+    #(38_000_000_000);               // t=38s
+`endif
+    coolant_dynamic_cycle = 8'h68;   // cold (~5C)
+    #(5_000_000_000);                // 5s later
+    coolant_dynamic_cycle = 8'h20;   // back to nominal
+end
+
+// Altitude phase.
+reg [7:0] altitude_dynamic_cycle;
+initial begin
+    altitude_dynamic_cycle = 8'hF8;  // nominal (sea level)
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(16_000_000_000);               // t=16s
+`else
+    #(45_000_000_000);               // t=45s
+`endif
+    altitude_dynamic_cycle = 8'h00;  // high altitude
+    #(5_000_000_000);                // 5s later
+    altitude_dynamic_cycle = 8'hF8;  // back to nominal
+end
 `endif
 
 // ─── Tippy-in AFM step override ─────────────────────────────// iram[53h] is updated by the ADC scan every crank cycle — so a
@@ -1062,6 +1230,8 @@ always @(*) begin
         3'b001: adc_mux = `_BATTERY;
 `ifdef TEST_AIRTEMP_FAIL
         3'b010: adc_mux = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
+`elsif CL_CONDITION_CYCLE_ACTIVE
+        3'b010: adc_mux = airtemp_dynamic_cycle;
 `else
         3'b010: adc_mux = `_AIRTEMP_RAW;
 `endif
@@ -1071,12 +1241,18 @@ always @(*) begin
         3'b011: adc_mux = coolant_dynamic;
 `elsif TEST_CL_COLD_START
         3'b011: adc_mux = coolant_dynamic;
+`elsif CL_CONDITION_CYCLE_ACTIVE
+        3'b011: adc_mux = coolant_dynamic_cycle;
 `elsif TEST_COOLANT_FAIL
         3'b011: adc_mux = 8'h00;  // shorted sensor: matches normal TB
 `else
         3'b011: adc_mux = `_COOLANT_RAW;
 `endif
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+        3'b100: adc_mux = altitude_dynamic_cycle;
+`else
         3'b100: adc_mux = `_ALTITUDE;
+`endif
         3'b101: adc_mux = 8'hFF;
 `ifdef TPS_FIXED
         3'b110: adc_mux = `TPS_FIXED;
@@ -1593,5 +1769,81 @@ always @(posedge clk) begin : wdog_stall_detect
         end
     end
 end
+
+// ----------------------------------------------------------------
+//  Condition-cycle phase announcements (TEST_CL_CONDITION_CYCLE /
+//  TEST_CL_CONDITION_CYCLE_IDLE) — announces each of the 5 segments
+//  (air temp, coolant temp, altitude, cat, AC) as it starts and ends,
+//  so the log clearly marks what each upcoming window is testing.
+//
+//  Unlike the edge-detected phase messages above (which watch
+//  firmware-internal signals via the cycle_count-derived clock), these
+//  fire at fixed, known-in-advance simulation times matching the
+//  #delay values in the dynamic signal / t0 / t1 sequencing above
+//  exactly — plain #delay-based initial blocks are used here instead,
+//  with `DME_MS for the displayed time (correct in both standalone
+//  and DME_KLR_COMBINED configurations, unlike a raw $time/1_000_000
+//  calculation, which would be wrong under DME_KLR_COMBINED's KLR
+//  clock freq bleed).
+//
+//  Timing differs between the two variants (idle has no ~25-30s ramp
+//  to wait through first) — selected internally below, matching the
+//  TEST_CL_CONDITION_CYCLE_IDLE selection used for the actual signals.
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(2_000_000_000);
+`else
+    #(31_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", `DME_MS);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(9_000_000_000);
+`else
+    #(38_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", `DME_MS);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(16_000_000_000);
+`else
+    #(45_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", `DME_MS);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(23_000_000_000);
+`else
+    #(52_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", `DME_MS);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(30_000_000_000);
+`else
+    #(59_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
+end
+`endif // CL_CONDITION_CYCLE_ACTIVE
 
 endmodule
