@@ -883,7 +883,7 @@ assign A_4_idle_speed  = p1[4];
 assign A_5_KLR_ign_out = p1[5];  // module output port
 
 // ─── VCD dump ───────────────────────────────────────────────
-dumpvcd u_dumpvcd();
+dumpvcd u_dumpvcd(.clk(clk), .pc(`TB.i8051_top.u_cpu.pc));
 
 // ─── DUT ────────────────────────────────────────────────────
 i8051_system  i8051_top (
