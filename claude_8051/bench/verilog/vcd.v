@@ -300,19 +300,23 @@ assign    b2d = `TB.i8051_top.u_cpu.iram[37][5];
 assign    b2e = `TB.i8051_top.u_cpu.iram[37][6];
 assign    b2f = `TB.i8051_top.u_cpu.iram[37][7];
 
-// data_from_rom: XOR of the instruction-fetch address (pc) and the
-// external bus address (`TB.i8051_top.u_cpu.addr_bus). During a normal
-// instruction fetch the bus address tracks pc, so this reads 0; during a
-// MOVX-style data fetch from EPROM, addr_bus diverges from the current pc
-// and this goes non-zero — a quick way to spot data-fetch addresses in
-// the waveform separately from instruction fetches. 16-bit, matching
-// both pc and addr_bus's own width. Module-level continuous assignment —
-// must NOT be inside the initial block below (which is a procedural
-// context; a wire declaration with continuous assignment isn't legal
-// there — this caused the original "syntax error... l-value" compile
-// failure when it was placed inline with the $dumpvars calls).
+// data_from_rom: 0 if the instruction-fetch address (pc) equals the
+// external bus address (`TB.i8051_top.u_cpu.addr_bus); addr_bus itself
+// otherwise. During a normal instruction fetch the bus address tracks
+// pc, so this reads 0; during a MOVX-style data fetch from EPROM,
+// addr_bus diverges from the current pc and this reads the actual
+// data-fetch address directly — a quick way to spot data-fetch
+// addresses in the waveform separately from instruction fetches.
+// 16-bit, matching both pc and addr_bus's own width. Module-level
+// continuous assignment — must NOT be inside the initial block below
+// (which is a procedural context; a wire declaration with continuous
+// assignment isn't legal there — this caused the original "syntax
+// error... l-value" compile failure when it was placed inline with
+// the $dumpvars calls).
 `ifdef CPU_DEEP_DEBUG
-wire [15:0] data_from_rom = pc ^ `TB.i8051_top.u_cpu.addr_bus;
+wire [15:0] data_from_rom = (pc == `TB.i8051_top.u_cpu.addr_bus)
+                             ? 16'h0000
+                             : `TB.i8051_top.u_cpu.addr_bus;
 `endif
 
 

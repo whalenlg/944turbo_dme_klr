@@ -74,7 +74,23 @@ DASH_TESTS=(
     overrun_cutoff
     ramp_6k_hold
     ramp_to_3000
+    ramp_to_3000_FQS0
+    ramp_to_3000_FQS1
+    ramp_to_3000_FQS2
+    ramp_to_3000_FQS3
+    ramp_to_3000_FQS4
+    ramp_to_3000_FQS5
+    ramp_to_3000_FQS6
+    ramp_to_3000_FQS7
     ramp_to_6000
+    ramp_to_6000_FQS0
+    ramp_to_6000_FQS1
+    ramp_to_6000_FQS2
+    ramp_to_6000_FQS3
+    ramp_to_6000_FQS4
+    ramp_to_6000_FQS5
+    ramp_to_6000_FQS6
+    ramp_to_6000_FQS7
     ramp_to_redline
     tps_fail
     warm_idle

@@ -42,6 +42,30 @@ FQS_TESTS = [
     ('cl_ramp_to_3000_FQS7', '0xA7', 167),
     # Reference: base cl_ramp_to_3000
     ('cl_ramp_to_3000',      'N/A',   -1),
+    # --- non-CL (open-loop) sweeps: RPM is scripted via STEP_CLOCKS, not
+    # fuel-derived, so there's no RPM-convergence confound the way there
+    # is for the cl_ramp_to_* families above — all 8 positions per base
+    # share the identical RPM trajectory. ---
+    ('ramp_to_6000_FQS0', '0x00',   0),
+    ('ramp_to_6000_FQS1', '0x3B',  59),
+    ('ramp_to_6000_FQS2', '0x5A',  90),
+    ('ramp_to_6000_FQS3', '0x75', 117),
+    ('ramp_to_6000_FQS4', '0x81', 129),
+    ('ramp_to_6000_FQS5', '0x91', 145),
+    ('ramp_to_6000_FQS6', '0x9C', 156),
+    ('ramp_to_6000_FQS7', '0xA7', 167),
+    # Reference: base ramp_to_6000 (no FQS override)
+    ('ramp_to_6000',      'N/A',   -1),
+    ('ramp_to_3000_FQS0', '0x00',   0),
+    ('ramp_to_3000_FQS1', '0x3B',  59),
+    ('ramp_to_3000_FQS2', '0x5A',  90),
+    ('ramp_to_3000_FQS3', '0x75', 117),
+    ('ramp_to_3000_FQS4', '0x81', 129),
+    ('ramp_to_3000_FQS5', '0x91', 145),
+    ('ramp_to_3000_FQS6', '0x9C', 156),
+    ('ramp_to_3000_FQS7', '0xA7', 167),
+    # Reference: base ramp_to_3000
+    ('ramp_to_3000',      'N/A',   -1),
 ]
 
 # Also check RPM range to find steady-state
@@ -193,81 +217,115 @@ def main():
         results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
 
     # ── FQS effect analysis ───────────────────────────────────────────────────
-    print(f"\n{'='*80}")
-    print("  FQS Effect on Fuel — iverilog reference")
-    print(f"{'='*80}")
+    # Both helpers below take an exact base_name (not a substring match) and
+    # an exact fqs_prefix (str.startswith, not "in") — the original code used
+    # loose substring matching ('ramp_to_6000' in test), which would have
+    # accidentally swept the new non-CL ramp_to_6000_FQS*/ramp_to_3000_FQS*
+    # entries into the same table as the CL-mode cl_ramp_to_6000_FQS*/
+    # cl_ramp_to_3000_FQS* ones, comparing non-CL fuel values against a
+    # CL-mode baseline (or vice versa) — a meaningless comparison, since the
+    # two families have very different baseline fuel consumption.
 
-    base = next((r for r in results if r[0] == 'cl_ramp_to_6000'), None)
-    base_fuel = base[2]['fuel_avg'] if base and base[2] else None
-    fqs_results = [(r[0], r[1], r[2], r[3], r[5] if len(r)>5 else None) for r in results if 'FQS' in r[0] and 'ramp_to_6000' in r[0]]
-
-    if base_fuel:
-        print(f"\n  Base (no FQS override): {base_fuel:.3f}ms\n")
-
-    print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}  {'VL fuel_ms':>10}  {'vs base':>8}  {'IGN delay':>10}  {'vs FQS0':>18}")
-    print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*18}")
-    base_timing = None
-
-    for test, fq_dec, iv_ss, vl_ss, iv_t in fqs_results:
-        fqs_num = test.split('FQS')[1] if 'FQS' in test else '?'
-        iv_f = iv_ss['fuel_avg'] if iv_ss else None
-        vl_f = vl_ss['fuel_avg'] if vl_ss else None
-        iv_base = f"{(iv_f-base_fuel)/base_fuel*100:+.1f}%" if iv_f and base_fuel else "  N/A"
-        vl_base = f"{(vl_f-base_fuel)/base_fuel*100:+.1f}%" if vl_f and base_fuel else "  N/A"
-        iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
-        vl_str = f"{vl_f:.3f}ms" if vl_f else "  N/A"
-        t_avg = iv_t  # now half-teeth count (float)
-        if t_avg is not None and base_timing is None and fqs_num == "0": base_timing = t_avg
-        t_str = f"{t_avg:.1f}ht" if t_avg is not None else "  N/A"
-        HALF_TEETH_DEG = 360.0 / 264.0
-        if t_avg is not None and base_timing is not None:
-            diff_ht = t_avg - base_timing
-            t_vs_deg = f"{diff_ht*HALF_TEETH_DEG:+.2f}°"
-            t_vs = f"{diff_ht:+.1f}ht ({t_vs_deg})"
-        else:
-            t_vs = "  N/A"
-        print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_base:>8}  {vl_str:>10}  {vl_base:>8}  {t_str:>10}  {t_vs:>18}")
-
-    # Check if FQS is having any effect
-    iv_fuels = [r[2]['fuel_avg'] for r in fqs_results if r[2]]
-    if iv_fuels:
-        fuel_range = max(iv_fuels) - min(iv_fuels)
-        print(f"\n  IV fuel range across FQS sweep: {min(iv_fuels):.3f} – {max(iv_fuels):.3f}ms")
-        print(f"  Range: {fuel_range:.3f}ms ({fuel_range/min(iv_fuels)*100:.1f}%)")
-        if fuel_range < 0.05:
-            print(f"\n  ⚠  WARNING: FQS has almost NO effect on fuel pulse width!")
-            print(f"     _FUEL_QUAL may not be connected to the fuel calculation.")
-        else:
-            print(f"\n  ✓  FQS is affecting fuel — range of {fuel_range:.3f}ms seen.")
-
-    # ── 3000 RPM section ─────────────────────────────────────────────────────
-    # Use FQS0 (neutral, no correction) as base for 3000RPM comparison
-    base_3k = next((r for r in results if r[0] == 'cl_ramp_to_3000_FQS0'), None)
-    base_fuel_3k = base_3k[2]['fuel_avg'] if base_3k and base_3k[2] else None
-    fqs_3k = [(r[0], r[1], r[2], r[3]) for r in results
-              if 'FQS' in r[0] and 'ramp_to_3000' in r[0]]
-    if fqs_3k and base_fuel_3k:
+    def print_fqs_effect_detailed(title, base_name, fqs_prefix, results):
+        """6000-style section: IV+VL fuel, plus IGN timing_adv comparison."""
         print(f"\n{'='*80}")
-        print("  FQS Effect on Fuel @ 3000 RPM — iverilog reference")
+        print(f"  {title}")
         print(f"{'='*80}")
-        print(f"\n  Base (no FQS override): {base_fuel_3k:.3f}ms\n")
-        print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}")
-        print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}")
-        for test, fq_dec, iv_ss, vl_ss in fqs_3k:
+
+        base = next((r for r in results if r[0] == base_name), None)
+        base_fuel = base[2]['fuel_avg'] if base and base[2] else None
+        fqs_results = [(r[0], r[1], r[2], r[3], r[5] if len(r) > 5 else None)
+                        for r in results if r[0].startswith(fqs_prefix)]
+
+        if not fqs_results:
+            print(f"\n  (no data for {fqs_prefix}*)")
+            return
+
+        if base_fuel:
+            print(f"\n  Base ({base_name}, no FQS override): {base_fuel:.3f}ms\n")
+
+        print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}  {'VL fuel_ms':>10}  {'vs base':>8}  {'IGN delay':>10}  {'vs FQS0':>18}")
+        print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*18}")
+        base_timing = None
+        HALF_TEETH_DEG = 360.0 / 264.0
+
+        for test, fq_dec, iv_ss, vl_ss, iv_t in fqs_results:
             fqs_num = test.split('FQS')[1] if 'FQS' in test else '?'
             iv_f = iv_ss['fuel_avg'] if iv_ss else None
-            iv_b = f"{(iv_f-base_fuel_3k)/base_fuel_3k*100:+.1f}%" if iv_f and base_fuel_3k else '  N/A'
+            vl_f = vl_ss['fuel_avg'] if vl_ss else None
+            iv_base = f"{(iv_f-base_fuel)/base_fuel*100:+.1f}%" if iv_f and base_fuel else "  N/A"
+            vl_base = f"{(vl_f-base_fuel)/base_fuel*100:+.1f}%" if vl_f and base_fuel else "  N/A"
+            iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
+            vl_str = f"{vl_f:.3f}ms" if vl_f else "  N/A"
+            t_avg = iv_t
+            if t_avg is not None and base_timing is None and fqs_num == "0":
+                base_timing = t_avg
+            t_str = f"{t_avg:.1f}ht" if t_avg is not None else "  N/A"
+            if t_avg is not None and base_timing is not None:
+                diff_ht = t_avg - base_timing
+                t_vs_deg = f"{diff_ht*HALF_TEETH_DEG:+.2f}°"
+                t_vs = f"{diff_ht:+.1f}ht ({t_vs_deg})"
+            else:
+                t_vs = "  N/A"
+            print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_base:>8}  {vl_str:>10}  {vl_base:>8}  {t_str:>10}  {t_vs:>18}")
+
+        iv_fuels = [r[2]['fuel_avg'] for r in fqs_results if r[2]]
+        if iv_fuels:
+            fuel_range = max(iv_fuels) - min(iv_fuels)
+            print(f"\n  IV fuel range across FQS sweep: {min(iv_fuels):.3f} – {max(iv_fuels):.3f}ms")
+            print(f"  Range: {fuel_range:.3f}ms ({fuel_range/min(iv_fuels)*100:.1f}%)")
+            if fuel_range < 0.05:
+                print(f"\n  ⚠  WARNING: FQS has almost NO effect on fuel pulse width!")
+                print(f"     _FUEL_QUAL may not be connected to the fuel calculation.")
+            else:
+                print(f"\n  ✓  FQS is affecting fuel — range of {fuel_range:.3f}ms seen.")
+
+    def print_fqs_effect_simple(title, base_name, fqs_prefix, results, rpm_label):
+        """3000-style section: IV fuel only, base = FQS0 (neutral) of the
+        same family rather than the family's plain (non-FQS) test."""
+        base = next((r for r in results if r[0] == base_name), None)
+        base_fuel = base[2]['fuel_avg'] if base and base[2] else None
+        fqs_results = [(r[0], r[1], r[2], r[3]) for r in results
+                        if r[0].startswith(fqs_prefix)]
+        if not (fqs_results and base_fuel):
+            return
+        print(f"\n{'='*80}")
+        print(f"  {title}")
+        print(f"{'='*80}")
+        print(f"\n  Base ({base_name}, no FQS override): {base_fuel:.3f}ms\n")
+        print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}")
+        print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}")
+        for test, fq_dec, iv_ss, vl_ss in fqs_results:
+            fqs_num = test.split('FQS')[1] if 'FQS' in test else '?'
+            iv_f = iv_ss['fuel_avg'] if iv_ss else None
+            iv_b = f"{(iv_f-base_fuel)/base_fuel*100:+.1f}%" if iv_f and base_fuel else '  N/A'
             iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
             print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_b:>8}")
-        iv_fuels_3k = [r[2]['fuel_avg'] for r in fqs_3k if r[2]]
-        if iv_fuels_3k:
-            r3k = max(iv_fuels_3k) - min(iv_fuels_3k)
-            print(f"\n  IV fuel range: {min(iv_fuels_3k):.3f} – {max(iv_fuels_3k):.3f}ms")
-            print(f"  Range: {r3k:.3f}ms ({r3k/min(iv_fuels_3k)*100:.1f}%)")
-            if r3k < 0.05:
-                print("  ⚠  WARNING: FQS has almost NO effect at 3000 RPM!")
+        iv_fuels = [r[2]['fuel_avg'] for r in fqs_results if r[2]]
+        if iv_fuels:
+            r_range = max(iv_fuels) - min(iv_fuels)
+            print(f"\n  IV fuel range: {min(iv_fuels):.3f} – {max(iv_fuels):.3f}ms")
+            print(f"  Range: {r_range:.3f}ms ({r_range/min(iv_fuels)*100:.1f}%)")
+            if r_range < 0.05:
+                print(f"  ⚠  WARNING: FQS has almost NO effect at {rpm_label}!")
             else:
-                print(f"  ✓  FQS affecting fuel at 3000 RPM — {r3k:.3f}ms range.")
+                print(f"  ✓  FQS affecting fuel at {rpm_label} — {r_range:.3f}ms range.")
+
+    print_fqs_effect_detailed(
+        "FQS Effect on Fuel — iverilog reference (CL, cl_ramp_to_6000)",
+        'cl_ramp_to_6000', 'cl_ramp_to_6000_FQS', results)
+
+    print_fqs_effect_detailed(
+        "FQS Effect on Fuel — iverilog reference (non-CL, ramp_to_6000)",
+        'ramp_to_6000', 'ramp_to_6000_FQS', results)
+
+    print_fqs_effect_simple(
+        "FQS Effect on Fuel @ 3000 RPM — iverilog reference (CL, cl_ramp_to_3000)",
+        'cl_ramp_to_3000_FQS0', 'cl_ramp_to_3000_FQS', results, '3000 RPM (CL)')
+
+    print_fqs_effect_simple(
+        "FQS Effect on Fuel @ 3000 RPM — iverilog reference (non-CL, ramp_to_3000)",
+        'ramp_to_3000_FQS0', 'ramp_to_3000_FQS', results, '3000 RPM (non-CL)')
 
     print()
 

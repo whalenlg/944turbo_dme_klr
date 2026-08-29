@@ -54,6 +54,60 @@ TESTS = {
     'ramp_to_6100':      {'rpm_target': 6100, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6200':      {'rpm_target': 6200, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    # --- ramp_to_3000 FQS sweep (non-CL/open-loop; timing retard not yet
+    #     calibrated against real data, left unset for now) ---
+    'ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':0, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos0: +0% fuel, non-CL, no timing retard expected'},
+    'ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':1, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos1: +3% fuel, non-CL, no timing retard expected'},
+    'ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':2, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos2: -3% fuel, non-CL, no timing retard expected'},
+    'ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
+    'ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos4: +0% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos5: +3% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos6: -3% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos7: +6% fuel, non-CL, timing retard not yet calibrated'},
+
+    # --- ramp_to_6000 FQS sweep (non-CL/open-loop; timing retard not yet
+    #     calibrated against real data, left unset for now) ---
+    'ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':0, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos0: +0% fuel, non-CL, no timing retard expected'},
+    'ramp_to_6000_FQS1': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':1, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos1: +3% fuel, non-CL, no timing retard expected'},
+    'ramp_to_6000_FQS2': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':2, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos2: -3% fuel, non-CL, no timing retard expected'},
+    'ramp_to_6000_FQS3': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
+    'ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos4: +0% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos5: +3% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos6: -3% fuel, non-CL, timing retard not yet calibrated'},
+    'ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'notes':'FQS pos7: +6% fuel, non-CL, timing retard not yet calibrated'},
+
     'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':97},
     'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ignition_timing':   {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True},
@@ -301,6 +355,31 @@ def build_fqs_fuel_fit(test_name, logpath, rpm_band=15.0):
     slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / den
     intercept = mean_y - slope * mean_x
     return (slope, intercept, n)
+
+
+def get_family_fqs0_baseline(test_name, logpath, rpm_band=15.0):
+    """Straight-baseline alternative to build_fqs_fuel_fit — for families
+    where RPM is scripted/identical across every position (e.g. the non-CL
+    ramp_to_3000/6000_FQS* tests) rather than closed-loop-converged and
+    potentially mismatched, the RPM-normalized fit is unnecessary
+    complexity; a direct comparison against the family's own FQS0 fuel_avg
+    is simpler and equally valid. Returns the FQS0 sibling's settled
+    fuel_avg, or None if that sibling's log isn't available."""
+    siblings = discover_fqs_family(test_name, logpath)
+    if not siblings:
+        return None
+    fqs0 = next((p for n, p in siblings if n.endswith('_FQS0')), None)
+    if fqs0 is None:
+        return None
+    try:
+        fqs0_lines = open(fqs0).readlines()
+    except FileNotFoundError:
+        return None
+    fqs0_rows = [r for r in (parse_ds(l) for l in fqs0_lines) if r]
+    ss = settled_window_for_fit(fqs0_rows, rpm_band)
+    if not ss:
+        return None
+    return sum(r['fuel_actual'] for r in ss) / len(ss)
 
 
 def detect_o2_status(rows):
@@ -568,52 +647,84 @@ def validate(test_name, logpath):
     # ── 15. FQS fuel correction check
     fqs_fuel_pct = exp.get('fqs_fuel_pct')
     fqs_fuel_baseline = exp.get('fqs_fuel_baseline')
+    fqs_straight_baseline = exp.get('fqs_straight_baseline', False)
     if fqs_fuel_pct is not None and steady:
         tol = 5.0  # +/- percentage points, tightened from the old direction-only check
 
-        # Prefer the RPM-normalized family fit (see analyze_fqs_fuel.py):
-        # different FQS positions can settle at meaningfully different
-        # closed-loop RPMs even with an identical AFM_CL_TARGET, and fuel
-        # need scales with RPM — comparing raw fuel averages at mismatched
-        # RPMs confounds the fuel-quality effect with that RPM difference.
-        # The fit factors RPM out by using every available sibling
-        # position together. Falls back to the old fixed-baseline compare
-        # if sibling logs aren't available (e.g. this test run in
-        # isolation) or there's no fqs_fuel_baseline configured at all.
-        fit = build_fqs_fuel_fit(test_name, logpath)
-        own_settled = settled_window_for_fit(rows)
+        if fqs_straight_baseline:
+            # RPM is scripted/identical across the whole family (e.g. the
+            # non-CL ramp_to_3000/6000_FQS* tests, confirmed by real data to
+            # settle at the exact same RPM regardless of FQS position) — no
+            # RPM-convergence mismatch to correct for, so the RPM-normalized
+            # fit below is unnecessary complexity here. Compare straight
+            # against the family's own FQS0 fuel_avg instead.
+            baseline = get_family_fqs0_baseline(test_name, logpath)
+            method_note = f"straight baseline, FQS0 fuel_avg={baseline:.3f}ms" if baseline else None
+            if baseline is None and fqs_fuel_baseline:
+                baseline = fqs_fuel_baseline
+                method_note = f"straight baseline (fixed) — FQS0 sibling log unavailable"
+            if baseline:
+                measured_pct = (fuel_avg - baseline) / baseline * 100.0
+                diff = measured_pct - fqs_fuel_pct
+                if abs(diff) > tol:
+                    fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — {method_note}")
+                else:
+                    infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [{method_note}]")
+            else:
+                fuel_floor = exp.get('fqs_fuel_floor', exp['fuel_range'][0])
+                lo, hi = exp['fuel_range']
+                fuel_mid = fuel_floor + (hi - fuel_floor) * 0.5
+                if fqs_fuel_pct > 0.5 and fuel_avg < fuel_floor:
+                    warns.append(f"FQS pos{exp['fqs_pos']}: expected richer ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms below floor {fuel_floor:.3f}ms")
+                elif fqs_fuel_pct < -0.5 and fuel_avg > fuel_mid:
+                    warns.append(f"FQS pos{exp['fqs_pos']}: expected leaner ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms above mid {fuel_mid:.3f}ms")
+                else:
+                    infos.append(f"FQS fuel adj {fqs_fuel_pct:+.0f}% ✓ (no baseline available — direction/floor check only)")
 
-        if fit and own_settled:
-            slope, intercept, n_siblings = fit
-            rpm_avg_own = sum(r['rpm'] for r in own_settled) / len(own_settled)
-            fuel_avg_own = sum(r['fuel_actual'] for r in own_settled) / len(own_settled)
-            predicted = slope * rpm_avg_own + intercept
-            measured_pct = (fuel_avg_own / predicted - 1) * 100.0 if predicted else float('nan')
-            diff = measured_pct - fqs_fuel_pct
-            method_note = f"RPM-normalized, {n_siblings} siblings, own rpm_avg={rpm_avg_own:.0f}"
-            if abs(diff) > tol:
-                fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — {method_note}")
-            else:
-                infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [{method_note}]")
-        elif fqs_fuel_baseline:
-            measured_pct = (fuel_avg - fqs_fuel_baseline) / fqs_fuel_baseline * 100.0
-            diff = measured_pct - fqs_fuel_pct
-            if abs(diff) > tol:
-                fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — fuel_avg={fuel_avg:.3f}ms baseline={fqs_fuel_baseline:.3f}ms [fixed baseline — sibling logs unavailable for RPM-normalized fit]")
-            else:
-                infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [fixed baseline — sibling logs unavailable]")
         else:
-            # No baseline configured for this test — fall back to the coarse
-            # direction/floor check rather than skip validation entirely.
-            fuel_floor = exp.get('fqs_fuel_floor', exp['fuel_range'][0])
-            lo, hi = exp['fuel_range']
-            fuel_mid = fuel_floor + (hi - fuel_floor) * 0.5
-            if fqs_fuel_pct > 0.5 and fuel_avg < fuel_floor:
-                warns.append(f"FQS pos{exp['fqs_pos']}: expected richer ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms below floor {fuel_floor:.3f}ms")
-            elif fqs_fuel_pct < -0.5 and fuel_avg > fuel_mid:
-                warns.append(f"FQS pos{exp['fqs_pos']}: expected leaner ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms above mid {fuel_mid:.3f}ms")
+            # Prefer the RPM-normalized family fit (see analyze_fqs_fuel.py):
+            # different FQS positions can settle at meaningfully different
+            # closed-loop RPMs even with an identical AFM_CL_TARGET, and fuel
+            # need scales with RPM — comparing raw fuel averages at mismatched
+            # RPMs confounds the fuel-quality effect with that RPM difference.
+            # The fit factors RPM out by using every available sibling
+            # position together. Falls back to the old fixed-baseline compare
+            # if sibling logs aren't available (e.g. this test run in
+            # isolation) or there's no fqs_fuel_baseline configured at all.
+            fit = build_fqs_fuel_fit(test_name, logpath)
+            own_settled = settled_window_for_fit(rows)
+
+            if fit and own_settled:
+                slope, intercept, n_siblings = fit
+                rpm_avg_own = sum(r['rpm'] for r in own_settled) / len(own_settled)
+                fuel_avg_own = sum(r['fuel_actual'] for r in own_settled) / len(own_settled)
+                predicted = slope * rpm_avg_own + intercept
+                measured_pct = (fuel_avg_own / predicted - 1) * 100.0 if predicted else float('nan')
+                diff = measured_pct - fqs_fuel_pct
+                method_note = f"RPM-normalized, {n_siblings} siblings, own rpm_avg={rpm_avg_own:.0f}"
+                if abs(diff) > tol:
+                    fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — {method_note}")
+                else:
+                    infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [{method_note}]")
+            elif fqs_fuel_baseline:
+                measured_pct = (fuel_avg - fqs_fuel_baseline) / fqs_fuel_baseline * 100.0
+                diff = measured_pct - fqs_fuel_pct
+                if abs(diff) > tol:
+                    fails.append(f"FQS pos{exp['fqs_pos']}: fuel adj {measured_pct:+.1f}% vs expected {fqs_fuel_pct:+.0f}% (diff {diff:+.1f}pt, tol ±{tol:.0f}pt) — fuel_avg={fuel_avg:.3f}ms baseline={fqs_fuel_baseline:.3f}ms [fixed baseline — sibling logs unavailable for RPM-normalized fit]")
+                else:
+                    infos.append(f"FQS fuel adj {measured_pct:+.1f}% (expected {fqs_fuel_pct:+.0f}%) ✓ [fixed baseline — sibling logs unavailable]")
             else:
-                infos.append(f"FQS fuel adj {fqs_fuel_pct:+.0f}% ✓ (no baseline configured — direction/floor check only)")
+                # No baseline configured for this test — fall back to the coarse
+                # direction/floor check rather than skip validation entirely.
+                fuel_floor = exp.get('fqs_fuel_floor', exp['fuel_range'][0])
+                lo, hi = exp['fuel_range']
+                fuel_mid = fuel_floor + (hi - fuel_floor) * 0.5
+                if fqs_fuel_pct > 0.5 and fuel_avg < fuel_floor:
+                    warns.append(f"FQS pos{exp['fqs_pos']}: expected richer ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms below floor {fuel_floor:.3f}ms")
+                elif fqs_fuel_pct < -0.5 and fuel_avg > fuel_mid:
+                    warns.append(f"FQS pos{exp['fqs_pos']}: expected leaner ({fqs_fuel_pct:+.0f}%) but fuel_avg={fuel_avg:.3f}ms above mid {fuel_mid:.3f}ms")
+                else:
+                    infos.append(f"FQS fuel adj {fqs_fuel_pct:+.0f}% ✓ (no baseline configured — direction/floor check only)")
 
     # ── 15. FQS timing retard check (positions 4-7)
     fqs_timing_retard = exp.get('fqs_timing_retard', 0.0)
