@@ -1,0 +1,66 @@
+
+Add zooms to the graphs in the GUI
+
+Mystery of the 8a case (mem reference) - MOX?
+
+Check for overboosts
+
+Chec for overrpm
+
+Fix GUI for new temp vaiarbles
+
+Add low battery to condition test
+
+Check rpm limits (poke a smaller value?)
+
+Cylinder tracking in log files and signal in tb
+
+
+KLR
+Add map sensor to ADC page
+Figure out how to drive map sensor
+Fail tests for all inputs
+Condition test for KLR - low volts on TPS, 
+Add tests to disconnect/short klr sensors, power supply pins
+
+ADC chan 6 yielding 87 which ends up as an address that is unknown >7F
+Knock isn't detached on GUI
+
+And knock and boost correction PHASE updates for KLR - report degrees an kpa's
+
+
+Changing ps from C9 eliminated fed code 1-1
+
+Fix web ui - not reading Max. Klr 
+
+Add monitor to extract table lookups
+
+Annotate disassembly with JohnB comments
+
+Set up to change binaries
+
+
+S/w emulator:
+
+Load hex
+
+Run
+
+Default inputs
+
+Controls - TPS, air temp, water temp, fqs, knock - setting/disconnect
+ 
+
+
+Outputs - see page 1 of DME + KLR
+
+Diag LEDs & stream decode
+
+Engine Condition indicator 
+
+Calibrate Button - run sim at this condition and capture output health, save calibration test
+
+Load actual engine log data, store as reference condition
+
+
+

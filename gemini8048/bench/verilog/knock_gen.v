@@ -91,15 +91,29 @@ module knock_gen (
     reg [31:0] noise_hold_cnt  = 0;     // 0 = idle; counts 1..NOISE_HOLD_CYCLES while holding (knock_noise)
     reg        fake_knock_prev = 1'b1;  // assume idle-high at sim start; shared falling-edge reference
 
+    // TEST_KNOCK_FAKE_BLOCKED: simulates a broken connection between the
+    // KLR CPU's P1.7 self-test pin and this circuitry (e.g. a bad trace
+    // or open connector pin) — fake_knock_eff is forced permanently
+    // idle-high, so fake_knock_prev never sees a falling edge below,
+    // hold_cnt/noise_hold_cnt never start counting, and knock_sum/
+    // knock_noise always just reflect knock_sensor directly (no +145
+    // self-test offset ever applied) — regardless of what the firmware
+    // actually drives on the real fake_knock input.
+`ifdef TEST_KNOCK_FAKE_BLOCKED
+    wire fake_knock_eff = 1'b1;
+`else
+    wire fake_knock_eff = fake_knock;
+`endif
+
     // knock_sum's fixed, non-retriggering 2.4ms one-shot
     always @(posedge clk) begin
-        fake_knock_prev <= fake_knock;
+        fake_knock_prev <= fake_knock_eff;
 
         if (hold_cnt == 0) begin
             // Idle -- only a falling edge seen HERE (while idle) starts
             // the one-shot. Not retriggerable: falls seen later, while
             // hold_cnt is already counting, are ignored entirely.
-            if (fake_knock_prev && !fake_knock) begin
+            if (fake_knock_prev && !fake_knock_eff) begin
                 hold_cnt <= 1;
             end
         end else if (hold_cnt < HOLD_CYCLES) begin
@@ -111,7 +125,7 @@ module knock_gen (
 
     // knock_noise's independent, retriggerable 500us filter
     always @(posedge clk) begin
-        if (fake_knock_prev && !fake_knock) begin
+        if (fake_knock_prev && !fake_knock_eff) begin
             // Every falling edge (re)starts the 500us window
             noise_hold_cnt <= 1;
         end else if (noise_hold_cnt > 0 && noise_hold_cnt < NOISE_HOLD_CYCLES) begin
@@ -122,9 +136,9 @@ module knock_gen (
     end
 
     wire fake_knock_stretched =
-        (hold_cnt > 0 && hold_cnt < HOLD_CYCLES) ? 1'b0 : fake_knock;
+        (hold_cnt > 0 && hold_cnt < HOLD_CYCLES) ? 1'b0 : fake_knock_eff;
     wire fake_knock_noise_stretched =
-        (noise_hold_cnt > 0 && noise_hold_cnt < NOISE_HOLD_CYCLES) ? 1'b0 : fake_knock;
+        (noise_hold_cnt > 0 && noise_hold_cnt < NOISE_HOLD_CYCLES) ? 1'b0 : fake_knock_eff;
 
     assign knock_sum   = !knock_reset ? 8'd0
                         : fake_knock_stretched ? (knock_sensor + 8'd145)

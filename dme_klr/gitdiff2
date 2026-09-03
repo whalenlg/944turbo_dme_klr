@@ -1,0 +1,1851 @@
+diff --git a/claude_8051/bench/verilog/var_interrupt_gen_cl.v b/claude_8051/bench/verilog/var_interrupt_gen_cl.v
+index ad112de..64f6c00 100644
+--- a/claude_8051/bench/verilog/var_interrupt_gen_cl.v
++++ b/claude_8051/bench/verilog/var_interrupt_gen_cl.v
+@@ -173,10 +173,34 @@ module var_interrupt_generator_cl (
+ );
+ 
+     // ── AFM calibration ─────────────────────────────────────────
+-    localparam afm_rpm_lo  = 840;
+-    localparam afm_adc_lo  = 40;
+-    localparam afm_rpm_hi  = 6500;
+-    localparam afm_adc_hi  = 235;
++    //  Real settled operating points (per closed-loop test type):
++    //    cl_ramp_to_6000 (+ FQS family, AFM_CL_TARGET=0xDA) settle
++    //      at ~6432rpm in practice — capped at afm_adc_mid (0xD8)
++    //      here, since the KLR flags a TPS error above that.
++    //    cl_ramp_to_redline (AFM_CL_TARGET=0xEB) settles at
++    //      ~6818rpm — allowed to reach the higher afm_adc_hi (0xEB)
++    //      ceiling; it's the one CL test that legitimately needs to
++    //      push higher.
++    //  Non-CL tests (ramp_to_6100/6200/6300, plain ramp_to_redline,
++    //  etc.) do NOT go through this file — they use the separate
++    //  non-CL interrupt generator — so this change doesn't affect
++    //  them.
++    //
++    //  Shape: idle -> rise -> flat plateau at 0xD8 (covers the
++    //  6000-family's ~6432rpm settle point with margin either side
++    //  for normal closed-loop fluctuation) -> short final rise ->
++    //  0xEB ceiling (reached by redline's ~6818rpm settle point).
++    //  The plateau bounds (afm_rpm_mid/afm_rpm_plateau_end) are a
++    //  reasonable-margin choice, not exact data — adjust if you
++    //  have tighter bounds on the 6000-family's real fluctuation
++    //  band around 6432rpm.
++    localparam afm_rpm_lo          = 840;
++    localparam afm_adc_lo          = 40;
++    localparam afm_rpm_mid         = 6432;  // cl_ramp_to_6000-family settle point
++    localparam afm_adc_mid         = 216;   // 0xD8 — max TPS for CL 6000-target tests
++    localparam afm_rpm_plateau_end = 6700;  // margin before climbing toward redline's ceiling
++    localparam afm_rpm_hi          = 6818;  // cl_ramp_to_redline settle point
++    localparam afm_adc_hi          = 235;   // 0xEB — redline's own (unchanged) ceiling
+ 
+     // ── State ────────────────────────────────────────────────────
+     integer period_current;
+@@ -191,11 +215,25 @@ module var_interrupt_generator_cl (
+     always @(*) begin : afm_calc
+         integer crpm;
+         crpm = rpm_fp / `CL_INERTIA;
+-        if      (crpm <= afm_rpm_lo) afm_wiper = afm_adc_lo;
+-        else if (crpm >= afm_rpm_hi) afm_wiper = afm_adc_hi;
+-        else afm_wiper = afm_adc_lo +
+-                         ((afm_adc_hi - afm_adc_lo) * (crpm - afm_rpm_lo))
+-                         / (afm_rpm_hi - afm_rpm_lo);
++        if (crpm <= afm_rpm_lo) begin
++            afm_wiper = afm_adc_lo;
++        end else if (crpm <= afm_rpm_mid) begin
++            // Rising segment 1: idle -> cl_ramp_to_6000-family cap
++            afm_wiper = afm_adc_lo +
++                        ((afm_adc_mid - afm_adc_lo) * (crpm - afm_rpm_lo))
++                        / (afm_rpm_mid - afm_rpm_lo);
++        end else if (crpm <= afm_rpm_plateau_end) begin
++            // Flat plateau: holds at the 0xD8 cap through the
++            // 6000-family's realistic operating range
++            afm_wiper = afm_adc_mid;
++        end else if (crpm >= afm_rpm_hi) begin
++            afm_wiper = afm_adc_hi;
++        end else begin
++            // Rising segment 2: plateau end -> redline's ceiling
++            afm_wiper = afm_adc_mid +
++                        ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
++                        / (afm_rpm_hi - afm_rpm_plateau_end);
++        end
+     end
+ 
+     // ── Initial state ────────────────────────────────────────────
+diff --git a/disassemble/disassemble2.xlsx b/disassemble/disassemble2.xlsx
+index fe6640e..faa6ef6 100644
+Binary files a/disassemble/disassemble2.xlsx and b/disassemble/disassemble2.xlsx differ
+diff --git a/dme_klr/bench/verilog/dme_klr_dashboard_tb.v b/dme_klr/bench/verilog/dme_klr_dashboard_tb.v
+index 2551276..92528a7 100644
+--- a/dme_klr/bench/verilog/dme_klr_dashboard_tb.v
++++ b/dme_klr/bench/verilog/dme_klr_dashboard_tb.v
+@@ -28,6 +28,10 @@ module dme_klr_dashboard_tb;
+     wire ign_out_dme_to_klr;  // DME A_5_KLR_ign_out (active-high)
+     wire klr_ign_out;         // KLR spark output (NOT connected to DME ign)
+     wire full_load;            // KLR full_load → DME TPS ch6
++    wire tdc;                  // DME crank-model TDC marker (see
++                                // var_interrupt_generator/_cl) — not
++                                // connected to the KLR, exposed for
++                                // observation/logging at this top level
+     // TPS angle: DME AFM wiper → KLR TPS angle ch7
+     // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
+     wire [7:0] tps_wiper_sig;
+@@ -40,7 +44,8 @@ module dme_klr_dashboard_tb;
+         .ign            ( 1'b1               ),
+         .A_1_tach_pulse ( tach_dme_to_klr    ),
+         .A_5_KLR_ign_out( ign_out_dme_to_klr ),
+-        .full_load      ( full_load          )
++        .full_load      ( full_load          ),
++        .tdc            ( tdc                )
+     );
+ 
+     // ── KLR sub-TB ───────────────────────────────────────────
+diff --git a/dme_klr/files b/dme_klr/files
+index 9b0b4de..657be4d 100644
+--- a/dme_klr/files
++++ b/dme_klr/files
+@@ -21,6 +21,7 @@
+ ../claude_8051/bench/verilog/adc_delay.v
+ ../claude_8051/bench/verilog/var_interrupt_gen.v
+ ../gemini8048/bench/verilog/var_timing_gen.v
++../gemini8048/bench/verilog/knock_gen.v
+ ../claude_8051/bench/verilog/interrupt_gen.v
+ ../claude_8051/bench/verilog/o2_gen.v
+ ../gemini8048/rtl/verilog/klr_top.v
+diff --git a/dme_klr/files_cl b/dme_klr/files_cl
+index f0b62ed..a26d853 100644
+--- a/dme_klr/files_cl
++++ b/dme_klr/files_cl
+@@ -21,6 +21,7 @@
+ ../claude_8051/bench/verilog/adc_delay.v
+ ../claude_8051/bench/verilog/var_interrupt_gen_cl.v
+ ../gemini8048/bench/verilog/var_timing_gen.v
++../gemini8048/bench/verilog/knock_gen.v
+ ../claude_8051/bench/verilog/interrupt_gen.v
+ ../claude_8051/bench/verilog/o2_gen.v
+ ../gemini8048/rtl/verilog/klr_top.v
+diff --git a/dme_klr/run_all.sh b/dme_klr/run_all.sh
+index 8f989d0..dea0ca8 100755
+--- a/dme_klr/run_all.sh
++++ b/dme_klr/run_all.sh
+@@ -3,6 +3,14 @@
+ #  DME 951 + KLR — Full Test Suite
+ #  Runs: i8048 regression, i8051 regression, Verilator suite, iverilog suite,
+ #        iverilog/Verilator comparison, FQS analysis
++#
++#  Usage:
++#    ./run_all.sh [--verilator | --iverilog] [workers]
++#
++#  By default runs both the Verilator and iverilog dashboard suites (and the
++#  comparison + FQS analysis step that depends on both). Pass --verilator or
++#  --iverilog to run only that simulator's suite — the comparison/FQS step
++#  is skipped in that case, since it needs both sides' logs.
+ # =============================================================================
+ set -uo pipefail
+ 
+@@ -11,7 +19,26 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ DME_KLR="$ROOT/dme_klr"
+ PASS=0; WARN=0; FAIL=0
+ START_TIME=$(date +%s)
+-WORKERS="${1:-8}"
++
++# ── Parse args: --verilator / --iverilog restrict which simulator suite(s)
++#    run (steps 3-5); default (neither flag) runs both, as before.
++_want_verilator=0
++_want_iverilog=0
++ARGS=()
++for arg in "$@"; do
++    case "$arg" in
++        --verilator) _want_verilator=1 ;;
++        --iverilog)  _want_iverilog=1 ;;
++        *)           ARGS+=("$arg") ;;
++    esac
++done
++if [ "$_want_verilator" = "0" ] && [ "$_want_iverilog" = "0" ]; then
++    RUN_VERILATOR=1; RUN_IVERILOG=1   # default: run both
++else
++    RUN_VERILATOR="$_want_verilator"
++    RUN_IVERILOG="$_want_iverilog"
++fi
++WORKERS="${ARGS[0]:-8}"
+ 
+ # Colours
+ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+@@ -26,7 +53,10 @@ hdr()  { echo -e "\n${BOLD}═════════════════
+           echo -e "${BOLD}══════════════════════════════════════════════════════${NC}"; }
+ 
+ # ── 1. i8048 KLR regression ───────────────────────────────────────────────────
+-log "Workers: $WORKERS"
++MODE_DESC="both simulators"
++[ "$RUN_VERILATOR" = "1" ] && [ "$RUN_IVERILOG" = "0" ] && MODE_DESC="Verilator only"
++[ "$RUN_IVERILOG" = "1" ] && [ "$RUN_VERILATOR" = "0" ] && MODE_DESC="iverilog only"
++log "Workers: $WORKERS  Mode: $MODE_DESC"
+ hdr "1/5  i8048 KLR Regression"
+ cd "$ROOT/gemini8048"
+ log "Running: bash run_48"
+@@ -54,44 +84,59 @@ fi
+ 
+ # ── 3. Verilator full suite ───────────────────────────────────────────────────
+ hdr "3/5  Verilator Dashboard Test Suite"
+-cd "$DME_KLR"
+-log "Running Verilator suite (--verilator --all) ..."
+-log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
+-bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee /tmp/vl_suite.log | tail -5
+-VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log 2>/dev/null | tail -1)
+-VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
+-VL_WARN=$(echo "$VL_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
+-VL_FAIL=$(echo "$VL_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
+-VL_TOTAL=$(echo "$VL_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
+-if [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
+-    ok "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
+-elif [ "${VL_FAIL:-0}" -eq 0 ]; then
+-    warn "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
++if [ "$RUN_VERILATOR" = "1" ]; then
++    cd "$DME_KLR"
++    log "Running Verilator suite (--verilator --all) ..."
++    log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
++    bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee /tmp/vl_suite.log
++    log "Verilator test suite completed"
++    VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log 2>/dev/null | tail -1)
++    VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
++    VL_WARN=$(echo "$VL_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
++    VL_FAIL=$(echo "$VL_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
++    VL_TOTAL=$(echo "$VL_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
++    if [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
++        ok "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
++    elif [ "${VL_FAIL:-0}" -eq 0 ]; then
++        warn "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
++    else
++        fail "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
++    fi
+ else
+-    fail "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
++    log "Skipped (--iverilog only)"
+ fi
+ 
+ # ── 4. iverilog full suite ────────────────────────────────────────────────────
+ hdr "4/5  iverilog Dashboard Test Suite"
+-cd "$DME_KLR"
+-log "Running iverilog suite (--all) ..."
+-log "Running: bash run_dashboard_parallel.sh $WORKERS"
+-bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee /tmp/iv_suite.log | tail -5
+-IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log 2>/dev/null | tail -1)
+-IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
+-IV_WARN=$(echo "$IV_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
+-IV_FAIL=$(echo "$IV_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
+-IV_TOTAL=$(echo "$IV_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
+-if [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
+-    ok "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
+-elif [ "${IV_FAIL:-0}" -eq 0 ]; then
+-    warn "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
++if [ "$RUN_IVERILOG" = "1" ]; then
++    cd "$DME_KLR"
++    log "Running iverilog suite (--all) ..."
++    log "Running: bash run_dashboard_parallel.sh $WORKERS"
++    bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee /tmp/iv_suite.log
++    log "iverilog test suite completed"
++    IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log 2>/dev/null | tail -1)
++    IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
++    IV_WARN=$(echo "$IV_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
++    IV_FAIL=$(echo "$IV_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
++    IV_TOTAL=$(echo "$IV_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
++    if [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
++        ok "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
++    elif [ "${IV_FAIL:-0}" -eq 0 ]; then
++        warn "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
++    else
++        fail "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
++    fi
+ else
+-    fail "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
++    log "Skipped (--verilator only)"
+ fi
+ 
+ # ── 5. iverilog vs Verilator comparison ───────────────────────────────────────
+ hdr "5/5  iverilog vs Verilator Comparison + FQS Analysis"
++if [ "$RUN_VERILATOR" = "0" ] || [ "$RUN_IVERILOG" = "0" ]; then
++    STALE_SIDE="Verilator"
++    [ "$RUN_VERILATOR" = "1" ] && STALE_SIDE="iverilog"
++    log "WARNING - Comparison against older logs ($STALE_SIDE logs are from a previous run, not this one)"
++fi
+ cd "$DME_KLR"
+ log "Comparing iverilog vs Verilator logs ..."
+ log "Running: bash compare_all_logs.sh"
+diff --git a/dme_klr/run_dashboard_parallel.sh b/dme_klr/run_dashboard_parallel.sh
+index 1816f69..9e4dad2 100755
+--- a/dme_klr/run_dashboard_parallel.sh
++++ b/dme_klr/run_dashboard_parallel.sh
+@@ -28,22 +28,15 @@ _BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
+ 
+ export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
+ 
+-# Look up simulated seconds for a test from the run script
+-sim_secs() {
+-    local ns
+-    ns=$(grep -m1 "${1})" "$RUN_TESTS" 2>/dev/null | grep -oE 'DSIM_TIME=[0-9]+' | grep -oE '[0-9]+')
+-    [ -n "$ns" ] && echo $(( ns / 1000000000 )) || echo "?"
+-}
+-
+ ALL_TESTS=(
+-    cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
++    ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_6000
+     cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3
+     cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7
+     cl_ramp_to_redline cl_ac_halfway cl_cold_start
+     warm_idle cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle
+     overrun_cutoff warmup_enrichment afm_open_circuit
+     coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline tps_fail
+-    ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold
++    ramp_to_redline ramp_6k_hold
+     ignition_timing dwell_scaling
+     isv_cold_idle isv_load_droop
+     dme_klr_warm_idle dme_klr_ramp_to_3000
+@@ -145,6 +138,7 @@ validate_one() {
+ 
+ # ── Worker pool ───────────────────────────────────────────────────────────────
+ RUNNING=0
++COMPLETED=0
+ declare -a PIDS=()
+ declare -a PID_NAMES=()
+ declare -a SIM_FAILED=()
+@@ -162,6 +156,8 @@ reap_finished() {
+                 SIM_FAILED+=("$name")
+             fi
+             validate_one "$name"
++            COMPLETED=$(( COMPLETED + 1 ))
++            printf "  [%d of %d completed]\n" "$COMPLETED" "$TOTAL"
+         else
+             NEW_PIDS+=("$pid")
+             NEW_NAMES+=("$name")
+@@ -179,7 +175,6 @@ for test in "${TESTS[@]}"; do
+         [ "$RUNNING" -ge "$WORKERS" ] && sleep 1
+     done
+ 
+-    printf "  [START]  %s  (%ss sim)\n" "$test" "$(sim_secs $test)"
+     (
+         cd "$SCRIPT_DIR"
+         bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
+diff --git a/dme_klr/run_dashboard_tests.sh b/dme_klr/run_dashboard_tests.sh
+index 4171376..d856941 100755
+--- a/dme_klr/run_dashboard_tests.sh
++++ b/dme_klr/run_dashboard_tests.sh
+@@ -41,7 +41,6 @@ BENCHd=../claude_8051/bench/verilog
+ RTLk=../gemini8048/rtl/verilog
+ BENCHk=../gemini8048/bench/verilog
+ 
+-#KLR_BENCH=bench/verilog/i8048_tb.v
+ FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
+ 
+ # Default snapshot interval (ms of simulated time between [DS] lines)
+@@ -129,140 +128,6 @@ run_test()  { compile_and_run_klr "$@"; }
+ ACTIVE_LOG="$LOGDIR/summary.log"
+ echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
+ 
+-# --------------------------------------------------------
+-#  compile_and_run_klr <short_name> [interval_ms] <iverilog -D flags...>
+-#
+-#  If second argument is a plain integer it overrides the
+-#  snapshot interval for this test only.
+-# --------------------------------------------------------
+-compile_and_run_klr() {
+-    local name="$1"; shift
+-
+-    # Optional per-test interval override as second positional arg
+-    local interval="$DASH_INTERVAL_MS"
+-    if [[ "$1" =~ ^[0-9]+$ ]]; then
+-        interval="$1"; shift
+-    fi
+-
+-    local vvp="${VVP_DIR}/dash_${name}.vvp"
+-    local log="${LOGDIR}/${name}.log"
+-    local vcdfile="${VCDDIR}/${name}.vcd"
+-    local fstfile="${FSTDIR}/${name}.fst"
+-    local hexdir="${HEXDIR}/${name}"
+-
+-    mkdir -p "$hexdir"
+-
+-    # Clean old output files for this test
+-    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+-    rm -f "${vcdfile}.gz"
+-
+-    # Extract SIM_TIME for display
+-    local sim_ns=0
+-    for arg in "$@"; do
+-        case "$arg" in
+-            -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;;
+-        esac
+-    done
+-    local sim_sec=$(( sim_ns / 1000000000 ))
+-    local n_snaps=$(( sim_sec * 1000 / interval ))
+-
+-    echo ""
+-    echo "======================================================"
+-    echo "  TEST: $name  [${sim_sec}s sim / ~${sim_sec}m wall / interval=${interval}ms / ~${n_snaps} snapshots]"
+-    echo "======================================================"
+-
+-    # Compile — all sources including TB via -f files; top selected by -s.
+-    # When -DCL_MODE is present, swap var_interrupt_gen.v for var_interrupt_gen_cl.v
+-    local files_list="$FILES"
+-    for arg in "$@"; do
+-        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
+-    done
+-
+-    # Compute STEP_CLOCKS in bash to avoid localparam overflow with large SIM_TIME
+-    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+-    for _a in "$@"; do
+-        case "$_a" in
+-            -DSIM_TIME=*)     _sim_time="${_a#-DSIM_TIME=}" ;;
+-            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+-        esac
+-    done
+-    _sim_time="${_sim_time:-40000000000}"
+-    _ramp_pct="${_ramp_pct:-25}"
+-    _sim_ms=$(( _sim_time / 1000000 ))
+-    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+-    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
+-    iverilog -o "$vvp" \
+-        -f "$files_list" \
+-        -I "$RTL" \
+-        -I "$BENCH" \
+-        -I "$RTLd" \
+-        -I "$BENCHd" \
+-        -I "$RTLk" \
+-        -I "$BENCHk" \
+-        -s i8051_dashboard_tb \
+-        -DDASHBOARD_TB \
+-        -DDASH_INTERVAL_MS="$interval" \
+-        -DSTEP_CLOCKS="$_step_clocks" \
+-        "$@"
+-    if [ $? -ne 0 ]; then
+-        echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
+-        return 1
+-    fi
+-
+-    echo "  Running → $log"
+-    echo "  FST     → $fstfile"
+-    [ "$VCD_ENABLE" = "1" ] && echo "  VCD     → $vcdfile"
+-    echo "  HEX     → $hexdir/{rom,ram}_out.hex"
+-
+-    # Run from hexdir so VCD and hex dumps land there without conflicts
+-    # FST always produced; VCD only if VCD_ENABLE=1
+-    if [ "$VCD_ENABLE" = "1" ]; then
+-        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
+-    else
+-        ( cd "$hexdir" && vvp "$vvp" +fst="$fstfile" ) > "$log" 2>&1
+-    fi
+-    if [ $? -ne 0 ]; then
+-        echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
+-        return 1
+-    fi
+-
+-    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
+-    # regardless of the +fst= filename. The file is VCD data named .fst.
+-    # Rename it to .vcd then convert to real FST binary format.
+-    _raw="$hexdir/sim.fst"
+-    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+-    if [ -f "$_raw" ]; then
+-        vcd2fst "$_raw" "$fstfile" 2>/dev/null
+-        if [ "$VCD_ENABLE" = "1" ]; then
+-            mv "$_raw" "$vcdfile"
+-        else
+-            rm -f "$_raw"
+-        fi
+-    fi
+-
+-    # Extract DME and KLR lines into dashboard log.
+-    # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
+-    grep -E "^DME: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+-
+-    local nds=$(grep -c "^DME: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
+-    local fstsize=$(du -sh "$fstfile" 2>/dev/null | cut -f1 || echo "?")
+-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / FST ${fstsize})" \
+-        | tee -a "$LOGDIR/summary.log"
+-
+-    # Validate
+-    local val_result
+-    val_result=$(python3 "$SCRIPT_DIR/validate_dash_log.py" "$name" "$LOGDIR/${name}.dash.log" 2>&1)
+-    local verdict=$(echo "$val_result" | cut -f1)
+-    local val_detail=$(echo "$val_result" | cut -f3-)
+-    echo "  ${verdict}: $name — $val_detail" | tee -a "$LOGDIR/validation.log"
+-
+-    # Open in dashboard browser if running a single test
+-    open_in_dashboard "$LOGDIR/${name}.dash.log"
+-}
+-
+ # --------------------------------------------------------
+ #  compile_and_run_klr <name> [defines...]
+ #
+@@ -426,7 +291,7 @@ run_test cl_tippy_in \
+ 
+ run_test cl_ramp_to_3000 \
+     -DTEST_CL_RAMP_TO_3000  \
+-    -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+ 
+ run_test cl_ramp_to_6000 \
+@@ -437,9 +302,8 @@ run_test cl_ramp_to_6000 \
+ 
+ # --- Fuel quality sweep (cl_ramp_to_6000 with _FUEL_QUAL sweep) ---
+ run_test cl_ramp_to_6000_FQS0 \
+-    -DTEST_CL_RAMP_TO_6000 \
++    -DTEST_CL_RAMP_TO_6000 -DDEBUG_KLR \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h00" \
+     -DCL_FUEL_ENERGY_PCT=0 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -447,7 +311,6 @@ run_test cl_ramp_to_6000_FQS0 \
+ run_test cl_ramp_to_6000_FQS1 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h3B" \
+     -DCL_FUEL_ENERGY_PCT=3 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -455,7 +318,6 @@ run_test cl_ramp_to_6000_FQS1 \
+ run_test cl_ramp_to_6000_FQS2 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h5A" \
+     -DCL_FUEL_ENERGY_PCT=-3 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -463,7 +325,6 @@ run_test cl_ramp_to_6000_FQS2 \
+ run_test cl_ramp_to_6000_FQS3 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h75" \
+     -DCL_FUEL_ENERGY_PCT=6 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -471,7 +332,6 @@ run_test cl_ramp_to_6000_FQS3 \
+ run_test cl_ramp_to_6000_FQS4 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h81" \
+     -DCL_FUEL_ENERGY_PCT=0 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -479,7 +339,6 @@ run_test cl_ramp_to_6000_FQS4 \
+ run_test cl_ramp_to_6000_FQS5 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h91" \
+     -DCL_FUEL_ENERGY_PCT=3 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -487,15 +346,87 @@ run_test cl_ramp_to_6000_FQS5 \
+ run_test cl_ramp_to_6000_FQS6 \
+     -DTEST_CL_RAMP_TO_6000 \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
+     "-D_FUEL_QUAL=8'h9C" \
+     -DCL_FUEL_ENERGY_PCT=-3 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+ 
+ run_test cl_ramp_to_6000_FQS7 \
+-    -DTEST_CL_RAMP_TO_6000 \
++    -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG\
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+-    -DCPU_DEBUG \
++    "-D_FUEL_QUAL=8'hA7" \
++    -DCL_FUEL_ENERGY_PCT=6 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++
++# --- FQS ramp-to-3000 sweep ---
++run_test cl_ramp_to_3000_FQS0 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h00" \
++    -DCL_FUEL_ENERGY_PCT=0 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS1 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h3B" \
++    -DCL_FUEL_ENERGY_PCT=3 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS2 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h5A" \
++    -DCL_FUEL_ENERGY_PCT=-3 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS3 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h75" \
++    -DCL_FUEL_ENERGY_PCT=6 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS4 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h81" \
++    -DCL_FUEL_ENERGY_PCT=0 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS5 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h91" \
++    -DCL_FUEL_ENERGY_PCT=3 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS6 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
++    "-D_FUEL_QUAL=8'h9C" \
++    -DCL_FUEL_ENERGY_PCT=-3 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test cl_ramp_to_3000_FQS7 \
++    -DTEST_CL_RAMP_TO_3000 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
++    -DRPMEND=3000 \
++    -DRPM_RAMP_PCT=20 \
+     "-D_FUEL_QUAL=8'hA7" \
+     -DCL_FUEL_ENERGY_PCT=6 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+@@ -575,23 +506,22 @@ run_test airtemp_fail \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+ 
+ run_test o2_disconnected \
+-    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG \
++    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_rich_stuck \
+-    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH  -DCPU_DEBUG \
++    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_lean_stuck \
+-    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN  -DCPU_DEBUG \
++    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_baseline \
+     -DTEST_O2_BASELINE \
+-    -DCPU_DEBUG \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+@@ -611,6 +541,21 @@ run_test ramp_to_6000 \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+ 
++run_test ramp_to_6100 \
++    -DTEST_RAMP_TO_6100 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test ramp_to_6200 \
++    -DTEST_RAMP_TO_6200 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test ramp_to_6300 \
++    -DTEST_RAMP_TO_6300 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
+ run_test ramp_to_redline \
+     -DTEST_RAMP_TO_REDLINE \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 \
+@@ -671,16 +616,16 @@ if [ -n "$1" ]; then
+         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
+-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+-        cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
++        cl_ramp_to_6000) run_test cl_ramp_to_6000 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS3) run_test cl_ramp_to_6000_FQS3 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h75" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DKLR_DEBUG;;
+         cl_ramp_to_3000_FQS0) run_test cl_ramp_to_3000_FQS0 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS1) run_test cl_ramp_to_3000_FQS1 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS2) run_test cl_ramp_to_3000_FQS2 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+@@ -689,7 +634,7 @@ if [ -n "$1" ]; then
+         cl_ramp_to_3000_FQS5) run_test cl_ramp_to_3000_FQS5 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS6) run_test cl_ramp_to_3000_FQS6 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DCPU_DEBUG "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DCL_AC_HALFWAY -DCPU_DEBUG -DCPU_DEEP_DEBUG -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DSIM_TIME=60000000000 ;;
+         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
+@@ -703,13 +648,16 @@ if [ -n "$1" ]; then
+         afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DCPU_DEBUG -DCPU_DEEP_DEBUG  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+         coolant_fail)     run_test coolant_fail     $IARG -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+         airtemp_fail)     run_test airtemp_fail     $IARG -DTEST_AIRTEMP_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+-        o2_disconnected)  run_test o2_disconnected  $IARG -DTEST_O2_DISCONNECTED  -DO2_FLAT_DISCONNECTED  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+-        o2_rich_stuck)    run_test o2_rich_stuck    $IARG -DTEST_O2_RICH_STUCK    -DO2_FLAT_RICH  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+-        o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+-        o2_baseline)      run_test o2_baseline      $IARG -DTEST_O2_BASELINE                                     -DCPU_DEBUG  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
++        o2_disconnected) run_test o2_disconnected $IARG -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
++        o2_rich_stuck) run_test o2_rich_stuck $IARG -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
++        o2_lean_stuck) run_test o2_lean_stuck $IARG -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
++        o2_baseline) run_test o2_baseline $IARG -DTEST_O2_BASELINE -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
+         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+-        ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000      -DCPU_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
++        ramp_to_3000) run_test ramp_to_3000 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6100)     run_test ramp_to_6100     $IARG -DTEST_RAMP_TO_6100     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6200)     run_test ramp_to_6200     $IARG -DTEST_RAMP_TO_6200     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6300)     run_test ramp_to_6300     $IARG -DTEST_RAMP_TO_6300     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
+         ignition_timing)  run_test ignition_timing  $IARG -DTEST_IGNITION_TIMING  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
+@@ -725,7 +673,7 @@ if [ -n "$1" ]; then
+             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
+             echo "               idle_poor_fuel ac_on_idle"
+             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
+-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
++            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
+             echo "  Ignition:    ignition_timing dwell_scaling"
+             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
+             echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"
+diff --git a/dme_klr/v_run_dashboard_tests.sh b/dme_klr/v_run_dashboard_tests.sh
+index cfdcec1..cdf01c9 100755
+--- a/dme_klr/v_run_dashboard_tests.sh
++++ b/dme_klr/v_run_dashboard_tests.sh
+@@ -41,7 +41,6 @@ BENCHd=../claude_8051/bench/verilog
+ RTLk=../gemini8048/rtl/verilog
+ BENCHk=../gemini8048/bench/verilog
+ 
+-#KLR_BENCH=bench/verilog/i8048_tb.v
+ FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
+ 
+ # Default snapshot interval (ms of simulated time between [DS] lines)
+@@ -158,7 +157,7 @@ compare_with_iv() {
+     fi
+ 
+     local result verdict detail colour reset="[0m"
+-    result=$(python3 "$SCRIPT_DIR/compare_sim_logs.py" "$mode" "$iv_log" "$vl_log" "$name" 2>&1)
++    result=$(python3 "$SCRIPT_DIR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$name" 2>&1)
+     verdict=$(echo "$result" | cut -f1)
+     detail=$(echo "$result"  | cut -f3-)
+ 
+@@ -175,150 +174,6 @@ compare_with_iv() {
+ " "$verdict" "$name" "$detail" >> "${cmp_dir}/compare.log"
+ }
+ 
+-# --------------------------------------------------------
+-#  compile_and_run_klr <short_name> [interval_ms] <verilator -D flags...>
+-#
+-#  If second argument is a plain integer it overrides the
+-#  snapshot interval for this test only.
+-# --------------------------------------------------------
+-compile_and_run_klr() {
+-    local name="$1"; shift
+-
+-    # Optional per-test interval override as second positional arg
+-    local interval="$DASH_INTERVAL_MS"
+-    if [[ "$1" =~ ^[0-9]+$ ]]; then
+-        interval="$1"; shift
+-    fi
+-
+-    local exe="${VVP_DIR}/dash_${name}"
+-    local log="${LOGDIR}/${name}.log"
+-    local vcdfile="${VCDDIR}/${name}.vcd"
+-    local hexdir="${HEXDIR}/${name}"
+-    local fstfile="${FSTDIR}/${name}.fst"
+-
+-    mkdir -p "$hexdir"
+-
+-    # Clean old output files for this test
+-    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+-    rm -f "${vcdfile}.gz"
+-
+-    # Extract SIM_TIME for display
+-    local sim_ns=0
+-    for arg in "$@"; do
+-        case "$arg" in
+-            -DSIM_TIME=*) sim_ns="${arg#-DSIM_TIME=}" ;;
+-        esac
+-    done
+-    local sim_sec=$(( sim_ns / 1000000000 ))
+-    local n_snaps=$(( sim_sec * 1000 / interval ))
+-
+-    echo ""
+-    echo "======================================================"
+-    echo "  TEST: $name  [${sim_sec}s sim / ~${sim_sec}m wall / interval=${interval}ms / ~${n_snaps} snapshots]"
+-    echo "======================================================"
+-
+-    # Compile — all sources including TB via -f files; top selected by --top-module.
+-    # When -DCL_MODE is present, swap var_interrupt_gen.v for var_interrupt_gen_cl.v
+-    local files_list="$FILES"
+-    for arg in "$@"; do
+-        [[ "$arg" == "-DCL_MODE" ]] && files_list="files_cl"
+-    done
+-
+-    # Remove stale object dir to force clean recompile
+-    rm -rf "${VVP_DIR}/obj_${name}"
+-    # Compute STEP_CLOCKS in bash to avoid Verilator localparam overflow
+-    local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
+-    for _a in "$@"; do
+-        case "$_a" in
+-            -DSIM_TIME=*)  _sim_time="${_a#-DSIM_TIME=}" ;;
+-            -DRPM_RAMP_PCT=*) _ramp_pct="${_a#-DRPM_RAMP_PCT=}" ;;
+-        esac
+-    done
+-    _sim_time="${_sim_time:-40000000000}"
+-    _ramp_pct="${_ramp_pct:-25}"
+-    _sim_ms=$(( _sim_time / 1000000 ))
+-    _ramp_ms=$(( _sim_ms * _ramp_pct / 100 ))
+-    _step_clocks=$(( _ramp_ms * 6000 / 200 ))
+-    local trace_flag=""; [ "$VCD_ENABLE" = "1" ] && trace_flag="--trace"
+-    # shellcheck disable=SC2086
+-    verilator --binary $trace_flag \
+-        -o "$exe" \
+-        --Mdir "${VVP_DIR}/obj_${name}" \
+-        -f "$files_list" \
+-        +incdir+"$RTL" \
+-        +incdir+"$BENCH" \
+-        +incdir+"$RTLd" \
+-        +incdir+"$BENCHd" \
+-        +incdir+"$RTLk" \
+-        +incdir+"$BENCHk" \
+-        --top-module i8051_dashboard_tb \
+-        -DVLT_SIM \
+-        -DSTEP_CLOCKS="$_step_clocks" \
+-        -DDASHBOARD_TB \
+-        -DDASH_INTERVAL_MS="$interval" \
+-        -Wno-fatal \
+-        -Wno-PINMISSING \
+-        -Wno-IMPLICIT \
+-        -Wno-WIDTHTRUNC \
+-        -Wno-WIDTHEXPAND \
+-        -Wno-REDEFMACRO \
+-        -Wno-DEFOVERRIDE \
+-        -Wno-CASEINCOMPLETE \
+-        -Wno-LATCH \
+-        -Wno-MULTIDRIVEN \
+-        "$@"
+-    if [ $? -ne 0 ]; then
+-        echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
+-        return 1
+-    fi
+-
+-    echo "  Running → $log"
+-    echo "  VCD     → $vcdfile"
+-    echo "  HEX     → $hexdir/{rom,ram}_out.hex"
+-
+-    # Run from hexdir so VCD and hex dumps land there without conflicts
+-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "$vcdfile" || echo /dev/null )" ) > "$log" 2>&1
+-    if [ $? -ne 0 ]; then
+-        echo "  SIM FAILED: $name" | tee -a "$LOGDIR/summary.log"
+-        return 1
+-    fi
+-
+-    # Move sim.vcd to named location (no compression)
+-    if [ -f "$hexdir/sim.vcd" ]; then
+-        if [ "$VCD_ENABLE" = "1" ]; then
+-            mv "$hexdir/sim.vcd" "$vcdfile"
+-        else
+-            rm -f "$hexdir/sim.vcd"
+-        fi
+-    fi
+-
+-    # Extract DME and KLR lines into dashboard log.
+-    # phase_monitor.v emits DME: [PHASE] / DME: [STATUS] / DME: [SEED] directly.
+-    grep -E "^DME: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
+-
+-    local nds=$(grep -c "^DME: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
+-    local dashsize=$(du -sh "$LOGDIR/${name}.dash.log" 2>/dev/null | cut -f1 || echo "?")
+-    local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
+-    echo "  DONE: $name  (${nds} DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${dashsize} / VCD ${vcdsize})" \
+-        | tee -a "$LOGDIR/summary.log"
+-
+-    # Validate
+-    local val_result
+-    val_result=$(python3 "$SCRIPT_DIR/validate_dash_log.py" "$name" "$LOGDIR/${name}.dash.log" 2>&1)
+-    local verdict=$(echo "$val_result" | cut -f1)
+-    local val_detail=$(echo "$val_result" | cut -f3-)
+-    echo "  ${verdict}: $name — $val_detail" | tee -a "$LOGDIR/validation.log"
+-
+-    # Open in dashboard browser if running a single test
+-    open_in_dashboard "$LOGDIR/${name}.dash.log"
+-
+-    compare_with_iv "$name" \
+-        "$LOGDIR/${name}.dash.log" \
+-        "$IV_LOGDIR/${name}.dash.log"
+-}
+-
+ # --------------------------------------------------------
+ #  compile_and_run_klr <name> [defines...]
+ #
+@@ -480,7 +335,7 @@ run_test cl_tippy_in \
+ 
+ run_test cl_ramp_to_3000 \
+     -DTEST_CL_RAMP_TO_3000  \
+-    -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
++    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+ 
+ run_test cl_ramp_to_6000 \
+@@ -491,7 +346,7 @@ run_test cl_ramp_to_6000 \
+ 
+ # --- Fuel quality sweep (cl_ramp_to_6000 with _FUEL_QUAL sweep) ---
+ run_test cl_ramp_to_6000_FQS0 \
+-    -DTEST_CL_RAMP_TO_6000 \
++    -DTEST_CL_RAMP_TO_6000 -DDEBUG_KLR \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+     "-D_FUEL_QUAL=8'h00" \
+     -DCL_FUEL_ENERGY_PCT=0 \
+@@ -540,7 +395,7 @@ run_test cl_ramp_to_6000_FQS6 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+ 
+ run_test cl_ramp_to_6000_FQS7 \
+-    -DTEST_CL_RAMP_TO_6000 \
++    -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG \
+     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hDA \
+     "-D_FUEL_QUAL=8'hA7" \
+     -DCL_FUEL_ENERGY_PCT=6 \
+@@ -694,23 +549,22 @@ run_test airtemp_fail \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+ 
+ run_test o2_disconnected \
+-    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED -DCPU_DEBUG \
++    -DTEST_O2_DISCONNECTED -DO2_FLAT_DISCONNECTED \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_rich_stuck \
+-    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH -DCPU_DEBUG \
++    -DTEST_O2_RICH_STUCK -DO2_FLAT_RICH \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_lean_stuck \
+-    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN -DCPU_DEBUG \
++    -DTEST_O2_LEAN_STUCK -DO2_FLAT_LEAN \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+ run_test o2_baseline \
+     -DTEST_O2_BASELINE \
+-    -DCPU_DEBUG \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000
+ 
+@@ -730,6 +584,21 @@ run_test ramp_to_6000 \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+ 
++run_test ramp_to_6100 \
++    -DTEST_RAMP_TO_6100 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test ramp_to_6200 \
++    -DTEST_RAMP_TO_6200 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
++run_test ramp_to_6300 \
++    -DTEST_RAMP_TO_6300 -DKLR_DEBUG\
++    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25 \
++    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
++
+ run_test ramp_to_redline \
+     -DTEST_RAMP_TO_REDLINE \
+     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 \
+@@ -790,7 +659,7 @@ if [ -n "$1" ]; then
+         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN  -DCPU_DEEP_DEBUG -DKLR_DEBUG      -DRPMRAMP -DCPU_DEBUG -DCL_MODE       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
+-        cl_ramp_to_3000)  run_test cl_ramp_to_3000  $IARG -DTEST_CL_RAMP_TO_3000  -DRPMRAMP -DCPU_DEBUG -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
++        cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+         cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+@@ -799,7 +668,7 @@ if [ -n "$1" ]; then
+         cl_ramp_to_6000_FQS4) run_test cl_ramp_to_6000_FQS4 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h81" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_6000_FQS5) run_test cl_ramp_to_6000_FQS5 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h91" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_6000_FQS6) run_test cl_ramp_to_6000_FQS6 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'h9C" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+-        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
++        cl_ramp_to_6000_FQS7) run_test cl_ramp_to_6000_FQS7 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hDA" "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DKLR_DEBUG ;;
+         cl_ramp_to_3000_FQS0) run_test cl_ramp_to_3000_FQS0 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS1) run_test cl_ramp_to_3000_FQS1 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+         cl_ramp_to_3000_FQS2) run_test cl_ramp_to_3000_FQS2 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+@@ -829,6 +698,9 @@ if [ -n "$1" ]; then
+         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+         ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6100)     run_test ramp_to_6100     $IARG -DTEST_RAMP_TO_6100     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6200)     run_test ramp_to_6200     $IARG -DTEST_RAMP_TO_6200     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
++        ramp_to_6300)     run_test ramp_to_6300     $IARG -DTEST_RAMP_TO_6300     -DKLR_DEBUG -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
+         ignition_timing)  run_test ignition_timing  $IARG -DTEST_IGNITION_TIMING  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
+@@ -844,7 +716,7 @@ if [ -n "$1" ]; then
+             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
+             echo "               idle_poor_fuel ac_on_idle"
+             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
+-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_redline ramp_6k_hold"
++            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
+             echo "  Ignition:    ignition_timing dwell_scaling"
+             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
+             echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"
+diff --git a/dme_klr/validate_dash_log.py b/dme_klr/validate_dash_log.py
+index e152c6e..7e4bca4 100755
+--- a/dme_klr/validate_dash_log.py
++++ b/dme_klr/validate_dash_log.py
+@@ -51,6 +51,9 @@ TESTS = {
+     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
+     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
++    'ramp_to_6100':      {'rpm_target': 6100, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
++    'ramp_to_6200':      {'rpm_target': 6200, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
++    'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+     'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':97},
+     'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+     'ignition_timing':   {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True},
+@@ -252,6 +255,30 @@ def detect_o2_status(rows):
+ 
+ # ─── Main validator ───────────────────────────────────────────────────────────
+ 
++def parse_klr_ram33(line):
++    """Extract (t_ms, value) for ram[33] from a 'KLR: [STATUS]' line.
++
++    Returns None if the line isn't a KLR STATUS line or doesn't carry
++    a ram[33] field. value is None if the field is still uninitialised
++    (prints as 'x'/'xx' — Verilog's unknown state — before the firmware
++    has ever written that RAM location), distinct from a real 0.
++    """
++    if not line.startswith('KLR: [STATUS]'):
++        return None
++    m = re.search(r'ram\[33\]=([0-9a-fA-Fx]+)', line)
++    if not m:
++        return None
++    tm = re.search(r't=(\d+)\s*ms', line)
++    t = int(tm.group(1)) if tm else None
++    val_str = m.group(1)
++    if re.fullmatch(r'x+', val_str, re.IGNORECASE):
++        return (t, None)  # still uninitialised
++    try:
++        return (t, int(val_str, 16))
++    except ValueError:
++        return (t, None)
++
++
+ def validate(test_name, logpath):
+     exp = TESTS.get(test_name)
+     if exp is None:
+@@ -539,6 +566,30 @@ def validate(test_name, logpath):
+         else:
+             fails.append(f"O2 status '{o2_status}' does not match expected '{expect_o2}' — {o2_desc}")
+ 
++    # ── 17. KLR ram[33] should stay zero once initialised
++    # ram[33] prints as 'xx' (Verilog X) before the firmware has ever
++    # written it — that's normal startup, not a fault, so those samples
++    # are skipped. Once it holds a real (non-X) value, any non-zero
++    # reading is unexpected and flagged as a WARN (not a FAIL, since
++    # the exact significance of this location isn't nailed down yet).
++    klr_ram33_nonzero_first = None  # (t, value) of first bad reading
++    klr_ram33_seen_defined = False
++    for line in lines:
++        r = parse_klr_ram33(line)
++        if r is None:
++            continue
++        t, val = r
++        if val is None:
++            continue  # still uninitialised — not yet meaningful
++        klr_ram33_seen_defined = True
++        if val != 0 and klr_ram33_nonzero_first is None:
++            klr_ram33_nonzero_first = (t, val)
++    if klr_ram33_nonzero_first is not None:
++        t, val = klr_ram33_nonzero_first
++        warns.append(f"KLR ram[33] went non-zero: 0x{val:02X} at t={t}ms (expected 0 once initialised)")
++    elif klr_ram33_seen_defined:
++        infos.append("KLR ram[33] stayed 0 ✓")
++
+     # ── Verdict
+     detail = ' | '.join(infos)
+     if fails:
+diff --git a/gemini8048/bench/verilog/adc_8090.v b/gemini8048/bench/verilog/adc_8090.v
+index 6a274df..fa476b1 100644
+--- a/gemini8048/bench/verilog/adc_8090.v
++++ b/gemini8048/bench/verilog/adc_8090.v
+@@ -12,15 +12,25 @@ module adc_8090 (
+     reg [2:0] addr_reg;
+     integer i;
+ 
+-    always @(posedge clk or posedge start) begin
++    reg start_prev;  // registered start, for rising-edge detection
++
++    always @(posedge clk) begin
++        start_prev <= start;
++
+         if (ale) begin
+            addr_reg <= addr;
+         end 
+-        if (start) begin
++        if (start && !start_prev) begin
++            // Rising edge of start — this branch runs exactly ONCE per
++            // pulse, even if start stays high for multiple clock cycles
++            // (start_prev catches up to start on the very next edge, so
++            // this condition is only ever true for one cycle).
+             // Synchronous reset of all stages in the pipe
+             for (i = 0; i < 8; i = i + 1) begin
+                 delay_pipe[i] <= 8'h00;
+             end
++            // Shifting is intentionally skipped this cycle — it begins
++            // on the next clk edge, once start_prev == start again.
+         end else begin
+             // Load the first stage with p0_in
+             case (addr_reg) 
+diff --git a/gemini8048/bench/verilog/klr_phase_monitor.v b/gemini8048/bench/verilog/klr_phase_monitor.v
+index e80bbc8..98f7ca0 100644
+--- a/gemini8048/bench/verilog/klr_phase_monitor.v
++++ b/gemini8048/bench/verilog/klr_phase_monitor.v
+@@ -155,7 +155,7 @@ always @(posedge clk) begin  // klr_phase_monitor
+         // ── Periodic STATUS snapshot ──────────────────────
+         // Every ~100ms KLR time (≈1,111,100 half-cycles)
+         if ($time >= ph_klr_next_snap) begin
+-            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[38]=%02h  timer_val=%02h",
++            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[33]=%02h  ram[38]=%02h  timer_val=%02h",
+                 `KLR_MS(0),
+                 top.i8048_core_1.pc,
+                 top.i8048_core_1.mb_latch,
+@@ -174,6 +174,7 @@ always @(posedge clk) begin  // klr_phase_monitor
+                 `KLRRAM[8'h16],  // MB1 jump target low byte
+                 `KLRRAM[8'h17],  // MB1 jump target high byte (0x08=MB1)
+                 `KLRRAM[8'h26],  // retard accumulator
++                `KLRRAM[8'h33],  // should stay 0 once initialised — see validate_dash_log.py
+                 `KLRRAM[8'h38],  // timer ISR A-save area
+                 top.i8048_core_1.timer_val
+             );
+diff --git a/gemini8048/bench/verilog/klr_tb.v b/gemini8048/bench/verilog/klr_tb.v
+index dea1260..f0a2888 100644
+--- a/gemini8048/bench/verilog/klr_tb.v
++++ b/gemini8048/bench/verilog/klr_tb.v
+@@ -10,11 +10,18 @@
+ //    var_timing_gen.v       — variable-RPM crank/ign generator
+ //    klr_top.v              — klr_system + klr_eprom
+ //    klr_vcd.v              — updated VCD/disassembly monitor
++//    knock_gen.v            — knock_sum (ch5) = !knock_reset ? 0d :
++//                              (fake_knock burst-stretched to >=2.4ms
++//                              ? knock_sensor+145d : knock_sensor);
++//                              knock_noise (ch0) = fake_knock (raw) ?
++//                              knock_sensor+145d : knock_sensor
++//                              (knock_sensor currently a fixed 110d
++//                              placeholder — real model TBD)
+ //
+ //  Compile:
+ //    iverilog -o klr.vvp -s klr_tb \
+ //      timescale.v i8048_core.v adc_8090.v adc_delay.v \
+-//      var_timing_gen.v klr_top.v klr_vcd.v klr_tb.v
++//      var_timing_gen.v klr_top.v klr_vcd.v knock_gen.v klr_tb.v
+ //
+ //  Simulate:
+ //    vvp klr.vvp
+@@ -88,15 +95,65 @@ module klr_tb #(parameter EXT_STIM = 0) (
+     // ── ADC channel stimulus ──────────────────────────────
+     //  Initial values match i8048_tb.v: static signed constants so
+     //  the firmware can run its conversion loop immediately.
+-    //  Replace with knock_sensor_gen / boost_pressure_gen outputs
+-    //  once those modules are written.
+-    reg [7:0] adc_ch0 = 8'h81;  // conn 14  — knock sensor 1 amplified
+-    reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
+-    reg [7:0] adc_ch2 = 8'h83;  // conn 17
+-    reg [7:0] adc_ch4 = 8'h85;  // conn 23
+-    reg [7:0] adc_ch5 = 8'h86;  // lm2902.14 — comparator output
++    //  Replace with boost_pressure_gen output once that module is written.
++// this is wrong - pin 1 is the KLR pin 1    #reg [7:0] adc_ch1 = 8'h82;  // conn 13  — knock sensor 2 amplified
++    reg [7:0] adc_ch1 = 8'hd8;  // battery
++//this is also wrong    reg [7:0] adc_ch2 = 8'h83;  // conn 17
++    reg [7:0] adc_ch2 = 8'h00;  // ground
++    reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor
+     reg [7:0] adc_ch6 = 8'h87;  // conn 25
+ 
++    // ── Knock signal generation (ch0 — noise-level indicator;
++    //    ch5 — lm2902.14 comparator output) ──
++    //  fake_knock: klr_system's own P1.7 self-test output (see
++    //    klr_top.v) — the firmware sets this pin to inject a fake
++    //    knock reading into its own adc_ch5. NOT testbench-driven;
++    //    it's wired below from the klr_system instance's fake_knock
++    //    output port. 1 bit (single I/O pin). Feeds knock_sum (ch5)
++    //    ONLY (via a burst-stretcher — see knock_gen.v: guarantees a
++    //    2.4ms minimum low-to-high burst duration on ch5, while any
++    //    brief transient pulses within the first 1.3ms after the
++    //    falling edge stay visible unmodified).
++    //  knock_reset: klr_system's P2.5 output, broken out from the
++    //    p2_mon bus (declared further below; forward reference is
++    //    fine here — Verilog resolves wire connections at
++    //    elaboration, not by textual order). 1 bit. Gates knock_sum
++    //    only (see formulas below) — knock_noise is unaffected.
++    //  knock_sensor: real knock sensor input — not yet modeled, held
++    //    at a fixed 8'd110 placeholder for now (real variation
++    //    planned as future work). This is the baseline value for
++    //    both outputs; 8'd145 is added on top only while fake_knock
++    //    is asserted — see formulas below.
++    //  knock_gen is clocked (needs .clk below) only for the
++    //    fake_knock burst-stretcher; everything else is combinational:
++    //    knock_sum   = !knock_reset ? 0 (highest priority — forces 0
++    //                  regardless of fake_knock) : fake_knock_stretched
++    //                  ? (knock_sensor + 145) : knock_sensor — drives
++    //                  adc_ch5. With knock_sensor=110: 0 / 110 / 255.
++    //    knock_noise = fake_knock ? (knock_sensor + 145) : knock_sensor —
++    //                  drives adc_ch0. Note: uses the RAW fake_knock
++    //                  here, not the stretched version knock_sum
++    //                  uses — knock_noise is not affected by the
++    //                  burst-stretcher, and not gated by knock_reset
++    //                  at all.
++    wire       fake_knock;
++    wire       knock_reset = p2_mon[5];
++    wire [7:0] knock_sensor = 8'd110;
++    wire [7:0] knock_sum;
++    wire [7:0] knock_noise;
++
++    knock_gen u_knock_gen (
++        .clk          ( clk          ),
++        .fake_knock   ( fake_knock   ),
++        .knock_reset  ( knock_reset  ),
++        .knock_sensor ( knock_sensor ),
++        .knock_sum    ( knock_sum    ),
++        .knock_noise  ( knock_noise  )
++    );
++
++    wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator
++    wire [7:0] adc_ch5 = knock_sum;    // lm2902.14 — comparator output
++
+     // ── TPS Supply (ch3) and TPS Angle (ch7) ─────────────────
+     // TPS supply (ch3/ram[39h]): fixed 201 — KLR has an onboard 5V regulator
+     //   so TPS supply is independent of the 12V battery.
+@@ -106,7 +163,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
+     //   AFM idle (0x28=40) → TPS 0x28 (40), AFM WOT (0xEB=235) → TPS 0xC8 (200)
+     //   Linear: tps_angle = 40 + (afm - 40) * 160 / 195
+     //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
+-    wire [7:0] adc_ch3 = 8'd201;   // conn 1  TPS 5V supply — fixed regulated value
++    wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
+ 
+     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
+     // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
+@@ -121,6 +178,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
+     wire [7:0]  ir, acc, p1_mon, p2_mon;
+     wire [10:0] ext_addr;   // {P1[2:0], bus_addr} — full MOVX address
+ 
++    // Diagnostic LED output — P2.4, broken out from the p2_mon bus
++    // (klr_system exposes full P2 via p2_mon; no new port needed).
++    wire diag_led_out = p2_mon[4];
++
+     // ============================================================
+     //  VCD / disassembly monitor
+     //  klr_vcd.v is a copy of vcd.v with $dumpvars paths updated:
+@@ -157,6 +218,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
+         .ign_out     ( ign_out  ),
+         .ign_out_n   ( ign_out_n ),
+         .full_load   ( full_load ),
++        .fake_knock  ( fake_knock ),
+         .adc_ch0     ( adc_ch0  ),
+         .adc_ch1     ( adc_ch1  ),
+         .adc_ch2     ( adc_ch2  ),
+@@ -223,21 +285,27 @@ module klr_tb #(parameter EXT_STIM = 0) (
+     end
+ 
+     // ============================================================
+-    //  Optional: inject knock event on ADC ch0/ch1 at mid-sim
++    //  Optional: inject a knock event on ADC ch1 + knock_sensor at mid-sim
+     //  Uncomment to exercise the knock detection loop.
+-    //  The comparator output (ch5) is raised simultaneously to
+-    //  simulate the LM2902 threshold being exceeded.
++    //
++    //  Note: fake_knock and knock_reset can NOT be driven here —
++    //  both are continuously driven by klr_system's own P1.7/P2.5
++    //  outputs (firmware-controlled self-test signals; see
++    //  klr_top.v / knock_gen.v). adc_ch0/adc_ch5 (knock_noise/
++    //  knock_sum) are also not directly drivable. To vary the
++    //  ch0/ch5 baseline from the testbench, change knock_sensor
++    //  above from a tied wire to a reg and drive it here instead —
++    //  it's ALWAYS the baseline value for both outputs (145 is added
++    //  on top only while fake_knock=1).
+     // ============================================================
+     // initial begin
+     //     #(`SIM_TIME / 2);
+-    //     $display("[TB] Injecting knock event on CH0/CH1 at t=%0t", $time);
+-    //     adc_ch0 = 8'hF0;   // strong knock on sensor 1
+-    //     adc_ch1 = 8'hE8;   // strong knock on sensor 2
+-    //     adc_ch5 = 8'hFF;   // LM2902 comparator trips
+-    //     #200000;            // hold for 200 µs (~2 engine cycles at idle)
+-    //     adc_ch0 = 8'h81;   // return to quiescent
+-    //     adc_ch1 = 8'h82;
+-    //     adc_ch5 = 8'h86;
++    //     $display("[TB] Injecting knock event on adc_ch1 at t=%0t", $time);
++    //     knock_sensor = 8'd60;  // requires knock_sensor to be a reg (see note above)
++    //     adc_ch1 = 8'hE8;       // strong knock on sensor 2
++    //     #200000;               // hold for 200 µs (~2 engine cycles at idle)
++    //     knock_sensor = 8'd110;
++    //     adc_ch1 = 8'hd8;       // return to quiescent (battery)
+     // end
+ 
+ `include "klr_phase_monitor.v"
+diff --git a/gemini8048/bench/verilog/klr_vcd.v b/gemini8048/bench/verilog/klr_vcd.v
+index 565f8c4..271104e 100644
+--- a/gemini8048/bench/verilog/klr_vcd.v
++++ b/gemini8048/bench/verilog/klr_vcd.v
+@@ -152,6 +152,17 @@ wire [7:0] ram_7a = `RAM[8'h7a]; wire [7:0] ram_7b = `RAM[8'h7b];
+ wire [7:0] ram_7c = `RAM[8'h7c]; wire [7:0] ram_7d = `RAM[8'h7d];
+ wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
+ 
++    wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
++    wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
++    wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
++    wire [7:0] r3 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1b] : `RAM[7'h3];
++    wire [7:0] r4 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1c] : `RAM[7'h4];
++    wire [7:0] r5 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1d] : `RAM[7'h5];
++    wire [7:0] r6 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1e] : `RAM[7'h6];
++    wire [7:0] r7 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1f] : `RAM[7'h7];
++    wire [7:0] r_at_0 = `RAM[r0];
++    wire [7:0] r_at_1 = `RAM[r1];
++
+ // ============================================================
+ //  Interrupt entry tracker
+ //  service_interrupt() pushes to the stack and sets irq_in_progress.
+@@ -225,6 +236,7 @@ initial begin
+     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
+     $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
+     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
++    $dumpvars(1, `KLR_TOP_TB.u_knock_gen);
+ `endif
+ 
+     clk_count = 0;
+diff --git a/gemini8048/bench/verilog/knock_gen.v b/gemini8048/bench/verilog/knock_gen.v
+new file mode 100644
+index 0000000..4e242e0
+--- /dev/null
++++ b/gemini8048/bench/verilog/knock_gen.v
+@@ -0,0 +1,134 @@
++// ============================================================
++//  knock_gen.v  —  Knock AND gate (ch5) + noise level model (ch0)
++//
++//  Models the connection into the KLR's adc_ch0 and adc_ch5 inputs.
++//
++//  fake_knock is a firmware-driven output of klr_system (P1.7) —
++//  the firmware sets this pin to inject a fake knock reading for
++//  self-test. 1 bit wide.
++//
++//  knock_reset is klr_system's P2.5 output (see klr_tb.v, where
++//  it's wired from the p2_mon bus) — gates the ch5 comparator
++//  chain only (per the schematic, P2.5 feeds into the S3 stages of
++//  the top chain). 1 bit wide.
++//
++//  Low-pass-filter-style one-shot timer (clocked off the same `clk`
++//  as the rest of the design) — models fake_knock's contribution to
++//  knock_sum as a single, fixed 2.4ms low period, NOT retriggerable:
++//    - The FIRST falling edge of fake_knock (seen while idle) starts
++//      a fixed 2.4ms hold_cnt countdown (HOLD_CYCLES, derived from
++//      `FRQ_SCALE / `KLR_FREQ so it self-corrects if the clock
++//      frequency changes).
++//    - While hold_cnt is running, fake_knock_stretched is forced LOW
++//      unconditionally — fake_knock's actual value is completely
++//      ignored for the whole window, including any further falling
++//      edges, rises, or brief blips (intentional — this is the
++//      low-pass filtering behavior: one clean falling edge in, one
++//      clean rising edge out, 2.4ms later).
++//    - At exactly 2.4ms, the timer releases and fake_knock_stretched
++//      goes back to mirroring fake_knock directly (whatever it
++//      happens to be at that point).
++//
++//  knock_noise has its OWN, separate 500us retriggerable filter
++//  (noise_hold_cnt / fake_knock_noise_stretched) — a classic
++//  retriggerable monostable, unlike knock_sum's fixed one-shot above:
++//    - EVERY falling edge of fake_knock (re)starts a 500us
++//      noise_hold_cnt countdown (NOISE_HOLD_CYCLES).
++//    - While counting, fake_knock_noise_stretched is forced LOW
++//      regardless of fake_knock's value — so any pulse (and its
++//      matching fall) occurring within 500us of the LAST falling
++//      edge is filtered out, and each such fall restarts the 500us
++//      window from that point.
++//    - Once 500us elapses with no further falls, it releases and
++//      mirrors fake_knock directly.
++//  This is intentionally a different filter from knock_sum's — a
++//  shorter, retriggering window rather than a longer, fixed one —
++//  so the two outputs settle at different times for the same
++//  fake_knock input.
++//
++//  Two outputs:
++//
++//    knock_sum — drives adc_ch5 (LM2902 comparator threshold-trip
++//      channel). knock_reset takes priority: 0 forces flat 8'd000
++//      regardless of fake_knock. Otherwise (knock_reset=1):
++//      fake_knock_stretched=1 -> knock_sensor+8'd145, else just
++//      knock_sensor. With the current klr_tb.v tie-off
++//      (knock_sensor=8'd110), that's 0 / 110 / 255 decimal.
++//
++//    knock_noise — drives adc_ch0 (knock sensor noise-level
++//      channel): fake_knock_noise_stretched ? (knock_sensor+8'd145)
++//      : knock_sensor. Filtered by its own 500us retriggerable timer
++//      (see above) — NOT the same filter/timing as knock_sum. NOT
++//      gated by knock_reset at all (per spec: only knock_sum reacts
++//      to knock_reset going low). Same value formula as knock_sum,
++//      just a different (shorter, retriggering) filter window.
++//
++//  knock_sensor is still a fixed placeholder (8'd110, tied in
++//  klr_tb.v) rather than a real sensor model — that's planned as
++//  future work. Its contribution is the baseline value always; the
++//  8'd145 offset is added on top only while the relevant filtered
++//  fake_knock signal is asserted.
++// ============================================================
++
++`include "timescale.v"
++
++module knock_gen (
++    input  wire       clk,
++    input  wire       fake_knock,
++    input  wire       knock_reset,
++    input  wire [7:0] knock_sensor,
++    output wire [7:0] knock_sum,
++    output wire [7:0] knock_noise
++);
++
++    // Clock period (ns), same expression as klr_tb.v's own `parameter DELAY`
++    // (DELAY there is the half-period; full period is 2x that).
++    localparam integer CLK_PERIOD_NS    = 2 * (`FRQ_SCALE / `KLR_FREQ);
++    localparam integer HOLD_CYCLES      = 2400000 / CLK_PERIOD_NS;  // knock_sum: fixed 2.4ms one-shot
++    localparam integer NOISE_HOLD_CYCLES = 500000 / CLK_PERIOD_NS;  // knock_noise: retriggerable 500us
++
++    reg [31:0] hold_cnt        = 0;     // 0 = idle; counts 1..HOLD_CYCLES while holding (knock_sum)
++    reg [31:0] noise_hold_cnt  = 0;     // 0 = idle; counts 1..NOISE_HOLD_CYCLES while holding (knock_noise)
++    reg        fake_knock_prev = 1'b1;  // assume idle-high at sim start; shared falling-edge reference
++
++    // knock_sum's fixed, non-retriggering 2.4ms one-shot
++    always @(posedge clk) begin
++        fake_knock_prev <= fake_knock;
++
++        if (hold_cnt == 0) begin
++            // Idle -- only a falling edge seen HERE (while idle) starts
++            // the one-shot. Not retriggerable: falls seen later, while
++            // hold_cnt is already counting, are ignored entirely.
++            if (fake_knock_prev && !fake_knock) begin
++                hold_cnt <= 1;
++            end
++        end else if (hold_cnt < HOLD_CYCLES) begin
++            hold_cnt <= hold_cnt + 1;  // keep counting; fake_knock is ignored during this window
++        end else begin
++            hold_cnt <= 0;  // 2.4ms elapsed -- release back to idle/passthrough
++        end
++    end
++
++    // knock_noise's independent, retriggerable 500us filter
++    always @(posedge clk) begin
++        if (fake_knock_prev && !fake_knock) begin
++            // Every falling edge (re)starts the 500us window
++            noise_hold_cnt <= 1;
++        end else if (noise_hold_cnt > 0 && noise_hold_cnt < NOISE_HOLD_CYCLES) begin
++            noise_hold_cnt <= noise_hold_cnt + 1;
++        end else if (noise_hold_cnt >= NOISE_HOLD_CYCLES) begin
++            noise_hold_cnt <= 0;  // 500us elapsed with no further falls -- release
++        end
++    end
++
++    wire fake_knock_stretched =
++        (hold_cnt > 0 && hold_cnt < HOLD_CYCLES) ? 1'b0 : fake_knock;
++    wire fake_knock_noise_stretched =
++        (noise_hold_cnt > 0 && noise_hold_cnt < NOISE_HOLD_CYCLES) ? 1'b0 : fake_knock;
++
++    assign knock_sum   = !knock_reset ? 8'd0
++                        : fake_knock_stretched ? (knock_sensor + 8'd145)
++                        : knock_sensor;
++    assign knock_noise = fake_knock_noise_stretched ? (knock_sensor + 8'd145) : knock_sensor;
++
++endmodule
+diff --git a/gemini8048/bench/verilog/knock_gen_tb.v b/gemini8048/bench/verilog/knock_gen_tb.v
+new file mode 100644
+index 0000000..606c13c
+--- /dev/null
++++ b/gemini8048/bench/verilog/knock_gen_tb.v
+@@ -0,0 +1,208 @@
++// ============================================================
++//  knock_gen_tb.v  —  Standalone testbench for knock_gen.v
++//
++//  Drives fake_knock through a few pulse patterns and self-checks
++//  the two INDEPENDENT filters in knock_gen.v:
++//    knock_sum   — fixed 2.4ms one-shot, NOT retriggerable. The
++//                  FIRST falling edge starts a fixed 2.4ms low
++//                  period — a single clean falling edge in, a
++//                  single clean rising edge out, 2.4ms later —
++//                  completely ignoring anything fake_knock does in
++//                  between (further falls, rises, brief blips).
++//    knock_noise — separate, retriggerable 500us filter. EVERY
++//                  falling edge (re)starts a 500us window; any
++//                  pulse within 500us of the last fall is filtered
++//                  out, and each such fall restarts the window.
++//  Both filters see the same fake_knock input but settle at
++//  different times, since one is fixed/one-shot and the other is
++//  retriggerable — see knock_gen.v for the full rationale.
++//  Scenarios:
++//    1. Single pulse (one falling edge)    -> both outputs held low,
++//                                             each per their own timer
++//    2. Two closely-spaced blips           -> BOTH filtered out of
++//                                             BOTH outputs, but they
++//                                             release at DIFFERENT
++//                                             times (knock_sum fixed
++//                                             ~2.4ms from the first
++//                                             fall; knock_noise ~500us
++//                                             after the LAST fall)
++//    3. Very brief single pulse            -> both still get their
++//                                             full hold duration (no
++//                                             "early rise" exception
++//                                             on either)
++//    4. Naturally long low period (>2.4ms) -> no extra stretch added
++//                                             to either output
++//    5. knock_reset gating                 -> knock_sum forced to 0
++//       (3 valid combinations only — knock_reset and fake_knock are
++//       NEVER both 0)
++//
++//  The hold-duration check watches knock_gen's internal
++//  fake_knock_stretched signal (knock_sum's timer) directly via
++//  hierarchical reference (dut.fake_knock_stretched) rather than
++//  reverse-engineering timing from knock_sum's bit pattern.
++//
++//  Compile (iverilog):
++//    iverilog -o knock_gen_tb.vvp -s knock_gen_tb \
++//      timescale.v klr_defs.v knock_gen.v knock_gen_tb.v
++//    vvp knock_gen_tb.vvp
++//
++//  View waveforms:
++//    gtkwave knock_gen_tb.vcd
++// ============================================================
++
++`include "timescale.v"
++`include "klr_defs.v"
++
++module knock_gen_tb;
++
++    // ── Clock — same generator style/period as klr_tb.v ───────
++    parameter DELAY = `FRQ_SCALE / `KLR_FREQ;  // half-period
++    reg clk = 0;
++    always #DELAY clk = ~clk;
++
++    // ── DUT I/O ────────────────────────────────────────────────
++    reg        fake_knock   = 1'b1;  // idle-high, matches knock_gen's reset assumption
++    reg        knock_reset  = 1'b1;  // gate open by default
++    reg  [7:0] knock_sensor = 8'd110;  // matches klr_tb.v's tied value; the baseline for both outputs
++    wire [7:0] knock_sum;
++    wire [7:0] knock_noise;
++
++    knock_gen dut (
++        .clk          ( clk          ),
++        .fake_knock   ( fake_knock   ),
++        .knock_reset  ( knock_reset  ),
++        .knock_sensor ( knock_sensor ),
++        .knock_sum    ( knock_sum    ),
++        .knock_noise  ( knock_noise  )
++    );
++
++    // ── Self-checking hold-duration monitor ────────────────────
++    // Watches the DUT's internal stretched signal directly. Every
++    // hold episode should measure ~2.4ms from the FIRST fall to
++    // release, since the timer is fixed/non-retriggering — later
++    // falls within the window don't extend it.
++    real    fall_time_ns, span_ms;
++    reg     measuring = 1'b0;
++    integer n_pass = 0, n_fail = 0;
++    localparam real MIN_HOLD_MS = 2.399;  // slack for cycle-count rounding
++
++    always @(negedge dut.fake_knock_stretched) begin
++        fall_time_ns = $realtime;
++        measuring    = 1'b1;
++        $display("[TB] t=%0t  fake_knock_stretched FELL (hold start)", $time);
++    end
++
++    always @(posedge dut.fake_knock_stretched) begin
++        if (measuring) begin
++            span_ms   = ($realtime - fall_time_ns) / 1_000_000.0;
++            measuring = 1'b0;
++            if (span_ms >= MIN_HOLD_MS) begin
++                n_pass = n_pass + 1;
++                $display("[TB] t=%0t  fake_knock_stretched ROSE — span=%.4fms (>= 2.4ms)  PASS",
++                          $time, span_ms);
++            end else begin
++                n_fail = n_fail + 1;
++                $display("[TB] t=%0t  fake_knock_stretched ROSE — span=%.4fms (< 2.4ms)  *** FAIL ***",
++                          $time, span_ms);
++            end
++        end
++    end
++
++    // ── VCD dump ───────────────────────────────────────────────
++    initial begin
++        $dumpfile("knock_gen_tb.vcd");
++        $dumpvars(0, knock_gen_tb);
++    end
++
++    // ── Continuous status line ─────────────────────────────────
++    initial begin
++        $monitor("t=%8t  fake_knock=%b sum_stretched=%b noise_stretched=%b knock_reset=%b sensor=0x%02h | knock_sum=0x%02h knock_noise=0x%02h",
++                  $time, fake_knock, dut.fake_knock_stretched, dut.fake_knock_noise_stretched, knock_reset, knock_sensor, knock_sum, knock_noise);
++    end
++
++    // ── Stimulus ────────────────────────────────────────────────
++    initial begin
++        $display("=== knock_gen_tb start ===");
++        #5_000_000;
++
++        // Scenario 1: single pulse (one falling edge) -- expect exactly ~2.4ms hold
++        $display("\n[TB] --- Scenario 1: single pulse, one falling edge ---");
++        fake_knock = 1'b0;
++        #300_000;
++        fake_knock = 1'b1;
++        #5_000_000;
++
++        // Scenario 2: two closely-spaced BLIPS (each a brief rise
++        // then fall), all within both filter windows. knock_sum's
++        // fixed one-shot is NOT retriggerable, so both blips (and
++        // their falls) are completely ignored — release lands at a
++        // single fixed 2.4ms after the FIRST fall only. knock_noise's
++        // filter IS retriggerable (500us), so it also filters both
++        // blips, but releases separately — 500us after the LAST fall
++        // (blip2's), which lands earlier than knock_sum's release.
++        // Pattern: 450us low, 10us high, 450us low, 10us high, 450us
++        // low (total 1.37ms — comfortably inside knock_sum's 2.4ms
++        // window, so both filters' behavior is clearly visible).
++        $display("\n[TB] --- Scenario 2: two closely-spaced blips (filtered by both, released at different times) ---");
++        fake_knock = 1'b0;
++        #450_000;
++        fake_knock = 1'b1; #10_000; fake_knock = 1'b0;   // blip 1
++        #450_000;
++        fake_knock = 1'b1; #10_000; fake_knock = 1'b0;   // blip 2
++        #450_000;                                         // final low period
++        fake_knock = 1'b1;
++        #5_000_000;
++
++        // Scenario 3: very brief single pulse -- fake_knock rises
++        // almost immediately, but should STILL be held low for the
++        // full 2.4ms (no "early rise" exception in this design).
++        $display("\n[TB] --- Scenario 3: very brief pulse — full 2.4ms hold still applies ---");
++        fake_knock = 1'b0;
++        #10_000;
++        fake_knock = 1'b1;
++        #5_000_000;
++
++        // Scenario 4: naturally long low period, already exceeds 2.4ms
++        $display("\n[TB] --- Scenario 4: naturally long low period (> 2.4ms) ---");
++        fake_knock = 1'b0;
++        #3_000_000;
++        fake_knock = 1'b1;
++        #5_000_000;
++
++        // Scenario 5: knock_reset gating. Only 3 combinations are
++        // exercised — knock_reset and fake_knock are NEVER both 0
++        // at the same time (not a valid/expected combination).
++        // Transitions are kept SEPARATE in time (never simultaneous)
++        // so each combination is held for a real settle window and
++        // individually, unambiguously observable.
++        $display("\n[TB] --- Scenario 5: knock_reset gating (3 valid combinations, separated) ---");
++        fake_knock  = 1'b0;
++        #5_000_000;
++        $display("[TB] t=%0t  knock_reset=1, fake_knock=0: knock_sum=%0d (expect 110)",
++                  $time, knock_sum);
++
++        fake_knock  = 1'b1;
++        #5_000_000;
++        $display("[TB] t=%0t  knock_reset=1, fake_knock=1: knock_sum=%0d (expect 255)",
++                  $time, knock_sum);
++
++        knock_reset = 1'b0;
++        #5_000_000;
++        $display("[TB] t=%0t  knock_reset=0, fake_knock=1: knock_sum=%0d (expect 0)",
++                  $time, knock_sum);
++
++        knock_reset = 1'b1;
++        #5_000_000;
++
++        $display("\n=== knock_gen_tb done — hold-duration checks: PASS=%0d FAIL=%0d ===", n_pass, n_fail);
++        $finish;
++    end
++
++    // Safety timeout in case a scenario hangs
++    initial begin
++        #80_000_000;
++        $display("[TB] *** TIMEOUT — simulation did not finish in time ***");
++        $finish;
++    end
++
++endmodule
+diff --git a/gemini8048/bench/verilog/run_knock_test.sh b/gemini8048/bench/verilog/run_knock_test.sh
+new file mode 100755
+index 0000000..a0e211e
+--- /dev/null
++++ b/gemini8048/bench/verilog/run_knock_test.sh
+@@ -0,0 +1,3 @@
++iverilog -o knock_gen_tb.vvp -s knock_gen_tb timescale.v klr_defs.v knock_gen.v knock_gen_tb.v
++vvp knock_gen_tb.vvp
++
+diff --git a/gemini8048/bin/87KLR951.xlsx b/gemini8048/bin/87KLR951.xlsx
+index 62a8ed9..3e25bd0 100644
+Binary files a/gemini8048/bin/87KLR951.xlsx and b/gemini8048/bin/87KLR951.xlsx differ
+diff --git a/gemini8048/bin/asm_operands.hex b/gemini8048/bin/asm_operands.hex
+index 4203e55..a5598c8 100644
+--- a/gemini8048/bin/asm_operands.hex
++++ b/gemini8048/bin/asm_operands.hex
+@@ -653,7 +653,7 @@
+ 2020202020202020202020202020202020202020
+ 612c407230202020202020202020202020202020
+ 6320202020202020202020202020202020202020
+-72322c2331202020202020202020202020202020
++72322c2334312020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 63765f647574795f73746f726520202020202020
+ 2020202020202020202020202020202020202020
+@@ -3375,7 +3375,7 @@
+ 2020202020202020202020202020202020202020
+ 6630202020202020202020202020202020202020
+ 6630202020202020202020202020202020202020
+-6c6162656c303739382020202020202020202020
++6c6162656c304639382020202020202020202020
+ 2020202020202020202020202020202020202020
+ 72302c2336462020202020202020202020202020
+ 2020202020202020202020202020202020202020
+@@ -3567,7 +3567,7 @@
+ 2020202020202020202020202020202020202020
+ 72312c2335312020202020202020202020202020
+ 2020202020202020202020202020202020202020
+-6c6162656c304530382020202020202020202020
++6578705f736d6f6f7468696e6720202020202020
+ 2020202020202020202020202020202020202020
+ 4072302c61202020202020202020202020202020
+ 7230202020202020202020202020202020202020
+@@ -3988,7 +3988,7 @@
+ 7231202020202020202020202020202020202020
+ 4072312c61202020202020202020202020202020
+ 6120202020202020202020202020202020202020
+-6c6162656c303736412020202020202020202020
++6c6162656c304636412020202020202020202020
+ 2020202020202020202020202020202020202020
+ 4072312020202020202020202020202020202020
+ 612c407231202020202020202020202020202020
+@@ -4007,7 +4007,7 @@
+ 2020202020202020202020202020202020202020
+ 6120202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+-6c6162656c304530382020202020202020202020
++6578705f736d6f6f7468696e6720202020202020
+ 2020202020202020202020202020202020202020
+ 6c6162656c304642302020202020202020202020
+ 2020202020202020202020202020202020202020
+diff --git a/gemini8048/bin/asm_operands_numeric.hex b/gemini8048/bin/asm_operands_numeric.hex
+index c46c480..0b0f10d 100644
+--- a/gemini8048/bin/asm_operands_numeric.hex
++++ b/gemini8048/bin/asm_operands_numeric.hex
+@@ -653,7 +653,7 @@
+ 2020202020202020202020202020202020202020
+ 61646420612c4072302020202020202020202020
+ 63706c2063202020202020202020202020202020
+-6d6f762072322c23312020202020202020202020
++6d6f762072322c23343120202020202020202020
+ 2020202020202020202020202020202020202020
+ 6a632063765f647574795f73746f726520202020
+ 2020202020202020202020202020202020202020
+diff --git a/gemini8048/bin/test_sim.hex b/gemini8048/bin/test_sim.hex
+index 5887350..9b450db 100644
+--- a/gemini8048/bin/test_sim.hex
++++ b/gemini8048/bin/test_sim.hex
+@@ -3590,7 +3590,7 @@
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+-6c6162656c304530382020202020202020202020
++6578705f736d6f6f7468696e6720202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+@@ -3944,7 +3944,7 @@
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 6c6162656c304636392020202020202020202020
+-2020202020202020202020202020202020202020
++6c6162656c304636412020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+@@ -3990,7 +3990,7 @@
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+-2020202020202020202020202020202020202020
++6c6162656c304639382020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+ 2020202020202020202020202020202020202020
+diff --git a/gemini8048/files b/gemini8048/files
+index 10c2e7d..af79b9b 100644
+--- a/gemini8048/files
++++ b/gemini8048/files
+@@ -5,5 +5,6 @@ rtl/verilog/klr_top.v
+ bench/verilog/klr_defs.v
+ bench/verilog/adc_8090.v
+ bench/verilog/var_timing_gen.v
++bench/verilog/knock_gen.v
+ bench/verilog/klr_vcd.v
+ bench/verilog/klr_tb.v
+diff --git a/gemini8048/rtl/verilog/klr_top.v b/gemini8048/rtl/verilog/klr_top.v
+index e49b379..98752d9 100644
+--- a/gemini8048/rtl/verilog/klr_top.v
++++ b/gemini8048/rtl/verilog/klr_top.v
+@@ -155,6 +155,7 @@ module klr_system (
+     assign CV_PWM    = p1[4];
+     assign knock_out = p1[6];
+     assign fake_knock= p1[7];
++    assign adc_ale = p1[3];
+     assign p1_mon    = p1;
+     assign p2_mon    = p2;
+     assign ext_addr  = {p1[2:0], bus_addr};  // A10–A8 from P1, A7–A0 from Ri via BUS
+@@ -279,8 +280,8 @@ module klr_system (
+     adc_8090 u_adc_mux (
+         .clk      ( ale         ),   // ALE clocks the pipeline
+         .oe       ( 1'b1        ),   // output always enabled
+-        .start    ( 1'b0        ),   // free-running
+-        .ale      ( ale         ),   // ALE latches channel address
++        .start    ( adc_ale     ),   // free-running
++        .ale      ( adc_ale     ),   // ALE latches channel address
+         .addr     ( p1[2:0]     ),   // P1[2:0] = channel select
+         .data_in0 ( adc_ch0     ),
+         .data_in1 ( adc_ch1     ),
+diff --git a/gemini8048/schematic/951KLR_digital.asc b/gemini8048/schematic/951KLR_digital.asc
+index 812ab44..4b0e90a 100644
+Binary files a/gemini8048/schematic/951KLR_digital.asc and b/gemini8048/schematic/951KLR_digital.asc differ

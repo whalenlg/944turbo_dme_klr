@@ -42,6 +42,8 @@ reg [63:0] ph_klr_ign_in_time;  // $time(ns) of last ign_in falling edge
 reg [63:0] ph_klr_ign_out_time; // $time(ns) of last ign_out assert
 reg [63:0] ph_klr_next_snap;
 reg        ph_klr_res_n_prev;   // reset-release edge detector
+reg  [7:0] ph_klr_knock_sensor_prev; // knock_sensor value tracker (TEST_KNOCK_PULSE)
+reg [31:0] ph_klr_knock_count;  // increments on each knock_out 1->0 transition
 
 initial begin
     ph_klr_ign_prev       = 1'b0;
@@ -55,6 +57,8 @@ initial begin
     ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
     ph_klr_res_n_prev     = 1'b0;
+    ph_klr_knock_sensor_prev = knock_sensor;
+    ph_klr_knock_count    = 32'd0;
 end
 
 // ── Unified monitor ───────────────────────────────────────
@@ -115,10 +119,30 @@ always @(posedge clk) begin  // klr_phase_monitor
         if (knock_out && !ph_klr_knock_prev)
             $display("KLR: [PHASE] t=%0d ms  KNOCK_OUT asserted  (knock event detected — P1.6)",
                      `KLR_MS(0));
-        if (!knock_out && ph_klr_knock_prev)
+        if (!knock_out && ph_klr_knock_prev) begin
             $display("KLR: [PHASE] t=%0d ms  KNOCK_OUT cleared   (knock window closed)",
                      `KLR_MS(0));
+            ph_klr_knock_count <= ph_klr_knock_count + 32'd1;
+        end
         ph_klr_knock_prev <= knock_out;
+
+        // ── knock_sensor: value change (TEST_KNOCK_PULSE) ─────
+        // Edge-detected rather than a fixed-delay $display in klr_tb.v
+        // itself, so this reports the actual transition regardless of
+        // exactly when/how the testbench drives it — no timing values
+        // to keep in sync between two files. "dropping"/"restoring"
+        // wording matches what validate_dash_log.py's expect_knock_pulse
+        // check searches for; outside TEST_KNOCK_PULSE, knock_sensor is
+        // a constant wire and this simply never fires.
+        if (knock_sensor != ph_klr_knock_sensor_prev) begin
+            if (knock_sensor < ph_klr_knock_sensor_prev)
+                $display("KLR: [PHASE] t=%0d ms  Knock pulse: dropping knock_sensor %0d -> %0d",
+                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor);
+            else
+                $display("KLR: [PHASE] t=%0d ms  Knock pulse: restoring knock_sensor %0d -> %0d",
+                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor);
+        end
+        ph_klr_knock_sensor_prev <= knock_sensor;
 
         // ── knock logic execution (PC enters knock map axis read @0x900) ──
         // Edge-detected on PC so we log once per entry, not every clock the
@@ -155,7 +179,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         // ── Periodic STATUS snapshot ──────────────────────
         // Every ~100ms KLR time (≈1,111,100 half-cycles)
         if ($time >= ph_klr_next_snap) begin
-            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[33]=%02h  ram[38]=%02h  timer_val=%02h",
+            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[33]=%02h  ram[38]=%02h  knock_count=%0d  timer_val=%02h",
                 `KLR_MS(0),
                 top.i8048_core_1.pc,
                 top.i8048_core_1.mb_latch,
@@ -176,6 +200,7 @@ always @(posedge clk) begin  // klr_phase_monitor
                 `KLRRAM[8'h26],  // retard accumulator
                 `KLRRAM[8'h33],  // should stay 0 once initialised — see validate_dash_log.py
                 `KLRRAM[8'h38],  // timer ISR A-save area
+                ph_klr_knock_count,  // testbench-side count of knock_out 1->0 transitions
                 top.i8048_core_1.timer_val
             );
             ph_klr_next_snap <= ph_klr_next_snap + 64'd100_000_000;  // +100ms

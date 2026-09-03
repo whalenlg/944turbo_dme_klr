@@ -353,7 +353,6 @@ run_test cl_ramp_to_6000 \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-
 # --- Fuel quality sweep (cl_ramp_to_6000 with _FUEL_QUAL sweep) ---
 run_test cl_ramp_to_6000_FQS0 \
     -DTEST_CL_RAMP_TO_6000  \
@@ -594,6 +593,24 @@ run_test ramp_to_6000 \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
+run_test ramp_to_6000_knock \
+    -DTEST_RAMP_TO_6000 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 \
+    -DTEST_KNOCK_PULSE -DRPM_RAMP_DOWN
+
+run_test knock_sensor_defect \
+    -DTEST_RAMP_TO_6000 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 \
+    -DTEST_KNOCK_FAKE_BLOCKED
+
+run_test knock_sensor_short_to_ground \
+    -DTEST_RAMP_TO_6000 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 \
+    -DTEST_KNOCK_SHORT_TO_GROUND
+
 # --- Fuel quality sweep (ramp_to_3000 with _FUEL_QUAL sweep, non-CL/open-loop) ---
 run_test ramp_to_3000_FQS0 \
     -DTEST_RAMP_TO_3000 \
@@ -797,6 +814,7 @@ if [ -n "$1" ]; then
         idle_poor_fuel)   run_test idle_poor_fuel   $IARG -DTEST_IDLE_POOR_FUEL   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         ac_on_idle)       run_test ac_on_idle       $IARG -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        warmup_enrichment) run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSIM_TIME=60000000000 ;;
         warmup_enrichment)run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25                       -DSIM_TIME=60000000000   ;;
         afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         coolant_fail)     run_test coolant_fail     $IARG -DTEST_COOLANT_FAIL     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
@@ -808,6 +826,9 @@ if [ -n "$1" ]; then
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000      -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        ramp_to_6000_knock) run_test ramp_to_6000_knock $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DTEST_KNOCK_PULSE -DRPM_RAMP_DOWN ;;
+        knock_sensor_defect) run_test knock_sensor_defect $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DTEST_KNOCK_FAKE_BLOCKED ;;
+        knock_sensor_short_to_ground) run_test knock_sensor_short_to_ground $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DTEST_KNOCK_SHORT_TO_GROUND ;;
         ramp_to_3000_FQS0) run_test ramp_to_3000_FQS0 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 "-D_FUEL_QUAL=8'h00" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         ramp_to_3000_FQS1) run_test ramp_to_3000_FQS1 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 "-D_FUEL_QUAL=8'h3B" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         ramp_to_3000_FQS2) run_test ramp_to_3000_FQS2 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 "-D_FUEL_QUAL=8'h5A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
@@ -842,7 +863,7 @@ if [ -n "$1" ]; then
             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "  Ignition:    ignition_timing dwell_scaling"
             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"

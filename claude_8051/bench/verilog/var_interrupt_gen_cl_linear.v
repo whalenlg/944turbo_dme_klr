@@ -227,36 +227,14 @@ module var_interrupt_generator_cl (
     //  band around 6432rpm.
     localparam afm_rpm_lo          = 840;
     localparam afm_adc_lo          = 40;
+    localparam afm_rpm_orig_hi     = 6500;  // ORIGINAL slope's own reference endpoint
+    localparam afm_adc_orig_hi     = 235;   // (used only to compute the line's slope —
+                                             // NOT a plateau boundary; the cap below
+                                             // kicks in well before crpm reaches this)
     localparam afm_adc_mid         = 216;   // 0xD8 — max TPS for CL 6000-target tests
     localparam afm_rpm_plateau_end = 6700;  // margin before climbing toward redline's ceiling
     localparam afm_rpm_hi          = 6818;  // cl_ramp_to_redline settle point
     localparam afm_adc_hi          = 235;   // 0xEB — redline's own (unchanged) ceiling
-
-    // Logarithmic curve: afm_wiper = afm_log_a + afm_log_b*ln(crpm),
-    // fit through the SAME two anchor points the old linear curve used
-    // — (840,40) and (6818,235) — i.e. afm_log_a/b solve:
-    //   40  = afm_log_a + afm_log_b*ln(840)
-    //   235 = afm_log_a + afm_log_b*ln(6818)
-    // This models the real AFM sensor's actual non-linear (logarithmic)
-    // voltage-vs-airflow characteristic — the DME firmware's own
-    // linearization function is y=0.68*e^(0.019x) (load/pulse-width
-    // from air volume), whose inverse, x=ln(y/0.68)/0.019, is this
-    // same logarithmic shape — replacing the earlier piecewise-LINEAR
-    // approximation that had no real-sensor basis.
-    //
-    // IMPORTANT: this shifts afm_wiper by ~+45 counts across the
-    // 3000-family's actual operating range (2700-2860rpm: ~107 -> ~152
-    // per the pre-change calculation) relative to the old linear
-    // curve — far larger than the ~6-count shift that broke
-    // cl_ramp_to_3000's full_load/RPM-convergence behavior earlier
-    // this session (see the git-bisect history further up this file).
-    // cl_ramp_to_3000_FQS0-7 (full_load, timing retard, RPM
-    // convergence) needs re-verification from scratch after this
-    // change — do not assume prior verification still holds. Current
-    // code was committed to git before this change specifically so
-    // it can be bisected back to if this needs reverting.
-    localparam real afm_log_a = -587.0600807457506;
-    localparam real afm_log_b = 93.12678655137326;
 
     // ── State ────────────────────────────────────────────────────
     integer period_current;
@@ -271,34 +249,28 @@ module var_interrupt_generator_cl (
     always @(*) begin : afm_calc
         integer crpm;
         integer uncapped;
-        real    crpm_real;
-        real    uncapped_real;
         crpm     = rpm_fp / `CL_INERTIA;
+        // ORIGINAL two-point line — matches this module's behavior
+        // before the 0xD8 cap existed. Only meaningful/used once
+        // crpm > afm_rpm_lo (see below); harmless if computed
+        // (unused) otherwise.
+        uncapped = afm_adc_lo +
+                   ((afm_adc_orig_hi - afm_adc_lo) * (crpm - afm_rpm_lo))
+                   / (afm_rpm_orig_hi - afm_rpm_lo);
 
         if (crpm <= afm_rpm_lo) begin
             afm_wiper = afm_adc_lo;
         end else if (crpm <= afm_rpm_plateau_end) begin
-            // Logarithmic curve, capped at the 6000-family's D8
-            // ceiling. crpm > afm_rpm_lo (840) is already guaranteed
-            // by reaching this branch, so $ln's argument is always
-            // positive here — never computed in the branch above,
-            // avoiding $ln(0)/$ln(negative) during startup before
-            // rpm_fp has settled. Crosses 216 at crpm~=5560 (vs the
-            // old linear curve's ~5948) — still well clear of the
-            // 3000-family's range and safely below
-            // afm_rpm_plateau_end, so the existing plateau bounds
-            // don't need adjusting.
-            crpm_real     = crpm;
-            uncapped_real = afm_log_a + afm_log_b * $ln(crpm_real);
-            uncapped      = $rtoi(uncapped_real);
+            // ORIGINAL slope, capped at the 6000-family's D8 ceiling.
+            // Below ~5948rpm the uncapped line is already under 216
+            // anyway, so the cap only actually engages above that —
+            // the 3000-family's entire range sits well under it,
+            // seeing exactly the original (uncapped) values.
             afm_wiper = (uncapped > afm_adc_mid) ? afm_adc_mid : uncapped;
         end else if (crpm >= afm_rpm_hi) begin
             afm_wiper = afm_adc_hi;
         end else begin
             // Rising segment: plateau end -> redline's ceiling
-            // (unchanged, still a straight line — this narrow band
-            // was never part of the original constraint problem, and
-            // wasn't part of what this log-fit was meant to address).
             afm_wiper = afm_adc_mid +
                         ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
                         / (afm_rpm_hi - afm_rpm_plateau_end);

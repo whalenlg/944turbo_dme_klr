@@ -101,6 +101,42 @@ module var_interrupt_generator (
     reg [63:0] master_clk_count = 0;
     localparam rpm_inc_val = (`RPMEND - `RPMSTART) / rpm_steps;
 
+`ifdef RPM_RAMP_DOWN
+`ifndef RPM_DOWN_START_MS
+  `define RPM_DOWN_START_MS 30000
+`endif
+`ifndef RPM_DOWN_END_MS
+  `define RPM_DOWN_END_MS 40000
+`endif
+`ifndef RPM_DOWN_TARGET
+  `define RPM_DOWN_TARGET 840
+`endif
+    // Independent step counter/timing from the ramp-up's own
+    // master_clk_count/step_clocks — see the RPM_RAMP_DOWN block below
+    // for why. rpm_down_step_clocks divides the window duration into
+    // rpm_steps (same step count as the ramp-up, for a comparably
+    // smooth ramp) discrete steps.
+    reg [63:0] rpm_down_clk_count = 0;
+    localparam [63:0] rpm_down_window_clocks =
+        (`RPM_DOWN_END_MS - `RPM_DOWN_START_MS) * `DME_FREQ;
+    localparam [63:0] rpm_down_step_clocks = rpm_down_window_clocks / rpm_steps;
+    // Rounds UP (not down) — with plain integer division, 200 steps of
+    // a truncated dec_val can undershoot the target (e.g. (6000-840)/200
+    // = 25.8 -> 25, and 200*25 = 5000 < 5160 needed, stopping at 1000
+    // rather than 840). Rounding up means the ramp reaches the target
+    // at or before the last step, where the explicit clamp below then
+    // holds it there exactly.
+    localparam rpm_down_dec_val = ((`RPMEND - `RPM_DOWN_TARGET) + rpm_steps - 1) / rpm_steps;
+`endif
+
+    // Latches once the ramp-up first reaches RPMEND, so the ramp-up
+    // increment below can never re-fire — without this, if anything
+    // later decreases current_rpm below RPMEND (e.g. RPM_RAMP_DOWN),
+    // the original "if (current_rpm < RPMEND)" condition would see
+    // that and start incrementing current_rpm back up again, fighting
+    // whatever is trying to decrease it.
+    reg ramp_up_done = 1'b0;
+
     always @(posedge clk) begin
         if (!rst) begin
             int_1             <= 1;  // active-low INT1 — start deasserted
@@ -108,15 +144,19 @@ module var_interrupt_generator (
             master_clk_count  <= 0;
             current_rpm        = `RPMSTART;
             period_current     = period_start;
+            ramp_up_done        = 1'b0;
 
         end else begin
             // Count master clocks for RPM step timing
             master_clk_count <= master_clk_count + 1;
             if (master_clk_count >= step_clocks) begin
                 master_clk_count <= 0;
-                if (current_rpm < `RPMEND) begin
+                if (!ramp_up_done && current_rpm < `RPMEND) begin
                     current_rpm = current_rpm + rpm_inc_val;
-                    if (current_rpm > `RPMEND) current_rpm = `RPMEND;
+                    if (current_rpm >= `RPMEND) begin
+                        current_rpm = `RPMEND;
+                        ramp_up_done = 1'b1;
+                    end
                     period_current <= `RPMCONST / current_rpm;
                 end
             end
@@ -142,6 +182,44 @@ module var_interrupt_generator (
             end else if (`CYCLE_COUNT >= 33_000_000 &&
                          current_rpm >= `RPMEND) begin
                 period_current <= period_end;         // restore
+            end
+`endif
+
+`ifdef RPM_RAMP_DOWN
+            // --------------------------------------------------------
+            //  Second, timed ramp-down phase — mirrors the RPMSTART->
+            //  RPMEND ramp-up above (same step-based approach), but
+            //  windowed to a specific time range rather than a
+            //  percentage of SIM_TIME, and running in the opposite
+            //  direction (down, not up). Independent step counter/
+            //  timing from the ramp-up's own master_clk_count/
+            //  step_clocks, since this phase's window duration is
+            //  unrelated to RPM_RAMP_PCT.
+            //  Defaults (30s->40s, down to 840 RPM) match the
+            //  ramp_to_6000_knock test's post-knock-pulse RPM decay;
+            //  override via -DRPM_DOWN_START_MS/-DRPM_DOWN_END_MS/
+            //  -DRPM_DOWN_TARGET for other tests.
+`ifndef RPM_DOWN_START_MS
+  `define RPM_DOWN_START_MS 30000
+`endif
+`ifndef RPM_DOWN_END_MS
+  `define RPM_DOWN_END_MS 40000
+`endif
+`ifndef RPM_DOWN_TARGET
+  `define RPM_DOWN_TARGET 840
+`endif
+            if (`CYCLE_COUNT >= (`RPM_DOWN_START_MS * `DME_FREQ) &&
+                `CYCLE_COUNT <  (`RPM_DOWN_END_MS   * `DME_FREQ)) begin
+                rpm_down_clk_count <= rpm_down_clk_count + 1;
+                if (rpm_down_clk_count >= rpm_down_step_clocks) begin
+                    rpm_down_clk_count <= 0;
+                    if (current_rpm > `RPM_DOWN_TARGET) begin
+                        current_rpm = (current_rpm > rpm_down_dec_val) ?
+                                      (current_rpm - rpm_down_dec_val) : `RPM_DOWN_TARGET;
+                        if (current_rpm < `RPM_DOWN_TARGET) current_rpm = `RPM_DOWN_TARGET;
+                        period_current <= `RPMCONST / current_rpm;
+                    end
+                end
             end
 `endif
 

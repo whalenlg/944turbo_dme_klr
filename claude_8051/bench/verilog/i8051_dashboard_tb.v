@@ -913,8 +913,12 @@ i8051_system  i8051_top (
 // ─── Dynamic coolant warmup ───────────────────────────────────
 // Active for: TEST_ISV_COLD_IDLE, TEST_COLD_START, TEST_CL_COLD_START
 // NTC inverse: lower raw = hotter. Ramps from starting temp to 0x20 (~80°C).
-// ISV_COLD_IDLE : 0x68 (~5°C)  → 0x20 over 50s  @ 4,166,667 clk/step
-// COLD_START    : 0xC0 (~52°C) → 0x20 over 100s @ 3,750,000 clk/step
+// ISV_COLD_IDLE : 0x68 (~5°C) → 0x20 over 50s  @ 4,166,667 clk/step
+// COLD_START    : 0x68 (~5°C) → 0x20 over 100s @ 3,750,000 clk/step
+// CL_COLD_START : 0x68 (~5°C) → 0x20 over 100s @ 3,750,000 clk/step
+// COLD_START/CL_COLD_START previously started at 0xC0 (~52°C) — far too
+// warm for a genuine cold start; changed to match ISV_COLD_IDLE's ~5°C.
+// Tick rate (ramp speed) unchanged — only the starting value moved.
 `ifdef TEST_ISV_COLD_IDLE
 reg [7:0]  coolant_dynamic;
 reg [31:0] coolant_tick;
@@ -931,9 +935,9 @@ end
 `ifdef TEST_COLD_START
 reg [7:0]  coolant_dynamic;
 reg [31:0] coolant_tick;
-initial begin coolant_dynamic=8'hC0; coolant_tick=32'd0; end
+initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
 always @(posedge clk) begin : coolant_warmup
-    if (!rst) begin coolant_dynamic<=8'hC0; coolant_tick<=32'd0;
+    if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
     end else if (coolant_dynamic>8'h20) begin
         if (coolant_tick>=32'd3_750_000) begin
             coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
@@ -944,9 +948,9 @@ end
 `ifdef TEST_CL_COLD_START
 reg [7:0]  coolant_dynamic;
 reg [31:0] coolant_tick;
-initial begin coolant_dynamic=8'hC0; coolant_tick=32'd0; end
+initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
 always @(posedge clk) begin : coolant_warmup
-    if (!rst) begin coolant_dynamic<=8'hC0; coolant_tick<=32'd0;
+    if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
     end else if (coolant_dynamic>8'h20) begin
         if (coolant_tick>=32'd3_750_000) begin
             coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
@@ -1574,6 +1578,39 @@ reg [7:0] coolant_shadow;
 reg [7:0] airtemp_shadow;
 reg [63:0] ph_status_next_snap;
 
+// ── Direct ADC input mirrors (for STATUS display) ────────────
+// Mirrors the exact same `ifdef-gated source selection as the
+// adc_mux ch2/ch3 case entries further below — always reflects
+// whatever raw value is actually feeding the ADC for airtemp/
+// coolant in the currently-compiled test, bypassing the firmware's
+// own complement+linearize processing of iram[0x12]/iram[0x13]
+// entirely (and the timing inconsistency that processing showed —
+// iram[0x13] observed reading its own raw pre-processed input for
+// one sample, then the correctly-processed value the next). This is
+// the testbench's own known-good, monotonic source signal, not a
+// read-back of anything the firmware computes.
+`ifdef TEST_AIRTEMP_FAIL
+wire [7:0] airtemp_adc_in = 8'h00;
+`elsif CL_CONDITION_CYCLE_ACTIVE
+wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
+`else
+wire [7:0] airtemp_adc_in = `_AIRTEMP_RAW;
+`endif
+
+`ifdef TEST_ISV_COLD_IDLE
+wire [7:0] coolant_adc_in = coolant_dynamic;
+`elsif TEST_COLD_START
+wire [7:0] coolant_adc_in = coolant_dynamic;
+`elsif TEST_CL_COLD_START
+wire [7:0] coolant_adc_in = coolant_dynamic;
+`elsif CL_CONDITION_CYCLE_ACTIVE
+wire [7:0] coolant_adc_in = coolant_dynamic_cycle;
+`elsif TEST_COOLANT_FAIL
+wire [7:0] coolant_adc_in = 8'h00;
+`else
+wire [7:0] coolant_adc_in = `_COOLANT_RAW;
+`endif
+
 always @(posedge clk) begin : isv_shadow_track
     if (!rst) isv_shadow <= 8'h00;
     else if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] <= 8'h40)
@@ -1587,13 +1624,23 @@ always @(posedge clk) begin : afm_raw_track
 end
 
 always @(posedge clk) begin : ntc_shadow_track
+    // Was `iram[0x13] >= 8'h80` — worked only by coincidence for tests
+    // where the raw coolant_adc input itself starts below 0x80 (e.g.
+    // TEST_ISV_COLD_IDLE's 0x68). For tests where it starts above 0x80
+    // (e.g. TEST_COLD_START/TEST_CL_COLD_START's 0xC0), a transient
+    // glitch showing that raw value ALSO clears the >=0x80 bar,
+    // polluting the shadow with a spurious reading. Comparing against
+    // the actual current raw input (coolant_adc_in/airtemp_adc_in)
+    // instead correctly rejects the glitch either way: a genuinely-
+    // processed (complement+linearized) value should never exactly
+    // equal its own raw input.
     if (!rst) begin
         coolant_shadow <= 8'hFF;
         airtemp_shadow <= 8'hFF;
     end else begin
-        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13] >= 8'h80)
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13] != coolant_adc_in)
             coolant_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h13];
-        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12] >= 8'h80)
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12] != airtemp_adc_in)
             airtemp_shadow <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h12];
     end
 end
@@ -1705,7 +1752,7 @@ always @(posedge clk) begin  // phase_monitor
         if (i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= ph_status_next_snap) begin
             cool_c_disp = (coolant_shadow == 8'hFF) ? 9999 : ntc_celsius(coolant_shadow);
             air_c_disp  = (airtemp_shadow == 8'hFF) ? 9999 : ntc_celsius(airtemp_shadow);
-            $display("DME: [STATUS] t=%0d ms  prpm(37)=0x%02X (%0d RPM)  fuel_hb(4B)=0x%02X  fuel_lb(4A)=0x%02X  afm_raw(10)=0x%02X  afm_peak(3D)=0x%02X  load(46:47)=0x%02X%02X  load_idx(49)=0x%02X  coolant(13)=0x%02X (%0d degC)  airtemp(12)=0x%02X (%0d degC)  dwell(2F)=0x%02X  timing_adv(31)=0x%02X  isv(7F)=0x%02X  wdog(2A)=0x%02X  B(F0)=0x%02X  wu(58:59)=0x%02X%02X  flags(21)=0x%02X (23)=0x%02X (25)=0x%02X",
+            $display("DME: [STATUS] t=%0d ms  prpm(37)=0x%02X (%0d RPM)  fuel_hb(4B)=0x%02X  fuel_lb(4A)=0x%02X  afm_raw(10)=0x%02X  afm_peak(3D)=0x%02X  load(46:47)=0x%02X%02X  load_idx(49)=0x%02X  coolant(13)=0x%02X (%0d degC)  airtemp(12)=0x%02X (%0d degC)  coolant_adc=0x%02X  airtemp_adc=0x%02X  dwell(2F)=0x%02X  timing_adv(31)=0x%02X  isv(7F)=0x%02X  wdog(2A)=0x%02X  B(F0)=0x%02X  wu(58:59)=0x%02X%02X  flags(21)=0x%02X (23)=0x%02X (25)=0x%02X",
                 `DME_MS,
                 `IRAM(37),
                 `IRAM(37) * 40,
@@ -1717,6 +1764,8 @@ always @(posedge clk) begin  // phase_monitor
                 `IRAM(49),
                 coolant_shadow, cool_c_disp,
                 airtemp_shadow, air_c_disp,
+                coolant_adc_in,
+                airtemp_adc_in,
                 `IRAM(2F),
                 `IRAM(31),
                 isv_shadow,

@@ -51,6 +51,16 @@ TESTS = {
     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
+                          'expect_knock_pulse':True, 'expect_ram33_zero_by_end':True,
+                          'expect_ram_zero_by_end': [0x70, 0x71, 0x72, 0x73],
+                          'notes':'Same as ramp_to_6000, plus 5 repeated knock_sensor drops (0x6E->0x00, 7ms each) — see dme_klr_dashboard_tb.v TEST_KNOCK_PULSE. Also ramps RPM back down 6000->840 between t=30s-40s (RPM_RAMP_DOWN, var_interrupt_gen.v) — ram[33] and ram[0x70-0x73] expected back at 0 by end of test'},
+    'knock_sensor_defect':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'expect_no_knock_pulse':True, 'expect_ram33_value':0x23,
+                          'notes':'Same as ramp_to_6000_knock, but fake_knock self-test path blocked (knock_gen.v TEST_KNOCK_FAKE_BLOCKED) and no knock_sensor pulses — neither path can ever trigger a knock detection. KLR ram[57] is a boost-reduction level/amount (not a per-event counter) — not asserted here pending its real semantics. ram[33]=0x23 expected — self-test-fault code the firmware correctly reports when fake_knock path is blocked'},
+    'knock_sensor_short_to_ground':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
+                          'expect_no_knock_pulse':True,
+                          'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 (short-to-ground fault, not pulsing) while fake_knock self-test continues normally — KLR ram[57] (boost-reduction level, not a counter) behavior from the still-active self-test path not yet characterized, so not asserted here'},
     'ramp_to_6100':      {'rpm_target': 6100, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6200':      {'rpm_target': 6200, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
@@ -69,17 +79,17 @@ TESTS = {
                           'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
                           'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos4: +0% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'notes':'FQS pos4: +0% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos5: +3% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'notes':'FQS pos5: +3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos6: -3% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'notes':'FQS pos6: -3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos7: +6% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'notes':'FQS pos7: +6% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
 
     # --- ramp_to_6000 FQS sweep (non-CL/open-loop; timing retard not yet
     #     calibrated against real data, left unset for now) ---
@@ -96,17 +106,17 @@ TESTS = {
                           'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
                           'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
     'ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos4: +0% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True, 'fqs_timing_retard':-2.77,
+                          'notes':'FQS pos4: +0% fuel, non-CL, -2.77° timing retard expected, straight FQS0 baseline'},
     'ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos5: +3% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True, 'fqs_timing_retard':-2.77,
+                          'notes':'FQS pos5: +3% fuel, non-CL, -2.77° timing retard expected, straight FQS0 baseline'},
     'ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos6: -3% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True, 'fqs_timing_retard':-2.77,
+                          'notes':'FQS pos6: -3% fuel, non-CL, -2.77° timing retard expected, straight FQS0 baseline'},
     'ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
-                          'notes':'FQS pos7: +6% fuel, non-CL, timing retard not yet calibrated'},
+                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True, 'fqs_timing_retard':-2.77,
+                          'notes':'FQS pos7: +6% fuel, non-CL, -2.77° timing retard expected, straight FQS0 baseline'},
 
     'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':97},
     'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
@@ -125,6 +135,39 @@ TESTS = {
                           },  # iram[4Ch] not written in CL mode by firmware design
     'cl_ramp_to_3000':   {'rpm_target': 3000, 'fuel_range':(1.5, 10.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 3000RPM target at t=2s; RPM should reach ~3000 in 30s'},
+    # cl_condition_cycle / cl_condition_cycle_idle: 5-phase condition sweep
+    # (air temp, coolant temp, altitude, cat, AC), each 1s nominal / 5s
+    # test-active / 1s nominal. Base fields below match cl_ramp_to_3000
+    # (ramped) / cl_warm_idle (idle), since that's the underlying closed-
+    # loop behavior each variant is built on. condition_phases directions
+    # and thresholds are calibrated from one real run per variant — see
+    # the analysis discussion this was built from; coolant/altitude/AC
+    # showed consistent, physically-sensible fuel direction changes in
+    # BOTH variants (cold coolant -> richer, high altitude -> leaner, AC
+    # load -> richer + RPM droop), so those get directional checks with
+    # generous margins below the smaller of the two observed magnitudes.
+    # air temp and cat showed tiny, direction-inconsistent changes between
+    # the two variants — informational only until more runs clarify
+    # whether there's a real effect or it's just closed-loop noise.
+    'cl_condition_cycle': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'condition_phases': [
+                              {'name':'AIR TEMP',     't_begin':31000, 't_end':36000, 'direction':None},
+                              {'name':'COOLANT TEMP', 't_begin':38000, 't_end':43000, 'direction':'+', 'min_pct':0.5},
+                              {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'CAT',          't_begin':52000, 't_end':57000, 'direction':None},
+                              {'name':'AC',           't_begin':59000, 't_end':64000, 'direction':'+', 'min_pct':1.0},
+                          ],
+                          'notes':'5-phase condition sweep, ramped to ~3000rpm closed-loop'},
+    'cl_condition_cycle_idle': {'rpm_target': 840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'condition_phases': [
+                              {'name':'AIR TEMP',     't_begin':2000,  't_end':7000,  'direction':None},
+                              {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':'+', 'min_pct':0.5},
+                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'CAT',          't_begin':23000, 't_end':28000, 'direction':None},
+                              {'name':'AC',           't_begin':30000, 't_end':35000, 'direction':'+', 'min_pct':1.0},
+                          ],
+                          'condition_settle_window': 800,
+                          'notes':'5-phase condition sweep, held at idle closed-loop'},
     'cl_ramp_to_6000':   {'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s',
                           'dwell_cap':96},
@@ -185,21 +228,21 @@ TESTS = {
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
-                          'notes':'FQS pos4: +0% fuel, -2.77° timing'},
+                          'notes':'FQS pos4: +0% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
-                          'notes':'FQS pos5: +3% fuel, -2.77° timing'},
+                          'notes':'FQS pos5: +3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
-                          'notes':'FQS pos6: -3% fuel, -2.77° timing'},
+                          'notes':'FQS pos6: -3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
-                          'notes':'FQS pos7: +6% fuel, -2.77° timing'},
+                          'notes':'FQS pos7: +6% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s',
                           'dwell_cap':97},   # estimated from RPM-scaling trend (90@6000, 96@6440, 97@6524) — not directly confirmed from a real log
@@ -243,6 +286,8 @@ def parse_ds(line):
     hb = b(0x4B); lb = b(0x4A)
     f23 = b(0x23)
     fuelcut = (f23 >> 5) & 1
+    wot = (f23 >> 1) & 1          # iram[0x23] bit 1 — WOT flag
+    load_idx = b(0x49)            # iram[0x49] — load index, FQS timing gate uses >80 (decimal)
     # O2 sensor status bytes:
     #   R3e (iram 0x3E) — raw O2/lambda reading; should vary over time if the
     #                     sensor is switching normally in closed loop.
@@ -270,6 +315,8 @@ def parse_ds(line):
         'timing_adv': b(0x31),
         'isv': b(0x7F),
         'rpm': rpm,
+        'wot': wot,
+        'load_idx': load_idx,
         'o2_val': o2_val,
         'o2_b26': o2_b26,
     }
@@ -382,6 +429,59 @@ def get_family_fqs0_baseline(test_name, logpath, rpm_band=15.0):
     return sum(r['fuel_actual'] for r in ss) / len(ss)
 
 
+def get_family_fqs0_timing_baseline(test_name, logpath):
+    """Straight-baseline alternative for the FQS timing-retard check — same
+    rationale as get_family_fqs0_baseline (fuel): for RPM-uniform families
+    (the non-CL ramp_to_3000/6000_FQS* tests, where every position runs
+    the identical scripted RPM trajectory), there's no RPM-convergence
+    mismatch to correct for, so skip any RPM-dependent baseline and use
+    the family's own FQS0 timing_adv directly. Filters samples to the
+    real FQS-timing gate condition — (WOT or load_idx>80) and rpm>1600 —
+    same as the main check, not just a bare RPM threshold. Returns FQS0's
+    settled timing_adv average, or None if that sibling's log isn't
+    available or never satisfies the gate condition."""
+    siblings = discover_fqs_family(test_name, logpath)
+    if not siblings:
+        return None
+    fqs0 = next((p for n, p in siblings if n.endswith('_FQS0')), None)
+    if fqs0 is None:
+        return None
+    try:
+        fqs0_lines = open(fqs0).readlines()
+    except FileNotFoundError:
+        return None
+    fqs0_rows = [r for r in (parse_ds(l) for l in fqs0_lines) if r]
+    if not fqs0_rows:
+        return None
+    debounce_wot(fqs0_rows)
+    fqs0_cutoff = max(0, len(fqs0_rows) - max(10, len(fqs0_rows) * 3 // 10))
+    ss_adv = [r["timing_adv"] for r in fqs0_rows[fqs0_cutoff:]
+              if (r["wot_debounced"] or r["load_idx"] > 80) and r["rpm"] > 1600
+              and r.get("timing_adv") is not None]
+    if not ss_adv:
+        return None
+    return sum(ss_adv) / len(ss_adv)
+
+
+def debounce_wot(rows):
+    """Reset-induced spurious WOT pulses: iram[0x23] bit 1 (WOT) briefly
+    reads 1 whenever the KLR 8048 resets, since all I/Os go to 1 during
+    reset — not a genuine wide-open-throttle condition. These glitches
+    last exactly one sample; a real WOT condition persists for 2+
+    consecutive samples. Adds a 'wot_debounced' key to each row IN
+    PLACE (True only if wot=1 for that sample AND at least one adjacent
+    sample also has wot=1) — callers needing a glitch-free WOT signal
+    should use this field instead of the raw 'wot'."""
+    n = len(rows)
+    for i, r in enumerate(rows):
+        wot_deb = False
+        if r.get('wot'):
+            prev_wot = rows[i-1].get('wot') if i > 0 else False
+            next_wot = rows[i+1].get('wot') if i < n - 1 else False
+            wot_deb = bool(prev_wot or next_wot)
+        r['wot_debounced'] = wot_deb
+
+
 def detect_o2_status(rows):
     """Classify O2 sensor behaviour from post-startup [DS] snapshots.
 
@@ -440,6 +540,59 @@ def parse_klr_ram33(line):
         return (t, None)
 
 
+def parse_klr_ds_byte(line, offset):
+    """Extract (t_ms, value) for a single byte at `offset` from a
+    'KLR: [DS] <ms>,<256hex_klr_ram>,...' line — the full 128-byte KLR
+    RAM dump emitted every snapshot by dme_klr_dashboard_tb.v, already
+    present in every .dash.log without needing any Verilog changes
+    (unlike the hand-picked field subset on 'KLR: [STATUS]' lines).
+
+    Returns None if the line isn't a KLR DS line or the hex field is
+    short/malformed. Treats a byte containing 'x' (Verilog unknown) as
+    unavailable, returning None for value rather than a bogus 0.
+    """
+    line = line.strip()
+    if not line.startswith('KLR: [DS]'):
+        return None
+    parts = line[len('KLR: [DS]'):].strip().split(',')
+    if len(parts) < 2:
+        return None
+    try:
+        t = int(parts[0])
+    except ValueError:
+        return None
+    h = parts[1]
+    if len(h) < 256:
+        return None
+    s = h[offset*2:offset*2+2]
+    if 'x' in s.lower():
+        return (t, None)
+    try:
+        return (t, int(s, 16))
+    except ValueError:
+        return (t, None)
+
+
+def parse_klr_knock_count(line):
+    """Extract (t_ms, value) for knock_count from a 'KLR: [STATUS]'
+    line — the testbench-side counter (klr_phase_monitor.v) that
+    increments on each knock_out 1->0 transition. Decimal (%0d), unlike
+    the hex ram[NN] fields, so this doesn't reuse parse_klr_ram33's
+    hex-parsing logic.
+
+    Returns None if the line isn't a KLR STATUS line or doesn't carry
+    this field.
+    """
+    if not line.startswith('KLR: [STATUS]'):
+        return None
+    m = re.search(r'knock_count=(\d+)', line)
+    if not m:
+        return None
+    tm = re.search(r't=(\d+)\s*ms', line)
+    t = int(tm.group(1)) if tm else None
+    return (t, int(m.group(1)))
+
+
 def validate(test_name, logpath):
     exp = TESTS.get(test_name)
     if exp is None:
@@ -468,6 +621,8 @@ def validate(test_name, logpath):
         elif (line.startswith('[PHASE]') or line.startswith('DME: [PHASE]') or
               line.startswith('[SEED]')  or line.startswith('DME: [SEED]')):
             phases.append(line.strip())
+
+    debounce_wot(rows)  # adds 'wot_debounced' to each row in place — see function docstring
 
     fails = []
     warns = []
@@ -523,18 +678,25 @@ def validate(test_name, logpath):
                 infos.append(f"FuelCut→end={m.group(1)}ms")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
+    # fuel_range is optional — tests without a single, meaningful
+    # steady-state (e.g. ramp_to_6000_knock, which ramps RPM back down
+    # 6000->840 partway through) omit it entirely to skip this check,
+    # rather than being forced into a range that doesn't apply to any
+    # single point in a non-steady run.
     cutoff_idx = max(0, len(rows) - max(10, len(rows) * 3 // 10))
     steady = [r for r in rows[cutoff_idx:] if r['fuel_actual'] > 0]
     if steady:
         fuel_min = min(r['fuel_actual'] for r in steady)
         fuel_max = max(r['fuel_actual'] for r in steady)
         fuel_avg = sum(r['fuel_actual'] for r in steady) / len(steady)
-        lo, hi = exp['fuel_range']
         infos.append(f"fuel={fuel_min:.3f}–{fuel_max:.3f}ms (avg {fuel_avg:.3f}ms)")
-        if fuel_avg < lo:
-            fails.append(f"Steady-state fuel {fuel_avg:.3f}ms below floor {lo}ms")
-        elif fuel_avg > hi:
-            fails.append(f"Steady-state fuel {fuel_avg:.3f}ms above ceiling {hi}ms")
+        fr = exp.get('fuel_range')
+        if fr is not None:
+            lo, hi = fr
+            if fuel_avg < lo:
+                fails.append(f"Steady-state fuel {fuel_avg:.3f}ms below floor {lo}ms")
+            elif fuel_avg > hi:
+                fails.append(f"Steady-state fuel {fuel_avg:.3f}ms above ceiling {hi}ms")
     elif exp.get('expect_fuelcut', True):
         # Should have had injection in steady state
         warns.append("No injected fuel snapshots in steady state")
@@ -565,6 +727,39 @@ def validate(test_name, logpath):
                     infos.append(f"RPM max={max_rpm}, settled={rpm_settled:.0f}")
             else:
                 infos.append(f"RPM max={max_rpm}")
+
+    # ── 7b. Final RPM check (tests with a deliberate ramp-down phase)
+    # The "settled" figure above averages the last 30% of snapshots —
+    # correct for tests that ramp up once and hold, but misleading for
+    # tests like ramp_to_6000_knock that ramp back DOWN to a different
+    # target partway through: that window lands mid-transition (e.g.
+    # 6000->840 starting at 75% through a 40s test, while "last 30%"
+    # starts at 70%), averaging across the ramp rather than capturing
+    # a genuinely stable end value. This checks only the last few
+    # snapshots — after any such ramp-down should have fully settled —
+    # against a separate, explicit rpm_final_target instead.
+    rpm_final_target = exp.get('rpm_final_target')
+    if rpm_final_target is not None:
+        final_tol_pct = exp.get('rpm_final_tolerance_pct', 10)
+        final_window = rpm_final_target * (final_tol_pct / 100.0)
+        final_lo = rpm_final_target - final_window
+        final_hi = rpm_final_target + final_window
+        # Narrower window than the general "last 10" used elsewhere —
+        # a ramp-down's final approach to a low RPM target shows real
+        # measurement noise (period-based RPM naturally quantizes more
+        # at low RPM), so a wide window can still average across the
+        # tail of the transition rather than a genuinely settled value.
+        # Confirmed against actual data: last-10 averaged 1028 (still
+        # mid-transition), last-3 averaged 840 (on target).
+        final_rows = [r for r in rows[-3:] if r['rpm'] > 0]
+        if not final_rows:
+            warns.append("Final RPM: no valid RPM snapshots at end of log")
+        else:
+            rpm_final = sum(r['rpm'] for r in final_rows) / len(final_rows)
+            if final_lo <= rpm_final <= final_hi:
+                infos.append(f"Final RPM={rpm_final:.0f} ✓ (target {rpm_final_target} ±{final_tol_pct}%)")
+            else:
+                fails.append(f"Final RPM {rpm_final:.0f} outside target {rpm_final_target} ±{final_tol_pct}% ({final_lo:.0f}-{final_hi:.0f})")
 
     # ── 8. Dwell cap check
     dwell_cap = exp.get('dwell_cap')
@@ -622,6 +817,113 @@ def validate(test_name, logpath):
     # ── 13. Known issues — always WARN, never FAIL
     for issue in exp.get('known_issues', []):
         warns.append(f"known: {issue}")
+
+    # ── 14b. Knock pulse injection + detection check (ramp_to_6000_knock)
+    # Confirms the TEST_KNOCK_PULSE testbench code (dme_klr_dashboard_tb.v)
+    # fired the expected number of times (KNOCK_REPEATS=5 as of this
+    # check) and each one was detected by the KLR (KNOCK_OUT clearing)
+    # within 20ms. Does NOT check KLR ram[57] — that's a boost-reduction
+    # level/amount the firmware sets once knocks exceed some threshold,
+    # not a per-event counter; 5 pulses may not even be "excessive"
+    # enough to move it. Messages are "KLR: [PHASE] ... Knock pulse: ..."
+    # (not a plain $display) specifically so they land in the filtered
+    # .dash.log (lines) rather than only the raw simulation log.
+    if exp.get('expect_knock_pulse'):
+        expected_pulses = exp.get('expect_knock_pulse_count', 5)
+
+        def extract_events(substr):
+            out = []
+            for l in lines:
+                if substr in l:
+                    m = re.search(r't=(\d+)\s*ms', l)
+                    if m:
+                        out.append((int(m.group(1)), l.strip()))
+            return out
+
+        drops    = extract_events('Knock pulse: dropping')
+        restores = extract_events('Knock pulse: restoring')
+        cleareds = extract_events('KNOCK_OUT cleared')
+
+        if len(drops) != expected_pulses:
+            warns.append(f"knock pulse count: {len(drops)} drops found, expected {expected_pulses} — TEST_KNOCK_PULSE may not have been compiled in, or KNOCK_REPEATS doesn't match this check's expectation")
+        elif len(restores) != expected_pulses:
+            warns.append(f"knock pulse count: {len(drops)} drops but only {len(restores)} restores — a pulse may have ended mid-hold (sim ended early?)")
+        else:
+            # Match each drop to the next 'cleared' event after it (and
+            # before the following drop, if any) — order-based pairing,
+            # not index-based, since a missed detection on one pulse
+            # shouldn't misalign the matching for every pulse after it.
+            n_detected = 0
+            slow_or_missing = []
+            for i, (drop_t, drop_line) in enumerate(drops):
+                next_drop_t = drops[i+1][0] if i+1 < len(drops) else None
+                match = next(((c_t, c_line) for c_t, c_line in cleareds
+                             if c_t >= drop_t and (next_drop_t is None or c_t < next_drop_t)), None)
+                if match:
+                    delay_ms = match[0] - drop_t
+                    if 0 <= delay_ms <= 20:
+                        n_detected += 1
+                    else:
+                        slow_or_missing.append(f"pulse {i+1} detected {delay_ms}ms later (>20ms)")
+                else:
+                    slow_or_missing.append(f"pulse {i+1} never detected")
+
+            summary = f"{len(drops)} knock pulses found, starting t={drops[0][0]}ms, {n_detected}/{expected_pulses} detected within 20ms"
+            if slow_or_missing:
+                warns.append(f"{summary} — {'; '.join(slow_or_missing)}")
+            else:
+                infos.append(f"{summary} ✓")
+
+            # ── 14d. Boost-reduction level check (KLR ram[0x57])
+            # NOT a per-event counter, and NOT DME iram — both wrong
+            # earlier assumptions (see git history). This is the KLR's
+            # own RAM, read from the byte-57 offset of the existing
+            # "KLR: [DS] <ms>,<256hex>,..." full RAM dump that
+            # dme_klr_dashboard_tb.v's snapshot scheduler already emits
+            # every snapshot — no Verilog changes needed, unlike an
+            # earlier (reverted) attempt that added a dedicated
+            # klr_phase_monitor.v STATUS field for this. A boost-
+            # reduction level/amount the firmware sets on excessive
+            # knock. Actual waveform inspection showed it peaking at 8
+            # (not 5) with a non-monotonic rise/dip/rise shape — so this
+            # check doesn't assert a specific peak value (that's not
+            # something we actually know the correct value for yet),
+            # only that it starts at 0, moves off 0 at some point after
+            # the knock pulses begin, and returns to 0 by the end of
+            # the sim.
+            r57_events = [parse_klr_ds_byte(l, 0x57) for l in lines]
+            r57_events = [e for e in r57_events if e is not None and e[1] is not None]
+            r57_before = [v for t, v in r57_events if t < drops[0][0]]
+            r57_after_start = [v for t, v in r57_events if t >= drops[0][0]]
+
+            if not r57_events:
+                warns.append("KLR ram[57] boost-reduction: no valid readings found in log")
+            else:
+                start_ok = (r57_before[-1] == 0) if r57_before else None
+                rose_ok = any(v > 0 for v in r57_after_start)
+                end_ok = (r57_events[-1][1] == 0)
+                if start_ok is not False and rose_ok and end_ok:
+                    infos.append(f"KLR ram[57] boost-reduction: 0 → rose (max {max(v for _,v in r57_events)}) → 0 by end ✓")
+                else:
+                    warns.append(f"KLR ram[57] boost-reduction: start={r57_before[-1] if r57_before else '?'}, rose_above_0={rose_ok}, end={r57_events[-1][1]} (expected 0 → rises → 0)")
+
+    elif exp.get('expect_no_knock_pulse'):
+        # ── 14e. Negative check (knock_sensor_defect / knock_sensor_short_to_ground)
+        # knock_sensor never actually transitions in either fault-injection
+        # variant (stays fixed at nominal 110 for _defect, or fixed at 0
+        # for _short_to_ground) — klr_phase_monitor.v's edge-detected
+        # "Knock pulse: dropping" message only fires on a real value
+        # change, so its absence here confirms knock_sensor genuinely
+        # never moved, not just that detection failed to notice it.
+        drop_line = next((l.strip() for l in lines if 'Knock pulse: dropping' in l), None)
+        if drop_line:
+            warns.append(f"knock_sensor pulse detected but none expected for this test ({drop_line})")
+        else:
+            infos.append("no knock_sensor pulses ✓ (expected — knock_sensor held fixed for this test)")
+
+        # expect_knock_count_zero check removed — was built on the same
+        # wrong "KLR ram[57] is a per-event counter" assumption. See the
+        # note in the expect_knock_pulse branch above.
 
     # ── 14. KLR unimplemented opcode check
     # Stack underflows during RPM ramp are normal KLR behaviour.
@@ -728,42 +1030,119 @@ def validate(test_name, logpath):
 
     # ── 15. FQS timing retard check (positions 4-7)
     fqs_timing_retard = exp.get('fqs_timing_retard', 0.0)
-    if fqs_timing_retard != 0.0:
+    fqs_expect_zero_retard = exp.get('fqs_expect_zero_retard', False)
+    if fqs_timing_retard != 0.0 or fqs_expect_zero_retard:
         # Validate timing retard using DME iram[0x31] (timing_adv, half-teeth before TDC)
         # FQS4-7: 2 half-teeth less advance than FQS0-3 = 2.727° ≈ -2.77° retard
         # 132-tooth flywheel = 264 half-teeth/rev → 1 half-tooth = 1.364°
         HALF_TEETH_DEG = 360.0 / 264.0
-        EXPECTED_HT = round(abs(fqs_timing_retard) / HALF_TEETH_DEG)  # = 2
-        # RPM window and baseline are per-test — spark advance is RPM-dependent,
-        # so a single hardcoded baseline (the old 21.0ht) only ever applied to
-        # the 6000-family. rpm_target defaults keep existing 6000-family tests
-        # behaving exactly as before (target*0.9 ≈ 5400, close enough to the
-        # old fixed 5000 that no currently-passing test should flip).
-        rpm_thresh = exp.get('fqs_timing_rpm_thresh', exp.get('rpm_target', 6000) * 0.9)
-        BASELINE_HT = exp.get('fqs_timing_baseline_ht', 21.0)  # FQS0-3 timing_adv at this family's steady state
-        # Tail-of-log window (same cutoff_idx used for fuel/rpm steady-state
-        # elsewhere in this function) — NOT just "any row where RPM happened
-        # to clear the threshold", which also catches ramp-up transient rows
-        # before timing_adv has actually settled and biases the average high.
-        ss_adv = [r["timing_adv"] for r in rows[cutoff_idx:]
-                  if r["rpm"] >= rpm_thresh and r.get("timing_adv") is not None]
+        EXPECTED_HT = round(abs(fqs_timing_retard) / HALF_TEETH_DEG) if fqs_timing_retard else 0
+
+        # The firmware only actually applies FQS timing retard when
+        # (WOT or load_idx>80) and rpm>1600 — WOT = iram[0x23] bit 1,
+        # load_idx = iram[0x49] (decimal threshold). Sampling timing_adv
+        # outside this window means comparing against retard that was
+        # never applied in the first place — the RPM-threshold proxy
+        # this check used before (target*0.9) was a guess at when this
+        # condition held, not the actual condition itself. Uses
+        # wot_debounced (see debounce_wot()), not raw wot — the KLR
+        # 8048 briefly pulls all I/Os including WOT to 1 on reset,
+        # producing single-sample spurious WOT pulses that aren't a
+        # genuine wide-open-throttle condition.
+        #
+        # fqs_expect_zero_retard (moderate-RPM/part-throttle families like
+        # ramp_to_3000/cl_ramp_to_3000): load_idx = linearized airflow /
+        # rpm, so a 3000rpm cruise condition legitimately produces low
+        # load_idx regardless of AFM curve correctness — this family isn't
+        # expected to ever satisfy the gate, and even if it briefly does,
+        # no meaningful retard should result. PASS on ~0° retard (gate
+        # never occurring counts as 0°, trivially); WARN only if a real,
+        # non-zero retard actually shows up — that would be the
+        # surprising/worth-investigating case here, not the expected one.
+        gate_rows = [r for r in rows[cutoff_idx:]
+                     if (r["wot_debounced"] or r["load_idx"] > 80) and r["rpm"] > 1600]
+
+        baseline_note = ""
+        if exp.get('fqs_straight_baseline'):
+            # RPM is scripted/identical across the whole family (see the
+            # fuel check's identical rationale) — no RPM-convergence
+            # mismatch to correct for, so use the family's own FQS0
+            # timing_adv directly instead of a static pre-calibrated number.
+            dyn_baseline = get_family_fqs0_timing_baseline(test_name, logpath)
+            if dyn_baseline is not None:
+                BASELINE_HT = dyn_baseline
+                baseline_note = f" [straight baseline, FQS0 timing_adv={dyn_baseline:.2f}ht]"
+            else:
+                BASELINE_HT = exp.get('fqs_timing_baseline_ht', 21.0)
+                baseline_note = " [fixed fallback — FQS0 sibling log unavailable]"
+        else:
+            BASELINE_HT = exp.get('fqs_timing_baseline_ht', 21.0)  # FQS0-3 timing_adv at this family's steady state
+
+        ss_adv = [r["timing_adv"] for r in gate_rows if r.get("timing_adv") is not None]
+        tol_ht = 1
         if ss_adv:
             avg_adv = sum(ss_adv) / len(ss_adv)
             diff_ht = avg_adv - BASELINE_HT  # negative = retard
             diff_deg = diff_ht * HALF_TEETH_DEG
-            tol_ht = 1
-            infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° vs baseline {BASELINE_HT:.0f}ht)")
-            if abs(abs(diff_ht) - EXPECTED_HT) <= tol_ht:
-                infos.append(f"FQS timing retard {abs(diff_deg):.2f}° ✓ ({abs(diff_ht):.0f} half-teeth, expected {EXPECTED_HT})")
+            infos.append(f"timing_adv={avg_adv:.1f}ht ({diff_deg:.2f}° vs baseline {BASELINE_HT:.1f}ht){baseline_note}, n={len(ss_adv)} samples with (WOT or load_idx>80) and rpm>1600")
+            if fqs_expect_zero_retard:
+                if abs(diff_ht) <= tol_ht:
+                    infos.append(f"FQS timing retard {diff_deg:+.2f}° ✓ (~0° expected for this family)")
+                else:
+                    warns.append(f"FQS timing retard {diff_deg:+.2f}° ({diff_ht:+.0f}ht) detected — expected ~0° for this family, gate condition unexpectedly produced retard")
             else:
-                warns.append(f"FQS timing retard {abs(diff_deg):.2f}° ({abs(diff_ht):.0f}ht) vs expected {abs(fqs_timing_retard):.2f}° ({EXPECTED_HT}ht)")
+                if abs(abs(diff_ht) - EXPECTED_HT) <= tol_ht:
+                    infos.append(f"FQS timing retard {abs(diff_deg):.2f}° ✓ ({abs(diff_ht):.0f} half-teeth, expected {EXPECTED_HT})")
+                else:
+                    warns.append(f"FQS timing retard {abs(diff_deg):.2f}° ({abs(diff_ht):.0f}ht) vs expected {abs(fqs_timing_retard):.2f}° ({EXPECTED_HT}ht)")
         else:
-            infos.append(f"FQS timing retard -2.77° expected — no steady-state timing_adv data (rerun needed)")
+            if fqs_expect_zero_retard:
+                infos.append(f"FQS timing retard 0° ✓ (gate condition — (WOT or load_idx>80) and rpm>1600 — never occurred, as expected for this family)")
+            else:
+                warns.append(f"FQS timing retard {fqs_timing_retard:+.2f}° expected, but (WOT or load_idx>80) and rpm>1600 never occurred during this test — retard mechanism not exercised")
     elif exp.get('fqs_pos') is not None:
         if exp.get('fqs_has_retard'):
             infos.append(f"FQS pos{exp['fqs_pos']} (timing retard -2.77° present — not validated at this RPM)")
         else:
             infos.append(f"FQS pos{exp['fqs_pos']} (no timing retard expected)")
+
+    # ── 15b. Condition-cycle phase checks (cl_condition_cycle /
+    # cl_condition_cycle_idle) — each phase compares a settled window
+    # right before the test-condition activates against a settled window
+    # right before it deactivates, within THIS SAME log (no sibling
+    # comparison needed, unlike the FQS checks above). Phases with a
+    # 'direction' set get a directional pass/warn check with a generous
+    # minimum-magnitude threshold (calibrated from real data, but only
+    # ever a single run per variant so far — not a tight tolerance).
+    # Phases with direction=None are informational only (reported, never
+    # pass/fail), for conditions where the real-vs-noise signal wasn't
+    # clear enough yet to assert a specific expectation.
+    condition_phases = exp.get('condition_phases')
+    if condition_phases:
+        settle_window = exp.get('condition_settle_window', 1500)
+        for phase in condition_phases:
+            t_begin, t_end = phase['t_begin'], phase['t_end']
+            before_rows = [r for r in rows
+                           if t_begin - settle_window <= r['t'] <= t_begin and r.get('fuel_actual', 0) > 0]
+            during_rows = [r for r in rows
+                           if t_end - settle_window <= r['t'] <= t_end and r.get('fuel_actual', 0) > 0]
+            if not before_rows or not during_rows:
+                infos.append(f"{phase['name']}: no data for before/during comparison (rerun needed)")
+                continue
+            fuel_before = sum(r['fuel_actual'] for r in before_rows) / len(before_rows)
+            fuel_during = sum(r['fuel_actual'] for r in during_rows) / len(during_rows)
+            fuel_pct = (fuel_during - fuel_before) / fuel_before * 100.0 if fuel_before else 0.0
+
+            direction = phase.get('direction')
+            min_pct = phase.get('min_pct')
+            if direction is None:
+                infos.append(f"{phase['name']}: fuel {fuel_pct:+.1f}% (informational — no pass/fail criteria yet)")
+            else:
+                ok = (direction == '+' and fuel_pct >= min_pct) or (direction == '-' and fuel_pct <= -min_pct)
+                if ok:
+                    infos.append(f"{phase['name']}: fuel {fuel_pct:+.1f}% ✓ (expected {direction}{min_pct:.1f}% or more)")
+                else:
+                    warns.append(f"{phase['name']}: fuel {fuel_pct:+.1f}% — expected {direction}{min_pct:.1f}% or more, direction/magnitude not met")
 
     # ── 16. O2 sensor status check
     # Detects whether the O2/lambda sensor is switching normally (R3e
@@ -789,8 +1168,15 @@ def validate(test_name, logpath):
     # written it — that's normal startup, not a fault, so those samples
     # are skipped. Once it holds a real (non-X) value, any non-zero
     # reading is unexpected and flagged as a WARN (not a FAIL, since
-    # the exact significance of this location isn't nailed down yet).
+    # the exact significance of this location isn't nailed down yet) —
+    # unless expect_ram33_value is set (e.g. knock_sensor_defect
+    # expects 0x23, a self-test-fault code the firmware correctly
+    # reports when the fake_knock path is deliberately blocked), in
+    # which case a first non-zero reading matching that value is the
+    # expected, correct behavior rather than a fault.
+    expect_ram33 = exp.get('expect_ram33_value')
     klr_ram33_nonzero_first = None  # (t, value) of first bad reading
+    klr_ram33_last = None           # (t, value) of last valid reading
     klr_ram33_seen_defined = False
     for line in lines:
         r = parse_klr_ram33(line)
@@ -800,13 +1186,89 @@ def validate(test_name, logpath):
         if val is None:
             continue  # still uninitialised — not yet meaningful
         klr_ram33_seen_defined = True
+        klr_ram33_last = (t, val)
         if val != 0 and klr_ram33_nonzero_first is None:
             klr_ram33_nonzero_first = (t, val)
     if klr_ram33_nonzero_first is not None:
         t, val = klr_ram33_nonzero_first
-        warns.append(f"KLR ram[33] went non-zero: 0x{val:02X} at t={t}ms (expected 0 once initialised)")
+        if expect_ram33 is not None and val == expect_ram33:
+            infos.append(f"KLR ram[33] went non-zero: 0x{val:02X} at t={t}ms ✓ (expected for this test)")
+        else:
+            warns.append(f"KLR ram[33] went non-zero: 0x{val:02X} at t={t}ms (expected 0 once initialised)")
     elif klr_ram33_seen_defined:
         infos.append("KLR ram[33] stayed 0 ✓")
+
+    # ── 17b. KLR ram[33] should return to 0 by end of test
+    # For tests like ramp_to_6000_knock, ram[33] going non-zero during
+    # the knock pulses is expected (see check 17 above) — but per the
+    # person running these tests, once RPM ramps back down to idle
+    # (RPM_RAMP_DOWN), any knock-related retard/fault state in ram[33]
+    # should clear back to 0. Only checked when expect_ram33_zero_by_end
+    # is set — most tests don't have a ramp-down phase to trigger this.
+    if exp.get('expect_ram33_zero_by_end'):
+        if klr_ram33_last is None:
+            warns.append("KLR ram[33]: no valid readings found to check end-of-test value")
+        else:
+            t, val = klr_ram33_last
+            if val == 0:
+                infos.append(f"KLR ram[33] back to 0 by end of test ✓ (t={t}ms)")
+            else:
+                warns.append(f"KLR ram[33] still non-zero at end of test: 0x{val:02X} at t={t}ms (expected 0)")
+
+    # ── 17c. KLR ram[0x70..0x73] should clear to 0 by end of test
+    # Same "should return to 0 once the knock/ramp-down settles" idea
+    # as ram[33] above, for a block of 4 addresses. Read from the
+    # existing "KLR: [DS] <ms>,<256hex_klr_ram>,..." full RAM dump
+    # (dme_klr_dashboard_tb.v's snapshot scheduler already emits this
+    # every snapshot) rather than adding new klr_phase_monitor.v STATUS
+    # fields — that dump already has every KLR RAM byte, no Verilog
+    # changes needed (same lesson as the r57 boost-reduction check).
+    if exp.get('expect_ram_zero_by_end'):
+        addrs = exp['expect_ram_zero_by_end']
+        bad = []
+        no_data = []
+        for addr in addrs:
+            events = [parse_klr_ds_byte(l, addr) for l in lines]
+            events = [e for e in events if e is not None and e[1] is not None]
+            if not events:
+                no_data.append(addr)
+                continue
+            t, val = events[-1]
+            if val != 0:
+                bad.append((addr, t, val))
+        if no_data:
+            warns.append("KLR ram[" + ",".join(f"0x{a:02X}" for a in no_data) + "]: no valid readings found in KLR: [DS] dump")
+        if bad:
+            detail = ", ".join(f"ram[0x{a:02X}]=0x{v:02X}@t={t}ms" for a, t, v in bad)
+            warns.append(f"KLR ram not cleared by end of test: {detail} (expected 0x00)")
+        if not no_data and not bad:
+            addr_list = ",".join(f"0x{a:02X}" for a in addrs)
+            infos.append(f"KLR ram[{addr_list}] all cleared to 0x00 by end ✓")
+
+    # ── 17d. General r57/knock_count sanity checks (all tests)
+    # KLR ram[0x57] (boost-reduction level) and knock_count (testbench-
+    # side counter of knock_out 1->0 transitions) should both stay at 0
+    # for any test that doesn't deliberately inject knock events — a
+    # nonzero reading elsewhere would mean the knock/boost-reduction
+    # path is firing unexpectedly. Skipped for tests that already have
+    # their own, more specific expectations about these fields
+    # (expect_knock_pulse/expect_no_knock_pulse — the knock-related
+    # tests, which deliberately exercise this and are checked in
+    # detail earlier).
+    if not exp.get('expect_knock_pulse') and not exp.get('expect_no_knock_pulse'):
+        r57_events = [parse_klr_ds_byte(l, 0x57) for l in lines]
+        r57_events = [e for e in r57_events if e is not None and e[1] is not None]
+        r57_nonzero = next((e for e in r57_events if e[1] > 0), None)
+        if r57_nonzero is not None:
+            t, val = r57_nonzero
+            warns.append(f"KLR ram[57] boost-reduction went non-zero unexpectedly: 0x{val:02X} at t={t}ms (expected 0 — no knock events expected in this test)")
+
+        kc_events = [parse_klr_knock_count(l) for l in lines]
+        kc_events = [e for e in kc_events if e is not None]
+        kc_nonzero = next((e for e in kc_events if e[1] > 0), None)
+        if kc_nonzero is not None:
+            t, val = kc_nonzero
+            warns.append(f"KLR knock_count went non-zero unexpectedly: {val} at t={t}ms (expected 0 — no knock events expected in this test)")
 
     # ── Verdict
     detail = ' | '.join(infos)

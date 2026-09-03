@@ -53,6 +53,8 @@ DASH_TESTS=(
     cl_ramp_to_6000_FQS6
     cl_ramp_to_6000_FQS7
     cl_ramp_to_redline
+    cl_condition_cycle
+    cl_condition_cycle_idle
     cl_tippy_in
     cl_warm_idle
     cold_start
@@ -91,6 +93,9 @@ DASH_TESTS=(
     ramp_to_6000_FQS5
     ramp_to_6000_FQS6
     ramp_to_6000_FQS7
+    ramp_to_6100
+    ramp_to_6200
+    ramp_to_6300
     ramp_to_redline
     tps_fail
     warm_idle
