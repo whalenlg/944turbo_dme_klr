@@ -32,7 +32,7 @@ def main():
         max_addr = int(df['addr_int'].max())
         
         # Targeted columns
-        columns_to_extract = ['Opcode Ins', 'instr', 'operands', 'operands numeric']
+        columns_to_extract = ['Opcode Ins', 'instr', 'operand_mapped', 'operands numeric']
         WIDTH = 20
         
         for col in columns_to_extract:
