@@ -7,6 +7,7 @@
 //    KLR ign_out         → (not connected to DME — spark output, not key switch)
 //    KLR full_load       → DME full_load   (WOT flag → DME TPS ch6)
 //    DME afm_wiper      → KLR tps_wiper   (TPS angle ch7)
+//    DME ref_rpm        → KLR rpm_in      (RPM, only used by -DBOOST)
 //
 //  Snapshot format (every DASH_INTERVAL_MS, latched to DME clock):
 //    [DS]  <ms>,<256hex_dme_iram>,<p1p2p3>,<rpm>
@@ -171,6 +172,7 @@ module dme_klr_dashboard_tb;
         .ign_out         ( klr_ign_out         ),  // KLR spark output → DME ign
         .full_load       ( full_load           ),  // KLR WOT flag → DME
         .tps_wiper   ( tps_wiper_sig       ),  // AFM → KLR TPS angle ch7
+        .rpm_in          ( u_dme.ref_rpm       ),  // DME tick-measured RPM (reg [31:0]) → KLR -DBOOST map (unused if -DBOOST undefined)
         .knock_sensor    ( knock_sensor_sig    )   // crank-synchronized knock pulse train, see above
     );
 
