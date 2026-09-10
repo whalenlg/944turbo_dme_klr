@@ -1,6 +1,16 @@
 // ============================================================
-//  var_interrupt_gen_cl.v  —  Closed-Loop RPM Generator
+//  var_interrupt_gen_cl_linear.v  —  Closed-Loop RPM Generator (LINEAR, DEPRECATED)
 //  89 DME 951 simulation — Bosch Motronic 3.1 / Porsche 944 Turbo
+//
+//  SUPERSEDED by var_interrupt_gen_cl.v's torque-balance model (module
+//  var_interrupt_generator_cl). This is the earlier linear-interpolation
+//  variant, kept only for reference/history — not expected to be
+//  instantiated anywhere going forward. Renamed to
+//  var_interrupt_generator_cl_linear (2025) to resolve a module-name
+//  collision with var_interrupt_gen_cl.v when both got pulled into the
+//  same build via +incdir+ (the two files had identical module names,
+//  which caused "Unknown module type" elaboration failures on every
+//  cl_ test).
 //
 //  RPM is an OUTPUT of the torque balance each crank event:
 //    net_torque = combustion(fuel_pw) - friction - accessory
@@ -160,7 +170,7 @@
 `endif
 `define CL_IRAM(n)       `CL_TB.i8051_top.u_cpu.iram[7'h``n]
 
-module var_interrupt_generator_cl (
+module var_interrupt_generator_cl_linear (
     input  wire clk,
     input  wire rst,
     output reg  int_0 /* verilator public */,

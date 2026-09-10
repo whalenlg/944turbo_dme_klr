@@ -66,6 +66,14 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // TPS angle input from DME side — only meaningful when EXT_STIM=1
     // TPS supply is fixed (5V regulated on KLR board, independent of 12V battery)
     input  wire [7:0] tps_wiper,   // DME AFM wiper ADC value → KLR TPS angle ch7
+    // RPM from the DME physics model — u_dme.ref_rpm is reg [31:0] in
+    // i8051_dashboard_tb.v (a direct tick-count-based RPM calc, not the
+    // 16-bit-range var_interrupt_gen_cl.v crpm value), so this port must
+    // match that width exactly to avoid silently truncating. Only
+    // meaningful when EXT_STIM=1. Used by the -DBOOST turbo-boost ADC
+    // model below (ch4). Harmless if left unconnected/unused when
+    // -DBOOST isn't defined.
+    input  wire [31:0] rpm_in,
     // Knock sensor input — only meaningful when EXT_STIM=1. Driven from
     // dme_klr_dashboard_tb.v (crank-position-synchronized pulse logic
     // lives there now, alongside tdc/speed_sensor from the DME side —
@@ -107,11 +115,206 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ── ADC channel stimulus ──────────────────────────────
     //  Initial values match i8048_tb.v: static signed constants so
     //  the firmware can run its conversion loop immediately.
-    //  Replace with boost_pressure_gen output once that module is written.
     reg [7:0] adc_ch1 = 8'hd8;  // battery
     reg [7:0] adc_ch2 = 8'h00;  // ground
-    reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor
+`ifndef BOOST
+    reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
+`endif
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
+
+`ifdef BOOST
+    // ── Turbo boost ADC input (ch4) — MAP-table based ──────────
+    //  Modeled from the real KLR boost map (throttle% x RPM ->
+    //  ADC "software units"), '89 table, from:
+    //  https://jhnbyrn.github.io/951-KLR-PAGES/klr_memory_map.html
+    //
+    //  The firmware's ADC-read routine adds 10 units to the raw ADC
+    //  reading before storing it to ram[52h] — the boost map values
+    //  documented on that page are already in that POST-offset
+    //  ("software units") scale, so the raw ch4 value driven here
+    //  is (table_value - 10), reversing that offset.
+    //
+    //  Only meaningful in combined mode (EXT_STIM=1) — needs a real
+    //  RPM (rpm_in, wired from u_dme.ref_rpm in dme_klr_dashboard_tb.v —
+    //  a tick-count-based measurement of the actual generated reference-
+    //  sensor edges, which tracks var_interrupt_gen_cl.v's crpm at
+    //  steady state) and throttle% (derived from tps_wiper using the
+    //  SAME AFM idle/WOT anchor points already used for the TPS-angle
+    //  ch7 mapping above: AFM idle=40 -> 0%, AFM WOT=235 -> 100%).
+    //  Falls back to the prior fixed 0x85 in standalone mode
+    //  (EXT_STIM=0), where no real RPM/throttle% exists to drive this.
+    //
+    //  Bilinear interpolation over the table, clamped at the table's
+    //  edges (RPM 0-6050, throttle 57.0-87.1%) rather than
+    //  extrapolated — the 6000-family can genuinely exceed 6050rpm
+    //  in transients, in which case this just holds the rightmost
+    //  column's value (flat extrapolation, not a cliff).
+    localparam BOOST_NUM_RPM_BP = 16;
+    localparam BOOST_NUM_THR_BP = 8;
+
+    real boost_rpm_bp [0:BOOST_NUM_RPM_BP-1];
+    real boost_thr_bp [0:BOOST_NUM_THR_BP-1];
+    // Flattened [throttle_row][rpm_col], index = row*BOOST_NUM_RPM_BP + col
+    real boost_table  [0:(BOOST_NUM_THR_BP*BOOST_NUM_RPM_BP)-1];
+
+    initial begin
+        boost_rpm_bp[0]  = 0.0;    boost_rpm_bp[1]  = 1864.0; boost_rpm_bp[2]  = 2041.0; boost_rpm_bp[3]  = 2254.0;
+        boost_rpm_bp[4]  = 2446.0; boost_rpm_bp[5]  = 2674.0; boost_rpm_bp[6]  = 2948.0; boost_rpm_bp[7]  = 3164.0;
+        boost_rpm_bp[8]  = 3415.0; boost_rpm_bp[9]  = 3708.0; boost_rpm_bp[10] = 4057.0; boost_rpm_bp[11] = 4479.0;
+        boost_rpm_bp[12] = 4724.0; boost_rpm_bp[13] = 4998.0; boost_rpm_bp[14] = 5653.0; boost_rpm_bp[15] = 6050.0;
+
+        boost_thr_bp[0] = 57.0; boost_thr_bp[1] = 61.3; boost_thr_bp[2] = 65.6; boost_thr_bp[3] = 69.9;
+        boost_thr_bp[4] = 74.2; boost_thr_bp[5] = 78.5; boost_thr_bp[6] = 82.8; boost_thr_bp[7] = 87.1;
+
+        // Row 57.0%
+        boost_table[0*16+0]=137.0; boost_table[0*16+1]=141.0; boost_table[0*16+2]=144.0; boost_table[0*16+3]=145.0;
+        boost_table[0*16+4]=145.0; boost_table[0*16+5]=146.0; boost_table[0*16+6]=146.0; boost_table[0*16+7]=148.0;
+        boost_table[0*16+8]=148.0; boost_table[0*16+9]=148.0; boost_table[0*16+10]=150.0; boost_table[0*16+11]=150.0;
+        boost_table[0*16+12]=150.0; boost_table[0*16+13]=152.0; boost_table[0*16+14]=152.0; boost_table[0*16+15]=152.0;
+        // Row 61.3%
+        boost_table[1*16+0]=139.0; boost_table[1*16+1]=141.0; boost_table[1*16+2]=145.0; boost_table[1*16+3]=151.0;
+        boost_table[1*16+4]=154.0; boost_table[1*16+5]=157.0; boost_table[1*16+6]=157.0; boost_table[1*16+7]=158.0;
+        boost_table[1*16+8]=158.0; boost_table[1*16+9]=158.0; boost_table[1*16+10]=158.0; boost_table[1*16+11]=158.0;
+        boost_table[1*16+12]=158.0; boost_table[1*16+13]=158.0; boost_table[1*16+14]=158.0; boost_table[1*16+15]=158.0;
+        // Row 65.6%
+        boost_table[2*16+0]=139.0; boost_table[2*16+1]=141.0; boost_table[2*16+2]=148.0; boost_table[2*16+3]=157.0;
+        boost_table[2*16+4]=164.0; boost_table[2*16+5]=167.0; boost_table[2*16+6]=167.0; boost_table[2*16+7]=170.0;
+        boost_table[2*16+8]=170.0; boost_table[2*16+9]=167.0; boost_table[2*16+10]=167.0; boost_table[2*16+11]=167.0;
+        boost_table[2*16+12]=166.0; boost_table[2*16+13]=165.0; boost_table[2*16+14]=165.0; boost_table[2*16+15]=165.0;
+        // Row 69.9%
+        boost_table[3*16+0]=141.0; boost_table[3*16+1]=142.0; boost_table[3*16+2]=159.0; boost_table[3*16+3]=170.0;
+        boost_table[3*16+4]=177.0; boost_table[3*16+5]=180.0; boost_table[3*16+6]=180.0; boost_table[3*16+7]=180.0;
+        boost_table[3*16+8]=180.0; boost_table[3*16+9]=177.0; boost_table[3*16+10]=176.0; boost_table[3*16+11]=175.0;
+        boost_table[3*16+12]=174.0; boost_table[3*16+13]=171.0; boost_table[3*16+14]=171.0; boost_table[3*16+15]=171.0;
+        // Row 74.2%
+        boost_table[4*16+0]=143.0; boost_table[4*16+1]=145.0; boost_table[4*16+2]=171.0; boost_table[4*16+3]=190.0;
+        boost_table[4*16+4]=193.0; boost_table[4*16+5]=193.0; boost_table[4*16+6]=193.0; boost_table[4*16+7]=193.0;
+        boost_table[4*16+8]=193.0; boost_table[4*16+9]=191.0; boost_table[4*16+10]=188.0; boost_table[4*16+11]=186.0;
+        boost_table[4*16+12]=184.0; boost_table[4*16+13]=182.0; boost_table[4*16+14]=180.0; boost_table[4*16+15]=180.0;
+        // Row 78.5% ('89 table — plateaus flat above here, see page notes)
+        boost_table[5*16+0]=145.0; boost_table[5*16+1]=152.0; boost_table[5*16+2]=180.0; boost_table[5*16+3]=206.0;
+        boost_table[5*16+4]=206.0; boost_table[5*16+5]=206.0; boost_table[5*16+6]=206.0; boost_table[5*16+7]=206.0;
+        boost_table[5*16+8]=206.0; boost_table[5*16+9]=208.0; boost_table[5*16+10]=206.0; boost_table[5*16+11]=206.0;
+        boost_table[5*16+12]=206.0; boost_table[5*16+13]=206.0; boost_table[5*16+14]=206.0; boost_table[5*16+15]=194.0;
+        // Row 82.8% (identical to 78.5% in the '89 table)
+        boost_table[6*16+0]=145.0; boost_table[6*16+1]=152.0; boost_table[6*16+2]=180.0; boost_table[6*16+3]=206.0;
+        boost_table[6*16+4]=206.0; boost_table[6*16+5]=206.0; boost_table[6*16+6]=206.0; boost_table[6*16+7]=206.0;
+        boost_table[6*16+8]=206.0; boost_table[6*16+9]=208.0; boost_table[6*16+10]=206.0; boost_table[6*16+11]=206.0;
+        boost_table[6*16+12]=206.0; boost_table[6*16+13]=206.0; boost_table[6*16+14]=206.0; boost_table[6*16+15]=194.0;
+        // Row 87.1% (identical to 78.5% in the '89 table)
+        boost_table[7*16+0]=145.0; boost_table[7*16+1]=152.0; boost_table[7*16+2]=180.0; boost_table[7*16+3]=206.0;
+        boost_table[7*16+4]=206.0; boost_table[7*16+5]=206.0; boost_table[7*16+6]=206.0; boost_table[7*16+7]=206.0;
+        boost_table[7*16+8]=206.0; boost_table[7*16+9]=208.0; boost_table[7*16+10]=206.0; boost_table[7*16+11]=206.0;
+        boost_table[7*16+12]=206.0; boost_table[7*16+13]=206.0; boost_table[7*16+14]=206.0; boost_table[7*16+15]=194.0;
+    end
+
+    // Throttle% from tps_wiper (DME AFM wiper), same anchors as the
+    // TPS-angle ch7 mapping above.
+    real boost_thr_pct;
+    always @(*) begin
+        if (tps_wiper <= 8'd40)
+            boost_thr_pct = 0.0;
+        else if (tps_wiper >= 8'd235)
+            boost_thr_pct = 100.0;
+        else
+            boost_thr_pct = (tps_wiper - 40) * 100.0 / 195.0;
+    end
+
+    // Bilinear interpolation over the boost table, clamped at the edges.
+    real    boost_rpm_real, boost_map_value;
+    real    rpm_frac, thr_frac;
+    real    v00, v01, v10, v11, v0, v1;
+    integer bi, bj, rpm_lo, rpm_hi, thr_lo, thr_hi;
+    always @(*) begin
+        boost_rpm_real = rpm_in;
+        if (boost_rpm_real < boost_rpm_bp[0])
+            boost_rpm_real = boost_rpm_bp[0];
+        if (boost_rpm_real > boost_rpm_bp[BOOST_NUM_RPM_BP-1])
+            boost_rpm_real = boost_rpm_bp[BOOST_NUM_RPM_BP-1];
+
+        // Find RPM bracket
+        rpm_lo = 0;
+        rpm_hi = BOOST_NUM_RPM_BP-1;
+        for (bi = 0; bi < BOOST_NUM_RPM_BP-1; bi = bi + 1) begin
+            if (boost_rpm_real >= boost_rpm_bp[bi] && boost_rpm_real <= boost_rpm_bp[bi+1]) begin
+                rpm_lo = bi;
+                rpm_hi = bi + 1;
+            end
+        end
+        rpm_frac = (boost_rpm_bp[rpm_hi] != boost_rpm_bp[rpm_lo])
+                  ? (boost_rpm_real - boost_rpm_bp[rpm_lo]) / (boost_rpm_bp[rpm_hi] - boost_rpm_bp[rpm_lo])
+                  : 0.0;
+
+        // Find throttle% bracket, clamped to table range (no
+        // extrapolation below 57.0% or above 87.1% — hold nearest row)
+        if (boost_thr_pct <= boost_thr_bp[0]) begin
+            thr_lo = 0; thr_hi = 0; thr_frac = 0.0;
+        end else if (boost_thr_pct >= boost_thr_bp[BOOST_NUM_THR_BP-1]) begin
+            thr_lo = BOOST_NUM_THR_BP-1; thr_hi = BOOST_NUM_THR_BP-1; thr_frac = 0.0;
+        end else begin
+            thr_lo = 0;
+            thr_hi = BOOST_NUM_THR_BP-1;
+            for (bj = 0; bj < BOOST_NUM_THR_BP-1; bj = bj + 1) begin
+                if (boost_thr_pct >= boost_thr_bp[bj] && boost_thr_pct <= boost_thr_bp[bj+1]) begin
+                    thr_lo = bj;
+                    thr_hi = bj + 1;
+                end
+            end
+            thr_frac = (boost_thr_bp[thr_hi] != boost_thr_bp[thr_lo])
+                      ? (boost_thr_pct - boost_thr_bp[thr_lo]) / (boost_thr_bp[thr_hi] - boost_thr_bp[thr_lo])
+                      : 0.0;
+        end
+
+        // Bilinear interpolation across the 4 surrounding corner points
+        v00 = boost_table[thr_lo*BOOST_NUM_RPM_BP + rpm_lo];
+        v01 = boost_table[thr_lo*BOOST_NUM_RPM_BP + rpm_hi];
+        v10 = boost_table[thr_hi*BOOST_NUM_RPM_BP + rpm_lo];
+        v11 = boost_table[thr_hi*BOOST_NUM_RPM_BP + rpm_hi];
+        v0  = v00 + (v01 - v00) * rpm_frac;
+        v1  = v10 + (v11 - v10) * rpm_frac;
+        boost_map_value = v0 + (v1 - v0) * thr_frac;
+    end
+
+    // Reverse the ADC-read routine's +10 offset (see header comment) —
+    // we're driving the RAW ADC channel, not ram[52h] directly.
+    wire [7:0] boost_adc4_raw = (boost_map_value - 10.0 < 0.0)   ? 8'd0   :
+                                 (boost_map_value - 10.0 > 255.0) ? 8'd255 :
+                                 $rtoi(boost_map_value - 10.0);
+
+    // Test-only overrides on top of the normal MAP-table value:
+    //  -DBOOST_ZERO    — force the ADC input to 0 (e.g. simulate a
+    //                     disconnected/failed boost sensor)
+    //  -DBOOST_LOW     — normal value minus 33, clamped at 0 (e.g.
+    //                     simulate a boost leak / underboost condition)
+    //  -DBOOST_HIGH    — normal value plus 65, saturating at 255 (e.g.
+    //                     simulate an overboost condition or wastegate
+    //                     failure)
+    //  -DBOOST_150PCT  — scale the normal value to 150%, saturating at
+    //                     255 (e.g. simulate an over-reading sensor or
+    //                     genuine over-boost condition)
+    // All are independent of -DBOOST itself and only take effect when
+    // -DBOOST is also defined, since there's no MAP-table value to
+    // offset/scale otherwise.
+    wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd33) ? 8'd0 : (boost_adc4_raw - 8'd33);
+    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd65;
+    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd255) ? 8'd255 : boost_adc4_high_wide[7:0];
+    wire [15:0] boost_adc4_150pct_wide = (boost_adc4_raw * 16'd3) / 16'd2;
+    wire [7:0]  boost_adc4_150pct     = (boost_adc4_150pct_wide > 16'd255) ? 8'd255 : boost_adc4_150pct_wide[7:0];
+
+`ifdef BOOST_ZERO
+    wire [7:0] boost_adc4_final = 8'd0;
+`elsif BOOST_LOW
+    wire [7:0] boost_adc4_final = boost_adc4_low;
+`elsif BOOST_HIGH
+    wire [7:0] boost_adc4_final = boost_adc4_high;
+`elsif BOOST_150PCT
+    wire [7:0] boost_adc4_final = boost_adc4_150pct;
+`else
+    wire [7:0] boost_adc4_final = boost_adc4_raw;
+`endif
+
+    wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_final : 8'h85;
+`endif
 
     // ── Knock signal generation (ch0 — noise-level indicator;
     //    ch5 — lm2902.14 comparator output) ──

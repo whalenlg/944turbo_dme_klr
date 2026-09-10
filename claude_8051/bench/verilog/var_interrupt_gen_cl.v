@@ -158,7 +158,16 @@
 `else
   `define CL_TB          i8051_tb
 `endif
-`define CL_IRAM(n)       `CL_TB.i8051_top.u_cpu.iram[7'h``n]
+// NOTE: avoid Verilog's `` (token-paste) here — pasting hex digits onto
+// 7'h via a nested macro (`CL_TB` expands first, then this macro) is
+// valid Verilog-2001 but trips up Verilator's preprocessor during its
+// module-name pre-scan, which silently loses track of the rest of the
+// file — that's what was actually behind the MODMISSING error on
+// var_interrupt_generator_cl, not a real duplicate-instantiation or
+// naming problem (both checked out fine). Callers now pass a properly
+// sized hex literal directly (e.g. `CL_IRAM(8'h21)`) instead of a bare
+// hex-digit pair — numerically identical, just no token-paste involved.
+`define CL_IRAM(n)       `CL_TB.i8051_top.u_cpu.iram[n]
 
 module var_interrupt_generator_cl (
     input  wire clk,
@@ -401,7 +410,7 @@ module var_interrupt_generator_cl (
         end else begin
 
             // Latch EngineSync permanently once seen — don't read live
-            if (`CL_IRAM(21) & 8'h01)
+            if (`CL_IRAM(8'h21) & 8'h01)
                 synced_once <= 1'b1;
 
             // Clear the per-rev latch once we leave tooth 0 so it can re-arm.
@@ -422,13 +431,13 @@ module var_interrupt_generator_cl (
                 ref_low_cnt    <= 87 * period_current - 1;
 
                 // ── Torque update ─────────────────────────────────
-                fuel_sample = {`CL_IRAM(4B), `CL_IRAM(4A)};
+                fuel_sample = {`CL_IRAM(8'h4B), `CL_IRAM(8'h4A)};
                 fuel_pulse_prev <= fuel_sample;
                 fuel_ms_x100    <= fuel_sample / 5;
 
                 // Gate: hold RPM at target before first engine sync, or
                 // during FuelOffCoast (iram[23h].5) to prevent stall.
-                if (!synced_once || (`CL_IRAM(23) & 8'h20)) begin
+                if (!synced_once || (`CL_IRAM(8'h23) & 8'h20)) begin
                     // Pre-sync or fuel cut — clamp to target, no dynamics
 `ifdef CL_DEBUG
                     // Diagnostic: report WHY the RPM was clamped to target.
@@ -436,7 +445,7 @@ module var_interrupt_generator_cl (
                     $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=%s  (synced_once=%0b iram21=%02h iram23=%02h)",
                              ($time/1_000_000), `CL_RPM_TARGET,
                              (!synced_once) ? "PRE-SYNC" : "FUEL-OFF-COAST",
-                             synced_once, `CL_IRAM(21), `CL_IRAM(23));
+                             synced_once, `CL_IRAM(8'h21), `CL_IRAM(8'h23));
 `endif
                     rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
                     period_current <= `RPMCONST / `CL_RPM_TARGET;

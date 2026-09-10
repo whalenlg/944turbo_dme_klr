@@ -158,6 +158,7 @@ assign    r2a = `TB.i8051_top.u_cpu.iram[42];
 assign    r2b = `TB.i8051_top.u_cpu.iram[43];
 assign    r2c = `TB.i8051_top.u_cpu.iram[44];
 assign    r2d = `TB.i8051_top.u_cpu.iram[45];
+assign    r2e = `TB.i8051_top.u_cpu.iram[46];
 assign    r2f = `TB.i8051_top.u_cpu.iram[47];
 
 assign    r30 = `TB.i8051_top.u_cpu.iram[48];
@@ -422,7 +423,8 @@ $dumpvars(1,`TB.tdc);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_opcode_ins.hex",opcode);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_instr.hex",instr);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands.hex",ops);
+ //   $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands.hex",ops);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operand_mapped.hex",ops);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands_numeric.hex",opsnums);
     end
 `ifdef CPU_DEBUG
