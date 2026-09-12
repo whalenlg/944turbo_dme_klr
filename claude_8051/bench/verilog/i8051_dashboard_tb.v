@@ -234,6 +234,52 @@
   `endif
 `endif
 
+// TEST_CL_RAMP_TO_4500: same structure as TEST_CL_RAMP_TO_3000/_6000, for
+// an intermediate operating point between the two. AFM_CL_TARGET=0x9A has
+// been empirically verified — settles at ~4530rpm (0.7% over the 4500
+// nominal target), well within normal margin. var_interrupt_gen_cl.v's
+// own header explicitly warns that the friction curve (quadratic below
+// CL_FRICTION_HIGHRPM_THRESHOLD=4000rpm, cubic above) was only originally
+// calibrated against 3 real points (idle, ~2853rpm/AFM=0x72, ~6650rpm/
+// AFM=0xD8) and that a 4th test between those two "likely need[s]
+// re-verification" — this is that re-verification, done empirically
+// below rather than by retuning the curve itself.
+//
+// CALIBRATION HISTORY (kept for reference — the curve genuinely is
+// nonlinear in this region, confirming the header's warning was correct):
+//   0x83 (1st attempt) — derived by solving the documented friction
+//   equations for the combustion value giving a 4500rpm equilibrium, then
+//   interpolating AFM vs combustion between the two real anchors.
+//   Actual result: ~3500rpm, ~56.9% throttle.
+//   0xA1 (2nd attempt) — refined using the 0x83 result and the distant
+//   6000-family anchor (~33.6 rpm/AFM-count slope).
+//   Actual result: ~4800rpm, ~63% throttle — overshot, but also confirmed
+//   ram[0x43]/throttle% genuinely tracks AFM (56.9%->63% between these
+//   two runs) — the earlier plateau near 0x83 was just too small an AFM
+//   delta to show separation, not a bug.
+//   0x9A (FINAL) — refined by directly bracketing between the two real
+//   points above, (AFM=131,~3500rpm) and (AFM=161,~4800rpm): local slope
+//   ~43.3 rpm/AFM-count — steeper than the 2nd attempt's distant-anchor
+//   slope, confirming real local nonlinearity, consistent with the
+//   header's warning. VERIFIED result: ~4530rpm, ~59% throttle.
+`ifdef TEST_CL_RAMP_TO_4500
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h9A      // ~4500 RPM — VERIFIED, settles ~4530rpm (see note above)
+  `ifndef SIM_TIME
+  `define SIM_TIME  35000000000     // 35s — between the 30s/40s used for 3000/6000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 // TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
 // TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
 // time), then five sequential 7-second condition-cycle phases, each
@@ -1095,17 +1141,24 @@ end
 // AFM_TIPPY, AFM_FAULT) is unaffected; afm_wiper there still comes
 // straight from the crpm-based generator curve, unchanged.
 `ifdef AFM_CL_RAMP
-    localparam integer      STEP_NS        = 1_420_454;                // fixed per-count rate (matches the 6000-family's
-                                                                          // original 250ms/176-count cadence) — NOT scaled
-                                                                          // per-target, so total ramp time now varies with
-                                                                          // each target's range instead of being forced to a
-                                                                          // fixed 250ms. A fixed 250ms total forced the
-                                                                          // 3000-family's ramp (a smaller range, 74 counts)
-                                                                          // to use ~2.4x coarser step spacing than the
-                                                                          // 6000-family's (176 counts) to hit the same total
-                                                                          // time — suspected of disturbing that family's RPM
-                                                                          // convergence. Fixed rate keeps every family's
-                                                                          // command-update cadence identical instead.
+    // Per-count ramp step rate — fixed (matches the 6000-family's original
+    // 250ms/176-count cadence) rather than scaled per-target, so total
+    // ramp time varies with each target's range instead of being forced
+    // to a fixed 250ms. A fixed 250ms total forced the 3000-family's ramp
+    // (a smaller range, 74 counts) to use ~2.4x coarser step spacing than
+    // the 6000-family's (176 counts) to hit the same total time —
+    // suspected of disturbing that family's RPM convergence. Fixed rate
+    // keeps every family's command-update cadence identical instead.
+    //
+    // Overridable via -DAFM_CL_STEP_NS on the iverilog/verilator command
+    // line (e.g. to slow specific test variants down without touching the
+    // default used by every other CL test) — defaults to the fixed rate
+    // below when not overridden.
+    `ifndef AFM_CL_STEP_NS
+    localparam integer      STEP_NS        = 1_420_454;
+    `else
+    localparam integer      STEP_NS        = `AFM_CL_STEP_NS;          // overridden — see -DAFM_CL_STEP_NS callers
+    `endif
     localparam integer      AFM_LAG_NS     = 250_000_000;            // additional AFM reaction lag behind TPS's own trigger
 
     // TPS commanded target -- driver presses the gas at t=2000ms

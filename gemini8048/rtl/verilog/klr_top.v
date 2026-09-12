@@ -347,15 +347,28 @@ module klr_eprom (
     reg [7:0] rom [0:4095];
     reg [7:0] data_latch;  // holds last valid byte when /CE deasserted
 
+    // Load KLR firmware image. Directory and filename are each
+    // independently overridable via -D on the iverilog/verilator command
+    // line, so run scripts can select different firmware images (e.g. the
+    // commented-out 89KLR_951.mem variant below) without editing this
+    // file — both default to the existing path if not overridden.
+    //   -DKLR_ROM_DIR=\"../../bin/\"
+    //   -DKLR_ROM_FILE=\"89KLR_951.mem\"
+    `ifndef KLR_ROM_DIR
+    `define KLR_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/"
+    `endif
+    `ifndef KLR_ROM_FILE
+    `define KLR_ROM_FILE "87KLR_951.mem"
+    `endif
     integer i;
     initial begin
         // Pre-fill with 0xFF (blank erased EPROM state)
         for (i = 0; i < 4096; i = i + 1)
             rom[i] = 8'hFF;
 
-        // Load KLR firmware image — uncomment the variant to simulate:
-        $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/87KLR_951.mem", rom);
-        //$readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/89KLR_951.mem", rom);
+        // Load KLR firmware image — override via -DKLR_ROM_FILE to switch
+        // variants (e.g. 89KLR_951.mem) instead of editing this file.
+        $readmemh({`KLR_ROM_DIR, `KLR_ROM_FILE}, rom);
     end
 
     // Transparent latch on /CE — holds last valid byte between fetches

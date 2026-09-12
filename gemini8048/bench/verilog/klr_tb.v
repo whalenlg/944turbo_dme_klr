@@ -208,16 +208,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
         boost_table[7*16+12]=206.0; boost_table[7*16+13]=206.0; boost_table[7*16+14]=206.0; boost_table[7*16+15]=194.0;
     end
 
-    // Throttle% from tps_wiper (DME AFM wiper), same anchors as the
-    // TPS-angle ch7 mapping above.
+    // Throttle% from ram[0x43] — the KLR firmware's own throttle-cycling
+    // valve map input register (live value, read directly from the
+    // running core's RAM, not testbench-driven). Calibration: ram[0x43]=1
+    // -> 58% throttle, ram[0x43]=0x1C(28) -> 88% throttle, linear between.
+    // This replaces the earlier tps_wiper-based approximation — ram[0x43]
+    // is what the real firmware actually feeds its own map lookups with,
+    // so this is now the authoritative source rather than a reconstruction.
     real boost_thr_pct;
     always @(*) begin
-        if (tps_wiper <= 8'd40)
-            boost_thr_pct = 0.0;
-        else if (tps_wiper >= 8'd235)
-            boost_thr_pct = 100.0;
-        else
-            boost_thr_pct = (tps_wiper - 40) * 100.0 / 195.0;
+        boost_thr_pct = 58.0 + (top.i8048_core_1.ram[8'h43] - 1.0) * 30.0 / 27.0;
     end
 
     // Bilinear interpolation over the boost table, clamped at the edges.
@@ -276,30 +276,31 @@ module klr_tb #(parameter EXT_STIM = 0) (
     end
 
     // Reverse the ADC-read routine's +10 offset (see header comment) —
-    // we're driving the RAW ADC channel, not ram[52h] directly.
+    // we're driving the RAW ADC channel, not ram[52h] directly. (Briefly
+    // removed, then restored — removing it also silently shifted the
+    // plain BOOST and BOOST_HIGH cases +10 higher than intended, not just
+    // BOOST_LOW, so it's back.)
     wire [7:0] boost_adc4_raw = (boost_map_value - 10.0 < 0.0)   ? 8'd0   :
                                  (boost_map_value - 10.0 > 255.0) ? 8'd255 :
                                  $rtoi(boost_map_value - 10.0);
 
     // Test-only overrides on top of the normal MAP-table value:
-    //  -DBOOST_ZERO    — force the ADC input to 0 (e.g. simulate a
-    //                     disconnected/failed boost sensor)
-    //  -DBOOST_LOW     — normal value minus 33, clamped at 0 (e.g.
-    //                     simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH    — normal value plus 65, saturating at 255 (e.g.
-    //                     simulate an overboost condition or wastegate
-    //                     failure)
-    //  -DBOOST_150PCT  — scale the normal value to 150%, saturating at
-    //                     255 (e.g. simulate an over-reading sensor or
-    //                     genuine over-boost condition)
+    //  -DBOOST_ZERO     — force the ADC input to 0 (e.g. simulate a
+    //                      disconnected/failed boost sensor)
+    //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
+    //                      simulate a boost leak / underboost condition)
+    //  -DBOOST_HIGH     — normal value plus 33, saturating at 255 (e.g.
+    //                      simulate an overboost condition or wastegate
+    //                      failure)
+    // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
+    // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
+    // for both.)
     // All are independent of -DBOOST itself and only take effect when
     // -DBOOST is also defined, since there's no MAP-table value to
-    // offset/scale otherwise.
-    wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd33) ? 8'd0 : (boost_adc4_raw - 8'd33);
-    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd65;
+    // offset otherwise.
+    wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
+    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd33;
     wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd255) ? 8'd255 : boost_adc4_high_wide[7:0];
-    wire [15:0] boost_adc4_150pct_wide = (boost_adc4_raw * 16'd3) / 16'd2;
-    wire [7:0]  boost_adc4_150pct     = (boost_adc4_150pct_wide > 16'd255) ? 8'd255 : boost_adc4_150pct_wide[7:0];
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
@@ -307,13 +308,36 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] boost_adc4_final = boost_adc4_low;
 `elsif BOOST_HIGH
     wire [7:0] boost_adc4_final = boost_adc4_high;
-`elsif BOOST_150PCT
-    wire [7:0] boost_adc4_final = boost_adc4_150pct;
 `else
     wire [7:0] boost_adc4_final = boost_adc4_raw;
 `endif
 
-    wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_final : 8'h85;
+    // Firmware compliance cap: the ADC-read routine adds +10d to this raw
+    // value before storing to ram[52h] (see header comment). ram[52h] is
+    // an 8-bit register, so any raw input > 0xF5 (245) makes that addition
+    // overflow/roll over (raw=0xF6=246 -> 246+10=256 -> wraps to 0x00).
+    // Cap at 0xF0 here — comfortably clear of the rollover point with
+    // margin — so no boost test variant (including -DBOOST_HIGH, which can
+    // otherwise saturate at 0xFF) can ever drive the firmware into that
+    // overflow condition.
+    wire [7:0] boost_adc4_capped = (boost_adc4_final > 8'hF0) ? 8'hF0 : boost_adc4_final;
+
+    wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_capped : 8'h85;
+`endif
+
+    // Always-declared export of the real internal MAP-table target (in the
+    // same "software units" scale as ram[0x52], i.e. directly comparable —
+    // no +10/-10 correction needed since this is the pre-ADC-offset table
+    // value, same scale the firmware ends up storing to ram[52h]). Declared
+    // unconditionally (defaulting to 0 when -DBOOST isn't set) so
+    // klr_phase_monitor.v can reference it in the STATUS line without
+    // needing its own `ifdef BOOST` gating.
+`ifdef BOOST
+    wire [7:0] boost_target_export = (boost_map_value < 0.0)   ? 8'd0   :
+                                      (boost_map_value > 255.0) ? 8'd255 :
+                                      $rtoi(boost_map_value);
+`else
+    wire [7:0] boost_target_export = 8'd0;
 `endif
 
     // ── Knock signal generation (ch0 — noise-level indicator;

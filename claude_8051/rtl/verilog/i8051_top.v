@@ -244,14 +244,25 @@ module i2764_eprom (
 
     // Load program image at simulation start.
     // The file must be in Verilog hex format (one byte per line or
-    // space-separated).  Adjust the path to your compiled binary.
+    // space-separated). Directory and filename are each independently
+    // overridable via -D on the iverilog/verilator command line, so run
+    // scripts can select different firmware images without editing this
+    // file — both default to the existing path if not overridden.
+    //   -DDME_ROM_DIR=\"../../bin/\"
+    //   -DDME_ROM_FILE=\"SOME_OTHER_IMAGE.mem\"
+    `ifndef DME_ROM_DIR
+    `define DME_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin/"
+    `endif
+    `ifndef DME_ROM_FILE
+    `define DME_ROM_FILE "28PIN_DME_PERFORMANCE.mem"
+    `endif
     integer i;
     initial begin
         // Pre-fill with 0xFF to mimic a blank erased device
         for (i = 0; i < 8192; i = i + 1)
             mem[i] = 8'hFF;
         // Then overlay the actual program image
-        $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin/28PIN_DME_PERFORMANCE.mem", mem);
+        $readmemh({`DME_ROM_DIR, `DME_ROM_FILE}, mem);
     end
 
     // Output: valid only when both /CE and /OE are low

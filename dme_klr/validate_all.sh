@@ -51,7 +51,12 @@ fi
 
 # Test list: use args if given, otherwise pull every key out of
 # validate_dash_log.py's TESTS dict so this script never drifts out
-# of sync with it.
+# of sync with it. Scoped to JUST the TESTS dict (stops at its closing
+# '}') rather than scanning the whole file — validate_dash_log.py also
+# has a DME_FILE_OVERRIDES dict keyed by these same test names (for
+# per-firmware expected-value overrides), which a whole-file regex scan
+# would otherwise pick up as additional "tests", double-validating any
+# test that has an override registered.
 if [ "$#" -gt 0 ]; then
     TEST_NAMES=("$@")
 else
@@ -62,7 +67,10 @@ else
 import re
 with open('$VALIDATOR') as f:
     src = f.read()
-print('\n'.join(re.findall(r\"^\s*'([A-Za-z0-9_]+)':\s*\{\", src, re.MULTILINE)))
+start = src.index('TESTS = {')
+end = src.index('\n}\n', start)
+tests_block = src[start:end]
+print('\n'.join(re.findall(r\"^\s*'([A-Za-z0-9_]+)':\s*\{\", tests_block, re.MULTILINE)))
 ")
 fi
 
@@ -82,7 +90,12 @@ echo "======================================================"
 
 for name in "${TEST_NAMES[@]}"; do
     dashlog="$LOGDIR/${name}.dash.log"
-    out=$(python3 "$VALIDATOR" "$name" "$dashlog")
+    # Pass DME_ROM_FILE through if set, so validate_dash_log.py applies
+    # the right firmware-variant overrides (see DME_FILE_OVERRIDES there)
+    # instead of the default 28PIN-calibrated expected values. Using
+    # ${...:-} rather than a bare $DME_ROM_FILE since this script runs
+    # under `set -u` — an unset var would otherwise abort the script.
+    out=$(python3 "$VALIDATOR" "$name" "$dashlog" "${DME_ROM_FILE:-}")
     status="${out%%$'\t'*}"
 
     echo "$out"

@@ -179,7 +179,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         // ── Periodic STATUS snapshot ──────────────────────
         // Every ~100ms KLR time (≈1,111,100 half-cycles)
         if ($time >= ph_klr_next_snap) begin
-            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[33]=%02h  ram[38]=%02h  knock_count=%0d  timer_val=%02h",
+            $display("KLR: [STATUS] t=%0d ms  pc=%03h  mb=%0b  SP=%0d  irq=%0b  ign_out=%0b  knock=%0b  full_load=%0b  CV_PWM=%0b  tps_raw=%02h  tps_deg=%02h  R0=%02h  R2=%02h  R4=%02h  R5=%02h  ram[16]=%02h  ram[17]=%02h  ram[26]=%02h  ram[33]=%02h  ram[38]=%02h  knock_count=%0d  timer_val=%02h  boost_target=%02h",
                 `KLR_MS(0),
                 top.i8048_core_1.pc,
                 top.i8048_core_1.mb_latch,
@@ -201,7 +201,9 @@ always @(posedge clk) begin  // klr_phase_monitor
                 `KLRRAM[8'h33],  // should stay 0 once initialised — see validate_dash_log.py
                 `KLRRAM[8'h38],  // timer ISR A-save area
                 ph_klr_knock_count,  // testbench-side count of knock_out 1->0 transitions
-                top.i8048_core_1.timer_val
+                top.i8048_core_1.timer_val,
+                boost_target_export  // real internal MAP-table lookup (-DBOOST only; 0 otherwise) —
+                                     // same software-units scale as ram[52h], directly comparable
             );
             ph_klr_next_snap <= ph_klr_next_snap + 64'd100_000_000;  // +100ms
             $fflush();
