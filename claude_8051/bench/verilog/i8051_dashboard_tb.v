@@ -280,6 +280,33 @@
   `endif
 `endif
 
+// TEST_CL_RAMP_TO_5000: same structure as TEST_CL_RAMP_TO_3000/_4500/_6000.
+// AFM_CL_TARGET=0xA6 is an ESTIMATE — interpolated from the two closest
+// REAL, empirically-observed bracketing points from the 4500 calibration
+// work: AFM=0x9A(154)->~4530rpm (verified) and AFM=0xA1(161)->~4800rpm
+// (observed). Local slope ~38.57 rpm/AFM-count; both anchors agree
+// exactly on 0xA6(166) for a 5000rpm target. Still unverified against a
+// real run — check the actual settled RPM in the resulting log and
+// refine the same way TEST_CL_RAMP_TO_4500 was (see its revision history
+// above) if it's meaningfully off.
+`ifdef TEST_CL_RAMP_TO_5000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'hA6      // ~5000 RPM (ESTIMATED — see note above)
+  `ifndef SIM_TIME
+  `define SIM_TIME  35000000000     // 35s — matching the 4500-family's duration
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 // TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
 // TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
 // time), then five sequential 7-second condition-cycle phases, each

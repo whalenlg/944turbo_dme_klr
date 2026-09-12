@@ -208,8 +208,15 @@ TESTS = {
     # ranges were) — tighten once real data is available.
     'cl_ramp_to_4500': {'rpm_target': 4500, 'fuel_range':(1.5, 12.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'CL: AFM steps to ~4500RPM target (AFM_CL_TARGET=0x9A, empirically calibrated) at t=2s; RPM should approach ~4500-4530 in 35s'},
-    'cl_ramp_to_4500_BOOST_LOW': {'rpm_target': 4500, 'fuel_range':(1.5, 12.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'Same as cl_ramp_to_4500, with -DBOOST active and boost input reduced by 65 (raw ADC). No DTC reliably observed at this RPM either — see boost-test block note above'},
+    # cl_ramp_to_5000_BOOST_LOW: replaces the earlier cl_ramp_to_4500_BOOST_LOW.
+    # AFM_CL_TARGET=0xA6 is an ESTIMATE (see i8051_dashboard_tb.v
+    # TEST_CL_RAMP_TO_5000 for the full derivation) — interpolated from the
+    # two closest real bracketing points in the 4500 calibration data
+    # (0x9A->~4530rpm, 0xA1->~4800rpm), not yet independently verified.
+    # fuel_range interpolated between the 4500/6000 ranges for the same
+    # reason cl_ramp_to_4500's was — tighten once real data is available.
+    'cl_ramp_to_5000_BOOST_LOW': {'rpm_target': 5000, 'fuel_range':(1.5, 13.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC). No DTC reliably observed at 4500/6000 either — see boost-test block note above'},
 
     'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
