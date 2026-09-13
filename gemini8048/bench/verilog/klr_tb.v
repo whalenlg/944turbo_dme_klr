@@ -115,7 +115,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ── ADC channel stimulus ──────────────────────────────
     //  Initial values match i8048_tb.v: static signed constants so
     //  the firmware can run its conversion loop immediately.
+    // -DKLR_BATT_LOW halves the normal battery reading (0xD8 -> 0x6C) to
+    // simulate a low-battery/charging-system fault on ADC ch1.
+`ifndef KLR_BATT_LOW
     reg [7:0] adc_ch1 = 8'hd8;  // battery
+`else
+    reg [7:0] adc_ch1 = 8'hd8 >> 1;  // battery — halved (KLR_BATT_LOW test)
+`endif
     reg [7:0] adc_ch2 = 8'h00;  // ground
 `ifndef BOOST
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
@@ -414,7 +420,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //   AFM idle (0x28=40) → TPS 0x28 (40), AFM WOT (0xEB=235) → TPS 0xC8 (200)
     //   Linear: tps_angle = 40 + (afm - 40) * 160 / 195
     //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
+    //
+    // -DKLR_TPS_SUPPLY_LOW drops ch3 to 25% of its normal reading
+    // (255 * 0.25 = 63.75, rounded to 64) to simulate a degraded/failing
+    // regulator. Channel 7 (TPS) is ratiometric against this same supply
+    // (see below) — everything else is independent and unaffected.
+`ifndef KLR_TPS_SUPPLY_LOW
     wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
+`else
+    wire [7:0] adc_ch3 = 8'd64;  // conn 1  TPS 5V supply — 25% of normal (255*0.25=63.75->64) (KLR_TPS_SUPPLY_LOW test)
+`endif
 
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
     // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
@@ -422,7 +437,17 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [15:0] _tps_angle_full = (tps_wiper > 8'd40)
                                ? (16'd26 + ({8'd0, tps_wiper} - 16'd40) * 16'd213 / 16'd195)
                                : 16'd26;
-    wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_angle_full[7:0] : 8'd40;   // conn 16 TPS angle wiper
+    wire [7:0] _tps_raw = _tps_angle_full[7:0];  // TPS wiper reading relative to full-scale reference
+
+    // TPS (ch7) IS ratiometric against ch3's supply (confirmed — scaling
+    // applies to ch7 specifically, not other channels): scaled_tps =
+    // adc_ch3 * raw_tps / 256. The >>8 below (via bit-slicing the 16-bit
+    // product) is exactly that division. At normal full-scale supply
+    // (adc_ch3=255) this comes out to raw_tps*255/256 — a ~0.4%
+    // reduction. With -DKLR_TPS_SUPPLY_LOW (adc_ch3=64, 25% of normal),
+    // this scales the TPS reading down to ~25% too.
+    wire [15:0] _tps_scaled_wide = adc_ch3 * _tps_raw;
+    wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_scaled_wide[15:8] : 8'd40;   // conn 16 TPS angle wiper — ratiometric per ch3
 
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;

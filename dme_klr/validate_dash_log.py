@@ -135,6 +135,27 @@ TESTS = {
                           },  # iram[4Ch] not written in CL mode by firmware design
     'cl_ramp_to_3000':   {'rpm_target': 3000, 'fuel_range':(1.5, 10.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 3000RPM target at t=2s; RPM should reach ~3000 in 30s'},
+
+    # --- KLR ADC fault-injection tests (klr_tb.v), based on cl_ramp_to_3000 ---
+    # BATT_LOW / TPS_SUPPLY_LOW: base CL checks unchanged (rpm/fuel/ase/
+    # fuelcut) — the interesting behavior to watch is on the KLR side
+    # (does the firmware detect the degraded reading, does anything
+    # downstream misbehave), which isn't yet covered by a specific
+    # assertion here. Add one (e.g. require_ram33_value) once a real run
+    # shows whether/what DTC these trip, the same way BOOST_ZERO/HIGH's
+    # DTC checks were added after observing their actual behavior.
+    'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault'},
+    'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) halved (0xFF->0x7F) to simulate a degraded/failing regulator'},
+    # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
+    # (already used by the non-CL knock_sensor_defect test) to prevent the
+    # klr_system self-test path from ever pulsing fake_knock — so unlike
+    # a normal run, NO knock pulses should occur at all here.
+    'cl_ramp_to_3000_KLR_KNOCK_BLOCKED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_no_knock_pulse':True,
+                          'notes':'Same as cl_ramp_to_3000, with -DTEST_KNOCK_FAKE_BLOCKED — the klr_system self-test path should never pulse fake_knock, so no knock pulses are expected'},
+
     # cl_condition_cycle / cl_condition_cycle_idle: 5-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC), each 1s nominal / 5s
     # test-active / 1s nominal. Base fields below match cl_ramp_to_3000
@@ -219,42 +240,42 @@ TESTS = {
                           'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC). No DTC reliably observed at 4500/6000 either — see boost-test block note above'},
 
     'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS1': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS2': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS3': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77,
+                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77,
+                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77,
+                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
     'cl_ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77,
+                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
@@ -376,6 +397,52 @@ DME_FILE_OVERRIDES = {
         'cl_ramp_to_6000_FQS5': {'fqs_fuel_baseline': 7.339},
         'cl_ramp_to_6000_FQS6': {'fqs_fuel_baseline': 7.339},
         'cl_ramp_to_6000_FQS7': {'fqs_fuel_baseline': 7.339},
+    },
+
+    # 28PIN_86DME.mem ('86 DME firmware variant): derived from one real
+    # validation run against the 6000-family. Fueling-only overrides —
+    # timing (ign_delay_baseline, FQS timing-retard expectations) is
+    # DELIBERATELY left unchanged here even though the observed data shows
+    # a real timing discrepancy too (retard came out ~5.45°/4 half-teeth
+    # vs the expected 2.77°/2 half-teeth) — that's a separate, currently
+    # open question, not something to paper over with an unverified
+    # timing override the same way the fueling numbers below are grounded
+    # in tight multi-sample data.
+    '28PIN_86DME.mem': {
+        # Same widening approach as 89DME_951pin.mem — floor down from 8.0
+        # to 7.0, comfortable margin below the lowest observed sample
+        # (7.390ms, FQS6 at -3%).
+        'ramp_to_6000':                 {'fuel_range': (7.0, 14.0)},
+        'knock_sensor_defect':          {'fuel_range': (7.0, 14.0)},
+        'knock_sensor_short_to_ground': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6100':                 {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6200':                 {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6300':                 {'fuel_range': (7.0, 14.0)},
+        # FQS0-7 use fqs_straight_baseline (dynamic sibling lookup) — only
+        # fuel_range needs overriding, same reasoning as the 89DME block.
+        'ramp_to_6000_FQS0': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS1': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS2': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS3': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS4': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS5': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS6': {'fuel_range': (7.0, 14.0)},
+        'ramp_to_6000_FQS7': {'fuel_range': (7.0, 14.0)},
+        # cl_ramp_to_6000_FQS0-7 fixed fqs_fuel_baseline, refined from 5
+        # real samples (FQS3-FQS7; FQS0-2 weren't in this failure batch
+        # but share the same baseline field) by back-solving
+        # baseline=avg/(1+pct/100) for each and averaging: implied
+        # baselines ranged only 7.2258-7.2519 (0.4% spread) — tight enough
+        # to treat 7.242 (the mean) as solid, same confidence level as the
+        # 89DME baseline above.
+        'cl_ramp_to_6000_FQS0': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS1': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS2': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS3': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS4': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS5': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS6': {'fqs_fuel_baseline': 7.242},
+        'cl_ramp_to_6000_FQS7': {'fqs_fuel_baseline': 7.242},
     },
 }
 
