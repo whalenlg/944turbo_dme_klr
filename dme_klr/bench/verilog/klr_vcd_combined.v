@@ -22,16 +22,9 @@
 
 module klr_dumpvcd_combined();
 
-// Top-level hierarchy path — set by the testbench being compiled.
-// Dashboard flow:  -DDME_KLR_COMBINED → dme_klr_dashboard_tb
-// Regression flow: (default)          → dme_klr_tb
-`ifdef DME_KLR_COMBINED
-  `define KLR_TOP  dme_klr_dashboard_tb
-  `define KLR_CORE dme_klr_dashboard_tb.u_klr.top
-`else
-  `define KLR_TOP  dme_klr_tb
-  `define KLR_CORE dme_klr_tb.top_klr
-`endif
+// Top-level hierarchy path — the dashboard testbench.
+`define KLR_TOP  dme_klr_dashboard_tb
+`define KLR_CORE dme_klr_dashboard_tb.u_klr.top
 
 
 `define MEMMAX 4095
