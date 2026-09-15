@@ -1,7 +1,8 @@
 #!/bin/bash
 #python3 ../disassemble/csv2veriloghex.py ../disassemble/test_sim.csv ../disassemble/test_sim.hex 
 #python3 hex2mem48.py  89KLR_951.hex 89KLR_951.mem
-rm ../../tmp/klr/i8048_regression_tb.vvp
+mkdir -p ../../tmp/klr/fst
+rm -f ../../tmp/klr/i8048_regression_tb.vvp
 
 iverilog -o ../../tmp/klr/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 vvp ../../tmp/klr/i8048_regression_tb.vvp +fst=../../tmp/klr/fst/i8048_regression_tb.fst
