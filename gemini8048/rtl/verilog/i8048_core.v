@@ -72,7 +72,7 @@ wire is_2_cycle =
 wire next_cycle_state = (cycle_2 == 0 && is_2_cycle) ? 1'b1 : 1'b0;
 
 initial
-   $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/op_ins8048.hex",opinstr);
+   $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/op_ins8048.hex",opinstr);
 
 
 // Task to display bus and memory status

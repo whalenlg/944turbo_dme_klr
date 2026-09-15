@@ -251,8 +251,8 @@ compile_and_run_klr() {
 
     # Record what was actually requested here too — see the matching
     # note in run_dashboard_tests.sh.
-    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
-    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/}${KLR_ROM_FILE:-87KLR_951.mem}"
+    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
 
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \

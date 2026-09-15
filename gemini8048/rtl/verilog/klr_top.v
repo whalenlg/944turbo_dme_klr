@@ -352,10 +352,10 @@ module klr_eprom (
     // line, so run scripts can select different firmware images (e.g. the
     // commented-out 89KLR_951.mem variant below) without editing this
     // file — both default to the existing path if not overridden.
-    //   -DKLR_ROM_DIR=\"../../bin/\"
+    //   -DKLR_ROM_DIR=\"../../bin_images/klr/\"
     //   -DKLR_ROM_FILE=\"89KLR_951.mem\"
     `ifndef KLR_ROM_DIR
-    `define KLR_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/"
+    `define KLR_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/"
     `endif
     `ifndef KLR_ROM_FILE
     `define KLR_ROM_FILE "87KLR_951.mem"

@@ -248,10 +248,10 @@ module i2764_eprom (
     // overridable via -D on the iverilog/verilator command line, so run
     // scripts can select different firmware images without editing this
     // file — both default to the existing path if not overridden.
-    //   -DDME_ROM_DIR=\"../../bin/\"
+    //   -DDME_ROM_DIR=\"../../bin_images/dme/\"
     //   -DDME_ROM_FILE=\"SOME_OTHER_IMAGE.mem\"
     `ifndef DME_ROM_DIR
-    `define DME_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin/"
+    `define DME_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/"
     `endif
     `ifndef DME_ROM_FILE
     `define DME_ROM_FILE "28PIN_DME_PERFORMANCE.mem"

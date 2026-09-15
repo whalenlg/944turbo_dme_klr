@@ -244,12 +244,12 @@ initial begin
     last_msg  = "FFFF";
     msg_count = 1;
     call_depth = 0;
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/test_sim.hex",             debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/memory_byte_map.hex",      memory_byte_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_opcode_ins.hex",       opcode);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_instr.hex",            instr);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_operands.hex",         ops);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/asm_operands_numeric.hex", opsnums);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/test_sim.hex",             debug_msg);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/memory_byte_map.hex",      memory_byte_map);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_opcode_ins.hex",       opcode);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_instr.hex",            instr);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands.hex",         ops);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands_numeric.hex", opsnums);
 end
 
 // ============================================================
