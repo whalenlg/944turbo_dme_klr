@@ -137,24 +137,55 @@ TESTS = {
                           'notes':'CL: AFM steps to 3000RPM target at t=2s; RPM should reach ~3000 in 30s'},
 
     # --- KLR ADC fault-injection tests (klr_tb.v), based on cl_ramp_to_3000 ---
-    # BATT_LOW / TPS_SUPPLY_LOW: base CL checks unchanged (rpm/fuel/ase/
-    # fuelcut) — the interesting behavior to watch is on the KLR side
-    # (does the firmware detect the degraded reading, does anything
-    # downstream misbehave), which isn't yet covered by a specific
-    # assertion here. Add one (e.g. require_ram33_value) once a real run
-    # shows whether/what DTC these trip, the same way BOOST_ZERO/HIGH's
-    # DTC checks were added after observing their actual behavior.
+    # BATT_LOW: confirmed via a real run — reliably trips DTC 0x12
+    # ("Voltage Under 10.2V — check alternator/battery/regulator/relays/
+    # wiring"), exactly the fault this test simulates.
     'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault'},
+                          'require_ram33_value':0x12,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V)'},
+    # TPS_SUPPLY_LOW: confirmed via a real run — reliably trips DTC 0x41
+    # ("TPS Power Wires — power wire/ground contact dirty"), consistent
+    # with a degraded TPS supply voltage.
     'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) halved (0xFF->0x7F) to simulate a degraded/failing regulator'},
+                          'require_ram33_value':0x41,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) reduced to 0x18 (~9.4% of normal) to simulate a badly degraded/failing regulator — KLR expected to detect this and set DTC 4-1 (0x41, TPS Power Wires)'},
     # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
     # (already used by the non-CL knock_sensor_defect test) to prevent the
     # klr_system self-test path from ever pulsing fake_knock — so unlike
-    # a normal run, NO knock pulses should occur at all here.
+    # a normal run, NO knock pulses should occur at all here. Confirmed
+    # via a real run to reliably trip DTC 0x23 ("KLR Defective") — the
+    # same code the non-CL knock_sensor_defect test already expects for
+    # this identical underlying fault mechanism.
     'cl_ramp_to_3000_KLR_KNOCK_BLOCKED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'expect_no_knock_pulse':True,
-                          'notes':'Same as cl_ramp_to_3000, with -DTEST_KNOCK_FAKE_BLOCKED — the klr_system self-test path should never pulse fake_knock, so no knock pulses are expected'},
+                          'expect_no_knock_pulse':True, 'require_ram33_value':0x23,
+                          'notes':'Same as cl_ramp_to_3000, with -DTEST_KNOCK_FAKE_BLOCKED — the klr_system self-test path should never pulse fake_knock, so no knock pulses are expected — KLR expected to detect this and set DTC 2-3 (0x23, KLR Defective)'},
+    # KLR_ADC0_NOISE_HIGH: forces ch0/knock_noise to a flat 0 — unlike
+    # earlier iterations of this test (which scaled the signal down
+    # proportionally while preserving the underlying 110<->0 pulse
+    # pattern), this now suppresses the pulsing entirely, simulating a
+    # fully dead/disconnected sensor. Named "HIGH" despite the numeric
+    # value being at its floor — a near-zero/dead ADC0 reading is what
+    # the firmware interprets as a HIGH-severity noise/sensor fault, so
+    # the name reflects the firmware's interpretation, not the raw
+    # numeric direction (same reasoning as why KLR_ADC0_NOISE_LOW was
+    # renamed away from — that name had it backwards). No specific
+    # assertion on the DTC behavior yet — add one (e.g.
+    # require_ram33_value) once a real run shows what the firmware
+    # actually does with a fully dead noise-floor signal, same as the
+    # other KLR ADC fault tests above.
+    'cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor'},
+    'cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'dwell_cap':96,
+                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor'},
+    # KLR_ADC0_NOISE_LOW: the opposite fault character from NOISE_HIGH —
+    # stuck at a fixed 0x80 (mid-scale) for the whole simulation, rather
+    # than dead-low at 0. No specific assertion on the DTC behavior yet —
+    # add one (e.g. require_ram33_value) once a real run shows what the
+    # firmware actually does with a stuck-at-midscale noise-floor signal.
+    'cl_ramp_to_6000_KLR_ADC0_NOISE_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'dwell_cap':96,
+                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) stuck at a flat 0x80 for the whole simulation to simulate a mid-scale stuck-at sensor fault'},
 
     # cl_condition_cycle / cl_condition_cycle_idle: 5-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC), each 1s nominal / 5s

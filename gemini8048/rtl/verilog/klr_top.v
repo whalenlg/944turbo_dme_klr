@@ -369,6 +369,10 @@ module klr_eprom (
         // Load KLR firmware image — override via -DKLR_ROM_FILE to switch
         // variants (e.g. 89KLR_951.mem) instead of editing this file.
         $readmemh({`KLR_ROM_DIR, `KLR_ROM_FILE}, rom);
+        // Record which ROM was actually loaded — see the matching note
+        // in i8051_top.v; pulled from the same macros used above so it
+        // always reflects the real compiled-in values.
+        $display("KLR: ROM loaded from %s%s", `KLR_ROM_DIR, `KLR_ROM_FILE);
     end
 
     // Transparent latch on /CE — holds last valid byte between fetches

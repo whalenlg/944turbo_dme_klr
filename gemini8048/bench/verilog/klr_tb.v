@@ -13,8 +13,10 @@
 //    knock_gen.v            — knock_sum (ch5) = !knock_reset ? 0d :
 //                              (fake_knock burst-stretched to >=2.4ms
 //                              ? knock_sensor+145d : knock_sensor);
-//                              knock_noise (ch0) = fake_knock (raw) ?
-//                              knock_sensor+145d : knock_sensor
+//                              knock_noise (ch0) = rolling average of
+//                              the last 10 samples of (knock_sensor/4
+//                              + fake_knock*32), sampled on trigger_in
+//                              (rising edge) — see knock_gen.v
 //                              (knock_sensor currently a fixed 110d
 //                              placeholder — real model TBD)
 //
@@ -371,18 +373,24 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //    sibling instances under that top-level testbench). This is
     //    the baseline value for both outputs below; 8'd145 is added
     //    on top only while fake_knock is asserted.
-    //  knock_gen is clocked (needs .clk below) only for the
-    //    fake_knock burst-stretcher; everything else is combinational:
+    //  knock_gen is clocked (needs .clk below) — knock_sum is
+    //    combinational off `clk`-driven fake_knock burst-stretcher
+    //    state; knock_noise is now a clocked rolling average, sampled
+    //    on trigger_in (see below):
     //    knock_sum   = !knock_reset ? 0 (highest priority — forces 0
     //                  regardless of fake_knock) : fake_knock_stretched
     //                  ? (knock_sensor + 145) : knock_sensor — drives
     //                  adc_ch5. With knock_sensor=110: 0 / 110 / 255.
-    //    knock_noise = fake_knock ? (knock_sensor + 145) : knock_sensor —
-    //                  drives adc_ch0. Note: uses the RAW fake_knock
-    //                  here, not the stretched version knock_sum
-    //                  uses — knock_noise is not affected by the
-    //                  burst-stretcher, and not gated by knock_reset
-    //                  at all.
+    //    knock_noise = rolling average of the last 10 samples of
+    //                  (knock_sensor/4 + fake_knock*32), sampled on
+    //                  each rising edge of trigger_in (klr_system's own
+    //                  crank-synchronized trigger — see trigger_in_mux
+    //                  below, wired into knock_gen's new trigger_in
+    //                  port) — drives adc_ch0. Uses the RAW fake_knock
+    //                  input directly (not the stretched version
+    //                  knock_sum uses) — not affected by the
+    //                  burst-stretcher, and not gated by knock_reset at
+    //                  all. See knock_gen.v for the full derivation.
     wire       fake_knock;
     wire       knock_reset = p2_mon[5];
     wire [7:0] knock_sum;
@@ -404,11 +412,57 @@ module klr_tb #(parameter EXT_STIM = 0) (
         .fake_knock   ( fake_knock     ),
         .knock_reset  ( knock_reset    ),
         .knock_sensor ( knock_sensor_i ),
+        .trigger_in   ( trigger_in_mux ),  // same crank-synchronized trigger klr_system itself runs on (see trigger_in_mux above)
         .knock_sum    ( knock_sum      ),
         .knock_noise  ( knock_noise    )
     );
 
-    wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator
+    // adc_ch0 default scaling: x64/255 of knock_noise. IMPORTANT — this
+    // comment previously documented knock_noise's raw range as
+    // 0xFF<->0x6E (255/110), based on the module's older combinational
+    // formula. knock_gen.v now computes knock_noise as a rolling
+    // average of (knock_sensor/4 + fake_knock*32) over trigger_in
+    // ticks, which has a fundamentally different range — roughly
+    // 27 (fake_knock never asserted) up to 59 (fake_knock constantly
+    // asserted) with knock_sensor=110, smoothly blending between them
+    // over ~10 trigger ticks rather than jumping instantly. The x64/255
+    // scale factor itself is UNCHANGED, but its actual output range is
+    // now correspondingly lower (roughly 6-14 instead of the previously
+    // documented ~0x40 baseline) — see knock_gen.v for the current
+    // knock_noise derivation before assuming any specific adc_ch0
+    // number here.
+    //
+    // -DKLR_ADC0_NOISE_HIGH now uses knock_noise DIRECTLY (no further
+    // scaling) — knock_gen.v switches to a different, much
+    // smaller-scale sample_val formula under this same flag
+    // (knock_sensor>>8 + fake_knock*4 — see knock_gen.v; note
+    // knock_sensor's value has NO effect under that formula, since a
+    // >=8 shift on this 8-bit signal always yields 0), so knock_noise
+    // itself already comes out in the right range without needing the
+    // x64/255 scale-down the default case uses. knock_sensor itself is
+    // left at dme_klr_dashboard_tb.v's normal default (8'd110) for this
+    // test — no override, since it has no effect on sample_val anyway.
+    //
+    // -DKLR_ADC0_NOISE_LOW is the opposite fault character: a fixed
+    // 0x80 for the WHOLE simulation (no pulsing either, but stuck at a
+    // constant mid-scale value instead of a dead-low one) — same
+    // "reused after rename" flag name as the original attenuation test,
+    // now with entirely different, simpler behavior (a straight stuck-at
+    // fault rather than a scaled/attenuated one).
+    //
+    // 16-bit intermediate avoids overflow in the default case —
+    // knock_noise*64 can reach 16320, which needs 15 bits; without the
+    // explicit width here, Verilog would size the whole expression to
+    // match the 8-bit LHS and silently wrap the product before the
+    // division ever happens.
+`ifdef KLR_ADC0_NOISE_HIGH
+    wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator — rolling average under knock_gen.v's NOISE_HIGH sample_val formula (KLR_ADC0_NOISE_HIGH test)
+`elsif KLR_ADC0_NOISE_LOW
+    wire [7:0] adc_ch0 = 8'h80;  // knock sensor noise-level indicator — stuck at 0x80 for the whole sim (KLR_ADC0_NOISE_LOW test)
+`else
+    wire [15:0] _adc0_noise_scaled_wide = knock_noise * 16'd64;
+    wire [7:0] adc_ch0 = _adc0_noise_scaled_wide / 16'd255;  // knock sensor noise-level indicator — nominal ~0x40 baseline / ~0x1B dip (all tests)
+`endif
     wire [7:0] adc_ch5 = knock_sum;    // lm2902.14 — comparator output
 
     // ── TPS Supply (ch3) and TPS Angle (ch7) ─────────────────
@@ -421,14 +475,18 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //   Linear: tps_angle = 40 + (afm - 40) * 160 / 195
     //   WOT threshold: 3C > 144 → 3A > 67 → KLR asserts full_load (P1.5 low)
     //
-    // -DKLR_TPS_SUPPLY_LOW drops ch3 to 25% of its normal reading
-    // (255 * 0.25 = 63.75, rounded to 64) to simulate a degraded/failing
-    // regulator. Channel 7 (TPS) is ratiometric against this same supply
-    // (see below) — everything else is independent and unaffected.
+    // -DKLR_TPS_SUPPLY_LOW drops ch3 to 0x18 (24, ~9.4% of normal) to
+    // simulate a badly degraded/failing regulator. Channel 7 (TPS) is
+    // ratiometric against this same supply (see below) — everything else
+    // is independent and unaffected. 25% (0x40) was tried first but only
+    // pushed the scaled TPS under the firmware's 0x0C fault threshold at
+    // low throttle (up to raw_tps~40) — 0x18 clears it across a much
+    // wider range (up to raw_tps~100), so the fault triggers reliably
+    // over more of the throttle sweep, not just near idle.
 `ifndef KLR_TPS_SUPPLY_LOW
     wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
 `else
-    wire [7:0] adc_ch3 = 8'd64;  // conn 1  TPS 5V supply — 25% of normal (255*0.25=63.75->64) (KLR_TPS_SUPPLY_LOW test)
+    wire [7:0] adc_ch3 = 8'h18;  // conn 1  TPS 5V supply — ~9.4% of normal (KLR_TPS_SUPPLY_LOW test)
 `endif
 
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
@@ -444,8 +502,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // adc_ch3 * raw_tps / 256. The >>8 below (via bit-slicing the 16-bit
     // product) is exactly that division. At normal full-scale supply
     // (adc_ch3=255) this comes out to raw_tps*255/256 — a ~0.4%
-    // reduction. With -DKLR_TPS_SUPPLY_LOW (adc_ch3=64, 25% of normal),
-    // this scales the TPS reading down to ~25% too.
+    // reduction. With -DKLR_TPS_SUPPLY_LOW (adc_ch3=0x18), this scales
+    // the TPS reading down to ~9.4% too.
     wire [15:0] _tps_scaled_wide = adc_ch3 * _tps_raw;
     wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_scaled_wide[15:8] : 8'd40;   // conn 16 TPS angle wiper — ratiometric per ch3
 

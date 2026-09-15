@@ -194,12 +194,18 @@ compile_and_run_klr() {
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
     local hexdir="${HEXDIR}/${name}"
-    local fstfile="${FSTDIR}/${name}.fst"
 
     mkdir -p "$hexdir"
 
-    # Clean old output files for this test
-    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile" "$fstfile"
+    # Clean old output files for this test. VCD is the only trace format
+    # this script produces — Verilator's own FST tracing is all-or-none
+    # for the whole design (can't select signals to reduce trace size the
+    # way VCD dumping here can), so it isn't used here. The separate
+    # vcd2fst converter step (elsewhere in the pipeline) is unaffected —
+    # this only removes the dead fstfile/FSTDIR references that used to
+    # live here but never actually wrote anything (FSTDIR was never even
+    # defined).
+    rm -f "$log" "${LOGDIR}/${name}.dash.log" "$vcdfile"
     rm -f "${vcdfile}.gz"
 
     local sim_ns=0
@@ -242,6 +248,11 @@ compile_and_run_klr() {
     [ -n "$DME_ROM_FILE" ] && rom_overrides+=("-DDME_ROM_FILE=\"${DME_ROM_FILE}\"")
     [ -n "$KLR_ROM_DIR"  ] && rom_overrides+=("-DKLR_ROM_DIR=\"${KLR_ROM_DIR}\"")
     [ -n "$KLR_ROM_FILE" ] && rom_overrides+=("-DKLR_ROM_FILE=\"${KLR_ROM_FILE}\"")
+
+    # Record what was actually requested here too — see the matching
+    # note in run_dashboard_tests.sh.
+    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/}${KLR_ROM_FILE:-87KLR_951.mem}"
 
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
@@ -347,29 +358,39 @@ run_test cl_ramp_to_3000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
-run_test cl_ramp_to_3000_KLR_BATT_LOW -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_3000_KLR_BATT_LOW \
     -DTEST_CL_RAMP_TO_3000   \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_BATT_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
-run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW \
     -DTEST_CL_RAMP_TO_3000   \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TPS_SUPPLY_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000
 
-run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED \
     -DTEST_CL_RAMP_TO_3000   \
     -DRPMRAMP -DCL_MODE -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
-run_test cl_ramp_to_3000_BOOST -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH \
     -DTEST_CL_RAMP_TO_3000   \
-    -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_ADC0_NOISE_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
-run_test cl_ramp_to_3000_BOOST_LOW -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH \
+    -DTEST_CL_RAMP_TO_6000   \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_ADC0_NOISE_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW \
+    -DTEST_CL_RAMP_TO_6000   \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_ADC0_NOISE_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+run_test cl_ramp_to_3000_BOOST \
     -DTEST_CL_RAMP_TO_3000   \
-    -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
 # AFM_CL_TARGET=0x83 — ESTIMATED, not independently calibrated against real
@@ -381,7 +402,7 @@ run_test cl_ramp_to_4500 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h9A \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000
 
-run_test cl_ramp_to_5000_BOOST_LOW -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_5000_BOOST_LOW \
     -DTEST_CL_RAMP_TO_5000   \
     -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hA6 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000
@@ -401,22 +422,22 @@ run_test cl_ramp_to_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-run_test cl_ramp_to_6000_BOOST -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_6000_BOOST \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 -DAFM_CL_STEP_NS=28409091 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-run_test cl_ramp_to_6000_BOOST_ZERO -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_6000_BOOST_ZERO \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_ZERO -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
-run_test cl_ramp_to_6000_BOOST_LOW -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_6000_BOOST_LOW \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 -DAFM_CL_STEP_NS=28409091 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-run_test cl_ramp_to_6000_BOOST_HIGH -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG \
+run_test cl_ramp_to_6000_BOOST_HIGH \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
@@ -853,20 +874,22 @@ if [ -n "$1" ]; then
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN   -DRPMRAMP  -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP  -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_3000_BOOST) run_test cl_ramp_to_3000_BOOST $IARG -DTEST_CL_RAMP_TO_3000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_3000_BOOST_LOW) run_test cl_ramp_to_3000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
+        cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_KLR_ADC0_NOISE_LOW) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_3000_BOOST) run_test cl_ramp_to_3000_BOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_4500) run_test cl_ramp_to_4500 $IARG -DTEST_CL_RAMP_TO_4500 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h9A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
-        cl_ramp_to_5000_BOOST_LOW) run_test cl_ramp_to_5000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_5000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hA6" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
+        cl_ramp_to_5000_BOOST_LOW) run_test cl_ramp_to_5000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_5000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hA6" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
         cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=66000000000 ;;
         cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_BOOST) run_test cl_ramp_to_6000_BOOST $IARG -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_BOOST_ZERO) run_test cl_ramp_to_6000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
-        cl_ramp_to_6000_BOOST_LOW) run_test cl_ramp_to_6000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_BOOST_HIGH) run_test cl_ramp_to_6000_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DKLR_DEBUG -DCPU_DEBUG -DCPU_DEEP_DEBUG -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        cl_ramp_to_6000_BOOST) run_test cl_ramp_to_6000_BOOST $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_BOOST_ZERO) run_test cl_ramp_to_6000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        cl_ramp_to_6000_BOOST_LOW) run_test cl_ramp_to_6000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_ramp_to_6000_BOOST_HIGH) run_test cl_ramp_to_6000_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS2) run_test cl_ramp_to_6000_FQS2 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h5A" -DCL_FUEL_ENERGY_PCT=-3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -942,15 +965,21 @@ if [ -n "$1" ]; then
             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
+            echo "  Knock:       ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
+            echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"
+            echo "               cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
+            echo "  KLR faults:  cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW"
+            echo "  Boost:       cl_ramp_to_3000_BOOST cl_ramp_to_6000_BOOST"
+            echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH"
             echo "  Ignition:    ignition_timing dwell_scaling"
             echo "  Sensors:     afm_open_circuit coolant_fail airtemp_fail tps_fail"
             echo "               o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline"
             echo "  ISV:         isv_cold_idle isv_load_droop"
             echo "  Closed-loop: cl_warm_idle cl_tippy_in"
-            echo "               cl_ramp_to_3000 cl_ramp_to_3000_BOOST cl_ramp_to_6000 cl_ramp_to_6000_BOOST cl_ramp_to_redline cl_condition_cycle cl_condition_cycle_idle"
-            echo "  Fuel qual:   cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
+            echo "               cl_ramp_to_3000 cl_ramp_to_4500 cl_ramp_to_6000 cl_ramp_to_redline cl_condition_cycle cl_condition_cycle_idle"
+            echo "  Fuel qual:   cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "               cl_ac_halfway cl_cold_start"
             echo "  DME+KLR:     cl_tippy_in dme_klr_warm_idle dme_klr_ramp_to_3000"
             echo ""
