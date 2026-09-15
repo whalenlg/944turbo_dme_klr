@@ -36,10 +36,10 @@ HEXDIR="$LOGDIR/hex"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
-RTLd=../claude_8051/rtl/verilog
-BENCHd=../claude_8051/bench/verilog
-RTLk=../gemini8048/rtl/verilog
-BENCHk=../gemini8048/bench/verilog
+RTLd=../dme/rtl/verilog
+BENCHd=../dme/bench/verilog
+RTLk=../klr/rtl/verilog
+BENCHk=../klr/bench/verilog
 
 FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
 
@@ -210,8 +210,8 @@ compile_and_run_klr() {
     # used, this records what the shell environment asked for; the two
     # should always agree, but having both makes it easy to tell if they
     # ever don't (e.g. a stale build not picking up an env var change).
-    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
-    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/gemini8048/bin/}${KLR_ROM_FILE:-87KLR_951.mem}"
+    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
 
     iverilog -o "$vvp" \
         -f "$files_list" \

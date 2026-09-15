@@ -8,7 +8,7 @@
 //  ────────────────────────
 //  128 continuous-assign wires (ram_00–ram_7f) mirror every byte
 //  of the 8049 internal RAM.  Because they live in this module and
-//  this module is swept by $dumpvars(1,`KLR_TOP.u_klr_vcd), every
+//  this module is swept by $dumpvars(1,`KLR_DUMPVCD_PATH), every
 //  RAM location is visible in the FST waveform viewer at every
 //  simulation timestep — no sampling gaps.
 //
@@ -20,12 +20,19 @@
 //    • a labelled one-liner for each address of interest
 // ============================================================
 
-module klr_dumpvcd_combined();
-
-// Top-level hierarchy path — the dashboard testbench.
-`define KLR_TOP  dme_klr_dashboard_tb
-`define KLR_CORE dme_klr_dashboard_tb.u_klr.top
-
+module klr_dumpvcd();
+// ── Hierarchy path macros ─────────────────────────────────
+// Defaults for standalone KLR simulation (klr_tb top-level).
+// Override before this file is compiled for combined DME+KLR mode.
+`ifndef KLR_TB_PATH
+  `define KLR_TB_PATH      klr_tb.top
+`endif
+`ifndef KLR_TOP_TB
+  `define KLR_TOP_TB       klr_tb
+`endif
+`ifndef KLR_DUMPVCD_PATH
+  `define KLR_DUMPVCD_PATH klr_tb.u_dumpvcd
+`endif
 
 `define MEMMAX 4095
 integer clk_count, msg_count;
@@ -48,15 +55,15 @@ reg [159:0] opcode[0:`MEMMAX], instr[0:`MEMMAX],
 //  RAM mirror wires  (ram_00 – ram_7f)
 //
 //  Each wire is a continuous alias of the corresponding RAM cell
-//  inside `KLR_CORE.i8048_core_1.ram[].  Being signals in this
-//  module they are captured by $dumpvars(1,`KLR_TOP.u_klr_vcd) at
+//  inside `KLR_TB_PATH.i8048_core_1.ram[].  Being signals in this
+//  module they are captured by $dumpvars(1,`KLR_DUMPVCD_PATH) at
 //  every timestep, making all 128 bytes permanently visible in
 //  the FST waveform viewer without any sampling gaps.
 //
 //  The always block below references these wires by name
 //  (e.g. ram_24) rather than hierarchical paths, for readability.
 // ============================================================
-`define RAM `KLR_CORE.i8048_core_1.ram
+`define RAM `KLR_TB_PATH.i8048_core_1.ram
 
 // 0x00 – 0x0F  (Bank 0 R0–R7 = ram_00–ram_07; Stack = ram_08–ram_17)
 wire [7:0] ram_00 = `RAM[8'h00]; wire [7:0] ram_01 = `RAM[8'h01];
@@ -98,6 +105,13 @@ wire [7:0] ram_3a = `RAM[8'h3a]; wire [7:0] ram_3b = `RAM[8'h3b];
 wire [7:0] ram_3c = `RAM[8'h3c]; wire [7:0] ram_3d = `RAM[8'h3d];
 wire [7:0] ram_3e = `RAM[8'h3e]; wire [7:0] ram_3f = `RAM[8'h3f];
 
+// ── TPS named aliases (for readable FST traces) ───────────────────────────
+wire [7:0] tps_supply       = ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
+wire [7:0] tps_raw_angle    = ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
+wire [7:0] tps_degrees      = ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
+wire [7:0] tps_wot_thresh   = ram_3e;  // KLR ram[3Eh] — WOT threshold angle (~66)
+wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage ADC
+
 // 0x40 – 0x4F
 wire [7:0] ram_40 = `RAM[8'h40]; wire [7:0] ram_41 = `RAM[8'h41];
 wire [7:0] ram_42 = `RAM[8'h42]; wire [7:0] ram_43 = `RAM[8'h43];
@@ -138,6 +152,17 @@ wire [7:0] ram_7a = `RAM[8'h7a]; wire [7:0] ram_7b = `RAM[8'h7b];
 wire [7:0] ram_7c = `RAM[8'h7c]; wire [7:0] ram_7d = `RAM[8'h7d];
 wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
 
+    wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
+    wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
+    wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
+    wire [7:0] r3 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1b] : `RAM[7'h3];
+    wire [7:0] r4 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1c] : `RAM[7'h4];
+    wire [7:0] r5 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1d] : `RAM[7'h5];
+    wire [7:0] r6 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1e] : `RAM[7'h6];
+    wire [7:0] r7 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1f] : `RAM[7'h7];
+    wire [7:0] r_at_0 = `RAM[r0];
+    wire [7:0] r_at_1 = `RAM[r1];
+
 // ============================================================
 //  Interrupt entry tracker
 //  service_interrupt() pushes to the stack and sets irq_in_progress.
@@ -145,55 +170,73 @@ wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
 //  interrupt-driven stack pushes.  This block synchronises depth
 //  with SP on every interrupt entry and exit.
 // ============================================================
-always @(posedge `KLR_CORE.i8048_core_1.irq_in_progress) begin
+always @(posedge `KLR_TB_PATH.i8048_core_1.irq_in_progress) begin
     call_depth = call_depth + 1;
-    $display(">>> IRQ ENTRY: retaddr=ram[%02h/%02h]=%02h%02h  → ISR",
-        ({`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
-        ({`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08),
-        `RAM[{`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08],
-        `RAM[{`KLR_CORE.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08]);
+`ifdef KLR_DEBUG
+    $display("KLR: >>> IRQ ENTRY: retaddr=ram[%02h/%02h]=%02h%02h  → ISR",
+        ({`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
+        ({`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08),
+        `RAM[{`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b1} + 6'h08],
+        `RAM[{`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08]);
+`endif // KLR_DEBUG
 end
 //  Logs whenever the crank trigger fires (res_n goes low) so
 //  we can see exactly what PC, SP, and IR state was interrupted.
 // ============================================================
-always @(negedge `KLR_CORE.res_n) begin
-    $display("\n>>> TRIGGER RESET fired at t=%0t", $time);
-    $display("    PC=%03h  IR=%02h  irq_in_progress=%0b  cycle_2=%0b",
-        `KLR_CORE.i8048_core_1.pc,
-        `KLR_CORE.i8048_core_1.ir,
-        `KLR_CORE.i8048_core_1.irq_in_progress,
-        `KLR_CORE.i8048_core_1.cycle_2);
-    $display("    Stack slots: [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
+always @(negedge `KLR_TB_PATH.res_n) begin
+`ifdef KLR_DEBUG
+    $display("KLR: \n>>> TRIGGER RESET fired at t=%0t", $time);
+    $display("KLR:     PC=%03h  IR=%02h  irq_in_progress=%0b  cycle_2=%0b",
+        `KLR_TB_PATH.i8048_core_1.pc,
+        `KLR_TB_PATH.i8048_core_1.ir,
+        `KLR_TB_PATH.i8048_core_1.irq_in_progress,
+        `KLR_TB_PATH.i8048_core_1.cycle_2);
+    $display("KLR:     Stack slots: [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
         `RAM[8'h08], `RAM[8'h09], `RAM[8'h0a], `RAM[8'h0b],
         `RAM[8'h0c], `RAM[8'h0d], `RAM[8'h0e], `RAM[8'h0f]);
-    if (`KLR_CORE.i8048_core_1.psw[2:0] != 0)
-        $display("    *** Reset with SP!=0 — stack frame(s) will be orphaned ***");
-    if (`KLR_CORE.i8048_core_1.cycle_2)
-        $display("    *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
+    if (`KLR_TB_PATH.i8048_core_1.psw[2:0] != 0)
+        $display("KLR:     *** Reset with SP!=0 — stack frame(s) will be orphaned ***");
+    if (`KLR_TB_PATH.i8048_core_1.cycle_2)
+        $display("KLR:     *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
+`endif // KLR_DEBUG
 end
-initial begin
-    // FST filename from +fst= runtime arg (set by run_dashboard_tests.sh)
-    // Falls back to a default name if not supplied.
-    begin : fst_setup
-        reg [1023:0] fst_path;
-        if ($value$plusargs("fst=%s", fst_path))
-            $dumpfile(fst_path);
-        else
-            $dumpfile("klr_combined.fst");
-    end
-    $display("FST Dump enabled");
-    $dumpon;
-    $dumpvars(1, dme_klr_tb);
-`ifdef DME_KLR_DEBUG
-    $dumpvars(1, `KLR_CORE);
-    $dumpvars(1, `KLR_TOP.u_klr_vcd);   // sweeps all 128 ram_XX wires
-    $dumpvars(1, `KLR_CORE.i8048_core_1);
-    $dumpvars(1, `KLR_CORE.u_adc_mux);   // ADC pipeline internals
-`endif // DME_KLR_DEBUG
-
-`ifdef RAMPRPM $dumpvars(1, oc8048_tb.var_interrupt_generator_1);
-`ifdef FLATRPM $dumpvars(1, oc8048_tb.interrupt_generator_1);
+`ifndef VCD_FILE
+  `define VCD_FILE "../../tmp/klr/fst/951klr.fst"
 `endif
+
+initial begin
+    $display("KLR: FST Dump enabled");
+    $dumpfile(`VCD_FILE);
+    $dumpon;
+
+    // ── Always-on: minimal signal set (small FST) ─────────────────
+    // Key inter-ECU and output signals always captured regardless of
+    // KLR_DEBUG flag — keeps the VCD loadable in GTKWave.
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.pc);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.ir);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.acc);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.psw);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.mb_latch);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.irq_in_progress);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.timer_val);
+    $dumpvars(1, `KLR_TB_PATH.ign_out);
+    $dumpvars(1, `KLR_TB_PATH.ign_out_n);
+    $dumpvars(1, `KLR_TB_PATH.trigger_in);
+    $dumpvars(1, `KLR_TB_PATH.ign_in);
+    $dumpvars(1, `KLR_TB_PATH.full_load);
+    $dumpvars(1, `KLR_TB_PATH.CV_PWM);
+    $dumpvars(1, `KLR_TB_PATH.knock_out);
+    $dumpvars(1, `KLR_TB_PATH.fake_knock);
+
+    // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
+    // Compile with -DKLR_DEBUG to enable.
+`ifdef KLR_DEBUG
+    $dumpvars(1, `KLR_TOP_TB);
+    $dumpvars(1, `KLR_TB_PATH);
+    $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
+    $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
+    $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
+    $dumpvars(1, `KLR_TOP_TB.u_knock_gen);
 `endif
 
     clk_count = 0;
@@ -201,43 +244,45 @@ initial begin
     last_msg  = "FFFF";
     msg_count = 1;
     call_depth = 0;
-    $readmemh("../../../../../bin_images/klr/test_sim.hex",             debug_msg);
-    $readmemh("../../../../../bin_images/klr/memory_byte_map.hex",      memory_byte_map);
-    $readmemh("../../../../../bin_images/klr/asm_opcode_ins.hex",       opcode);
-    $readmemh("../../../../../bin_images/klr/asm_instr.hex",            instr);
-    $readmemh("../../../../../bin_images/klr/asm_operands.hex",         ops);
-    $readmemh("../../../../../bin_images/klr/asm_operands_numeric.hex", opsnums);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/test_sim.hex",             debug_msg);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/memory_byte_map.hex",      memory_byte_map);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_opcode_ins.hex",       opcode);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_instr.hex",            instr);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands.hex",         ops);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands_numeric.hex", opsnums);
 end
 
 // ============================================================
 //  Per-instruction disassembly + register + key address display
 // ============================================================
-always @(negedge `KLR_CORE.clk) begin
+always @(negedge top.clk) begin
     clk_count      <= clk_count + 1;
-    msg_addr        = `KLR_CORE.i8048_core_1.pc;
+    msg_addr        = top.pc;
     asmlabel        = debug_msg[msg_addr];
     asmopcode       = opcode[msg_addr];
     asminstr        = instr[msg_addr][159:120];
     asmoperands     = ops[msg_addr];
     asmoperandnums  = opsnums[msg_addr];
 
-    if (last_pc !== msg_addr && !`KLR_CORE.i8048_core_1.cycle_2) begin
+    if (last_pc !== msg_addr && !`KLR_TB_PATH.i8048_core_1.cycle_2) begin
 
         if (last_msg !== asmlabel)
             msg_count = 1;
         else
             msg_count = msg_count + 1;
 
-        // ── Disassembly line ────────────────────────────────
+`ifdef KLR_DEBUG
+        // ── Disassembly line (KLR_DEBUG only) ──────────────
         if (asmopcode[159:152] != 8'h20)
             if (asmlabel[159:152] != 8'h20)
-                $display("%15s%8d PC: %4h %s %s\tOPCODE:%s",
+                $display("KLR: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
                     asmlabel, clk_count, msg_addr,
-                    asminstr, asmoperands, asmopcode);
+                    asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
             else
-                $display("\t\t%12d PC: %4h %s %s\tOPCODE:%s",
+                $display("KLR: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
                     clk_count, msg_addr,
-                    asminstr, asmoperands, asmopcode);
+                    asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
+`endif // KLR_DEBUG
 
         // ── R0–R7 register banks ────────────────────────────
         // ── Call depth tracker ──────────────────────────────
@@ -251,8 +296,8 @@ always @(negedge `KLR_CORE.clk) begin
         begin : track_calls
             integer sp_now;
             reg [7:0] curr_op;
-            sp_now  = `KLR_CORE.i8048_core_1.psw[2:0];
-            curr_op = `KLR_CORE.rom_1.rom[msg_addr];
+            sp_now  = `KLR_TB_PATH.i8048_core_1.psw[2:0];
+            curr_op = `KLR_TB_PATH.rom_1.rom[msg_addr];
 
             // CALL family: opcodes x14,x34,x54,x74,x94,xB4,xD4,xF4
             if ((curr_op & 8'h1F) == 8'h14) begin
@@ -262,16 +307,18 @@ always @(negedge `KLR_CORE.clk) begin
                     // Target: {mb_latch, ir[7:5], operand_byte}
                     // ir[7:5] = curr_op[7:5] (upper 3 target bits from opcode)
                     // operand byte = rom[msg_addr + 1]
-                    call_target = {`KLR_CORE.i8048_core_1.mb_latch,
+                    call_target = {`KLR_TB_PATH.i8048_core_1.mb_latch,
                                    curr_op[7:5],
-                                   `KLR_CORE.rom_1.rom[msg_addr + 1]};
+                                   `KLR_TB_PATH.rom_1.rom[msg_addr + 1]};
                     ret_addr = msg_addr[11:0] + 12'h002;
                     if (call_depth < 8) begin
                         call_stack[call_depth] = ret_addr;
                         call_depth = call_depth + 1;
                     end
-                    $display("\t\tCALL  target=%03h  retaddr=%03h",
+`ifdef KLR_DEBUG
+                    $display("KLR: \t\tCALL  target=%03h  retaddr=%03h",
                         call_target, ret_addr);
+`endif // KLR_DEBUG
                 end
             end
 
@@ -282,17 +329,17 @@ always @(negedge `KLR_CORE.clk) begin
                     // firmware sets ram[0x16/0x17] as a fake MB1 frame,
                     // SP=0→7, then RET jumps into MB1. Not a real underflow.
                     if (msg_addr != 12'h2b0) begin
-                        $display("*** STACK UNDERFLOW at PC=%03h opcode=%02h — SP=0, PSW will wrap to 7 ***",
+                        $display("KLR: *** STACK UNDERFLOW at PC=%03h opcode=%02h — SP=0, PSW will wrap to 7 ***",
                             msg_addr, curr_op);
-                        $display("    Shadow call stack:");
-                        $display("    [0]=%03h [1]=%03h [2]=%03h [3]=%03h [4]=%03h [5]=%03h [6]=%03h [7]=%03h",
+                        $display("KLR:     Shadow call stack:");
+                        $display("KLR:     [0]=%03h [1]=%03h [2]=%03h [3]=%03h [4]=%03h [5]=%03h [6]=%03h [7]=%03h",
                             call_stack[0], call_stack[1], call_stack[2], call_stack[3],
                             call_stack[4], call_stack[5], call_stack[6], call_stack[7]);
-                        $display("    RAM stack slots:");
-                        $display("    [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
+                        $display("KLR:     RAM stack slots:");
+                        $display("KLR:     [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
                             `RAM[8'h08], `RAM[8'h09], `RAM[8'h0a], `RAM[8'h0b],
                             `RAM[8'h0c], `RAM[8'h0d], `RAM[8'h0e], `RAM[8'h0f]);
-                        $display("    [10]=%02h [11]=%02h [12]=%02h [13]=%02h [14]=%02h [15]=%02h [16]=%02h [17]=%02h",
+                        $display("KLR:     [10]=%02h [11]=%02h [12]=%02h [13]=%02h [14]=%02h [15]=%02h [16]=%02h [17]=%02h",
                             `RAM[8'h10], `RAM[8'h11], `RAM[8'h12], `RAM[8'h13],
                             `RAM[8'h14], `RAM[8'h15], `RAM[8'h16], `RAM[8'h17]);
                     end else begin
@@ -307,12 +354,14 @@ always @(negedge `KLR_CORE.clk) begin
                 end else begin
                     call_depth = call_depth - 1;
                 end
-                $display("\t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
+`ifdef KLR_DEBUG
+                $display("KLR: \t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
                     (curr_op == 8'h93) ? "RETR" : "RET ",
                     ({sp_now[2:0] - 1'b1, 1'b0} + 6'h08),
                     ({sp_now[2:0] - 1'b1, 1'b1} + 6'h08),
                     `RAM[{sp_now[2:0] - 1'b1, 1'b1} + 6'h08],
                     `RAM[{sp_now[2:0] - 1'b1, 1'b0} + 6'h08]);
+`endif // KLR_DEBUG
             end
 
             else begin
@@ -340,9 +389,9 @@ integer ram_idx;
 initial begin
     #`SIM_TIME;
     $display("\n========== KLR Internal RAM Dump (end of simulation) ==========");
-    $display("       00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F");
+    $display("KLR:        00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F");
     for (ram_idx = 0; ram_idx < 128; ram_idx = ram_idx + 16) begin
-        $display("%04h:  %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h",
+        $display("KLR: %04h:  %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h %02h",
             ram_idx,
             `RAM[ram_idx+ 0], `RAM[ram_idx+ 1],
             `RAM[ram_idx+ 2], `RAM[ram_idx+ 3],
@@ -353,7 +402,14 @@ initial begin
             `RAM[ram_idx+12], `RAM[ram_idx+13],
             `RAM[ram_idx+14], `RAM[ram_idx+15]);
     end
-    $display("===============================================================\n");
+    $display("KLR: ===============================================================\n");
 end
+
+// ============================================================
+//  PHASE/STATUS monitoring now lives solely in klr_phase_monitor.v
+//  (removed from here to eliminate duplicate console output).
+//  This file is responsible for FST waveform dump + per-instruction
+//  trace (KLR_DEBUG) + IRQ/reset/stack diagnostics only.
+// ============================================================
 
 endmodule

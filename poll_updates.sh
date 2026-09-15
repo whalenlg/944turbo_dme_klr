@@ -3,8 +3,8 @@
 # Polls for git updates in 944turbo_dme_klr, then runs the build/test pipeline.
 
 REPO_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr"
-GEMINI_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr/gemini8048"
-CLAUDE_DIR="/Users/mike/coding_projects/DME_sim/claude_8051"
+KLR_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr/klr"
+DME_CORE_DIR="/Users/mike/coding_projects/DME_sim/dme"
 DME_DIR="/Users/mike/coding_projects/DME_sim/dme_klr"
 POLL_INTERVAL=300  # seconds (5 minutes)
 
@@ -50,18 +50,18 @@ while true; do
 
     log "Changes detected! Starting build pipeline..."
 
-    # Step 1: run_48 in gemini8048
-    log "Running run_48 in $GEMINI_DIR..."
-    cd "$GEMINI_DIR"
+    # Step 1: run_48 in klr
+    log "Running run_48 in $KLR_DIR..."
+    cd "$KLR_DIR"
     if ! ./run_48; then
         log "ERROR: run_48 failed. Exiting."
         exit 1
     fi
     log "run_48 completed successfully."
 
-    # Step 2: run_reg in claude_8051
-    log "Running run_reg in $CLAUDE_DIR..."
-    cd "$CLAUDE_DIR"
+    # Step 2: run_reg in dme
+    log "Running run_reg in $DME_CORE_DIR..."
+    cd "$DME_CORE_DIR"
     if ! ./run_reg; then
         log "ERROR: run_reg failed. Exiting."
         exit 1
