@@ -12,7 +12,7 @@ klr/d52/
 gtkwave/
 iverilog/
 verilator/
-dme/dashboard/
+dashboard/
 .DS_Store
 *.swp
 *.fst
