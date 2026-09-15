@@ -36,10 +36,10 @@ IV_LOGDIR="$VVP_DIR/dash_logs"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
-RTLd=../claude_8051/rtl/verilog
-BENCHd=../claude_8051/bench/verilog
-RTLk=../gemini8048/rtl/verilog
-BENCHk=../gemini8048/bench/verilog
+RTLd=../dme/rtl/verilog
+BENCHd=../dme/bench/verilog
+RTLk=../klr/rtl/verilog
+BENCHk=../klr/bench/verilog
 
 FILES_KLR_COMBINED=files_klr   # combined DME+KLR source list
 

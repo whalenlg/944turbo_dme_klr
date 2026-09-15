@@ -12,8 +12,8 @@
 //
 //  Compile:
 //    iverilog -o dme_klr.vvp -s dme_klr_tb        \
-//      -I ../claude_8051/bench/verilog              \
-//      -I ../gemini8048/bench/verilog               \
+//      -I ../dme/bench/verilog                      \
+//      -I ../klr/bench/verilog                      \
 //      klr_defs.v                                   \
 //      timescale.v                                  \
 //      i8051_core.v  i8051_top.v                    \

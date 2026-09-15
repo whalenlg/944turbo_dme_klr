@@ -1,0 +1,2 @@
+iverilog -I bench/verilog -o ../../tmp/dme/dme_reg.vvp bench/verilog/i8051_regression_tb.v rtl/verilog/i8051_core.v 
+vvp ../../tmp/dme/dme_reg.vvp 

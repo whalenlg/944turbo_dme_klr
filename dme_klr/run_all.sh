@@ -58,7 +58,7 @@ MODE_DESC="both simulators"
 [ "$RUN_IVERILOG" = "1" ] && [ "$RUN_VERILATOR" = "0" ] && MODE_DESC="iverilog only"
 log "Workers: $WORKERS  Mode: $MODE_DESC"
 hdr "1/5  i8048 KLR Regression"
-cd "$ROOT/gemini8048"
+cd "$ROOT/klr"
 log "Running: bash run_48"
 bash run_48 2>&1 > /tmp/run48.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run48.log; then
@@ -71,7 +71,7 @@ fi
 
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
-cd "$ROOT/claude_8051"
+cd "$ROOT/dme"
 log "Running: bash run_reg"
 bash run_reg 2>&1 > /tmp/run_reg.log || true
 if grep -q "ALL TESTS PASSED" /tmp/run_reg.log; then
