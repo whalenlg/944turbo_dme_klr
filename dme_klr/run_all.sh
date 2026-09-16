@@ -16,6 +16,12 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+echo "== git checkout main =="
+(cd "$ROOT" && git checkout main)
+echo "== git pull origin main =="
+(cd "$ROOT" && git pull origin main)
+
 DME_KLR="$ROOT/dme_klr"
 PASS=0; WARN=0; FAIL=0
 START_TIME=$(date +%s)
