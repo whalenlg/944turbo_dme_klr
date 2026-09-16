@@ -59,27 +59,27 @@ MODE_DESC="both simulators"
 log "Workers: $WORKERS  Mode: $MODE_DESC"
 hdr "1/5  i8048 KLR Regression"
 cd "$ROOT/klr"
-log "Running: bash run_48"
-bash run_48 2>&1 > /tmp/run48.log || true
-if grep -q "ALL TESTS PASSED" /tmp/run48.log; then
-    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
+log "Running: bash run_klr_regression"
+bash run_klr_regression 2>&1 > /tmp/run_klr_regression.log || true
+if grep -q "ALL TESTS PASSED" /tmp/run_klr_regression.log; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_klr_regression.log | grep -o '[0-9]*' | tail -1)
     ok "i8048 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run48.log | grep -o '[0-9]*' | tail -1)
-    fail "i8048 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run48.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_klr_regression.log | grep -o '[0-9]*' | tail -1)
+    fail "i8048 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_klr_regression.log)"
 fi
 
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
 cd "$ROOT/dme"
-log "Running: bash run_reg"
-bash run_reg 2>&1 > /tmp/run_reg.log || true
-if grep -q "ALL TESTS PASSED" /tmp/run_reg.log; then
-    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
+log "Running: bash run_dme_regression"
+bash run_dme_regression 2>&1 > /tmp/run_dme_regression.log || true
+if grep -q "ALL TESTS PASSED" /tmp/run_dme_regression.log; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_dme_regression.log | grep -o '[0-9]*' | tail -1)
     ok "i8051 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_reg.log | grep -o '[0-9]*' | tail -1)
-    fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_reg.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_dme_regression.log | grep -o '[0-9]*' | tail -1)
+    fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_dme_regression.log)"
 fi
 
 # ── 3. Verilator full suite ───────────────────────────────────────────────────
