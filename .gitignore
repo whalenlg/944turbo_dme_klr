@@ -7,7 +7,6 @@
 *~*xlsx
 trace
 node_modules/
-fstdumper/
 klr/d52/
 gtkwave/
 iverilog/
