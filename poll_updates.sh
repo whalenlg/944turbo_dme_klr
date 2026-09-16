@@ -50,23 +50,23 @@ while true; do
 
     log "Changes detected! Starting build pipeline..."
 
-    # Step 1: run_48 in klr
-    log "Running run_48 in $KLR_DIR..."
+    # Step 1: run_klr_regression in klr
+    log "Running run_klr_regression in $KLR_DIR..."
     cd "$KLR_DIR"
-    if ! ./run_48; then
-        log "ERROR: run_48 failed. Exiting."
+    if ! ./run_klr_regression; then
+        log "ERROR: run_klr_regression failed. Exiting."
         exit 1
     fi
-    log "run_48 completed successfully."
+    log "run_klr_regression completed successfully."
 
-    # Step 2: run_reg in dme
-    log "Running run_reg in $DME_CORE_DIR..."
+    # Step 2: run_dme_regression in dme
+    log "Running run_dme_regression in $DME_CORE_DIR..."
     cd "$DME_CORE_DIR"
-    if ! ./run_reg; then
-        log "ERROR: run_reg failed. Exiting."
+    if ! ./run_dme_regression; then
+        log "ERROR: run_dme_regression failed. Exiting."
         exit 1
     fi
-    log "run_reg completed successfully."
+    log "run_dme_regression completed successfully."
 
     # Step 3: run_dashboard_parallel.sh in dme_klr
     log "Running run_dashboard_parallel.sh -verilator run 8 in $DME_DIR..."
