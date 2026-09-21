@@ -10,8 +10,29 @@ module i8048_core (
 );
 
     // --- Registers & State ---
-    reg [2:0] state;               
+    reg [2:0] state;
     reg [7:0] psw;
+    // ─────────────────────────────────────────────────────────────
+    // State-clock enable — `clk` models the raw 11 MHz crystal
+    // (see klr_defs.v `KLR_FREQ`). On real 8048/8049 silicon, one
+    // machine cycle is 5 states x 3 crystal clocks = 15 XTAL periods;
+    // the crystal is divided by 3 internally to produce the T-state
+    // clock. state_clk_en reproduces that divide-by-3 so the Timing
+    // Engine below (and anything that must move in lockstep with it,
+    // e.g. the ALE-gated timer prescaler) advances at the correct
+    // rate relative to the modeled crystal, instead of once per raw
+    // clk edge.
+    // ─────────────────────────────────────────────────────────────
+    reg [1:0] clk_div_phase;
+    always @(posedge clk or negedge res_n) begin
+        if (!res_n)
+            clk_div_phase <= 2'd0;
+        else if (clk_div_phase == 2'd2)
+            clk_div_phase <= 2'd0;
+        else
+            clk_div_phase <= clk_div_phase + 1'b1;
+    end
+    wire state_clk_en = (clk_div_phase == 2'd0);
     reg [7:0] ram [0:127];          
     reg       irq_in_progress, irq_en_ext, irq_en_timer;
     reg       timer_en, timer_flag,timer_running,timer_mode,mb_latch;
@@ -147,7 +168,7 @@ end
             p1 <= 8'hFF;  // 8048 open-drain: all bits float high on reset
             p2 <= 8'hFF;  // same for P2
             {ale, psen_n, rd_n, wr_n, prog} <= 5'b01111;
-        end else begin
+        end else if (state_clk_en) begin
             case (state)
                 3'd1: begin ale <= 1; psen_n <= 0; rd_n <= 1; wr_n <= 1; prog <= 1;
                           mb_latch_r <= mb_latch;
@@ -1079,7 +1100,12 @@ always @(posedge clk) begin
         end else if (timer_running) begin
             if (timer_mode == 1'b0) begin
                 // --- TIMER MODE: /32 prescaler, advance once per machine cycle ---
-                if (ale) begin
+                // ale now stays high for 3 raw clk edges (one state period,
+                // per the /3 divider above) instead of 1, so gate on
+                // state_clk_en too — ale is only read here on the edge where
+                // it settles high (see state_clk_en comment above), giving
+                // exactly one prescaler tick per machine cycle as before.
+                if (ale && state_clk_en) begin
                     if (prescaler == 5'd31) begin
                         prescaler <= 5'd0;
                         if (timer_val == 8'hFF) begin

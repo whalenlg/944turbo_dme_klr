@@ -162,11 +162,14 @@ module i8048_core_tb;
         end
     endtask
 
-    // Clock N full CPU machine cycles (each = 5 clocks in the state machine)
+    // Clock N full CPU machine cycles (each = 15 clocks in the state
+    // machine: 5 states x 3 clocks/state, since state_clk_en in
+    // i8048_core.v divides clk by 3 to model the crystal correctly —
+    // see i8048_core.v's state_clk_en comment)
     task clock_cycles;
         input integer n;
         begin
-            repeat(n * 5) @(posedge clk);
+            repeat(n * 15) @(posedge clk);
             #1; // settle
         end
     endtask
@@ -627,7 +630,7 @@ module i8048_core_tb;
         begin : timer_stop_check
             reg [7:0] saved_val;
             saved_val = dut.timer_val;
-            repeat(20*5) @(posedge clk); #1;
+            repeat(20*15) @(posedge clk); #1;
             test_num = test_num + 1;
             if (dut.timer_val === saved_val) begin
                 $display("  PASS [%0d] Timer stopped at %02h", test_num, saved_val);
@@ -820,11 +823,12 @@ module i8048_core_tb;
         clock_cycles(2); clock_cycles(1); clock_cycles(1);
         // Poll timer_flag directly — stop as soon as it sets, with a timeout
         // Timer starts at 0xFE, needs 2 increments * 32 prescaler ticks to overflow
-        // That is ~320 clocks minimum; poll every clock with a 600-clock timeout
+        // = 64 machine cycles * 15 clocks/cycle = 960 clocks minimum; poll
+        // every clock with a 1800-clock timeout
         begin : wait_jtf
             integer timeout;
             timeout = 0;
-            while (!dut.timer_flag && timeout < 600) begin
+            while (!dut.timer_flag && timeout < 1800) begin
                 @(posedge clk); #1;
                 timeout = timeout + 1;
             end
@@ -1348,7 +1352,7 @@ module i8048_core_tb;
         begin : wait_timer_irq
             integer t;
             t = 0;
-            while (!dut.irq_in_progress && t < 500) begin
+            while (!dut.irq_in_progress && t < 1500) begin
                 @(posedge clk); #1;
                 t = t + 1;
             end
@@ -1414,8 +1418,8 @@ module i8048_core_tb;
         rom[12'h003] = 8'h55;
         clock_cycles(2); clock_cycles(1); clock_cycles(1);
         begin : wait_ovf_a
-            // Timer at 0xFF: 1 tick × 32 ALE × 5 clks/ALE = 160 clks min; use 300
-            integer w; for (w = 0; w < 300; w = w+1) @(posedge clk);
+            // Timer at 0xFF: 1 tick × 32 ALE × 15 clks/ALE = 480 clks min; use 900
+            integer w; for (w = 0; w < 900; w = w+1) @(posedge clk);
         end
         begin : chk_sticky1
             test_num = test_num + 1;
@@ -1428,7 +1432,7 @@ module i8048_core_tb;
             end
         end
         begin : wait_64
-            integer w; for (w = 0; w < 64; w = w+1) @(posedge clk);
+            integer w; for (w = 0; w < 192; w = w+1) @(posedge clk);
         end
         begin : chk_sticky2
             test_num = test_num + 1;
@@ -1501,7 +1505,7 @@ module i8048_core_tb;
         // No ISR can fire (EN TCNTI not called yet)
         begin : wait_tmr_ovf_b
             integer t; t = 0;
-            while (dut.timer_flag !== 1'b1 && t < 1000) begin @(posedge clk); #1; t=t+1; end
+            while (dut.timer_flag !== 1'b1 && t < 3000) begin @(posedge clk); #1; t=t+1; end
         end
         begin : chk_tmr_pend
             test_num = test_num + 1;
@@ -1526,7 +1530,7 @@ module i8048_core_tb;
         // Wait for ext interrupt entry
         begin : wait_ext_b
             integer t; t = 0;
-            while (!dut.irq_in_progress && t < 200) begin @(posedge clk); #1; t=t+1; end
+            while (!dut.irq_in_progress && t < 600) begin @(posedge clk); #1; t=t+1; end
         end
         clock_cycles(2);  // JMP at 0x003 → 0x040
         check_pc(12'h040, "MultiIRQ-B: ext ISR entered 0x040");
@@ -1553,13 +1557,13 @@ module i8048_core_tb;
         // → timer ISR must fire
         begin : wait_tmr_fires_b
             integer t; t = 0;
-            while (!dut.irq_in_progress && t < 100) begin @(posedge clk); #1; t=t+1; end
+            while (!dut.irq_in_progress && t < 300) begin @(posedge clk); #1; t=t+1; end
         end
         // Wait for JMP dispatch at 0x007 → 0x060 to complete using PC poll
         // (event-based, avoids fixed clock count that may be too short)
         begin : wait_pc_060
             integer t; t = 0;
-            while (dut.pc !== 12'h060 && t < 100) begin @(posedge clk); #1; t=t+1; end
+            while (dut.pc !== 12'h060 && t < 300) begin @(posedge clk); #1; t=t+1; end
         end
         check_pc(12'h060, "MultiIRQ-B: timer ISR entered 0x060 after ext RETR");
         clock_cycles(2); check_acc(8'h55, "MultiIRQ-B: timer ISR A=0x55");
@@ -1606,7 +1610,7 @@ module i8048_core_tb;
         force dut.int_n = 1'b0;
         begin : wait_ext_c
             integer t; t = 0;
-            while (!dut.irq_in_progress && t < 200) begin @(posedge clk); #1; t=t+1; end
+            while (!dut.irq_in_progress && t < 600) begin @(posedge clk); #1; t=t+1; end
         end
         clock_cycles(2);  // JMP at 0x003 executes → PC arrives at 0x040
         check_pc(12'h040, "MultiIRQ-C: ext ISR at 0x040");
@@ -1618,7 +1622,7 @@ module i8048_core_tb;
         // Settle: DIS TCNTI means irq_en_timer=0 and DIS I means irq_en_ext=0.
         // Neither interrupt can fire. Wait a few cycles for state to propagate.
         begin : settle_c
-            integer w; for (w = 0; w < 20; w = w+1) @(posedge clk);
+            integer w; for (w = 0; w < 60; w = w+1) @(posedge clk);
         end
         begin : chk_final_c
             test_num = test_num + 1;
@@ -1674,7 +1678,7 @@ module i8048_core_tb;
         @(posedge clk); #1;
         begin : wait_cycle2_a
             integer t; t = 0;
-            while (dut.cycle_2 !== 1'b1 && t < 20) begin @(posedge clk); #1; t=t+1; end
+            while (dut.cycle_2 !== 1'b1 && t < 60) begin @(posedge clk); #1; t=t+1; end
         end
 
         // Assert reset while cycle_2=1
@@ -1861,7 +1865,8 @@ module i8048_core_tb;
     // Timeout watchdog — prevent infinite loops in simulation
     // -------------------------------------------------------------------------
     initial begin
-        #2_000_000; // 2ms sim time limit
+        #6_000_000; // 6ms sim time limit (3x the prior 2ms — every machine
+                    // cycle now takes 15 clocks instead of 5, see clock_cycles)
         $display("TIMEOUT: simulation exceeded time limit");
         $finish;
     end
