@@ -176,16 +176,16 @@ TESTS = {
     'cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor'},
     'cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96,
-                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor'},
+                          'dwell_cap':96, 'expect_ram33_value':0x21,
+                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor. ram[33]=0x21 expected — self-test-fault code the firmware correctly reports for the dead ADC0 noise-floor sensor'},
     # KLR_ADC0_NOISE_LOW: the opposite fault character from NOISE_HIGH —
     # stuck at a fixed 0x80 (mid-scale) for the whole simulation, rather
     # than dead-low at 0. No specific assertion on the DTC behavior yet —
     # add one (e.g. require_ram33_value) once a real run shows what the
     # firmware actually does with a stuck-at-midscale noise-floor signal.
     'cl_ramp_to_6000_KLR_ADC0_NOISE_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96,
-                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) stuck at a flat 0x80 for the whole simulation to simulate a mid-scale stuck-at sensor fault'},
+                          'dwell_cap':96, 'expect_ram33_value':0x22,
+                          'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) stuck at a flat 0x80 for the whole simulation to simulate a mid-scale stuck-at sensor fault. ram[33]=0x22 expected — self-test-fault code the firmware correctly reports for the stuck-at ADC0 noise-floor sensor'},
 
     # cl_condition_cycle / cl_condition_cycle_idle: 5-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC), each 1s nominal / 5s
