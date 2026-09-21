@@ -226,15 +226,14 @@ TESTS = {
 
     # --- Boost model tests (klr_tb.v -DBOOST) — same base CL checks as
     #     cl_ramp_to_3000/cl_ramp_to_6000, plus DTC checks for the fault-
-    #     injection variants. BOOST_ZERO and BOOST_HIGH each reliably
-    #     trigger a specific KLR self-diagnostic (ram[33], "3-3"/"3-2" in
-    #     the KLR Diag tab's X-Y notation) — require_ram33_value FAILS the
-    #     test if that DTC never fires, since triggering it is the entire
-    #     point of these two tests. BOOST_LOW does NOT reliably trigger any
-    #     DTC in testing so far (investigated across multiple RPM targets:
-    #     3000/4500/6000) — no DTC assertion here until/unless that
-    #     changes; a future finding of when/whether LOW does fault should
-    #     get its own require_ram33_value added here to match.
+    #     injection variants. BOOST_ZERO, BOOST_HIGH, and (at 6000 RPM)
+    #     BOOST_LOW each reliably trigger a specific KLR self-diagnostic
+    #     (ram[33], "3-3"/"3-2"/"3-1" in the KLR Diag tab's X-Y notation) —
+    #     require_ram33_value FAILS the test if that DTC never fires,
+    #     since triggering it is the entire point of these tests.
+    #     cl_ramp_to_3000_BOOST_LOW does NOT reliably trigger any DTC in
+    #     testing so far — no DTC assertion there until/unless that
+    #     changes.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
     'cl_ramp_to_3000_BOOST_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
@@ -246,8 +245,8 @@ TESTS = {
                           'dwell_cap':96, 'require_ram33_value':0x33,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input forced to 0 (disconnected/failed sensor simulation) — KLR expected to detect this and set DTC 3-3 (0x33, Pressure Sensor In KLR Defective)'},
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96,
-                          'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 65 (raw ADC). No DTC reliably observed — see block note above'},
+                          'dwell_cap':96, 'require_ram33_value':0x31,
+                          'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 65 (raw ADC) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},
     'cl_ramp_to_6000_BOOST_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x32,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input raised by 33 (saturating at 255, then firmware-compliance-capped at 0xF0 — raw ADC) — KLR expected to detect this and set DTC 3-2 (0x32, Boost Pressure Too High)'},
