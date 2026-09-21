@@ -226,18 +226,17 @@ TESTS = {
 
     # --- Boost model tests (klr_tb.v -DBOOST) — same base CL checks as
     #     cl_ramp_to_3000/cl_ramp_to_6000, plus DTC checks for the fault-
-    #     injection variants. BOOST_ZERO, BOOST_HIGH, and (at 6000 RPM)
-    #     BOOST_LOW each reliably trigger a specific KLR self-diagnostic
+    #     injection variants. Only the 6000 RPM boost-fault variants
+    #     (BOOST_ZERO, BOOST_HIGH, BOOST_LOW) are actually wired up as
+    #     runnable tests in run_dashboard_tests.sh / v_run_dashboard_tests.sh
+    #     — there is no 3000 RPM boost-fault variant, only the unmodified
+    #     cl_ramp_to_3000_BOOST baseline. Each of the three 6000 RPM
+    #     fault tests reliably triggers a specific KLR self-diagnostic
     #     (ram[33], "3-3"/"3-2"/"3-1" in the KLR Diag tab's X-Y notation) —
     #     require_ram33_value FAILS the test if that DTC never fires,
     #     since triggering it is the entire point of these tests.
-    #     cl_ramp_to_3000_BOOST_LOW does NOT reliably trigger any DTC in
-    #     testing so far — no DTC assertion there until/unless that
-    #     changes.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
-    'cl_ramp_to_3000_BOOST_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'Same as cl_ramp_to_3000_BOOST, boost input reduced by 65 (raw ADC). No DTC reliably observed — see block note above'},
     'cl_ramp_to_6000_BOOST': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
