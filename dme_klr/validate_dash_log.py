@@ -266,7 +266,8 @@ TESTS = {
     # fuel_range interpolated between the 4500/6000 ranges for the same
     # reason cl_ramp_to_4500's was — tighten once real data is available.
     'cl_ramp_to_5000_BOOST_LOW': {'rpm_target': 5000, 'fuel_range':(1.5, 13.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC). No DTC reliably observed at 4500/6000 either — see boost-test block note above'},
+                          'require_ram33_value':0x31,
+                          'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low), same as cl_ramp_to_6000_BOOST_LOW'},
 
     'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
