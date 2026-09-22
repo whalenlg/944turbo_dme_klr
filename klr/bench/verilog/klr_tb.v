@@ -417,20 +417,23 @@ module klr_tb #(parameter EXT_STIM = 0) (
         .knock_noise  ( knock_noise    )
     );
 
-    // adc_ch0 default scaling: x64/255 of knock_noise. IMPORTANT — this
+    // adc_ch0 default scaling: x64/59 of knock_noise. IMPORTANT — this
     // comment previously documented knock_noise's raw range as
     // 0xFF<->0x6E (255/110), based on the module's older combinational
-    // formula. knock_gen.v now computes knock_noise as a rolling
-    // average of (knock_sensor/4 + fake_knock*32) over trigger_in
-    // ticks, which has a fundamentally different range — roughly
-    // 27 (fake_knock never asserted) up to 59 (fake_knock constantly
-    // asserted) with knock_sensor=110, smoothly blending between them
-    // over ~10 trigger ticks rather than jumping instantly. The x64/255
-    // scale factor itself is UNCHANGED, but its actual output range is
-    // now correspondingly lower (roughly 6-14 instead of the previously
-    // documented ~0x40 baseline) — see knock_gen.v for the current
-    // knock_noise derivation before assuming any specific adc_ch0
-    // number here.
+    // formula, and scaled it x64/255 to match. knock_gen.v now computes
+    // knock_noise as a rolling average of (knock_sensor/4 + fake_knock*32)
+    // over trigger_in ticks, which has a fundamentally different range —
+    // roughly 27 (fake_knock never asserted) up to 59 (fake_knock
+    // constantly asserted, knock_sensor's fixed 110 default), smoothly
+    // blending between them over ~10 trigger ticks rather than jumping
+    // instantly. The x64/255 scale factor was left over from the old
+    // range and never recalibrated, which silently pulled the real
+    // output down to roughly 6-14 instead of the intended ~0x40 ceiling
+    // — rescaled here to x64/59 (59 = the real ceiling at knock_sensor's
+    // normal 110 default) so the self-test-active state lands at the
+    // originally-intended 0x40, with the quiescent (no fake_knock) floor
+    // at ~0x1D. See knock_gen.v for the current knock_noise derivation
+    // before assuming any specific adc_ch0 number here.
     //
     // -DKLR_ADC0_NOISE_HIGH now uses knock_noise DIRECTLY (no further
     // scaling) — knock_gen.v switches to a different, much
@@ -451,17 +454,18 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // fault rather than a scaled/attenuated one).
     //
     // 16-bit intermediate avoids overflow in the default case —
-    // knock_noise*64 can reach 16320, which needs 15 bits; without the
-    // explicit width here, Verilog would size the whole expression to
-    // match the 8-bit LHS and silently wrap the product before the
-    // division ever happens.
+    // knock_noise*64 can reach 16320 (95*64, EXT_STIM's max knock_sensor
+    // override headroom — see knock_gen.v's sample_sum width comment),
+    // which needs 15 bits; without the explicit width here, Verilog
+    // would size the whole expression to match the 8-bit LHS and
+    // silently wrap the product before the division ever happens.
 `ifdef KLR_ADC0_NOISE_HIGH
     wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator — rolling average under knock_gen.v's NOISE_HIGH sample_val formula (KLR_ADC0_NOISE_HIGH test)
 `elsif KLR_ADC0_NOISE_LOW
     wire [7:0] adc_ch0 = 8'h80;  // knock sensor noise-level indicator — stuck at 0x80 for the whole sim (KLR_ADC0_NOISE_LOW test)
 `else
     wire [15:0] _adc0_noise_scaled_wide = knock_noise * 16'd64;
-    wire [7:0] adc_ch0 = _adc0_noise_scaled_wide / 16'd255;  // knock sensor noise-level indicator — nominal ~0x40 baseline / ~0x1B dip (all tests)
+    wire [7:0] adc_ch0 = _adc0_noise_scaled_wide / 16'd59;  // knock sensor noise-level indicator — nominal ~0x40 ceiling (self-test knock active) / ~0x1D floor (quiescent) (all tests)
 `endif
     wire [7:0] adc_ch5 = knock_sum;    // lm2902.14 — comparator output
 
