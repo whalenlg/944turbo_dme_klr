@@ -95,10 +95,20 @@ wire next_cycle_state = (cycle_2 == 0 && is_2_cycle) ? 1'b1 : 1'b0;
 initial
    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/op_ins8048.hex",opinstr);
 
+`ifdef KLR_DEBUG
+    // Tight-loop suppression for KLR_DEBUG's per-instruction prints — see
+    // klr_debug_loop_detect.v. klr_vcd.v reads u_dbg_loop.suppress (and
+    // the loop_reps/loop_lo/loop_hi/loop_just_exited fields) via
+    // hierarchical reference to gate its own disassembly line the same way.
+    klr_debug_loop_detect u_dbg_loop (
+        .clk (clk), .res_n (res_n), .pc (pc), .cycle_2 (cycle_2),
+        .suppress (), .loop_reps (), .loop_lo (), .loop_hi (), .loop_just_exited ()
+    );
+`endif
 
 // Task to display bus and memory status
 task display_read_status;
-    input[11:0] pc; 
+    input[11:0] pc;
     input[7:0] instr;
     input [7:0] data_old;
     input [7:0] data_read;
@@ -106,6 +116,7 @@ task display_read_status;
     input [11:0] address;
     begin
 `ifdef KLR_DEBUG
+        if (!u_dbg_loop.suppress)
         $display("KLR: PC: %h | OpCode: %h | Instr: %s | Addr: %h | OldVal: %h | ReadVal: %h | ResultVal: %h",
                  pc,instr,opinstr[instr],address, data_old, data_read, data_out);
 `endif
