@@ -699,11 +699,14 @@ task execute_instruction;
                         // Suppress known intentional computed-jump RET:
                         // 0x2b0 uses SP=0 wrap-around deliberately to jump
                         // into MB1 via ram[0x16/0x17] as a fake stack frame.
-                        if (pc != 12'h2b0)
-                        $display("*** STACK UNDERFLOW: RET at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
-                            pc,
-                            ({3'b111, 1'b0} + 6'h08),
-                            ({3'b111, 1'b1} + 6'h08));
+                        if (pc != 12'h2b0) begin
+`ifdef CPU_DEEP_DEBUG
+                            $display("*** STACK UNDERFLOW: RET at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
+                                pc,
+                                ({3'b111, 1'b0} + 6'h08),
+                                ({3'b111, 1'b1} + 6'h08));
+`endif
+                        end
                     pc[7:0] <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
                     retmem1 <= {psw[2:0] - 1'b1, 1'b0} + 6'h08;
                     rmem_dat <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
@@ -719,11 +722,14 @@ task execute_instruction;
                 if (!cycle_2) begin
                     cycle_2 <= 1'b1;
                 end else begin
-                    if (psw[2:0] == 3'b000)
+                    if (psw[2:0] == 3'b000) begin
+`ifdef CPU_DEEP_DEBUG
                         $display("*** STACK UNDERFLOW: RETR at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
                             pc,
                             ({3'b111, 1'b0} + 6'h08),
                             ({3'b111, 1'b1} + 6'h08));
+`endif
+                    end
                     pc[7:0] <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
                     retmem1 <= {psw[2:0] - 1'b1, 1'b0} + 6'h08;
                     rmem_dat <= ram[{psw[2:0] - 1'b1, 1'b0} + 6'h08];
