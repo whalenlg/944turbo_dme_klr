@@ -283,40 +283,74 @@ module klr_tb #(parameter EXT_STIM = 0) (
         boost_map_value = v0 + (v1 - v0) * thr_frac;
     end
 
+    // ── First-order lag filter on the boost target ───────────────────
+    // boost_map_value (the bilinear RPM+throttle lookup above) is the
+    // correct steady-state target for the CURRENT operating point, but
+    // driving it straight through made the reported boost value look
+    // disconnected from AFM's own ramp: throttle reaches its target in
+    // ~2.25s (see AFM_CL_RAMP in i8051_dashboard_tb.v), but the table's
+    // low-RPM cells are nearly flat, so nothing visibly moved again
+    // until RPM happened to cross into a much steeper table cell several
+    // seconds later — a jump that looked unrelated to when AFM actually
+    // moved. klr_tb.v and the DME side (u_dme) are sibling instances —
+    // no direct visibility into AFM's own ramp timer here — so rather
+    // than wiring in a new cross-module event signal, this filter just
+    // continuously chases whatever the current target is with a ~500ms
+    // time constant. In practice boost now starts visibly moving shortly
+    // after EITHER input changes (AFM crossing a table row, or RPM
+    // crossing a table column) instead of snapping straight to each new
+    // cell the instant it's entered.
+    real boost_map_filtered;
+    localparam real BOOST_LAG_TAU_NS = 500_000_000.0;  // ~500ms time constant
+    initial boost_map_filtered = 0.0;
+    always @(posedge clk) begin
+        boost_map_filtered <= boost_map_filtered
+            + (boost_map_value - boost_map_filtered) * ((2.0 * DELAY) / BOOST_LAG_TAU_NS);
+    end
+
     // Reverse the ADC-read routine's +10 offset (see header comment) —
     // we're driving the RAW ADC channel, not ram[52h] directly. (Briefly
     // removed, then restored — removing it also silently shifted the
     // plain BOOST and BOOST_HIGH cases +10 higher than intended, not just
     // BOOST_LOW, so it's back.)
-    wire [7:0] boost_adc4_raw = (boost_map_value - 10.0 < 0.0)   ? 8'd0   :
-                                 (boost_map_value - 10.0 > 255.0) ? 8'd255 :
-                                 $rtoi(boost_map_value - 10.0);
+    wire [7:0] boost_adc4_raw = (boost_map_filtered - 10.0 < 0.0)   ? 8'd0   :
+                                 (boost_map_filtered - 10.0 > 255.0) ? 8'd255 :
+                                 $rtoi(boost_map_filtered - 10.0);
 
     // Test-only overrides on top of the normal MAP-table value:
     //  -DBOOST_ZERO     — force the ADC input to 0 (e.g. simulate a
     //                      disconnected/failed boost sensor)
     //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
     //                      simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH     — pinned at the max raw value (0xFF), which the
-    //                      firmware-compliance cap below still clamps to
-    //                      0xF0 (e.g. simulate an overboost condition or
-    //                      wastegate failure). Previously a modest +33
-    //                      offset over the current MAP-table value — that
-    //                      wasn't reliably clearing the firmware's actual
-    //                      over-boost threshold (cl_ramp_to_6000_BOOST_HIGH
-    //                      never observed DTC 0x32), so this now drives
-    //                      the strongest sustained overboost signal the
-    //                      compliance cap allows for the whole test,
-    //                      instead of a marginal excursion above whatever
-    //                      the MAP table happens to read at that moment.
+    //  -DBOOST_HIGH     — normal value plus 80, saturating at 255 (e.g.
+    //                      simulate an overboost condition or wastegate
+    //                      failure). Rides on top of the real MAP-table
+    //                      value (boost_adc4_raw, itself driven from the
+    //                      firmware's own ram[43h] TPS/RPM state — see
+    //                      boost_thr_pct above), so the fault signal
+    //                      rises and falls on the same slope as real
+    //                      TPS/RPM instead of a flat, load-independent
+    //                      value — a real overboost condition can't exist
+    //                      at closed throttle/idle, and a reading that's
+    //                      high regardless of load looks like a stuck
+    //                      sensor fault, not genuine overboost.
+    //                      Previously +33 — too small to reliably clear
+    //                      the firmware's actual over-boost threshold
+    //                      (cl_ramp_to_6000_BOOST_HIGH never observed
+    //                      DTC 0x32); a flat pin-at-max was tried next and
+    //                      also didn't confirm the DTC, plausibly because
+    //                      it broke the same load-tracking property. +80
+    //                      keeps that property while giving much more
+    //                      headroom than +33 once boost is actually up.
     // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
-    // fully covered by -DBOOST_HIGH's saturating behavior; no need for
-    // both.)
+    // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
+    // for both.)
     // All are independent of -DBOOST itself and only take effect when
     // -DBOOST is also defined, since there's no MAP-table value to
     // offset otherwise.
     wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
-    wire [7:0]  boost_adc4_high       = 8'hFF;
+    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd80;
+    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd255) ? 8'd255 : boost_adc4_high_wide[7:0];
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
