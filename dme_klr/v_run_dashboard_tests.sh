@@ -190,6 +190,21 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
+    # KLR_DEBUG is never valid under Verilator — the disassembly/SFR-trace
+    # monitor it gates is an iverilog-oriented per-instruction $display
+    # flood and was never meant to run here. Strip it out unconditionally
+    # so it can't leak in via a manual IARG override or a future per-test
+    # addition, rather than relying on every caller remembering to omit it.
+    local -a _filtered_args=()
+    for _a in "$@"; do
+        if [ "$_a" = "-DKLR_DEBUG" ]; then
+            echo "  NOTE: stripping -DKLR_DEBUG (not supported under Verilator)"
+            continue
+        fi
+        _filtered_args+=("$_a")
+    done
+    set -- "${_filtered_args[@]}"
+
     local exe="${VVP_DIR}/dash_klr_${name}"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
