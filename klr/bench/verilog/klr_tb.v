@@ -453,6 +453,15 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // now with entirely different, simpler behavior (a straight stuck-at
     // fault rather than a scaled/attenuated one).
     //
+    // -DTEST_KNOCK_FAKE_BLOCKED: knock_gen.v hardcodes its knock_noise
+    // output to 8'hFF for this test (see knock_gen.v). Left to fall
+    // through the default x64/59 scaling below, that overflows the
+    // 8-bit adc_ch0 (255*64/59 = 276, truncating to 0x14) instead of
+    // reading as a sane value — so it gets its own branch here, forced
+    // directly to 0x40 (matching the normal self-test-active ceiling)
+    // rather than routed through scaling meant for the rolling-average
+    // range.
+    //
     // 16-bit intermediate avoids overflow in the default case —
     // knock_noise*64 can reach 16320 (95*64, EXT_STIM's max knock_sensor
     // override headroom — see knock_gen.v's sample_sum width comment),
@@ -463,6 +472,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator — rolling average under knock_gen.v's NOISE_HIGH sample_val formula (KLR_ADC0_NOISE_HIGH test)
 `elsif KLR_ADC0_NOISE_LOW
     wire [7:0] adc_ch0 = 8'h80;  // knock sensor noise-level indicator — stuck at 0x80 for the whole sim (KLR_ADC0_NOISE_LOW test)
+`elsif TEST_KNOCK_FAKE_BLOCKED
+    wire [7:0] adc_ch0 = 8'h40;  // knock sensor noise-level indicator — forced 0x40 for the whole sim (TEST_KNOCK_FAKE_BLOCKED / cl_ramp_to_3000_KLR_KNOCK_BLOCKED)
 `else
     wire [15:0] _adc0_noise_scaled_wide = knock_noise * 16'd64;
     wire [7:0] adc_ch0 = _adc0_noise_scaled_wide / 16'd59;  // knock sensor noise-level indicator — nominal ~0x40 ceiling (self-test knock active) / ~0x1D floor (quiescent) (all tests)

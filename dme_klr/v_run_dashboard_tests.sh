@@ -343,7 +343,7 @@ run_test warm_idle \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
 # --- Closed-loop tests ---
-run_test cl_warm_idle \
+run_test cl_warm_idle -DKLR_DEBUG \
     -DTEST_WARM_IDLE \
     -DRPMRAMP -DCL_MODE -DBOOST \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
@@ -583,12 +583,12 @@ run_test cl_ac_halfway \
     -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY  \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
-run_test cl_cold_start \
+run_test cl_cold_start -DKLR_DEBUG \
     -DTEST_CL_COLD_START \
     -DRPMRAMP -DCL_MODE -DBOOST \
     -DSIM_TIME=60000000000
 
-run_test cold_start \
+run_test cold_start -DKLR_DEBUG \
     -DTEST_COLD_START \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSIM_TIME=60000000000
@@ -871,7 +871,7 @@ if [ -n "$1" ]; then
     SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run_klr
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
-        cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+        cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE -DKLR_DEBUG -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN   -DRPMRAMP  -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP  -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
@@ -908,8 +908,8 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
-        cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DBOOST -DSIM_TIME=60000000000 ;;
-        cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
+        cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START -DKLR_DEBUG   -DRPMRAMP -DCL_MODE -DBOOST -DSIM_TIME=60000000000 ;;
+        cold_start)       run_test cold_start       $IARG -DTEST_COLD_START -DKLR_DEBUG      -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
         hot_idle)         run_test hot_idle         $IARG -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000   ;;
         idle_battery_low) run_test idle_battery_low $IARG -DTEST_IDLE_BATTERY_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         idle_high_alt)    run_test idle_high_alt    $IARG -DTEST_IDLE_HIGH_ALT    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
