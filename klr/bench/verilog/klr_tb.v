@@ -297,18 +297,26 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      disconnected/failed boost sensor)
     //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
     //                      simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH     — normal value plus 33, saturating at 255 (e.g.
-    //                      simulate an overboost condition or wastegate
-    //                      failure)
+    //  -DBOOST_HIGH     — pinned at the max raw value (0xFF), which the
+    //                      firmware-compliance cap below still clamps to
+    //                      0xF0 (e.g. simulate an overboost condition or
+    //                      wastegate failure). Previously a modest +33
+    //                      offset over the current MAP-table value — that
+    //                      wasn't reliably clearing the firmware's actual
+    //                      over-boost threshold (cl_ramp_to_6000_BOOST_HIGH
+    //                      never observed DTC 0x32), so this now drives
+    //                      the strongest sustained overboost signal the
+    //                      compliance cap allows for the whole test,
+    //                      instead of a marginal excursion above whatever
+    //                      the MAP table happens to read at that moment.
     // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
-    // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
-    // for both.)
+    // fully covered by -DBOOST_HIGH's saturating behavior; no need for
+    // both.)
     // All are independent of -DBOOST itself and only take effect when
     // -DBOOST is also defined, since there's no MAP-table value to
     // offset otherwise.
     wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
-    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd33;
-    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd255) ? 8'd255 : boost_adc4_high_wide[7:0];
+    wire [7:0]  boost_adc4_high       = 8'hFF;
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
