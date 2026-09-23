@@ -13,9 +13,18 @@
 #    ./run_dashboard_parallel.sh 4              # all tests, 4 at a time
 #    ./run_dashboard_parallel.sh 2 warm_idle cold_start hot_idle
 #    ./run_dashboard_parallel.sh 8              # maximum parallelism
+#    ./run_dashboard_parallel.sh 2 warm_idle --KLR_DEBUG --DME_DEBUG
+#                                                # debug flags apply to every
+#                                                # test named on the command line
 #  Snapshot interval: set DASH_INTERVAL_MS env var before running.
 #    DASH_INTERVAL_MS=50 ./run_dashboard_parallel.sh 4
 #  Default is 100ms.
+#
+#  Debug flags (any position, applied to every test run this
+#  invocation launches — forwarded to whichever runner is active):
+#    --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
+#  Under --verilator these are still accepted but have no effect —
+#  v_run_dashboard_tests.sh always strips them before compiling.
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -43,15 +52,26 @@ ALL_TESTS=(
 )
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
-# --verilator may appear in any position among the mode flags
+# --verilator and the debug flags may appear in any position among the
+# mode flags. EXTRA_FLAGS collects the debug flags (as the long-form
+# --NAME each runner's own CLI parses) so they can be forwarded
+# verbatim to every test this invocation launches.
+EXTRA_FLAGS=()
 for _arg in "$@"; do
-    [ "$_arg" = "--verilator" ] && USE_VERILATOR=1
+    case "$_arg" in
+        --verilator)       USE_VERILATOR=1 ;;
+        --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) EXTRA_FLAGS+=("$_arg") ;;
+    esac
 done
-if [ "$USE_VERILATOR" = "1" ]; then
-    RUN_TESTS="$SCRIPT_DIR/v_run_dashboard_tests.sh"
+if [ "$USE_VERILATOR" = "1" ] || [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
+    RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
+    [ "$USE_VERILATOR" = "1" ] && RUN_TESTS="$SCRIPT_DIR/v_run_dashboard_tests.sh"
     _NEW_ARGS=()
     for _arg in "$@"; do
-        [ "$_arg" = "--verilator" ] || _NEW_ARGS+=("$_arg")
+        case "$_arg" in
+            --verilator|--DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) ;;
+            *) _NEW_ARGS+=("$_arg") ;;
+        esac
     done
     set -- "${_NEW_ARGS[@]}"
 fi
@@ -59,7 +79,7 @@ fi
 if [ "$1" = "--dash" ]; then shift; fi
 
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 [--verilator] <workers 1-8> [test1 test2 ...]"
+    echo "Usage: $0 [--verilator] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
@@ -177,7 +197,7 @@ for test in "${TESTS[@]}"; do
 
     (
         cd "$SCRIPT_DIR"
-        bash "$RUN_TESTS" "$test" >> "$LOGDIR/${test}.runner.log" 2>&1
+        bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
     ) &
     PIDS+=("$!")
     PID_NAMES+=("$test")

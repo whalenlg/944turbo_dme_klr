@@ -10,6 +10,12 @@
 #    ./run_dashboard_tests.sh                   # run all tests
 #    ./run_dashboard_tests.sh warm_idle         # single test
 #    ./run_dashboard_tests.sh warm_idle 50      # single test, 50ms interval
+#    ./run_dashboard_tests.sh warm_idle --KLR_DEBUG --DME_DEBUG
+#                                                # single test, extra debug flags
+#
+#  Debug flags (single-test mode only; any order, combinable with an
+#  interval override): --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
+#  Added on top of whatever the named test already compiles with.
 #
 #  Output: ../../tmp/dme_klr/dash_logs/<test>.log       (full sim output)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
@@ -825,13 +831,31 @@ run_test dme_klr_ramp_to_3000 \
 
 # --------------------------------------------------------
 #  Single test mode: ./run_dashboard_tests.sh <name> [interval_ms]
+#                     [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG]
+#
+#  The three debug flags may appear in any order, anywhere after
+#  <name>, and are appended as extra -D defines to whatever the
+#  named test already compiles with. IARG is expanded unquoted at
+#  every call site below, so bash word-splits it back into separate
+#  args for compile_and_run_klr — the (optional) numeric interval is
+#  built in first so it still lands as compile_and_run_klr's own
+#  first positional arg, exactly where its own interval-detection
+#  expects it.
 # --------------------------------------------------------
 if [ -n "$1" ]; then
-    # Allow optional interval override as second positional argument
-    IARG=""
-    if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
-        IARG="$2"
-    fi
+    TEST_NAME="$1"; shift
+    _interval=""
+    _dbg_flags=""
+    for _a in "$@"; do
+        case "$_a" in
+            --DME_DEBUG)      _dbg_flags="$_dbg_flags -DDME_DEBUG" ;;
+            --DME_DEEP_DEBUG) _dbg_flags="$_dbg_flags -DDME_DEEP_DEBUG" ;;
+            --KLR_DEBUG)      _dbg_flags="$_dbg_flags -DKLR_DEBUG" ;;
+            [0-9]*)           _interval="$_a" ;;
+        esac
+    done
+    IARG="$_interval$_dbg_flags"
+    set -- "$TEST_NAME"
     SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run_klr
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
