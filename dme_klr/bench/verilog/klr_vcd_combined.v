@@ -282,7 +282,7 @@ always @(negedge `KLR_CORE.clk) begin
                     // firmware sets ram[0x16/0x17] as a fake MB1 frame,
                     // SP=0→7, then RET jumps into MB1. Not a real underflow.
                     if (msg_addr != 12'h2b0) begin
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
                         $display("*** STACK UNDERFLOW at PC=%03h opcode=%02h — SP=0, PSW will wrap to 7 ***",
                             msg_addr, curr_op);
                         $display("    Shadow call stack:");

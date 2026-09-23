@@ -308,8 +308,8 @@
 // --- TEST_WARMUP_ENRICHMENT ---
 `ifdef TEST_WARMUP_ENRICHMENT
   `define RPMRAMP
-  // Note: use CPU_DEBUG only when compiling with i8051_tb (normal TB).
-  // Passing -DCPU_DEBUG via the run script for normal TB runs only.
+  // Note: use DME_DEBUG only when compiling with i8051_tb (normal TB).
+  // Passing -DDME_DEBUG via the run script for normal TB runs only.
   `undef  RPMEND
   `define RPMEND    840
   `undef  SIM_TIME

@@ -1,14 +1,14 @@
 // ============================================================
-//  CPU_DEBUG: define to enable verbose trace output.
+//  DME_DEBUG: define to enable verbose trace output.
 //  Comment out (or leave undefined) for silent simulation.
 //
 //  Controlled displays:
 //    [BIT_READ ]  [BIT_WRITE]  [SFR_WRITE]  [DIR_WRITE]  [EXEC]
 //
 //  Usage:
-//    With tracing:   iverilog -DCPU_DEBUG ...
+//    With tracing:   iverilog -DDME_DEBUG ...
 //    Without:        iverilog ...            (default — silent)
-// `define CPU_DEBUG
+// `define DME_DEBUG
 // ============================================================
 //  Intel 8051 Cycle-Accurate Verilog Model
 //  Follows the structural style of i8048_core.v
@@ -289,7 +289,7 @@ module i8051_core (
             else
                 bval = sfr_read({bit_addr[7:3], 3'b000});
             bit_read = bval[bit_addr[2:0]];
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
             $display("DME: [BIT_READ ] bit_addr=%02Xh  byte=%02Xh  bit=%0b",
                      bit_addr, bval, bval[bit_addr[2:0]]);
 `endif
@@ -330,7 +330,7 @@ module i8051_core (
             else
                 sfr_write({bit_addr[7:3], 3'b000}, new_byte);
             // Trace
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
             $display("DME: [BIT_WRITE] bit_addr=%02Xh  op=%s  old=%0b  new=%0b  (PC=%04Xh  IR=%02Xh)",
                      bit_addr,
                      (op==0) ? "CLR" : (op==1) ? "SET" : (op==2) ? "CPL" : "MOV",
@@ -345,7 +345,7 @@ module i8051_core (
         input [7:0] addr;
         input [7:0] val;
         begin
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
             $display("DME: [SFR_WRITE] addr=%02Xh  val=%02Xh  (PC=%04Xh  IR=%02Xh)",
                      addr, val, pc, ir);
 `endif
@@ -376,7 +376,7 @@ module i8051_core (
                 8'hD0: psw     <= val;
                 8'hE0: acc     <= val;
                 8'hF0: b_reg   <= val;
-                default: begin `ifdef CPU_DEEP_DEBUG $display("DME: [SFR_WRITE] *** undefined SFR addr=%02Xh ignored ***", addr); `endif end
+                default: begin `ifdef DME_DEEP_DEBUG $display("DME: [SFR_WRITE] *** undefined SFR addr=%02Xh ignored ***", addr); `endif end
             endcase
         end
     endtask
@@ -389,7 +389,7 @@ module i8051_core (
         input [7:0] val;
         begin
             if (!addr[7]) begin
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
                 $display("DME: [DIR_WRITE] iram[%02Xh] <= %02Xh  (PC=%04Xh  IR=%02Xh)",
                          addr, val, pc, ir);
 `endif
@@ -411,7 +411,7 @@ module i8051_core (
         input [15:0] vector;
         input [15:0] ret_addr;
         begin
-`ifdef CPU_DEBUG
+`ifdef DME_DEBUG
             $display("DME: [IRQ      ] vector=%04Xh  ret_addr=%04Xh  SP=%02Xh  (PC=%04Xh  IR=%02Xh)",
                      vector, ret_addr, sp, pc, ir);
 `endif
@@ -950,7 +950,7 @@ module i8051_core (
                     end else begin
                         // Emit profiling trace on every instruction execution.
                         // cycle_2: final cycle of multi-cycle instruction.
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
                         if (!irq_pending)
                             $display("DME: [EXEC] cyc=%0d pc=%04Xh ir=%02Xh sp=%02Xh a=%02Xh psw=%02Xh",
                                      cycle_count, pc, ir, sp, acc, psw);
