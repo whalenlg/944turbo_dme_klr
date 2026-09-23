@@ -190,17 +190,20 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
-    # KLR_DEBUG is never valid under Verilator — the disassembly/SFR-trace
-    # monitor it gates is an iverilog-oriented per-instruction $display
-    # flood and was never meant to run here. Strip it out unconditionally
-    # so it can't leak in via a manual IARG override or a future per-test
-    # addition, rather than relying on every caller remembering to omit it.
+    # KLR_DEBUG / CPU_DEBUG / CPU_DEEP_DEBUG are never valid under
+    # Verilator — the disassembly/SFR-trace monitors they gate (KLR
+    # side: klr_vcd.v/klr_vcd_combined.v; DME side: vcd.v/i8051_core.v)
+    # are all iverilog-oriented per-instruction $display floods and were
+    # never meant to run here. Strip them out unconditionally so they
+    # can't leak in via a manual IARG override or a future per-test
+    # addition, rather than relying on every caller remembering to omit them.
     local -a _filtered_args=()
     for _a in "$@"; do
-        if [ "$_a" = "-DKLR_DEBUG" ]; then
-            echo "  NOTE: stripping -DKLR_DEBUG (not supported under Verilator)"
-            continue
-        fi
+        case "$_a" in
+            -DKLR_DEBUG|-DCPU_DEBUG|-DCPU_DEEP_DEBUG)
+                echo "  NOTE: stripping ${_a} (not supported under Verilator)"
+                continue ;;
+        esac
         _filtered_args+=("$_a")
     done
     set -- "${_filtered_args[@]}"
