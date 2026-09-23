@@ -852,6 +852,11 @@ if [ -n "$1" ]; then
             --DME_DEEP_DEBUG) _dbg_flags="$_dbg_flags -DDME_DEEP_DEBUG" ;;
             --KLR_DEBUG)      _dbg_flags="$_dbg_flags -DKLR_DEBUG" ;;
             [0-9]*)           _interval="$_a" ;;
+            *)
+                echo "Unknown option: $_a" >&2
+                echo "Valid options: [interval_ms] --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG" >&2
+                exit 1
+                ;;
         esac
     done
     IARG="$_interval$_dbg_flags"
