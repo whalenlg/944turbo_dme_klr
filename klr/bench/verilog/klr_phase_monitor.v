@@ -147,9 +147,14 @@ always @(posedge clk) begin  // klr_phase_monitor
         // ── knock logic execution (PC enters knock map axis read @0x900) ──
         // Edge-detected on PC so we log once per entry, not every clock the
         // CPU sits at 0x900. 0x900 = load_axis_hi_read (knock timing-map lookup).
-        if ((top.i8048_core_1.pc == 12'h900) && (ph_klr_pc_prev != 12'h900))
+        // KLR_DEBUG-only — fires on every knock-map lookup (i.e. every
+        // ignition event), which is too frequent for non-debug logs.
+        if ((top.i8048_core_1.pc == 12'h900) && (ph_klr_pc_prev != 12'h900)) begin
+`ifdef KLR_DEBUG
             $display("KLR: [PHASE] t=%0d ms  KNOCK_LOGIC exec   (knock map axis read @0x900)",
                      `KLR_MS(0));
+`endif
+        end
         ph_klr_pc_prev <= top.i8048_core_1.pc;
 
         // ── full_load: WOT engaged ────────────────────────
