@@ -314,7 +314,7 @@ assign    b2f = `TB.i8051_top.u_cpu.iram[37][7];
 // assignment isn't legal there — this caused the original "syntax
 // error... l-value" compile failure when it was placed inline with
 // the $dumpvars calls).
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
 wire [15:0] data_from_rom = (pc == `TB.i8051_top.u_cpu.addr_bus)
                              ? 16'h0000
                              : `TB.i8051_top.u_cpu.addr_bus;
@@ -344,14 +344,14 @@ end
 //$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
-`ifdef CPU_DEBUG
-`define DO_CPU_DEBUG_DUMP
+`ifdef DME_DEBUG
+`define DO_DME_DEBUG_DUMP
 `endif
-`ifdef CPU_DEEP_DEBUG
-`define DO_CPU_DEBUG_DUMP
+`ifdef DME_DEEP_DEBUG
+`define DO_DME_DEBUG_DUMP
 `endif
 
-`ifdef DO_CPU_DEBUG_DUMP
+`ifdef DO_DME_DEBUG_DUMP
 $dumpvars(1,`TB);
 $dumpvars(1,`TB.i8051_top.u_cpu);
 $dumpvars(0,`TB.u_dumpvcd);
@@ -376,7 +376,7 @@ $dumpvars(0,`TB.interrupt_generator_1);
 
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
 $dumpvars(1,pc);
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
 $dumpvars(1,data_from_rom);
 `endif
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
@@ -427,7 +427,7 @@ $dumpvars(1,`TB.tdc);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operand_mapped.hex",ops);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands_numeric.hex",opsnums);
     end
-`ifdef CPU_DEBUG
+`ifdef DME_DEBUG
   always @(negedge clk) begin
       clk_count <= clk_count + 1;
       msg_addr    = pc;

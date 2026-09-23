@@ -711,7 +711,7 @@ task execute_instruction;
                         // 0x2b0 uses SP=0 wrap-around deliberately to jump
                         // into MB1 via ram[0x16/0x17] as a fake stack frame.
                         if (pc != 12'h2b0) begin
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
                             $display("*** STACK UNDERFLOW: RET at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
                                 pc,
                                 ({3'b111, 1'b0} + 6'h08),
@@ -734,7 +734,7 @@ task execute_instruction;
                     cycle_2 <= 1'b1;
                 end else begin
                     if (psw[2:0] == 3'b000) begin
-`ifdef CPU_DEEP_DEBUG
+`ifdef DME_DEEP_DEBUG
                         $display("*** STACK UNDERFLOW: RETR at PC=%03h with SP=0 — PSW will wrap to 7, PC will be garbage (ram[%02h/%02h]) ***",
                             pc,
                             ({3'b111, 1'b0} + 6'h08),

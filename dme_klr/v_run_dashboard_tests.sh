@@ -7,9 +7,15 @@
 #  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
 #  Usage:
-#    ./run_dashboard_tests.sh                   # run all tests
-#    ./run_dashboard_tests.sh warm_idle         # single test
-#    ./run_dashboard_tests.sh warm_idle 50      # single test, 50ms interval
+#    ./v_run_dashboard_tests.sh                   # run all tests
+#    ./v_run_dashboard_tests.sh warm_idle         # single test
+#    ./v_run_dashboard_tests.sh warm_idle 50      # single test, 50ms interval
+#
+#  --DME_DEBUG / --DME_DEEP_DEBUG / --KLR_DEBUG (single-test mode) are
+#  accepted for interface parity with run_dashboard_tests.sh, but are
+#  always stripped again before the Verilator compile — they gate an
+#  iverilog-oriented per-instruction $display flood that was never
+#  meant to run under Verilator. Use run_dashboard_tests.sh for those.
 #
 #  Output: ../../tmp/dme_klr/v_dash_logs/<test>.log       (full sim output)
 #                                                 <test>.dash.log  (DS + PHASE — load this into dashboard)
@@ -190,7 +196,7 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
-    # KLR_DEBUG / CPU_DEBUG / CPU_DEEP_DEBUG are never valid under
+    # KLR_DEBUG / DME_DEBUG / DME_DEEP_DEBUG are never valid under
     # Verilator — the disassembly/SFR-trace monitors they gate (KLR
     # side: klr_vcd.v/klr_vcd_combined.v; DME side: vcd.v/i8051_core.v)
     # are all iverilog-oriented per-instruction $display floods and were
@@ -200,7 +206,7 @@ compile_and_run_klr() {
     local -a _filtered_args=()
     for _a in "$@"; do
         case "$_a" in
-            -DKLR_DEBUG|-DCPU_DEBUG|-DCPU_DEEP_DEBUG)
+            -DKLR_DEBUG|-DDME_DEBUG|-DDME_DEEP_DEBUG)
                 echo "  NOTE: stripping ${_a} (not supported under Verilator)"
                 continue ;;
         esac
@@ -878,14 +884,30 @@ run_test dme_klr_ramp_to_3000 \
 }
 
 # --------------------------------------------------------
-#  Single test mode: ./run_dashboard_tests.sh <name> [interval_ms]
+#  Single test mode: ./v_run_dashboard_tests.sh <name> [interval_ms]
+#                     [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG]
+#
+#  Same CLI shape as run_dashboard_tests.sh, for a consistent
+#  interface between the two runners (e.g. run_dashboard_parallel.sh
+#  forwards the same flags to whichever one it's driving). All three
+#  debug flags are accepted here but compile_and_run_klr's own strip
+#  step below always removes them again before the actual Verilator
+#  invocation — see that function for why.
 # --------------------------------------------------------
 if [ -n "$1" ]; then
-    # Allow optional interval override as second positional argument
-    IARG=""
-    if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
-        IARG="$2"
-    fi
+    TEST_NAME="$1"; shift
+    _interval=""
+    _dbg_flags=""
+    for _a in "$@"; do
+        case "$_a" in
+            --DME_DEBUG)      _dbg_flags="$_dbg_flags -DDME_DEBUG" ;;
+            --DME_DEEP_DEBUG) _dbg_flags="$_dbg_flags -DDME_DEEP_DEBUG" ;;
+            --KLR_DEBUG)      _dbg_flags="$_dbg_flags -DKLR_DEBUG" ;;
+            [0-9]*)           _interval="$_a" ;;
+        esac
+    done
+    IARG="$_interval$_dbg_flags"
+    set -- "$TEST_NAME"
     SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run_klr
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
