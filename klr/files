@@ -1,6 +1,7 @@
 ../dme/bench/verilog/adc_delay.v 
 ../dme/bench/verilog/timescale.v
 rtl/verilog/i8048_core.v
+rtl/verilog/klr_debug_loop_detect.v
 rtl/verilog/klr_top.v
 bench/verilog/klr_defs.v
 bench/verilog/adc_8090.v

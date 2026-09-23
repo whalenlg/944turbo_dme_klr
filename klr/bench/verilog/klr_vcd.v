@@ -253,6 +253,24 @@ initial begin
 end
 
 // ============================================================
+//  Tight-loop exit summary (KLR_DEBUG only)
+//
+//  u_dbg_loop.loop_just_exited pulses for one negedge clk when a
+//  confirmed repeating loop (e.g. wait_ign_1/wait_ign_2) is finally
+//  exited — see klr_debug_loop_detect.v. Prints one summary line in
+//  place of the individual disassembly lines suppressed while it ran.
+// ============================================================
+`ifdef KLR_DEBUG
+always @(negedge top.clk) begin
+    if (`KLR_TB_PATH.i8048_core_1.u_dbg_loop.loop_just_exited)
+        $display("KLR: \t\t  ... loop 0x%03h-0x%03h repeated %0d more times (suppressed) ...",
+            `KLR_TB_PATH.i8048_core_1.u_dbg_loop.loop_lo,
+            `KLR_TB_PATH.i8048_core_1.u_dbg_loop.loop_hi,
+            `KLR_TB_PATH.i8048_core_1.u_dbg_loop.loop_reps);
+end
+`endif // KLR_DEBUG
+
+// ============================================================
 //  Per-instruction disassembly + register + key address display
 // ============================================================
 always @(negedge top.clk) begin
@@ -273,6 +291,10 @@ always @(negedge top.clk) begin
 
 `ifdef KLR_DEBUG
         // ── Disassembly line (KLR_DEBUG only) ──────────────
+        // Suppressed while u_dbg_loop has confirmed a repeating tight
+        // loop (e.g. wait_ign_1/wait_ign_2) — see klr_debug_loop_detect.v
+        // and the loop-exit summary block below.
+        if (!`KLR_TB_PATH.i8048_core_1.u_dbg_loop.suppress)
         if (asmopcode[159:152] != 8'h20)
             if (asmlabel[159:152] != 8'h20)
                 $display("KLR: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
