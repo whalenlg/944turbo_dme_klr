@@ -355,10 +355,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //    knock reading into its own adc_ch5. NOT testbench-driven;
     //    it's wired below from the klr_system instance's fake_knock
     //    output port. 1 bit (single I/O pin). Feeds knock_sum (ch5)
-    //    ONLY (via a burst-stretcher — see knock_gen.v: guarantees a
-    //    2.4ms minimum low-to-high burst duration on ch5, while any
-    //    brief transient pulses within the first 1.3ms after the
-    //    falling edge stay visible unmodified).
+    //    ONLY (via a burst-stretcher — see knock_gen.v: holds low from
+    //    the first falling edge until the next trigger_in tooth,
+    //    completely ignoring any further falling edges, rises, or
+    //    brief blips during that window).
     //  knock_reset: klr_system's P2.5 output, broken out from the
     //    p2_mon bus (declared further below; forward reference is
     //    fine here — Verilog resolves wire connections at

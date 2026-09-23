@@ -19,22 +19,26 @@
 //  directly). Rising edge is the sample clock for knock_noise's
 //  rolling average, below.
 //
-//  Low-pass-filter-style one-shot timer (clocked off the same `clk`
-//  as the rest of the design) — models fake_knock's contribution to
-//  knock_sum as a single, fixed 2.4ms low period, NOT retriggerable:
+//  Low-pass-filter-style one-shot (clocked off the same `clk` as the
+//  rest of the design) — models fake_knock's contribution to
+//  knock_sum as a single low period, NOT retriggerable, released by
+//  the next trigger_in tooth rather than a fixed timer:
 //    - The FIRST falling edge of fake_knock (seen while idle) starts
-//      a fixed 2.4ms hold_cnt countdown (HOLD_CYCLES, derived from
-//      `FRQ_SCALE / `KLR_FREQ so it self-corrects if the clock
-//      frequency changes).
-//    - While hold_cnt is running, fake_knock_stretched is forced LOW
+//      the hold.
+//    - While holding, fake_knock_stretched is forced LOW
 //      unconditionally — fake_knock's actual value is completely
 //      ignored for the whole window, including any further falling
 //      edges, rises, or brief blips (intentional — this is the
 //      low-pass filtering behavior: one clean falling edge in, one
-//      clean rising edge out, 2.4ms later).
-//    - At exactly 2.4ms, the timer releases and fake_knock_stretched
-//      goes back to mirroring fake_knock directly (whatever it
-//      happens to be at that point).
+//      clean rising edge out, at the next trigger_in tooth).
+//    - The hold releases on the next rising edge of trigger_in (the
+//      crank-synchronized reference trigger, not a fixed clk-cycle
+//      timer) — a fixed-time hold (previously 2.4ms) doesn't scale
+//      with RPM, and at idle RPM released well inside a single
+//      trigger_in period; tying release to the next tooth instead
+//      guarantees at least one full trigger_in cycle of hold at any
+//      RPM, and fake_knock_stretched goes back to mirroring
+//      fake_knock directly (whatever it happens to be at that point).
 //
 //  Two outputs:
 //
@@ -54,7 +58,8 @@
 //      see this, sampled once per trigger tooth rather than every
 //      clock cycle). Uses the RAW fake_knock input directly, not any
 //      filtered/stretched version — no relation to knock_sum's
-//      2.4ms one-shot filter, which only affects knock_sum.
+//      trigger_in-released one-shot filter, which only affects
+//      knock_sum.
 //
 //  knock_sensor is still a fixed placeholder (8'd110, tied in
 //  klr_tb.v) rather than a real sensor model — that's planned as
@@ -73,19 +78,15 @@ module knock_gen (
     output wire [7:0] knock_noise
 );
 
-    // Clock period (ns), same expression as klr_tb.v's own `parameter DELAY`
-    // (DELAY there is the half-period; full period is 2x that).
-    localparam integer CLK_PERIOD_NS    = 2 * (`FRQ_SCALE / `KLR_FREQ);
-    localparam integer HOLD_CYCLES      = 2400000 / CLK_PERIOD_NS;  // knock_sum: fixed 2.4ms one-shot
-
-    reg [31:0] hold_cnt        = 0;     // 0 = idle; counts 1..HOLD_CYCLES while holding (knock_sum)
-    reg        fake_knock_prev = 1'b1;  // assume idle-high at sim start; shared falling-edge reference
+    reg        holding              = 1'b0;  // 1 while knock_sum's hold is asserted
+    reg        fake_knock_prev      = 1'b1;  // assume idle-high at sim start; shared falling-edge reference
+    reg        trigger_in_prev_hold = 1'b0;  // edge detector for the release condition, local to this hold
 
     // TEST_KNOCK_FAKE_BLOCKED: simulates a broken connection between the
     // KLR CPU's P1.7 self-test pin and this circuitry (e.g. a bad trace
     // or open connector pin) — fake_knock_eff is forced permanently
     // idle-high, so fake_knock_prev never sees a falling edge below,
-    // hold_cnt never starts counting, and knock_sum always just
+    // holding never gets asserted, and knock_sum always just
     // reflects knock_sensor directly (no +145 self-test offset ever
     // applied) — regardless of what the firmware actually drives on the
     // real fake_knock input. knock_noise's rolling average below uses
@@ -97,26 +98,25 @@ module knock_gen (
     wire fake_knock_eff = fake_knock;
 `endif
 
-    // knock_sum's fixed, non-retriggering 2.4ms one-shot
+    // knock_sum's non-retriggering hold, released by the next trigger_in tooth
     always @(posedge clk) begin
-        fake_knock_prev <= fake_knock_eff;
+        fake_knock_prev      <= fake_knock_eff;
+        trigger_in_prev_hold <= trigger_in;
 
-        if (hold_cnt == 0) begin
+        if (!holding) begin
             // Idle -- only a falling edge seen HERE (while idle) starts
-            // the one-shot. Not retriggerable: falls seen later, while
-            // hold_cnt is already counting, are ignored entirely.
+            // the hold. Not retriggerable: falls seen later, while
+            // already holding, are ignored entirely.
             if (fake_knock_prev && !fake_knock_eff) begin
-                hold_cnt <= 1;
+                holding <= 1'b1;
             end
-        end else if (hold_cnt < HOLD_CYCLES) begin
-            hold_cnt <= hold_cnt + 1;  // keep counting; fake_knock is ignored during this window
-        end else begin
-            hold_cnt <= 0;  // 2.4ms elapsed -- release back to idle/passthrough
+        end else if (trigger_in && !trigger_in_prev_hold) begin
+            // Next trigger_in tooth -- release back to idle/passthrough.
+            holding <= 1'b0;
         end
     end
 
-    wire fake_knock_stretched =
-        (hold_cnt > 0 && hold_cnt < HOLD_CYCLES) ? 1'b0 : fake_knock_eff;
+    wire fake_knock_stretched = holding ? 1'b0 : fake_knock_eff;
 
     assign knock_sum   = !knock_reset ? 8'd0
                         : fake_knock_stretched ? (knock_sensor + 8'd145)
