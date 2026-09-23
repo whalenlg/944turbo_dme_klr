@@ -132,6 +132,9 @@ wire [7:0] ram_5a = `RAM[8'h5a]; wire [7:0] ram_5b = `RAM[8'h5b];
 wire [7:0] ram_5c = `RAM[8'h5c]; wire [7:0] ram_5d = `RAM[8'h5d];
 wire [7:0] ram_5e = `RAM[8'h5e]; wire [7:0] ram_5f = `RAM[8'h5f];
 
+// ── Boost/MAP sensor named alias (for readable FST traces) ───────────────
+wire [7:0] map_sensor = ram_52;  // KLR ram[52h] — processed boost/MAP value (see -DBOOST)
+
 // 0x60 – 0x6F
 wire [7:0] ram_60 = `RAM[8'h60]; wire [7:0] ram_61 = `RAM[8'h61];
 wire [7:0] ram_62 = `RAM[8'h62]; wire [7:0] ram_63 = `RAM[8'h63];
@@ -227,6 +230,9 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.CV_PWM);
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
+    $dumpvars(1, map_sensor);                  // ram[52h] — processed boost/MAP value
+    $dumpvars(1, tps_degrees);                 // ram[3Ah] — TPS throttle angle (degrees)
+    $dumpvars(1, `KLR_TOP_TB.knock_sensor_i);  // knock sensor input (raw or fixed 110)
 
     // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
     // Compile with -DKLR_DEBUG to enable.
