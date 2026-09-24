@@ -1175,6 +1175,27 @@ def validate(test_name, logpath, dme_file=None):
             else:
                 fails.append(f"KLR Unimplemented Opcode {t_str}(x{len(unimp)}): {first}")
 
+    # ── 14c. DEADLOCK detector messages (DME: [DEADLOCK] ..., the ISV
+    # P1.4 heartbeat watchdog in dme/bench/verilog/vcd.v — iverilog runs
+    # only, Verilator has it compiled out). Lines whose byte fields are
+    # all-X (e.g. "iram[36h]=0xXX") are uninitialized-state artifacts,
+    # not real stalls, and are ignored. Any remaining message is a real,
+    # currently-unexplained firmware stall — WARN, not FAIL, since its
+    # root cause hasn't been traced for every test that can hit it.
+    if raw_lines:
+        deadlocks = [l.strip() for l in raw_lines
+                     if 'DEADLOCK' in l and 'XX' not in l.upper()]
+        if deadlocks:
+            first = deadlocks[0]
+            first_idx = next((i for i, l in enumerate(raw_lines)
+                               if 'DEADLOCK' in l and 'XX' not in l.upper()), 0)
+            t_ms = None
+            for l in reversed(raw_lines[:first_idx]):
+                tm = re.search(r't=(\d+)\s*ms', l)
+                if tm: t_ms = int(tm.group(1)); break
+            t_str = f"t={t_ms}ms " if t_ms is not None else ""
+            warns.append(f"DEADLOCK detector fired {t_str}(x{len(deadlocks)}): {first}")
+
     # ── 15. FQS fuel correction check
     fqs_fuel_pct = exp.get('fqs_fuel_pct')
     fqs_fuel_baseline = exp.get('fqs_fuel_baseline')

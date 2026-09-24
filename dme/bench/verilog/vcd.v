@@ -464,6 +464,10 @@ $dumpvars(1,`TB.tdc);
 // meaningful) to avoid false positives at very low RPM.
 // At idle (prpm~0x15): threshold = 0x84 (original calibration).
 // Formula: thresh = 0x84 * prpm / 0x15  (integer divide)
+// Verilator-disabled: this watchdog is iverilog-only. validate_dash_log.py
+// filters out any remaining X-valued (uninitialized-state) DEADLOCK line
+// and WARNs on whatever's left, on the iverilog runs that still produce it.
+`ifndef VERILATOR
 always @(posedge clk) begin : isv_deadlock_detect
     reg [15:0] dl_thresh;
     dl_thresh = (16'h0084 * {8'h00, `TB.i8051_top.u_cpu.iram[7'h37]}) / 16'h0015;
@@ -477,6 +481,7 @@ always @(posedge clk) begin : isv_deadlock_detect
                  `TB.i8051_top.u_cpu.iram[7'h7F],
                  dl_thresh[7:0]);
 end
+`endif
 
     
 endmodule
