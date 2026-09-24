@@ -33,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
-# VVP_DIR is kept as the name for compatibility but now holds Verilator-compiled executables
+VLTDIR="$VVP_DIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
 LOGDIR="$VVP_DIR/v_dash_logs"
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
@@ -134,7 +134,7 @@ open_in_dashboard() {
     echo "  [DASHBOARD] Opened: $url"
 }
 
-mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
+mkdir -p "$VVP_DIR" "$VLTDIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
 
 # Mode alias used by run_all and case block
 run_test()  { compile_and_run_klr "$@"; }
@@ -214,7 +214,7 @@ compile_and_run_klr() {
     done
     set -- "${_filtered_args[@]}"
 
-    local exe="${VVP_DIR}/dash_klr_${name}"
+    local exe="${VLTDIR}/dash_klr_${name}"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
     local hexdir="${HEXDIR}/${name}"
@@ -251,7 +251,7 @@ compile_and_run_klr() {
     done
 
     # Remove stale object dir to force clean recompile
-    rm -rf "${VVP_DIR}/obj_${name}"
+    rm -rf "${VLTDIR}/obj_${name}"
     local _sim_ms _ramp_ms _step_clocks _sim_time="" _ramp_pct=""
     for _a in "$@"; do
         case "$_a" in
@@ -281,7 +281,7 @@ compile_and_run_klr() {
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
         -o "$exe" \
-        --Mdir "${VVP_DIR}/obj_${name}" \
+        --Mdir "${VLTDIR}/obj_${name}" \
         -f "$files_list" \
         +incdir+"$RTL" \
         +incdir+"$BENCH" \

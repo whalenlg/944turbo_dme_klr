@@ -34,6 +34,7 @@ MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+IVDIR="$VVP_DIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
 LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
 VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output
@@ -127,7 +128,7 @@ open_in_dashboard() {
     echo "  [DASHBOARD] Opened: $url"
 }
 
-mkdir -p "$VVP_DIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
+mkdir -p "$VVP_DIR" "$IVDIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
 
 # Mode alias used by run_all and case block
 run_test()  { compile_and_run_klr "$@"; }
@@ -150,7 +151,7 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
-    local vvp="${VVP_DIR}/dash_klr_${name}.vvp"
+    local vvp="${IVDIR}/dash_klr_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
     local fstfile="${FSTDIR}/${name}.fst"
