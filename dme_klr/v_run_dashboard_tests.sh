@@ -33,8 +33,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
-VLTDIR="$VVP_DIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
 LOGDIR="$VVP_DIR/v_dash_logs"
+VLTDIR="$LOGDIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
 # iverilog reference log dir (for compare_with_iv)

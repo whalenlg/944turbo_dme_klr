@@ -34,8 +34,8 @@ MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
-IVDIR="$VVP_DIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
 LOGDIR="$VVP_DIR/dash_logs"
+IVDIR="$LOGDIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
 VCDDIR="$LOGDIR/vcd"
 VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output
 FSTDIR="$LOGDIR/fst"
