@@ -459,14 +459,16 @@ $dumpvars(1,`TB.tdc);
 
 //DEBUG — ISV P1.4 deadlock detector
 // Threshold scales with prpm (iram[37h]) so high-RPM tests don't false-positive.
-// Guard: skip entirely when prpm=0 (engine not yet synced) to avoid thresh=0 false positives.
+// Guard: skip entirely when prpm<=0x10 (cranking/just-synced, engine not
+// yet turning fast enough for the idle/ISV loop's heartbeat cadence to be
+// meaningful) to avoid false positives at very low RPM.
 // At idle (prpm~0x15): threshold = 0x84 (original calibration).
 // Formula: thresh = 0x84 * prpm / 0x15  (integer divide)
 always @(posedge clk) begin : isv_deadlock_detect
     reg [15:0] dl_thresh;
     dl_thresh = (16'h0084 * {8'h00, `TB.i8051_top.u_cpu.iram[7'h37]}) / 16'h0015;
     if (`TB.rst &&
-        `TB.i8051_top.u_cpu.iram[7'h37] > 8'h00 &&  // skip when prpm=0
+        `TB.i8051_top.u_cpu.iram[7'h37] > 8'h10 &&  // skip when prpm<=10h
         !`TB.i8051_top.u_cpu.p1[4] &&
         {8'h00, `TB.i8051_top.u_cpu.iram[7'h36]} > dl_thresh)
         $display("DME: [DEADLOCK] cycle=%0d P1.4=0, iram[36h]=0x%02X iram[7Fh]=0x%02X thresh=0x%02X",
