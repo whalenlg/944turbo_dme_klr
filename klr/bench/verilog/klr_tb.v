@@ -322,35 +322,34 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      disconnected/failed boost sensor)
     //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
     //                      simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH     — mirror of the 0x50-0xD0 additive-offset curve
-    //                      below: starts pinned at 0xD0 (208) when the
-    //                      real MAP-table value is near zero (low RPM,
-    //                      e.g. cranking/idle) and falls toward 0x50 (80)
-    //                      as the real value rises (e.g. simulate an
-    //                      overboost condition or wastegate failure).
-    //                      Empirically, the previous version (a flat +80
-    //                      riding ON TOP of boost_adc4_raw, ascending
-    //                      0x50->0xD0 as RPM/load rose) never tripped DTC
-    //                      0x32 — confirmed via a real run that the fault
-    //                      signal really does rise 0x50->0xD0 exactly as
-    //                      designed, so the offset math wasn't the
-    //                      problem. The likely reason: RPM's multi-second
-    //                      torque-balance ramp — not TPS's own much
-    //                      faster ~250ms transition — is what paces that
-    //                      whole rise, so the fault was always HIGH once
-    //                      RPM/load had already risen enough to justify
-    //                      real boost anyway — never presenting the
-    //                      firmware with an implausible reading. Inverted
-    //                      here instead: now the fault is highest exactly
-    //                      when RPM/load is lowest (cranking/idle, where
-    //                      genuine boost is impossible), which is what
-    //                      dme/bench/verilog/i8051_dashboard_tb.v's
-    //                      cl_ramp_to_6000_BOOST_HIGH keeps throttle
-    //                      closed for anyway (see its own comment) — a
-    //                      TPS-ramp reversal was tried first to get this
-    //                      same effect but had no effect on this signal
-    //                      and was reverted; inverting the formula here
-    //                      is the direct fix.
+    //  -DBOOST_HIGH     — normal value plus 80, saturating at 0xD0 (208)
+    //                      (e.g. simulate an overboost condition or
+    //                      wastegate failure). Rides on top of the real
+    //                      MAP-table value (boost_adc4_raw, itself driven
+    //                      from the firmware's own ram[43h] TPS/RPM state
+    //                      — see boost_thr_pct above), so the fault signal
+    //                      rises and falls on the same slope as real
+    //                      TPS/RPM instead of a flat, load-independent
+    //                      value — a real overboost condition can't exist
+    //                      at closed throttle/idle, and a reading that's
+    //                      high regardless of load looks like a stuck
+    //                      sensor fault, not genuine overboost.
+    //                      Two other approaches were tried and reverted:
+    //                      (1) reversing the TPS ramp for this test so
+    //                      throttle closes instead of opens — had no
+    //                      effect, since this signal's timing is paced by
+    //                      RPM's multi-second torque-balance ramp, not
+    //                      TPS's own much faster ~250ms transition; (2)
+    //                      mirroring this formula so the fault starts
+    //                      pinned at 0xD0 and falls to 0x50 as RPM/load
+    //                      rises — this DID change the result, but wrong:
+    //                      the firmware now reports a LOW-boost diagnostic
+    //                      instead of high, since by the time it checks
+    //                      the reading against real operating conditions
+    //                      the injected value has already fallen to its
+    //                      floor. Back to the original ascending +80 here;
+    //                      the real trigger condition for DTC 0x32 is
+    //                      still unresolved.
     // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
     // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
     // for both.)
@@ -358,8 +357,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // -DBOOST is also defined, since there's no MAP-table value to
     // offset otherwise.
     wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
-    wire [8:0]  boost_adc4_high_diff  = (boost_adc4_raw < 8'd208) ? (9'd208 - {1'b0, boost_adc4_raw}) : 9'd0;
-    wire [7:0]  boost_adc4_high       = (boost_adc4_high_diff < 9'd80) ? 8'd80 : boost_adc4_high_diff[7:0];
+    wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd80;
+    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd208) ? 8'd208 : boost_adc4_high_wide[7:0];
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
