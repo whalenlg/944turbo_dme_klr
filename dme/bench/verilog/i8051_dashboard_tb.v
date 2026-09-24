@@ -216,6 +216,32 @@
   `endif
 `endif
 
+// TEST_CL_RAMP_TO_2000: same structure as TEST_CL_RAMP_TO_3000, for a
+// lower operating point below it. AFM_CL_TARGET=0x53 is an ESTIMATE,
+// linearly interpolated between the two nearest real anchors — idle
+// (840rpm, AFM=0x28/40) and the 3000-family's own real settling point
+// (2853rpm, AFM=0x72/114) — same methodology used for the 4500/5000
+// targets (see their comments). Unverified against a real run; refine
+// the same way those were (check actual settled RPM, adjust) if it's
+// meaningfully off.
+`ifdef TEST_CL_RAMP_TO_2000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h53      // ~2000 RPM (ESTIMATED — see note above)
+  `ifndef SIM_TIME
+  `define SIM_TIME  30000000000     // 30s — matches the 3000-family's duration
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 `ifdef TEST_CL_RAMP_TO_3000
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
