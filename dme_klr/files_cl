@@ -17,7 +17,7 @@
 ../klr/bench/verilog/klr_vcd.v
 ../klr/bench/verilog/klr_tb.v
 ../klr/rtl/verilog/i8048_core.v
-../klr/rtl/verilog/klr_debug_loop_detect.v
+../klr/bench/verilog/klr_debug_loop_detect.v
 ../klr/bench/verilog/adc_8090.v
 ../dme/bench/verilog/adc_delay.v
 ../dme/bench/verilog/var_interrupt_gen_cl.v
