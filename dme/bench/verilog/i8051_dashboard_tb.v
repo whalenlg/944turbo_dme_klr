@@ -1189,12 +1189,36 @@ end
     localparam integer      AFM_LAG_NS     = 250_000_000;            // additional AFM reaction lag behind TPS's own trigger
 
     // TPS commanded target -- driver presses the gas at t=2000ms
+    //
+    // -DBOOST_HIGH diagnostic reversal: cl_ramp_to_6000_BOOST_HIGH still
+    // isn't tripping DTC 0x32 even with the injected fault riding well
+    // above the real MAP-table value (see klr_tb.v boost_adc4_high). One
+    // theory: the firmware's overboost check may compare the reading
+    // against what's PLAUSIBLE for the current throttle position rather
+    // than an absolute threshold — a high boost reading at WOT (where
+    // high boost is expected) may simply never look anomalous, while the
+    // same reading at closed throttle (where boost should be near zero)
+    // would. Reversed here — TPS starts OPEN and closes to idle at
+    // t=2000ms, the mirror image of the normal ramp — purely to test
+    // that theory; NOTE this also means TPS reads open from t=0, through
+    // engine cranking/sync, unlike every other CL test, so other aspects
+    // of this run (idle behavior, sync timing) may look different too.
+    // Revert to the plain (unreversed) ramp once the real trigger
+    // condition for DTC 0x32 is understood.
     reg [7:0] tps_commanded;
+`ifdef BOOST_HIGH
+    initial begin
+        tps_commanded = `AFM_CL_TARGET;   // start open (WOT)
+        #2_000_000_000;                   // 2000ms — past fuel cut and ASE
+        tps_commanded = 8'h28;            // driver lifts off the gas
+    end
+`else
     initial begin
         tps_commanded = 8'h28;         // idle until engine settled
         #2_000_000_000;                // 2000ms — past fuel cut and ASE
         tps_commanded = `AFM_CL_TARGET;   // driver presses the gas
     end
+`endif
 
     // AFM commanded target -- triggers on TPS's OWN event, but an
     // additional ~250ms later (airflow reacting to a throttle
@@ -1206,13 +1230,23 @@ end
     // trajectory as a clean time-shifted copy of TPS's, which is what
     // "reacts to that, with about 250ms of its own lag" actually
     // means here.
+    // -DBOOST_HIGH: reversed to match tps_commanded above — see comment there.
     reg [7:0] afm_commanded;
+`ifdef BOOST_HIGH
+    initial begin
+        afm_commanded = `AFM_CL_TARGET;
+        #2_000_000_000;
+        #AFM_LAG_NS;
+        afm_commanded = 8'h28;
+    end
+`else
     initial begin
         afm_commanded = 8'h28;
         #2_000_000_000;
         #AFM_LAG_NS;
         afm_commanded = `AFM_CL_TARGET;
     end
+`endif
 
     // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
     // This IS the afm_wiper used everywhere else in the file/hierarchy
