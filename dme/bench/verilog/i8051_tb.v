@@ -247,6 +247,9 @@
 `ifdef TEST_CL_COLD_START
   `define RPMRAMP
   `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
+  // Genuine cranking ramp — auto-enabled by var_interrupt_gen_cl.v
+  // itself from TEST_CL_COLD_START (see the CL_RPM_CRANK_RAMP header
+  // comment there for why it's not defined here directly).
   `undef  SIM_TIME
   `define SIM_TIME  60000000000
   `define _COOLANT_RAW  8'hC0       // cold — above 0x8F threshold for cold-start enrich
