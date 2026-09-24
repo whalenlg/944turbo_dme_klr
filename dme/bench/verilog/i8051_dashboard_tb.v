@@ -443,6 +443,12 @@
 `ifdef TEST_CL_COLD_START
   `define RPMRAMP
   `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
+  // Genuine cranking ramp (100->840 RPM over ~30s) instead of the CL
+  // generator's default instant-idle start — auto-enabled by
+  // var_interrupt_gen_cl.v itself from TEST_CL_COLD_START (see the
+  // CL_RPM_CRANK_RAMP header comment there for why it's not defined
+  // here directly — this file compiles too late in the file list for
+  // an in-source `define here to reach that file's own `ifdef).
   `ifndef SIM_TIME
   `define SIM_TIME  60000000000     // 60s — observe cold enrichment decay
   `endif

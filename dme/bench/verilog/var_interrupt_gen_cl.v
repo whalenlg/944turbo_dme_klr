@@ -146,6 +146,59 @@
                                              // this time.
 `endif
 
+// ── Optional cranking ramp (opt-in, off by default) ────────────────
+// Every pre-sync clamp point below normally snaps rpm_fp straight to
+// CL_RPM_TARGET (840) from t=0 — this generator has no cranking phase
+// at all, unlike the open-loop generator's RPMSTART->RPMEND ramp used
+// by cold_start. That's fine for tests where the engine is meant to
+// already be idling (e.g. cl_ramp_to_6000), but wrong for a genuine
+// cold-start test: cl_cold_start's reference-sensor pulses start at
+// full idle rate almost immediately (<100ms to first transition),
+// vs. cold_start's real ~570ms (100rpm cranking, ramping slowly) —
+// and unlike cold_start, cl_cold_start never observes ram[7Fh] (ISV
+// step) getting set, plausibly because firmware's cold-start init
+// routine needs to see genuine cranking-speed timing during its early
+// window, not an instant jump to idle.
+//
+// Gated behind CL_RPM_CRANK_RAMP so it's fully opt-in — every other
+// CL test compiles this file with the macro undefined, so
+// crank_ramp_target() below just returns CL_RPM_TARGET unconditionally
+// and behaves exactly as before. Deliberately NOT a flat CL_RPM_TARGET
+// override (that deadlocked cl_ramp_to_6000_BOOST permanently in an
+// earlier investigation — see git history — since firmware only
+// reliably achieves EngineSync near the real 840 idle target): this
+// ramp always converges to the same unchanged CL_RPM_TARGET, it just
+// takes CL_RPM_CRANK_RAMP_NS to get there, so there's no risk of
+// getting permanently stuck short of whatever RPM firmware needs to
+// sync at.
+//
+// Auto-enabled from TEST_CL_COLD_START (already passed via -D on the
+// run-script command line for that test) rather than relying on an
+// in-source `define inside i8051_dashboard_tb.v/i8051_tb.v — this file
+// compiles BEFORE those in files/files_cl, so an in-source `define
+// there would still be undefined when the `ifdef below is evaluated.
+// A command-line -D is active from the very start of preprocessing,
+// so deriving it here instead sidesteps that file-order problem.
+`ifdef TEST_CL_COLD_START
+  `ifndef CL_RPM_CRANK_RAMP
+    `define CL_RPM_CRANK_RAMP
+  `endif
+`endif
+`ifdef CL_RPM_CRANK_RAMP
+  `ifndef CL_RPM_CRANK_START
+    `define CL_RPM_CRANK_START     100          // cranking speed — matches cold_start's RPMSTART
+  `endif
+  `ifndef CL_RPM_CRANK_RAMP_NS
+    `define CL_RPM_CRANK_RAMP_NS   30_000_000_000  // 30s — matches cold_start's real-world
+                                                     // ramp duration to 840 (its own
+                                                     // RPMSTART=100/RPMEND=840/RPM_RAMP_PCT=25
+                                                     // over a 120s SIM_TIME), so cl_cold_start
+                                                     // spends a comparable amount of real time
+                                                     // near cranking speed regardless of its own
+                                                     // (shorter, 60s) SIM_TIME.
+  `endif
+`endif
+
 
 // Self-contained: the non-dashboard files list compiles this module before the
 // testbench defines RPMCONST.  `ifndef so a real upstream/-D definition wins.
@@ -276,6 +329,27 @@ module var_interrupt_generator_cl (
     reg [15:0] fuel_pulse_prev;
     integer    fuel_ms_x100;
 
+    // ── Pre-sync clamp target (crank ramp when enabled) ────────────
+    // See the CL_RPM_CRANK_RAMP header comment above. Every pre-sync
+    // clamp point calls this instead of using `CL_RPM_TARGET directly.
+    function integer crank_ramp_target;
+        input integer dummy;
+        real frac;
+        begin
+`ifdef CL_RPM_CRANK_RAMP
+            if ($time >= `CL_RPM_CRANK_RAMP_NS)
+                crank_ramp_target = `CL_RPM_TARGET;
+            else begin
+                frac = $time / (`CL_RPM_CRANK_RAMP_NS * 1.0);
+                crank_ramp_target = `CL_RPM_CRANK_START +
+                    $rtoi((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * frac);
+            end
+`else
+            crank_ramp_target = `CL_RPM_TARGET;
+`endif
+        end
+    endfunction
+
     // ── AFM combinational ────────────────────────────────────────
     always @(*) begin : afm_calc
         integer crpm;
@@ -317,10 +391,10 @@ module var_interrupt_generator_cl (
     // ── Initial state ────────────────────────────────────────────
     initial begin
         tick_counter    = 0;
-        rpm_fp          = `CL_RPM_TARGET * `CL_INERTIA;
+        rpm_fp          = crank_ramp_target(0) * `CL_INERTIA;
         rpm_fp_min      = `CL_RPM_MIN    * `CL_INERTIA;
         rpm_fp_max      = `CL_RPM_MAX    * `CL_INERTIA;
-        period_current  = `RPMCONST / `CL_RPM_TARGET;
+        period_current  = `RPMCONST / crank_ramp_target(0);
         fuel_pulse_prev = 16'd0;
         fuel_ms_x100    = 0;
         int_0           = 1'b1;
@@ -404,8 +478,8 @@ module var_interrupt_generator_cl (
             ref_low_active <= 1'b0;
             ref_low_cnt    <= 22'd0;
             ref_fired_this_rev <= 1'b0;
-            rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
-            period_current <= `RPMCONST / `CL_RPM_TARGET;
+            rpm_fp         <= crank_ramp_target(0) * `CL_INERTIA;
+            period_current <= `RPMCONST / crank_ramp_target(0);
             synced_once    <= 1'b0;
         end else begin
 
@@ -443,12 +517,12 @@ module var_interrupt_generator_cl (
                     // Diagnostic: report WHY the RPM was clamped to target.
                     // EngineSync   = iram[21h].0   FuelOffCoast = iram[23h].5
                     $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=%s  (synced_once=%0b iram21=%02h iram23=%02h)",
-                             ($time/1_000_000), `CL_RPM_TARGET,
+                             ($time/1_000_000), crank_ramp_target(0),
                              (!synced_once) ? "PRE-SYNC" : "FUEL-OFF-COAST",
                              synced_once, `CL_IRAM(8'h21), `CL_IRAM(8'h23));
 `endif
-                    rpm_fp         <= `CL_RPM_TARGET * `CL_INERTIA;
-                    period_current <= `RPMCONST / `CL_RPM_TARGET;
+                    rpm_fp         <= crank_ramp_target(0) * `CL_INERTIA;
+                    period_current <= `RPMCONST / crank_ramp_target(0);
                 end else begin
                     // Fuel-quality compensation (FQS driver switch): firmware
                     // widens/narrows the injector pulse to compensate for
