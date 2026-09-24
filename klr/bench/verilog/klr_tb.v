@@ -322,7 +322,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      disconnected/failed boost sensor)
     //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
     //                      simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH     — normal value plus 80, saturating at 0xD0 (208)
+    //  -DBOOST_HIGH     — normal value plus 80, saturating at 0xF0 (240)
     //                      (e.g. simulate an overboost condition or
     //                      wastegate failure). Rides on top of the real
     //                      MAP-table value (boost_adc4_raw, itself driven
@@ -341,15 +341,19 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      RPM's multi-second torque-balance ramp, not
     //                      TPS's own much faster ~250ms transition; (2)
     //                      mirroring this formula so the fault starts
-    //                      pinned at 0xD0 and falls to 0x50 as RPM/load
-    //                      rises — this DID change the result, but wrong:
-    //                      the firmware now reports a LOW-boost diagnostic
+    //                      pinned at high and falls as RPM/load rises —
+    //                      this DID change the result, but wrong: the
+    //                      firmware reported a LOW-boost diagnostic
     //                      instead of high, since by the time it checks
     //                      the reading against real operating conditions
-    //                      the injected value has already fallen to its
-    //                      floor. Back to the original ascending +80 here;
-    //                      the real trigger condition for DTC 0x32 is
-    //                      still unresolved.
+    //                      the injected value had already fallen to its
+    //                      floor. Ceiling raised from 0xD0 (208) back to
+    //                      0xF0 (240) — 0xD0 still never tripped DTC
+    //                      0x32; 0xF0 exactly matches the downstream
+    //                      firmware-compliance cap below, so this is the
+    //                      highest value that cap ever lets through. The
+    //                      real trigger condition for DTC 0x32 is still
+    //                      unresolved.
     // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
     // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
     // for both.)
@@ -358,7 +362,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // offset otherwise.
     wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
     wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd80;
-    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd208) ? 8'd208 : boost_adc4_high_wide[7:0];
+    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd240) ? 8'd240 : boost_adc4_high_wide[7:0];
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
