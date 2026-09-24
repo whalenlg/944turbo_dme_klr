@@ -322,12 +322,12 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      disconnected/failed boost sensor)
     //  -DBOOST_LOW      — normal value minus 75, clamped at 0 (e.g.
     //                      simulate a boost leak / underboost condition)
-    //  -DBOOST_HIGH     — normal value plus 80, saturating at 255 (e.g.
-    //                      simulate an overboost condition or wastegate
-    //                      failure). Rides on top of the real MAP-table
-    //                      value (boost_adc4_raw, itself driven from the
-    //                      firmware's own ram[43h] TPS/RPM state — see
-    //                      boost_thr_pct above), so the fault signal
+    //  -DBOOST_HIGH     — normal value plus 80, saturating at 0xD0 (208)
+    //                      (e.g. simulate an overboost condition or
+    //                      wastegate failure). Rides on top of the real
+    //                      MAP-table value (boost_adc4_raw, itself driven
+    //                      from the firmware's own ram[43h] TPS/RPM state
+    //                      — see boost_thr_pct above), so the fault signal
     //                      rises and falls on the same slope as real
     //                      TPS/RPM instead of a flat, load-independent
     //                      value — a real overboost condition can't exist
@@ -340,8 +340,14 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                      DTC 0x32); a flat pin-at-max was tried next and
     //                      also didn't confirm the DTC, plausibly because
     //                      it broke the same load-tracking property. +80
-    //                      keeps that property while giving much more
-    //                      headroom than +33 once boost is actually up.
+    //                      kept that property while giving much more
+    //                      headroom than +33. Ceiling lowered from a
+    //                      255 saturation (effectively 0xF0/240 once the
+    //                      firmware-compliance cap below applies) down to
+    //                      0xD0 (208) — values above that were triggering
+    //                      unrelated anomalous firmware behavior on
+    //                      cl_ramp_to_6000_BOOST_HIGH, so the fault
+    //                      injection now stays well clear of that range.
     // (Dropped -DBOOST_150PCT — its saturating-scale behavior was already
     // fully covered by -DBOOST_HIGH's saturating-offset behavior; no need
     // for both.)
@@ -350,7 +356,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // offset otherwise.
     wire [7:0]  boost_adc4_low        = (boost_adc4_raw < 8'd75)  ? 8'd0 : (boost_adc4_raw - 8'd75);
     wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd80;
-    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd255) ? 8'd255 : boost_adc4_high_wide[7:0];
+    wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd208) ? 8'd208 : boost_adc4_high_wide[7:0];
 
 `ifdef BOOST_ZERO
     wire [7:0] boost_adc4_final = 8'd0;
