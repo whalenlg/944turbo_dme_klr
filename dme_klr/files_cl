@@ -28,4 +28,5 @@
 ../klr/rtl/verilog/klr_top.v
 bench/verilog/klr_vcd_combined.v
 ../dme/bench/verilog/i8051_dashboard_tb.v
+../klr/bench/verilog/klr_knock_gen.v
 bench/verilog/dme_klr_dashboard_tb.v
