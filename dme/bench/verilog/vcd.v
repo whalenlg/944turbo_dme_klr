@@ -553,11 +553,17 @@ $dumpvars(0,`TB.interrupt_generator_1);
 `endif
 `endif
 
+// These specific signals are the always-on minimal trace for a plain
+// (non-debug) build. Under DME_DEBUG/DME_DEEP_DEBUG the broader sweeps
+// above ($dumpvars(1,`TB), $dumpvars(1,`TB.i8051_top.u_cpu), and
+// $dumpvars(0,`TB.u_dumpvcd) — which also covers data_from_rom, so that
+// one's dropped here entirely rather than re-added) already include
+// every signal below, so re-listing them here would just produce a
+// "skipping signal ... it was previously included" VCD warning per
+// signal — skip the whole block in that case.
+`ifndef DO_DME_DEBUG_DUMP
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
 $dumpvars(1,`TB.i8051_top.u_cpu.pc);
-`ifdef DME_DEEP_DEBUG
-$dumpvars(1,data_from_rom);
-`endif
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 $dumpvars(1,`TB.i8051_top.u_cpu.t0);
 $dumpvars(1,`TB.i8051_top.u_cpu.t1);
@@ -588,6 +594,7 @@ $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
 $dumpvars(1,`TB.tdc);
+`endif // !DO_DME_DEBUG_DUMP
 //$dumpvars(1,clk);
 
 
