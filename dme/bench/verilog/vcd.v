@@ -13,13 +13,13 @@ module dumpvcd(
 `else
   `define TB i8051_tb
 `endif
-integer clk_count,msg_count;
-reg [15:0] read_addr,write_addr,msg_addr,last_pc;
-reg [159:0] debug_msg [0:8191],asmlabel,last_msg;
+integer clk_count;
+reg [15:0] read_addr,write_addr,last_pc;
+reg [159:0] debug_msg [0:8191],last_msg;
 reg [255:0] memory_byte_map [0:255],msg;
 reg [7:0] memda,bytememdat,bitmemdat;
 reg [255:0] memory_bit_map [0:255];
-reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191],asmopcode,asminstr,asmoperands,asmoperandnums;
+reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191];
 
 // ======================================
 // Dump Waves to FST File
@@ -29,277 +29,335 @@ reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191],asmopcode,a
   `define VCD_FILE "sim.fst"
 `endif
 reg [1023:0] fst_path;
-wire [7:0] rb0_0,rb0_1,rb0_2,rb0_3,rb0_4,rb0_5,rb0_6,rb0_7;
-wire [7:0] rb1_0,rb1_1,rb1_2,rb1_3,rb1_4,rb1_5,rb1_6,rb1_7;
-wire [7:0] rb2_0,rb2_1,rb2_2,rb2_3,rb2_4,rb2_5,rb2_6,rb2_7;
-wire [7:0] rb3_0,rb3_1,rb3_2,rb3_3,rb3_4,rb3_5,rb3_6,rb3_7;
 
-wire [7:0] r00,r01,r02,r03,r04,r05,r06,r07;
-wire [7:0] r08,r09,r0a,r0b,r0c,r0d,r0e,r0f;
-wire [7:0] r10,r11,r12,r13,r14,r15,r16,r17;
-wire [7:0] r18,r19,r1a,r1b,r1c,r1d,r1e,r1f;
-wire [7:0] r20,r21,r22,r23,r24,r25,r26,r27;
-wire [7:0] r28,r29,r2a,r2b,r2c,r2d,r2e,r2f;
-wire [7:0] r30,r31,r32,r33,r34,r35,r36,r37;
-wire [7:0] r38,r39,r3a,r3b,r3c,r3d,r3e,r3f;
-wire [7:0] r40,r41,r42,r43,r44,r45,r46,r47;
-wire [7:0] r48,r49,r4a,r4b,r4c,r4d,r4e,r4f;
-wire [7:0] r50,r51,r52,r53,r54,r55,r56,r57;
-wire [7:0] r58,r59,r5a,r5b,r5c,r5d,r5e,r5f;
-wire [7:0] r60,r61,r62,r63,r64,r65,r66,r67;
-wire [7:0] r68,r69,r6a,r6b,r6c,r6d,r6e,r6f;
-wire [7:0] r70,r71,r72,r73,r74,r75,r76,r77;
-wire [7:0] r78,r79,r7a,r7b,r7c,r7d,r7e,r7f;
-
-wire b00,b01,b02,b03,b04,b05,b06,b07;
-wire b08,b09,b0a,b0b,b0c,b0d,b0e,b0f;
-wire b10,b11,b12,b13,b14,b15,b16,b17;
-wire b18,b19,b1a,b1b,b1c,b1d,b1e,b1f;
-wire b20,b21,b22,b23,b24,b25,b26,b27;
-wire b28,b29,b2a,b2b,b2c,b2d,b2e,b2f;
-
-wire [4:0] rb = {`TB.i8051_top.u_cpu.psw[4],
+// ============================================================
+//  FST hierarchy grouping (DME_DEBUG/DME_DEEP_DEBUG waveform
+//  organization)
+//  ────────────────────────────────────────────────────────
+//  Named-scope signal groups so the debug waveform view organizes
+//  related signals under readable sub-scopes instead of one flat
+//  list under u_dumpvcd:
+//    registers   — r0-r7 (currently-selected bank, per psw[4:3])
+//    reg_bank_0  — rb0_0-rb0_7 (iram[0]-iram[7], bank 0, static)
+//    reg_bank_1  — rb1_0-rb1_7 (iram[8]-iram[15], bank 1, static)
+//    reg_bank_2  — rb2_0-rb2_7 (iram[16]-iram[23], bank 2, static)
+//    reg_bank_3  — rb3_0-rb3_7 (iram[24]-iram[31], bank 3, static)
+//    memory      — r00-r7f (all 128 iram bytes)
+//    bit_memory  — b00-b2f (bit-addressable iram[20h]-[25h], exploded)
+//    asm_debug   — asmlabel, asmopcode, asminstr, asmoperands,
+//                  asmoperandnums, msg_addr, msg_count (plus the
+//                  per-instruction disassembly always block that
+//                  drives them — see below)
+//    closed_loop — cl_iram_21, cl_iram_23, cl_enginesync,
+//                  cl_fueloffcoast (CL-mode diagnostic aliases)
+//  These are the only declarations of these signals — no separate
+//  flat copies exist elsewhere in this module. The DME_DEBUG dump
+//  below uses $dumpvars(0, `TB.u_dumpvcd) (level 0 = full
+//  recursive sweep), so these named groups are automatically swept
+//  along with everything else in this module — no extra dumpvars
+//  calls needed per group.
+// ============================================================
+generate
+    begin : registers
+        wire [4:0] rb = {`TB.i8051_top.u_cpu.psw[4],
                           `TB.i8051_top.u_cpu.psw[3], 3'b000};
-wire [7:0] r0 = `TB.i8051_top.u_cpu.iram[rb+0];
-wire [7:0] r1 = `TB.i8051_top.u_cpu.iram[rb+1];
-wire [7:0] r2 = `TB.i8051_top.u_cpu.iram[rb+2];
-wire [7:0] r3 = `TB.i8051_top.u_cpu.iram[rb+3];
-wire [7:0] r4 = `TB.i8051_top.u_cpu.iram[rb+4];
-wire [7:0] r5 = `TB.i8051_top.u_cpu.iram[rb+5];
-wire [7:0] r6 = `TB.i8051_top.u_cpu.iram[rb+6];
-wire [7:0] r7 = `TB.i8051_top.u_cpu.iram[rb+7];
+        wire [7:0] r0 = `TB.i8051_top.u_cpu.iram[rb+0];
+        wire [7:0] r1 = `TB.i8051_top.u_cpu.iram[rb+1];
+        wire [7:0] r2 = `TB.i8051_top.u_cpu.iram[rb+2];
+        wire [7:0] r3 = `TB.i8051_top.u_cpu.iram[rb+3];
+        wire [7:0] r4 = `TB.i8051_top.u_cpu.iram[rb+4];
+        wire [7:0] r5 = `TB.i8051_top.u_cpu.iram[rb+5];
+        wire [7:0] r6 = `TB.i8051_top.u_cpu.iram[rb+6];
+        wire [7:0] r7 = `TB.i8051_top.u_cpu.iram[rb+7];
+    end
+endgenerate
 
-// ── CL-mode diagnostic aliases (so individual iram bytes appear in the VCD;
-//    $dumpvars does not capture array elements directly) ──
-wire [7:0] cl_iram_21    = `TB.i8051_top.u_cpu.iram[8'h21];  // EngineSync byte
-wire [7:0] cl_iram_23    = `TB.i8051_top.u_cpu.iram[8'h23];  // FuelOffCoast byte
-wire       cl_enginesync = cl_iram_21[0];                    // iram[21h].0
-wire       cl_fueloffcoast = cl_iram_23[5];                  // iram[23h].5
+generate
+    begin : reg_bank_0
+        wire [7:0] rb0_0 = `TB.i8051_top.u_cpu.iram[0];
+        wire [7:0] rb0_1 = `TB.i8051_top.u_cpu.iram[1];
+        wire [7:0] rb0_2 = `TB.i8051_top.u_cpu.iram[2];
+        wire [7:0] rb0_3 = `TB.i8051_top.u_cpu.iram[3];
+        wire [7:0] rb0_4 = `TB.i8051_top.u_cpu.iram[4];
+        wire [7:0] rb0_5 = `TB.i8051_top.u_cpu.iram[5];
+        wire [7:0] rb0_6 = `TB.i8051_top.u_cpu.iram[6];
+        wire [7:0] rb0_7 = `TB.i8051_top.u_cpu.iram[7];
+    end
+endgenerate
 
-assign    rb0_0 = `TB.i8051_top.u_cpu.iram[0];
-assign    rb0_1 = `TB.i8051_top.u_cpu.iram[1];
-assign    rb0_2 = `TB.i8051_top.u_cpu.iram[2];
-assign    rb0_3 = `TB.i8051_top.u_cpu.iram[3];
-assign    rb0_4 = `TB.i8051_top.u_cpu.iram[4];
-assign    rb0_5 = `TB.i8051_top.u_cpu.iram[5];
-assign    rb0_6 = `TB.i8051_top.u_cpu.iram[6];
-assign    rb0_7 = `TB.i8051_top.u_cpu.iram[7];
+generate
+    begin : reg_bank_1
+        wire [7:0] rb1_0 = `TB.i8051_top.u_cpu.iram[8];
+        wire [7:0] rb1_1 = `TB.i8051_top.u_cpu.iram[9];
+        wire [7:0] rb1_2 = `TB.i8051_top.u_cpu.iram[10];
+        wire [7:0] rb1_3 = `TB.i8051_top.u_cpu.iram[11];
+        wire [7:0] rb1_4 = `TB.i8051_top.u_cpu.iram[12];
+        wire [7:0] rb1_5 = `TB.i8051_top.u_cpu.iram[13];
+        wire [7:0] rb1_6 = `TB.i8051_top.u_cpu.iram[14];
+        wire [7:0] rb1_7 = `TB.i8051_top.u_cpu.iram[15];
+    end
+endgenerate
 
-assign    rb1_0 = `TB.i8051_top.u_cpu.iram[8];
-assign    rb1_1 = `TB.i8051_top.u_cpu.iram[9];
-assign    rb1_2 = `TB.i8051_top.u_cpu.iram[10];
-assign    rb1_3 = `TB.i8051_top.u_cpu.iram[11];
-assign    rb1_4 = `TB.i8051_top.u_cpu.iram[12];
-assign    rb1_5 = `TB.i8051_top.u_cpu.iram[13];
-assign    rb1_6 = `TB.i8051_top.u_cpu.iram[14];
-assign    rb1_7 = `TB.i8051_top.u_cpu.iram[15];
+generate
+    begin : reg_bank_2
+        wire [7:0] rb2_0 = `TB.i8051_top.u_cpu.iram[16];
+        wire [7:0] rb2_1 = `TB.i8051_top.u_cpu.iram[17];
+        wire [7:0] rb2_2 = `TB.i8051_top.u_cpu.iram[18];
+        wire [7:0] rb2_3 = `TB.i8051_top.u_cpu.iram[19];
+        wire [7:0] rb2_4 = `TB.i8051_top.u_cpu.iram[20];
+        wire [7:0] rb2_5 = `TB.i8051_top.u_cpu.iram[21];
+        wire [7:0] rb2_6 = `TB.i8051_top.u_cpu.iram[22];
+        wire [7:0] rb2_7 = `TB.i8051_top.u_cpu.iram[23];
+    end
+endgenerate
 
-assign    rb2_0 = `TB.i8051_top.u_cpu.iram[16];
-assign    rb2_1 = `TB.i8051_top.u_cpu.iram[17];
-assign    rb2_2 = `TB.i8051_top.u_cpu.iram[18];
-assign    rb2_3 = `TB.i8051_top.u_cpu.iram[19];
-assign    rb2_4 = `TB.i8051_top.u_cpu.iram[20];
-assign    rb2_5 = `TB.i8051_top.u_cpu.iram[21];
-assign    rb2_6 = `TB.i8051_top.u_cpu.iram[22];
-assign    rb2_7 = `TB.i8051_top.u_cpu.iram[23];
+generate
+    begin : reg_bank_3
+        wire [7:0] rb3_0 = `TB.i8051_top.u_cpu.iram[24];
+        wire [7:0] rb3_1 = `TB.i8051_top.u_cpu.iram[25];
+        wire [7:0] rb3_2 = `TB.i8051_top.u_cpu.iram[26];
+        wire [7:0] rb3_3 = `TB.i8051_top.u_cpu.iram[27];
+        wire [7:0] rb3_4 = `TB.i8051_top.u_cpu.iram[28];
+        wire [7:0] rb3_5 = `TB.i8051_top.u_cpu.iram[29];
+        wire [7:0] rb3_6 = `TB.i8051_top.u_cpu.iram[30];
+        wire [7:0] rb3_7 = `TB.i8051_top.u_cpu.iram[31];
+    end
+endgenerate
 
-assign    rb3_0 = `TB.i8051_top.u_cpu.iram[24];
-assign    rb3_1 = `TB.i8051_top.u_cpu.iram[25];
-assign    rb3_2 = `TB.i8051_top.u_cpu.iram[26];
-assign    rb3_3 = `TB.i8051_top.u_cpu.iram[27];
-assign    rb3_4 = `TB.i8051_top.u_cpu.iram[28];
-assign    rb3_5 = `TB.i8051_top.u_cpu.iram[29];
-assign    rb3_6 = `TB.i8051_top.u_cpu.iram[30];
-assign    rb3_7 = `TB.i8051_top.u_cpu.iram[31];
+generate
+    begin : memory
+        wire [7:0] r00 = `TB.i8051_top.u_cpu.iram[7'h00];
+        wire [7:0] r01 = `TB.i8051_top.u_cpu.iram[7'h01];
+        wire [7:0] r02 = `TB.i8051_top.u_cpu.iram[7'h02];
+        wire [7:0] r03 = `TB.i8051_top.u_cpu.iram[7'h03];
+        wire [7:0] r04 = `TB.i8051_top.u_cpu.iram[7'h04];
+        wire [7:0] r05 = `TB.i8051_top.u_cpu.iram[7'h05];
+        wire [7:0] r06 = `TB.i8051_top.u_cpu.iram[7'h06];
+        wire [7:0] r07 = `TB.i8051_top.u_cpu.iram[7'h07];
+        wire [7:0] r08 = `TB.i8051_top.u_cpu.iram[7'h08];
+        wire [7:0] r09 = `TB.i8051_top.u_cpu.iram[7'h09];
+        wire [7:0] r0a = `TB.i8051_top.u_cpu.iram[7'h0a];
+        wire [7:0] r0b = `TB.i8051_top.u_cpu.iram[7'h0b];
+        wire [7:0] r0c = `TB.i8051_top.u_cpu.iram[7'h0c];
+        wire [7:0] r0d = `TB.i8051_top.u_cpu.iram[7'h0d];
+        wire [7:0] r0e = `TB.i8051_top.u_cpu.iram[7'h0e];
+        wire [7:0] r0f = `TB.i8051_top.u_cpu.iram[7'h0f];
+        wire [7:0] r10 = `TB.i8051_top.u_cpu.iram[7'h10];
+        wire [7:0] r11 = `TB.i8051_top.u_cpu.iram[7'h11];
+        wire [7:0] r12 = `TB.i8051_top.u_cpu.iram[7'h12];
+        wire [7:0] r13 = `TB.i8051_top.u_cpu.iram[7'h13];
+        wire [7:0] r14 = `TB.i8051_top.u_cpu.iram[7'h14];
+        wire [7:0] r15 = `TB.i8051_top.u_cpu.iram[7'h15];
+        wire [7:0] r16 = `TB.i8051_top.u_cpu.iram[7'h16];
+        wire [7:0] r17 = `TB.i8051_top.u_cpu.iram[7'h17];
+        wire [7:0] r18 = `TB.i8051_top.u_cpu.iram[7'h18];
+        wire [7:0] r19 = `TB.i8051_top.u_cpu.iram[7'h19];
+        wire [7:0] r1a = `TB.i8051_top.u_cpu.iram[7'h1a];
+        wire [7:0] r1b = `TB.i8051_top.u_cpu.iram[7'h1b];
+        wire [7:0] r1c = `TB.i8051_top.u_cpu.iram[7'h1c];
+        wire [7:0] r1d = `TB.i8051_top.u_cpu.iram[7'h1d];
+        wire [7:0] r1e = `TB.i8051_top.u_cpu.iram[7'h1e];
+        wire [7:0] r1f = `TB.i8051_top.u_cpu.iram[7'h1f];
+        wire [7:0] r20 = `TB.i8051_top.u_cpu.iram[32];
+        wire [7:0] r21 = `TB.i8051_top.u_cpu.iram[33];
+        wire [7:0] r22 = `TB.i8051_top.u_cpu.iram[34];
+        wire [7:0] r23 = `TB.i8051_top.u_cpu.iram[35];
+        wire [7:0] r24 = `TB.i8051_top.u_cpu.iram[36];
+        wire [7:0] r25 = `TB.i8051_top.u_cpu.iram[37];
+        wire [7:0] r26 = `TB.i8051_top.u_cpu.iram[38];
+        wire [7:0] r27 = `TB.i8051_top.u_cpu.iram[39];
+        wire [7:0] r28 = `TB.i8051_top.u_cpu.iram[40];
+        wire [7:0] r29 = `TB.i8051_top.u_cpu.iram[41];
+        wire [7:0] r2a = `TB.i8051_top.u_cpu.iram[42];
+        wire [7:0] r2b = `TB.i8051_top.u_cpu.iram[43];
+        wire [7:0] r2c = `TB.i8051_top.u_cpu.iram[44];
+        wire [7:0] r2d = `TB.i8051_top.u_cpu.iram[45];
+        wire [7:0] r2e = `TB.i8051_top.u_cpu.iram[46];
+        wire [7:0] r2f = `TB.i8051_top.u_cpu.iram[47];
+        wire [7:0] r30 = `TB.i8051_top.u_cpu.iram[48];
+        wire [7:0] r31 = `TB.i8051_top.u_cpu.iram[49];
+        wire [7:0] r32 = `TB.i8051_top.u_cpu.iram[50];
+        wire [7:0] r33 = `TB.i8051_top.u_cpu.iram[51];
+        wire [7:0] r34 = `TB.i8051_top.u_cpu.iram[52];
+        wire [7:0] r35 = `TB.i8051_top.u_cpu.iram[53];
+        wire [7:0] r36 = `TB.i8051_top.u_cpu.iram[54];
+        wire [7:0] r37 = `TB.i8051_top.u_cpu.iram[55];
+        wire [7:0] r38 = `TB.i8051_top.u_cpu.iram[56];
+        wire [7:0] r39 = `TB.i8051_top.u_cpu.iram[57];
+        wire [7:0] r3a = `TB.i8051_top.u_cpu.iram[58];
+        wire [7:0] r3b = `TB.i8051_top.u_cpu.iram[59];
+        wire [7:0] r3c = `TB.i8051_top.u_cpu.iram[7'h3C];
+        wire [7:0] r3d = `TB.i8051_top.u_cpu.iram[7'h3D];
+        wire [7:0] r3e = `TB.i8051_top.u_cpu.iram[7'h3e];
+        wire [7:0] r3f = `TB.i8051_top.u_cpu.iram[63];
+        wire [7:0] r40 = `TB.i8051_top.u_cpu.iram[64];
+        wire [7:0] r41 = `TB.i8051_top.u_cpu.iram[65];
+        wire [7:0] r42 = `TB.i8051_top.u_cpu.iram[66];
+        wire [7:0] r43 = `TB.i8051_top.u_cpu.iram[67];
+        wire [7:0] r44 = `TB.i8051_top.u_cpu.iram[68];
+        wire [7:0] r45 = `TB.i8051_top.u_cpu.iram[69];
+        wire [7:0] r46 = `TB.i8051_top.u_cpu.iram[70];
+        wire [7:0] r47 = `TB.i8051_top.u_cpu.iram[71];
+        wire [7:0] r48 = `TB.i8051_top.u_cpu.iram[72];
+        wire [7:0] r49 = `TB.i8051_top.u_cpu.iram[73];
+        wire [7:0] r4a = `TB.i8051_top.u_cpu.iram[74];
+        wire [7:0] r4b = `TB.i8051_top.u_cpu.iram[75];
+        wire [7:0] r4c = `TB.i8051_top.u_cpu.iram[76];
+        wire [7:0] r4d = `TB.i8051_top.u_cpu.iram[77];
+        wire [7:0] r4e = `TB.i8051_top.u_cpu.iram[78];
+        wire [7:0] r4f = `TB.i8051_top.u_cpu.iram[79];
+        wire [7:0] r50 = `TB.i8051_top.u_cpu.iram[80];
+        wire [7:0] r51 = `TB.i8051_top.u_cpu.iram[81];
+        wire [7:0] r52 = `TB.i8051_top.u_cpu.iram[82];
+        wire [7:0] r53 = `TB.i8051_top.u_cpu.iram[83];
+        wire [7:0] r54 = `TB.i8051_top.u_cpu.iram[84];
+        wire [7:0] r55 = `TB.i8051_top.u_cpu.iram[85];
+        wire [7:0] r56 = `TB.i8051_top.u_cpu.iram[86];
+        wire [7:0] r57 = `TB.i8051_top.u_cpu.iram[87];
+        wire [7:0] r58 = `TB.i8051_top.u_cpu.iram[88];
+        wire [7:0] r59 = `TB.i8051_top.u_cpu.iram[89];
+        wire [7:0] r5a = `TB.i8051_top.u_cpu.iram[90];
+        wire [7:0] r5b = `TB.i8051_top.u_cpu.iram[91];
+        wire [7:0] r5c = `TB.i8051_top.u_cpu.iram[92];
+        wire [7:0] r5d = `TB.i8051_top.u_cpu.iram[93];
+        wire [7:0] r5e = `TB.i8051_top.u_cpu.iram[94];
+        wire [7:0] r5f = `TB.i8051_top.u_cpu.iram[95];
+        wire [7:0] r60 = `TB.i8051_top.u_cpu.iram[96];
+        wire [7:0] r61 = `TB.i8051_top.u_cpu.iram[97];
+        wire [7:0] r62 = `TB.i8051_top.u_cpu.iram[98];
+        wire [7:0] r63 = `TB.i8051_top.u_cpu.iram[99];
+        wire [7:0] r64 = `TB.i8051_top.u_cpu.iram[100];
+        wire [7:0] r65 = `TB.i8051_top.u_cpu.iram[101];
+        wire [7:0] r66 = `TB.i8051_top.u_cpu.iram[102];
+        wire [7:0] r67 = `TB.i8051_top.u_cpu.iram[103];
+        wire [7:0] r68 = `TB.i8051_top.u_cpu.iram[104];
+        wire [7:0] r69 = `TB.i8051_top.u_cpu.iram[105];
+        wire [7:0] r6a = `TB.i8051_top.u_cpu.iram[106];
+        wire [7:0] r6b = `TB.i8051_top.u_cpu.iram[107];
+        wire [7:0] r6c = `TB.i8051_top.u_cpu.iram[108];
+        wire [7:0] r6d = `TB.i8051_top.u_cpu.iram[109];
+        wire [7:0] r6e = `TB.i8051_top.u_cpu.iram[110];
+        wire [7:0] r6f = `TB.i8051_top.u_cpu.iram[111];
+        wire [7:0] r70 = `TB.i8051_top.u_cpu.iram[112];
+        wire [7:0] r71 = `TB.i8051_top.u_cpu.iram[113];
+        wire [7:0] r72 = `TB.i8051_top.u_cpu.iram[114];
+        wire [7:0] r73 = `TB.i8051_top.u_cpu.iram[115];
+        wire [7:0] r74 = `TB.i8051_top.u_cpu.iram[116];
+        wire [7:0] r75 = `TB.i8051_top.u_cpu.iram[117];
+        wire [7:0] r76 = `TB.i8051_top.u_cpu.iram[118];
+        wire [7:0] r77 = `TB.i8051_top.u_cpu.iram[119];
+        wire [7:0] r78 = `TB.i8051_top.u_cpu.iram[120];
+        wire [7:0] r79 = `TB.i8051_top.u_cpu.iram[121];
+        wire [7:0] r7a = `TB.i8051_top.u_cpu.iram[122];
+        wire [7:0] r7b = `TB.i8051_top.u_cpu.iram[123];
+        wire [7:0] r7c = `TB.i8051_top.u_cpu.iram[124];
+        wire [7:0] r7d = `TB.i8051_top.u_cpu.iram[125];
+        wire [7:0] r7e = `TB.i8051_top.u_cpu.iram[126];
+        wire [7:0] r7f = `TB.i8051_top.u_cpu.iram[127];
+    end
+endgenerate
 
-assign    r00 = `TB.i8051_top.u_cpu.iram[7'h00];
-assign    r01 = `TB.i8051_top.u_cpu.iram[7'h01];
-assign    r02 = `TB.i8051_top.u_cpu.iram[7'h02];
-assign    r03 = `TB.i8051_top.u_cpu.iram[7'h03];
-assign    r04 = `TB.i8051_top.u_cpu.iram[7'h04];
-assign    r05 = `TB.i8051_top.u_cpu.iram[7'h05];
-assign    r06 = `TB.i8051_top.u_cpu.iram[7'h06];
-assign    r07 = `TB.i8051_top.u_cpu.iram[7'h07];
-assign    r08 = `TB.i8051_top.u_cpu.iram[7'h08];
-assign    r09 = `TB.i8051_top.u_cpu.iram[7'h09];
-assign    r0a = `TB.i8051_top.u_cpu.iram[7'h0a];
-assign    r0b = `TB.i8051_top.u_cpu.iram[7'h0b];
-assign    r0c = `TB.i8051_top.u_cpu.iram[7'h0c];
-assign    r0d = `TB.i8051_top.u_cpu.iram[7'h0d];
-assign    r0e = `TB.i8051_top.u_cpu.iram[7'h0e];
-assign    rf0 = `TB.i8051_top.u_cpu.iram[7'h0f];
-assign    r10 = `TB.i8051_top.u_cpu.iram[7'h10];
-assign    r11 = `TB.i8051_top.u_cpu.iram[7'h11];
-assign    r12 = `TB.i8051_top.u_cpu.iram[7'h12];
-assign    r13 = `TB.i8051_top.u_cpu.iram[7'h13];
-assign    r14 = `TB.i8051_top.u_cpu.iram[7'h14];
-assign    r15 = `TB.i8051_top.u_cpu.iram[7'h15];
-assign    r16 = `TB.i8051_top.u_cpu.iram[7'h16];
-assign    r17 = `TB.i8051_top.u_cpu.iram[7'h17];
-assign    r18 = `TB.i8051_top.u_cpu.iram[7'h18];
-assign    r19 = `TB.i8051_top.u_cpu.iram[7'h19];
-assign    r1a = `TB.i8051_top.u_cpu.iram[7'h1a];
-assign    r1b = `TB.i8051_top.u_cpu.iram[7'h1b];
-assign    r1c = `TB.i8051_top.u_cpu.iram[7'h1c];
-assign    r1d = `TB.i8051_top.u_cpu.iram[7'h1d];
-assign    r1e = `TB.i8051_top.u_cpu.iram[7'h1e];
-assign    r1f = `TB.i8051_top.u_cpu.iram[7'h1f];
-assign    r20 = `TB.i8051_top.u_cpu.iram[32];
-assign    r21 = `TB.i8051_top.u_cpu.iram[33];
-assign    r22 = `TB.i8051_top.u_cpu.iram[34];
-assign    r23 = `TB.i8051_top.u_cpu.iram[35];
-assign    r24 = `TB.i8051_top.u_cpu.iram[36];
-assign    r25 = `TB.i8051_top.u_cpu.iram[37];
-assign    r26 = `TB.i8051_top.u_cpu.iram[38];
-assign    r27 = `TB.i8051_top.u_cpu.iram[39];
-assign    r28 = `TB.i8051_top.u_cpu.iram[40];
-assign    r29 = `TB.i8051_top.u_cpu.iram[41];
-assign    r2a = `TB.i8051_top.u_cpu.iram[42];
-assign    r2b = `TB.i8051_top.u_cpu.iram[43];
-assign    r2c = `TB.i8051_top.u_cpu.iram[44];
-assign    r2d = `TB.i8051_top.u_cpu.iram[45];
-assign    r2e = `TB.i8051_top.u_cpu.iram[46];
-assign    r2f = `TB.i8051_top.u_cpu.iram[47];
+generate
+    begin : bit_memory
+        wire b00 = `TB.i8051_top.u_cpu.iram[32][0];
+        wire b01 = `TB.i8051_top.u_cpu.iram[32][1];
+        wire b02 = `TB.i8051_top.u_cpu.iram[32][2];
+        wire b03 = `TB.i8051_top.u_cpu.iram[32][3];
+        wire b04 = `TB.i8051_top.u_cpu.iram[32][4];
+        wire b05 = `TB.i8051_top.u_cpu.iram[32][5];
+        wire b06 = `TB.i8051_top.u_cpu.iram[32][6];
+        wire b07 = `TB.i8051_top.u_cpu.iram[32][7];
+        wire b08 = `TB.i8051_top.u_cpu.iram[33][0];
+        wire b09 = `TB.i8051_top.u_cpu.iram[33][1];
+        wire b0a = `TB.i8051_top.u_cpu.iram[33][2];
+        wire b0b = `TB.i8051_top.u_cpu.iram[33][3];
+        wire b0c = `TB.i8051_top.u_cpu.iram[33][4];
+        wire b0d = `TB.i8051_top.u_cpu.iram[33][5];
+        wire b0e = `TB.i8051_top.u_cpu.iram[33][6];
+        wire b0f = `TB.i8051_top.u_cpu.iram[33][7];
+        wire b10 = `TB.i8051_top.u_cpu.iram[34][0];
+        wire b11 = `TB.i8051_top.u_cpu.iram[34][1];
+        wire b12 = `TB.i8051_top.u_cpu.iram[34][2];
+        wire b13 = `TB.i8051_top.u_cpu.iram[34][3];
+        wire b14 = `TB.i8051_top.u_cpu.iram[34][4];
+        wire b15 = `TB.i8051_top.u_cpu.iram[34][5];
+        wire b16 = `TB.i8051_top.u_cpu.iram[34][6];
+        wire b17 = `TB.i8051_top.u_cpu.iram[34][7];
+        wire b18 = `TB.i8051_top.u_cpu.iram[35][0];
+        wire b19 = `TB.i8051_top.u_cpu.iram[35][1];
+        wire b1a = `TB.i8051_top.u_cpu.iram[35][2];
+        wire b1b = `TB.i8051_top.u_cpu.iram[35][3];
+        wire b1c = `TB.i8051_top.u_cpu.iram[35][4];
+        wire b1d = `TB.i8051_top.u_cpu.iram[35][5];
+        wire b1e = `TB.i8051_top.u_cpu.iram[35][6];
+        wire b1f = `TB.i8051_top.u_cpu.iram[35][7];
+        wire b20 = `TB.i8051_top.u_cpu.iram[36][0];
+        wire b21 = `TB.i8051_top.u_cpu.iram[36][1];
+        wire b22 = `TB.i8051_top.u_cpu.iram[36][2];
+        wire b23 = `TB.i8051_top.u_cpu.iram[36][3];
+        wire b24 = `TB.i8051_top.u_cpu.iram[36][4];
+        wire b25 = `TB.i8051_top.u_cpu.iram[36][5];
+        wire b26 = `TB.i8051_top.u_cpu.iram[36][6];
+        wire b27 = `TB.i8051_top.u_cpu.iram[36][7];
+        wire b28 = `TB.i8051_top.u_cpu.iram[37][0];
+        wire b29 = `TB.i8051_top.u_cpu.iram[37][1];
+        wire b2a = `TB.i8051_top.u_cpu.iram[37][2];
+        wire b2b = `TB.i8051_top.u_cpu.iram[37][3];
+        wire b2c = `TB.i8051_top.u_cpu.iram[37][4];
+        wire b2d = `TB.i8051_top.u_cpu.iram[37][5];
+        wire b2e = `TB.i8051_top.u_cpu.iram[37][6];
+        wire b2f = `TB.i8051_top.u_cpu.iram[37][7];
+    end
+endgenerate
 
-assign    r30 = `TB.i8051_top.u_cpu.iram[48];
-assign    r31 = `TB.i8051_top.u_cpu.iram[49];
-assign    r32 = `TB.i8051_top.u_cpu.iram[50];
-assign    r33 = `TB.i8051_top.u_cpu.iram[51];
-assign    r34 = `TB.i8051_top.u_cpu.iram[52];
-assign    r35 = `TB.i8051_top.u_cpu.iram[53];
-assign    r36 = `TB.i8051_top.u_cpu.iram[54];
-assign    r37 = `TB.i8051_top.u_cpu.iram[55];
-assign    r38 = `TB.i8051_top.u_cpu.iram[56];
-assign    r39 = `TB.i8051_top.u_cpu.iram[57];
-assign    r3a = `TB.i8051_top.u_cpu.iram[58];
-assign    r3b = `TB.i8051_top.u_cpu.iram[59];
-assign    r3c = `TB.i8051_top.u_cpu.iram[7'h3C];
-assign    r3d = `TB.i8051_top.u_cpu.iram[7'h3D];
-assign    r3e = `TB.i8051_top.u_cpu.iram[7'h3e];
-assign    r3f = `TB.i8051_top.u_cpu.iram[63];
+generate
+    begin : closed_loop
+        // CL-mode diagnostic aliases (so individual iram bytes appear in
+        // the VCD; $dumpvars does not capture array elements directly)
+        wire [7:0] cl_iram_21    = `TB.i8051_top.u_cpu.iram[8'h21];  // EngineSync byte
+        wire [7:0] cl_iram_23    = `TB.i8051_top.u_cpu.iram[8'h23];  // FuelOffCoast byte
+        wire       cl_enginesync = cl_iram_21[0];                    // iram[21h].0
+        wire       cl_fueloffcoast = cl_iram_23[5];                  // iram[23h].5
+    end
+endgenerate
 
-assign    r40 = `TB.i8051_top.u_cpu.iram[64];
-assign    r41 = `TB.i8051_top.u_cpu.iram[65];
-assign    r42 = `TB.i8051_top.u_cpu.iram[66];
-assign    r43 = `TB.i8051_top.u_cpu.iram[67];
-assign    r44 = `TB.i8051_top.u_cpu.iram[68];
-assign    r45 = `TB.i8051_top.u_cpu.iram[69];
-assign    r46 = `TB.i8051_top.u_cpu.iram[70];
-assign    r47 = `TB.i8051_top.u_cpu.iram[71];
-assign    r48 = `TB.i8051_top.u_cpu.iram[72];
-assign    r49 = `TB.i8051_top.u_cpu.iram[73];
-assign    r4a = `TB.i8051_top.u_cpu.iram[74];
-assign    r4b = `TB.i8051_top.u_cpu.iram[75];
-assign    r4c = `TB.i8051_top.u_cpu.iram[76];
-assign    r4d = `TB.i8051_top.u_cpu.iram[77];
-assign    r4e = `TB.i8051_top.u_cpu.iram[78];
-assign    r4f = `TB.i8051_top.u_cpu.iram[79];
+generate
+    begin : asm_debug
+        reg [159:0] asmlabel, asmopcode, asminstr, asmoperands, asmoperandnums;
+        reg [15:0]  msg_addr;
+        integer     msg_count;
 
-assign    r50 = `TB.i8051_top.u_cpu.iram[80];
-assign    r51 = `TB.i8051_top.u_cpu.iram[81];
-assign    r52 = `TB.i8051_top.u_cpu.iram[82];
-assign    r53 = `TB.i8051_top.u_cpu.iram[83];
-assign    r54 = `TB.i8051_top.u_cpu.iram[84];
-assign    r55 = `TB.i8051_top.u_cpu.iram[85];
-assign    r56 = `TB.i8051_top.u_cpu.iram[86];
-assign    r57 = `TB.i8051_top.u_cpu.iram[87];
-assign    r58 = `TB.i8051_top.u_cpu.iram[88];
-assign    r59 = `TB.i8051_top.u_cpu.iram[89];
-assign    r5a = `TB.i8051_top.u_cpu.iram[90];
-assign    r5b = `TB.i8051_top.u_cpu.iram[91];
-assign    r5c = `TB.i8051_top.u_cpu.iram[92];
-assign    r5d = `TB.i8051_top.u_cpu.iram[93];
-assign    r5e = `TB.i8051_top.u_cpu.iram[94];
-assign    r5f = `TB.i8051_top.u_cpu.iram[95];
+`ifdef DME_DEBUG
+        always @(negedge clk) begin
+            clk_count <= clk_count + 1;
+            msg_addr    = pc;
+            asmlabel    = debug_msg[msg_addr];
+            asmopcode   = opcode[msg_addr];
+            asminstr    = instr[msg_addr][159:120];
+            asmoperands = ops[msg_addr];
+            asmoperandnums=opsnums[msg_addr];
+            if (last_pc !== msg_addr)
+                 begin
+                    if (last_msg !== asmlabel)
+                      begin
+                       msg_count=1;
+                      end
+                    else
+                      begin
+                       msg_count=msg_count+1;
+                      end
+                    if ((asmlabel[159:152] != 8'h20))
+                       $display("DME: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", asmlabel,clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
+                    else
+                       $display("DME: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
+                    last_msg=asmlabel;
+                 end
+             last_pc=msg_addr;
 
-assign    r60 = `TB.i8051_top.u_cpu.iram[96];
-assign    r61 = `TB.i8051_top.u_cpu.iram[97];
-assign    r62 = `TB.i8051_top.u_cpu.iram[98];
-assign    r63 = `TB.i8051_top.u_cpu.iram[99];
-assign    r64 = `TB.i8051_top.u_cpu.iram[100];
-assign    r65 = `TB.i8051_top.u_cpu.iram[101];
-assign    r66 = `TB.i8051_top.u_cpu.iram[102];
-assign    r67 = `TB.i8051_top.u_cpu.iram[103];
-assign    r68 = `TB.i8051_top.u_cpu.iram[104];
-assign    r69 = `TB.i8051_top.u_cpu.iram[105];
-assign    r6a = `TB.i8051_top.u_cpu.iram[106];
-assign    r6b = `TB.i8051_top.u_cpu.iram[107];
-assign    r6c = `TB.i8051_top.u_cpu.iram[108];
-assign    r6d = `TB.i8051_top.u_cpu.iram[109];
-assign    r6e = `TB.i8051_top.u_cpu.iram[110];
-assign    r6f = `TB.i8051_top.u_cpu.iram[111];
-
-assign    r70 = `TB.i8051_top.u_cpu.iram[112];
-assign    r71 = `TB.i8051_top.u_cpu.iram[113];
-assign    r72 = `TB.i8051_top.u_cpu.iram[114];
-assign    r73 = `TB.i8051_top.u_cpu.iram[115];
-assign    r74 = `TB.i8051_top.u_cpu.iram[116];
-assign    r75 = `TB.i8051_top.u_cpu.iram[117];
-assign    r76 = `TB.i8051_top.u_cpu.iram[118];
-assign    r77 = `TB.i8051_top.u_cpu.iram[119];
-assign    r78 = `TB.i8051_top.u_cpu.iram[120];
-assign    r79 = `TB.i8051_top.u_cpu.iram[121];
-assign    r7a = `TB.i8051_top.u_cpu.iram[122];
-assign    r7b = `TB.i8051_top.u_cpu.iram[123];
-assign    r7c = `TB.i8051_top.u_cpu.iram[124];
-assign    r7d = `TB.i8051_top.u_cpu.iram[125];
-assign    r7e = `TB.i8051_top.u_cpu.iram[126];
-assign    r7f = `TB.i8051_top.u_cpu.iram[127];
-
-
-assign    b00 = `TB.i8051_top.u_cpu.iram[32][0];
-assign    b01 = `TB.i8051_top.u_cpu.iram[32][1];
-assign    b02 = `TB.i8051_top.u_cpu.iram[32][2];
-assign    b03 = `TB.i8051_top.u_cpu.iram[32][3];
-assign    b04 = `TB.i8051_top.u_cpu.iram[32][4];
-assign    b05 = `TB.i8051_top.u_cpu.iram[32][5];
-assign    b06 = `TB.i8051_top.u_cpu.iram[32][6];
-assign    b07 = `TB.i8051_top.u_cpu.iram[32][7];
-
-assign    b08 = `TB.i8051_top.u_cpu.iram[33][0];
-assign    b09 = `TB.i8051_top.u_cpu.iram[33][1];
-assign    b0a = `TB.i8051_top.u_cpu.iram[33][2];
-assign    b0b = `TB.i8051_top.u_cpu.iram[33][3];
-assign    b0c = `TB.i8051_top.u_cpu.iram[33][4];
-assign    b0d = `TB.i8051_top.u_cpu.iram[33][5];
-assign    b0e = `TB.i8051_top.u_cpu.iram[33][6];
-assign    b0f = `TB.i8051_top.u_cpu.iram[33][7];
-
-assign    b10 = `TB.i8051_top.u_cpu.iram[34][0];
-assign    b11 = `TB.i8051_top.u_cpu.iram[34][1];
-assign    b12 = `TB.i8051_top.u_cpu.iram[34][2];
-assign    b13 = `TB.i8051_top.u_cpu.iram[34][3];
-assign    b14 = `TB.i8051_top.u_cpu.iram[34][4];
-assign    b15 = `TB.i8051_top.u_cpu.iram[34][5];
-assign    b16 = `TB.i8051_top.u_cpu.iram[34][6];
-assign    b17 = `TB.i8051_top.u_cpu.iram[34][7];
-
-assign    b18 = `TB.i8051_top.u_cpu.iram[35][0];
-assign    b19 = `TB.i8051_top.u_cpu.iram[35][1];
-assign    b1a = `TB.i8051_top.u_cpu.iram[35][2];
-assign    b1b = `TB.i8051_top.u_cpu.iram[35][3];
-assign    b1c = `TB.i8051_top.u_cpu.iram[35][4];
-assign    b1d = `TB.i8051_top.u_cpu.iram[35][5];
-assign    b1e = `TB.i8051_top.u_cpu.iram[35][6];
-assign    b1f = `TB.i8051_top.u_cpu.iram[35][7];
-
-assign    b20 = `TB.i8051_top.u_cpu.iram[36][0];
-assign    b21 = `TB.i8051_top.u_cpu.iram[36][1];
-assign    b22 = `TB.i8051_top.u_cpu.iram[36][2];
-assign    b23 = `TB.i8051_top.u_cpu.iram[36][3];
-assign    b24 = `TB.i8051_top.u_cpu.iram[36][4];
-assign    b25 = `TB.i8051_top.u_cpu.iram[36][5];
-assign    b26 = `TB.i8051_top.u_cpu.iram[36][6];
-assign    b27 = `TB.i8051_top.u_cpu.iram[36][7];
-
-assign    b28 = `TB.i8051_top.u_cpu.iram[37][0];
-assign    b29 = `TB.i8051_top.u_cpu.iram[37][1];
-assign    b2a = `TB.i8051_top.u_cpu.iram[37][2];
-assign    b2b = `TB.i8051_top.u_cpu.iram[37][3];
-assign    b2c = `TB.i8051_top.u_cpu.iram[37][4];
-assign    b2d = `TB.i8051_top.u_cpu.iram[37][5];
-assign    b2e = `TB.i8051_top.u_cpu.iram[37][6];
-assign    b2f = `TB.i8051_top.u_cpu.iram[37][7];
+        end
+`endif
+    end
+endgenerate
 
 // data_from_rom: 0 if the instruction-fetch address (pc) equals the
 // external bus address (`TB.i8051_top.u_cpu.addr_bus); addr_bus itself
@@ -364,11 +422,6 @@ $dumpvars(0,`TB.adc_delay_8_1);
 `ifdef RPMRAMP
 $dumpvars(0,`TB.var_interrupt_generator_1);
 `endif
-// CL diagnostics: EngineSync / FuelOffCoast bytes and bits
-$dumpvars(0, cl_iram_21);
-$dumpvars(0, cl_iram_23);
-$dumpvars(0, cl_enginesync);
-$dumpvars(0, cl_fueloffcoast);
 `ifdef FLATRPM
 $dumpvars(0,`TB.interrupt_generator_1);
 `endif
@@ -417,7 +470,7 @@ $dumpvars(1,`TB.tdc);
     clk_count=0;
     last_pc=16'hFFFF;
     last_msg="FFFF";
-    msg_count=1;
+    asm_debug.msg_count=1;
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/test_sim.hex",debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_byte_map.hex",memory_byte_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);
@@ -427,35 +480,6 @@ $dumpvars(1,`TB.tdc);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operand_mapped.hex",ops);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands_numeric.hex",opsnums);
     end
-`ifdef DME_DEBUG
-  always @(negedge clk) begin
-      clk_count <= clk_count + 1;
-      msg_addr    = pc;
-      asmlabel    = debug_msg[msg_addr];
-      asmopcode   = opcode[msg_addr];
-      asminstr    = instr[msg_addr][159:120];
-      asmoperands = ops[msg_addr];
-      asmoperandnums=opsnums[msg_addr];
-      if (last_pc !== msg_addr)
-           begin
-              if (last_msg !== asmlabel)
-                begin
-                 msg_count=1;
-                end
-              else
-                begin
-                 msg_count=msg_count+1;
-                end
-              if ((asmlabel[159:152] != 8'h20))
-                 $display("DME: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", asmlabel,clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
-              else
-                 $display("DME: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d", clk_count,msg_addr,asminstr,asmoperands,asmopcode,asmoperandnums, msg_count);
-              last_msg=asmlabel;
-           end
-       last_pc=msg_addr;
-
-  end
-`endif
 
 //DEBUG — ISV P1.4 deadlock detector
 // Threshold scales with prpm (iram[37h]) so high-RPM tests don't false-positive.
@@ -484,5 +508,5 @@ always @(posedge clk) begin : isv_deadlock_detect
 end
 `endif
 
-    
+
 endmodule
