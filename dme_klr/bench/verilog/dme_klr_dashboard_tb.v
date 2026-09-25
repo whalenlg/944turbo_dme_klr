@@ -38,6 +38,21 @@ module dme_klr_dashboard_tb;
     wire [7:0] tps_wiper_sig;
     assign tps_wiper_sig = u_dme.afm_wiper;
 
+    // ── Always-on FST visibility for the interconnect above ──────────
+    // klr_vcd_combined.v (compiled into this build, in files/files_cl)
+    // was meant to add these to the FST but its module is never
+    // instantiated anywhere, so its dumpvars calls never ran — see the
+    // ORPHANED MODULE note at the top of that file. Added here instead,
+    // directly in this module (guaranteed to run, since this IS the
+    // top-level testbench), so the six DME<->KLR interconnect signals
+    // — tach_dme_to_klr, ign_out_dme_to_klr, klr_ign_out, full_load,
+    // tdc, tps_wiper_sig — show up in every FST trace regardless of
+    // debug flags. The DME/KLR sub-testbenches each already set up
+    // their own $dumpfile (vcd.v / klr_vcd.v); this only adds more
+    // variables to whichever of those opens the file first — no new
+    // $dumpfile call needed here.
+    initial $dumpvars(1, dme_klr_dashboard_tb);
+
     // ── DME sub-TB ───────────────────────────────────────────
     // ign tied high — ignition switch always on.
     // klr_ign_out is the spark output and must NOT drive ign (key switch).

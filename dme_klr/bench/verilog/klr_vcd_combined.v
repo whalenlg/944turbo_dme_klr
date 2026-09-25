@@ -18,6 +18,29 @@
 //    • the disassembly line (existing)
 //    • R0–R7 both banks (existing)
 //    • a labelled one-liner for each address of interest
+//
+//  ORPHANED MODULE — currently never runs
+//  ────────────────────────────────────────
+//  klr_dumpvcd_combined (below) is compiled into every dme_klr build
+//  (it's in files/files_cl) but is never instantiated anywhere —
+//  grepped the whole bench tree to confirm. Its `initial` block (FST
+//  dumpfile/dumpvars setup, the per-instruction disassembly tracker,
+//  the end-of-sim RAM dump) has therefore never executed in any real
+//  run. Two broken internal references were found while investigating
+//  this (both left as-is, since fixing them doesn't matter while the
+//  module stays uninstantiated): `$dumpvars(1, dme_klr_tb)` — dme_klr_tb
+//  doesn't exist anywhere in this codebase (a stale name predating the
+//  dme_klr_dashboard_tb rename) — and `` `KLR_TOP.u_klr_vcd `` — no
+//  such instance exists either; the real KLR-side dumpvcd instance is
+//  `` `KLR_TOP.u_klr.u_dumpvcd `` (declared directly inside klr_tb.v,
+//  a sibling of the `top`/klr_system instance, not nested under it).
+//  The always-on DME<->KLR interconnect signals this session actually
+//  needed (tach_dme_to_klr, ign_out_dme_to_klr, klr_ign_out, full_load,
+//  tdc, tps_wiper_sig) were added directly in dme_klr_dashboard_tb.v
+//  instead, in its own initial block, which is guaranteed to run.
+//  Bringing this whole module online (instantiating it + fixing both
+//  references + verifying the disassembly tracker actually works) is
+//  a larger, untested undertaking left for later if it's ever wanted.
 // ============================================================
 
 module klr_dumpvcd_combined();
@@ -183,7 +206,11 @@ initial begin
     end
     $display("FST Dump enabled");
     $dumpon;
-    $dumpvars(1, dme_klr_tb);
+    // Fixed from the original `$dumpvars(1, dme_klr_tb)` (a stale,
+    // nonexistent name — see the ORPHANED MODULE header note above for
+    // why this doesn't currently matter: this whole initial block never
+    // runs). Left correct in case the module is ever instantiated.
+    $dumpvars(1, `KLR_TOP);
 `ifdef DME_KLR_DEBUG
     $dumpvars(1, `KLR_CORE);
     $dumpvars(1, `KLR_TOP.u_klr_vcd);   // sweeps all 128 ram_XX wires
