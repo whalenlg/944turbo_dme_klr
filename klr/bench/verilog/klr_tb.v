@@ -409,6 +409,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] boost_target_export = 8'd0;
 `endif
 
+    // Processed boost/MAP value actually stored by firmware — ram[52h].
+    // Named alias for readable FST traces (see -DBOOST above for the
+    // modeled ADC input that feeds it via adc_ch4).
+    wire [7:0] map_sensor = `RAM[8'h52];
+
     // ── Knock signal generation (ch0 — noise-level indicator;
     //    ch5 — lm2902.14 comparator output) ──
     //  fake_knock: klr_system's own P1.7 self-test output (see
