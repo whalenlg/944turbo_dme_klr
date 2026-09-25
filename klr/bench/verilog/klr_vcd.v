@@ -369,7 +369,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
     $dumpvars(1, `KLR_TOP_TB.map_sensor);       // ram[52h] — processed boost/MAP value (declared in klr_tb.v, not here)
-    $dumpvars(1, tps.tps_degrees);              // ram[3Ah] — TPS throttle angle (degrees)
+    $dumpvars(1, `KLR_TOP_TB.tps_degrees);      // ram[3Ah] — TPS throttle angle (degrees) (declared in klr_tb.v, not here)
     $dumpvars(1, `KLR_TOP_TB.knock_sensor_i);  // knock sensor input (raw or fixed 110)
 
     // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
