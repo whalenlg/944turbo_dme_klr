@@ -180,14 +180,14 @@
   `define _FUEL_QUAL    8'h80
 `endif
 
-// --- TEST_CL_RAMP_TO_2000 --- (REFINED AFM target — see the
-// i8051_dashboard_tb.v TEST_CL_RAMP_TO_2000 comment for the calibration history)
-`ifdef TEST_CL_RAMP_TO_2000
+// --- TEST_CL_RAMP_TO_2100 --- (REFINED AFM target — see the
+// i8051_dashboard_tb.v TEST_CL_RAMP_TO_2100 comment for the calibration history)
+`ifdef TEST_CL_RAMP_TO_2100
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h59      // ~2000 RPM (REFINED)
+  `define AFM_CL_TARGET  8'h5F      // ~2100 RPM (REFINED)
   `undef  SIM_TIME
   `define SIM_TIME  30000000000
   `define _COOLANT_RAW  8'h20
