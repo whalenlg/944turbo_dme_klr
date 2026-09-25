@@ -187,9 +187,9 @@ TESTS = {
                           'dwell_cap':96, 'expect_ram33_value':0x22,
                           'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) stuck at a flat 0x80 for the whole simulation to simulate a mid-scale stuck-at sensor fault. ram[33]=0x22 expected — self-test-fault code the firmware correctly reports for the stuck-at ADC0 noise-floor sensor'},
 
-    # cl_condition_cycle / cl_condition_cycle_idle: 5-phase condition sweep
-    # (air temp, coolant temp, altitude, cat, AC), each 1s nominal / 5s
-    # test-active / 1s nominal. Base fields below match cl_ramp_to_3000
+    # cl_condition_cycle / cl_condition_cycle_idle: 6-phase condition sweep
+    # (air temp, coolant temp, altitude, cat, AC, battery), each 1s nominal
+    # / 5s test-active / 1s nominal. Base fields below match cl_ramp_to_3000
     # (ramped) / cl_warm_idle (idle), since that's the underlying closed-
     # loop behavior each variant is built on. condition_phases directions
     # and thresholds are calibrated from one real run per variant — see
@@ -201,6 +201,9 @@ TESTS = {
     # air temp and cat showed tiny, direction-inconsistent changes between
     # the two variants — informational only until more runs clarify
     # whether there's a real effect or it's just closed-loop noise.
+    # BATTERY (~20% reduced voltage) has no real-run data yet at all —
+    # informational only until a run clarifies whether this firmware
+    # applies any voltage/injector-dead-time compensation.
     'cl_condition_cycle': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':31000, 't_end':36000, 'direction':None},
@@ -208,8 +211,9 @@ TESTS = {
                               {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5},
                               {'name':'CAT',          't_begin':52000, 't_end':57000, 'direction':None},
                               {'name':'AC',           't_begin':59000, 't_end':64000, 'direction':'+', 'min_pct':1.0},
+                              {'name':'BATTERY',       't_begin':66000, 't_end':71000, 'direction':None},
                           ],
-                          'notes':'5-phase condition sweep, ramped to ~3000rpm closed-loop'},
+                          'notes':'6-phase condition sweep, ramped to ~3000rpm closed-loop'},
     'cl_condition_cycle_idle': {'rpm_target': 840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':2000,  't_end':7000,  'direction':None},
@@ -217,9 +221,10 @@ TESTS = {
                               {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':'-', 'min_pct':0.5},
                               {'name':'CAT',          't_begin':23000, 't_end':28000, 'direction':None},
                               {'name':'AC',           't_begin':30000, 't_end':35000, 'direction':'+', 'min_pct':1.0},
+                              {'name':'BATTERY',       't_begin':37000, 't_end':42000, 'direction':None},
                           ],
                           'condition_settle_window': 800,
-                          'notes':'5-phase condition sweep, held at idle closed-loop'},
+                          'notes':'6-phase condition sweep, held at idle closed-loop'},
     'cl_ramp_to_6000':   {'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s',
                           'dwell_cap':96},

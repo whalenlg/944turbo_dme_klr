@@ -3,8 +3,8 @@
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
 #  Uses i8051_dashboard_tb, which emits compact DME: [DS] snapshot
-#  lines for the React dashboard.
-#  DME phase/status lines prefixed DME: by phase_monitor.v directly.
+#  lines for the React dashboard, plus DME: [PHASE/STATUS/SEED]
+#  lines from its own inlined phase monitor.
 #
 #  Usage:
 #    ./run_dashboard_tests.sh                   # run all tests
@@ -283,7 +283,8 @@ compile_and_run_klr() {
     done
 
     # Extract all DME: and KLR: lines into dashboard log.
-    # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
+    # dme_klr_dashboard_tb emits both DME: [DS] and (from its inlined
+    # phase monitor) DME: [PHASE/STATUS/SEED].
     # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
     grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
     local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
@@ -385,12 +386,12 @@ run_test cl_ramp_to_5000_BOOST_LOW \
 run_test cl_condition_cycle \
     -DTEST_CL_CONDITION_CYCLE \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=66000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=73000000000
 
 run_test cl_condition_cycle_idle \
     -DTEST_CL_CONDITION_CYCLE_IDLE \
     -DRPMRAMP -DCL_MODE -DBOOST \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=47000000000
 
 run_test cl_ramp_to_6000 \
     -DTEST_CL_RAMP_TO_6000 \
@@ -883,8 +884,8 @@ if [ -n "$1" ]; then
         cl_ramp_to_2100_BOOST_HIGH) run_test cl_ramp_to_2100_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_2100 -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_4500) run_test cl_ramp_to_4500 $IARG -DTEST_CL_RAMP_TO_4500 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h9A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
         cl_ramp_to_5000_BOOST_LOW) run_test cl_ramp_to_5000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_5000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hA6" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
-        cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=66000000000 ;;
-        cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=73000000000 ;;
+        cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=47000000000 ;;
         cl_ramp_to_6000) run_test cl_ramp_to_6000 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_BOOST) run_test cl_ramp_to_6000_BOOST $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_BOOST_ZERO) run_test cl_ramp_to_6000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;

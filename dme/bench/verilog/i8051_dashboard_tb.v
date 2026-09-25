@@ -3,12 +3,10 @@
 // ============================================================
 //  i8051_dashboard_tb.v  —  89 DME 951 Dashboard Testbench
 //
-//  Drop-in companion to i8051_dashboard_tb.v that emits compact [DS]
-//  snapshot lines covering ALL 128 iram bytes + P1/P2/P3,
-//  readable by the React dashboard.  PHASE event lines are
-//  identical to phase_monitor.v so the dashboard Phase tab
-//  still works.  All test defines from i8051_dashboard_tb.v are
-//  supported unchanged.
+//  Emits compact [DS] snapshot lines covering ALL 128 iram bytes +
+//  P1/P2/P3, readable by the React dashboard, plus inlined PHASE
+//  event lines (see the PHASE MONITOR section below) so the
+//  dashboard Phase tab works from this file alone.
 //
 //  Compile (example — same flags as i8051_dashboard_tb.v):
 //    iverilog -o dash.vvp \
@@ -354,13 +352,14 @@
 
 // TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
 // TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
-// time), then five sequential 7-second condition-cycle phases, each
+// time), then six sequential 7-second condition-cycle phases, each
 // 1s nominal / 5s test-condition-active / 1s nominal:
 //   t=30-37s: air temp  -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
 //   t=37-44s: coolant   -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
 //   t=44-51s: altitude  -> 0x00 (high altitude, same as TEST_IDLE_HIGH_ALT)
 //   t=51-58s: cat (T0)  -> 1 (no cat fitted)
 //   t=58-65s: AC (T1)   -> 1 (AC compressor on)
+//   t=65-72s: battery   -> 0xAD (~20% reduced from nominal 0xD8)
 // Phases run sequentially, not simultaneously — only one condition is
 // ever active at a time, bookended by nominal baseline on each side so
 // the response to each individual change (and recovery back to
@@ -385,13 +384,14 @@
   `define AFM_CL_RAMP
   `define AFM_CL_TARGET  8'h72      // 3000 RPM target, same as TEST_CL_RAMP_TO_3000
   `ifndef SIM_TIME
-  `define SIM_TIME  66000000000     // 66s — ~30s ramp/settle + 5x7s phases + 1s buffer
+  `define SIM_TIME  73000000000     // 73s — ~30s ramp/settle + 6x7s phases + 1s buffer
   `endif
   `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
                                      // during the coolant-temp phase, see coolant_dynamic_cycle
   `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically during
                                      // the air-temp phase, see airtemp_dynamic_cycle
-  `define _BATTERY      8'hD8
+  `define _BATTERY      8'hD8       // nominal baseline — overridden dynamically during
+                                     // the battery phase, see battery_dynamic_cycle
   `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
                                      // during the altitude phase, see altitude_dynamic_cycle
   `ifndef _FUEL_QUAL
@@ -399,7 +399,7 @@
   `endif
 `endif
 
-// TEST_CL_CONDITION_CYCLE_IDLE: same 5-phase condition cycle as
+// TEST_CL_CONDITION_CYCLE_IDLE: same 6-phase condition cycle as
 // TEST_CL_CONDITION_CYCLE, but held at idle instead of ramped to
 // 3000rpm — no AFM_CL_RAMP/AFM_CL_TARGET, matching how cl_warm_idle
 // itself is built (RPMRAMP+CL_MODE, no ramp override — the closed
@@ -411,17 +411,19 @@
 //   t=16-23s: altitude  -> 0x00 (high altitude)
 //   t=23-30s: cat (T0)  -> 1 (no cat fitted)
 //   t=30-37s: AC (T1)   -> 1 (AC compressor on)
+//   t=37-44s: battery   -> 0xAD (~20% reduced from nominal 0xD8)
 `ifdef TEST_CL_CONDITION_CYCLE_IDLE
   `define CL_CONDITION_CYCLE_ACTIVE  // see note on the marker above
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `ifndef SIM_TIME
-  `define SIM_TIME  40000000000     // 40s — 2s settle + 5x7s phases + 3s buffer
+  `define SIM_TIME  47000000000     // 47s — 2s settle + 6x7s phases + 3s buffer
   `endif
   `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
   `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically
-  `define _BATTERY      8'hD8
+  `define _BATTERY      8'hD8       // nominal baseline — overridden dynamically during
+                                     // the battery phase, see battery_dynamic_cycle
   `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
   `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h00
@@ -1086,17 +1088,19 @@ end
 `endif
 
 // ─── Condition-cycle dynamic signals (CL_CONDITION_CYCLE_ACTIVE) ─
-// Air temp, coolant temp, and altitude each get their own timed
-// step-and-revert sequence here; T0 (cat) and T1 (AC) are handled
-// near their own existing declarations above, following the same
-// schedule. Shared by TEST_CL_CONDITION_CYCLE (ramped to 3000rpm) and
-// TEST_CL_CONDITION_CYCLE_IDLE (held at idle) — see both compile-flag
-// blocks near the top of the file for their respective full phase
-// timelines; only the delay before each phase starts differs between
-// them (idle has no ~25-30s ramp to wait through first). Values
-// reused from existing precedent: 0x68 (~5C) matches
+// Air temp, coolant temp, altitude, and battery voltage each get
+// their own timed step-and-revert sequence here; T0 (cat) and T1 (AC)
+// are handled near their own existing declarations above, following
+// the same schedule. Shared by TEST_CL_CONDITION_CYCLE (ramped to
+// 3000rpm) and TEST_CL_CONDITION_CYCLE_IDLE (held at idle) — see both
+// compile-flag blocks near the top of the file for their respective
+// full phase timelines; only the delay before each phase starts
+// differs between them (idle has no ~25-30s ramp to wait through
+// first). Values reused from existing precedent: 0x68 (~5C) matches
 // TEST_ISV_COLD_IDLE's cold value; 0x00 altitude matches
-// TEST_IDLE_HIGH_ALT.
+// TEST_IDLE_HIGH_ALT; 0xAD battery is ~20% below the 0xD8 nominal
+// used everywhere else (see TEST_IDLE_BATTERY_LOW's own lower
+// `_BATTERY value for comparison — that one isn't percentage-based).
 `ifdef CL_CONDITION_CYCLE_ACTIVE
 // Air temp phase.
 reg [7:0] airtemp_dynamic_cycle;
@@ -1138,6 +1142,24 @@ initial begin
     altitude_dynamic_cycle = 8'h00;  // high altitude
     #(5_000_000_000);                // 5s later
     altitude_dynamic_cycle = 8'hF8;  // back to nominal
+end
+
+// Battery voltage phase. 0xAD is ~20% below nominal 0xD8
+// (216 * 0.8 = 172.8 -> 173 = 0xAD), a straight raw-ADC-count
+// reduction — same convention as TEST_IDLE_BATTERY_LOW's own
+// lower `_BATTERY value, just calibrated to a specific percentage
+// instead of a fixed constant.
+reg [7:0] battery_dynamic_cycle;
+initial begin
+    battery_dynamic_cycle = 8'hD8;   // nominal
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(37_000_000_000);               // t=37s
+`else
+    #(66_000_000_000);               // t=66s
+`endif
+    battery_dynamic_cycle = 8'hAD;   // reduced ~20%
+    #(5_000_000_000);                // 5s later
+    battery_dynamic_cycle = 8'hD8;   // back to nominal
 end
 `endif
 
@@ -1378,7 +1400,11 @@ always @(*) begin
 `else
         3'b000: adc_mux = afm_wiper;
 `endif
+`ifdef CL_CONDITION_CYCLE_ACTIVE
+        3'b001: adc_mux = battery_dynamic_cycle;
+`else
         3'b001: adc_mux = `_BATTERY;
+`endif
 `ifdef TEST_AIRTEMP_FAIL
         3'b010: adc_mux = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
 `elsif CL_CONDITION_CYCLE_ACTIVE
@@ -1549,10 +1575,9 @@ always @(posedge xwr_n)
      diag_data <= xdata; 
      diag_addr <= p2;
     end
-// ─── Lambda warmup skip (matches phase_monitor.v exactly) ───
+// ─── Lambda warmup skip ───
 //  Watches for the falling edge of iram[23h].4 (bit1Ch) then
-//  seeds bit08h+09h+1Dh and wu=0x0001 — identical to the original
-//  TB which implements this in the included phase_monitor.v.
+//  seeds bit08h+09h+1Dh and wu=0x0001.
 `ifdef SKIP_LAMBDA_WARMUP
 reg skip_lambda_done;
 reg skip_lambda_intblock_prev;
@@ -1704,7 +1729,7 @@ end
 `endif // DME_KLR_COMBINED
 
 // ============================================================
-//  PHASE MONITOR (inlined — same events as phase_monitor.v)
+//  PHASE MONITOR
 // ============================================================
 // ── NTC linearised-value → degrees Celsius ──────────────────────
 function automatic integer ntc_celsius;
@@ -1968,8 +1993,8 @@ end
 
 // ----------------------------------------------------------------
 //  Condition-cycle phase announcements (TEST_CL_CONDITION_CYCLE /
-//  TEST_CL_CONDITION_CYCLE_IDLE) — announces each of the 5 segments
-//  (air temp, coolant temp, altitude, cat, AC) as it starts and ends,
+//  TEST_CL_CONDITION_CYCLE_IDLE) — announces each of the 6 segments
+//  (air temp, coolant temp, altitude, cat, AC, battery) as it starts and ends,
 //  so the log clearly marks what each upcoming window is testing.
 //
 //  Unlike the edge-detected phase messages above (which watch
@@ -2039,6 +2064,17 @@ initial begin
     $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
     #(5_000_000_000);
     $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
+end
+
+initial begin
+`ifdef TEST_CL_CONDITION_CYCLE_IDLE
+    #(37_000_000_000);
+`else
+    #(66_000_000_000);
+`endif
+    $display("DME: [PHASE] t=%0d ms  BATTERY test begin       (reduced ~20%%, battery_dynamic_cycle=0xAD)", `DME_MS);
+    #(5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
 end
 `endif // CL_CONDITION_CYCLE_ACTIVE
 
