@@ -435,26 +435,6 @@ $dumpvars(1,data_from_rom);
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 $dumpvars(1,`TB.i8051_top.u_cpu.t0);
 $dumpvars(1,`TB.i8051_top.u_cpu.t1);
-// Interrupt-control SFRs (TCON 88h, IE A8h, IP B8h) — needed to debug
-// IT1/IE1 (TCON.2/TCON.3) polling-vs-vectored-ISR races on external
-// interrupt 1 (speed_sensor), e.g. the P1.4 ISV deadlock detector.
-$dumpvars(1,`TB.i8051_top.u_cpu.tcon);
-$dumpvars(1,`TB.i8051_top.u_cpu.ie);
-$dumpvars(1,`TB.i8051_top.u_cpu.ip);
-// Timer 1's live count (TL1 8Bh, TH1 8Dh) — confirms the timer hardware
-// itself keeps counting/wrapping even while TF1 servicing is starved
-// (see the tcon/ie/ip comment above).
-$dumpvars(1,`TB.i8051_top.u_cpu.tl1);
-$dumpvars(1,`TB.i8051_top.u_cpu.th1);
-// Full-byte MOV TCON write tracking — a same-instruction write to the
-// whole TCON byte only preserves a same-cycle overflow (t1_overflow_now/
-// t0_overflow_now, ORed in at i8051_core.v:486); it silently clobbers
-// any already-latched, not-yet-serviced TF0/TF1 (or IE0/IE1) bit from
-// an earlier cycle if the written immediate value doesn't set it —
-// real, standard 8051 semantics, but worth seeing directly when
-// debugging why a flag reads 0 instead of staying pinned high.
-$dumpvars(1,`TB.i8051_top.u_cpu.tcon_wr_req);
-$dumpvars(1,`TB.i8051_top.u_cpu.tcon_wr_val);
 
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
 //$dumpvars(1,`TB.xdata [7:0]);
