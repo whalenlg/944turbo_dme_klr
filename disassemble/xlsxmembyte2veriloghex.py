@@ -30,11 +30,24 @@ def main():
         
         addr_to_desc = dict(zip(df['addr_int'], df['Description']))
         max_addr = int(df['addr_int'].max())
-        
+
         output_lines = []
         WIDTH = 32 # 32 bytes wide
-        
-        for addr in range(0, max_addr + 1):
+        # Iterate through every address up to ARRAY_SIZE-1 (not just
+        # max_addr) so the output always has exactly as many words as the
+        # Verilog array it feeds (memory_byte_map[0:255] in vcd.v) —
+        # otherwise $readmemh warns "Not enough words in the file for the
+        # requested range" for every address beyond max_addr. Addresses
+        # past max_addr just get the same blank filler as any other
+        # undescribed address.
+        ARRAY_SIZE = 256
+        if max_addr >= ARRAY_SIZE:
+            print(f"WARNING: max address 0x{max_addr:02x} exceeds the "
+                  f"{ARRAY_SIZE}-word array size — output will be truncated, "
+                  f"increase ARRAY_SIZE (and the matching Verilog array "
+                  f"bound in vcd.v) to fix.")
+
+        for addr in range(0, ARRAY_SIZE):
             desc = addr_to_desc.get(addr)
             
             # Handle empty or missing descriptions with spaces
