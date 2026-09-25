@@ -167,6 +167,127 @@ wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
     wire [7:0] r_at_1 = `RAM[r1];
 
 // ============================================================
+//  FST hierarchy grouping (KLR_DEBUG waveform organization)
+//  ────────────────────────────────────────────────────────
+//  Named-scope aliases of the signals declared above, so the
+//  KLR_DEBUG waveform view groups them under readable
+//  sub-scopes (registers / memory / asm_debug / tps) instead
+//  of one flat list under u_dumpvcd. Each alias reads the real
+//  signal via the full `KLR_DUMPVCD_PATH, since an unqualified
+//  same-name reference from inside the block would otherwise
+//  resolve to itself (undriven) rather than the outer wire —
+//  the original flat signals above are untouched, so anything
+//  in this file that already references them by bare name
+//  keeps working exactly as before. Swept separately from the
+//  flat `KLR_DUMPVCD_PATH dump below (see KLR_DEBUG block), so
+//  KLR_DEBUG waveforms show both the flat and grouped views.
+// ============================================================
+generate
+    begin : registers
+        wire [7:0] r0 = `KLR_DUMPVCD_PATH.r0;
+        wire [7:0] r1 = `KLR_DUMPVCD_PATH.r1;
+        wire [7:0] r2 = `KLR_DUMPVCD_PATH.r2;
+        wire [7:0] r3 = `KLR_DUMPVCD_PATH.r3;
+        wire [7:0] r4 = `KLR_DUMPVCD_PATH.r4;
+        wire [7:0] r5 = `KLR_DUMPVCD_PATH.r5;
+        wire [7:0] r6 = `KLR_DUMPVCD_PATH.r6;
+        wire [7:0] r7 = `KLR_DUMPVCD_PATH.r7;
+        wire [7:0] r_at_0   = `KLR_DUMPVCD_PATH.r_at_0;
+        wire [7:0] r_at_1   = `KLR_DUMPVCD_PATH.r_at_1;
+        wire       mb_latch = `KLR_TB_PATH.i8048_core_1.mb_latch;
+    end
+endgenerate
+
+generate
+    begin : memory
+        wire [7:0] ram_00 = `KLR_DUMPVCD_PATH.ram_00; wire [7:0] ram_01 = `KLR_DUMPVCD_PATH.ram_01;
+        wire [7:0] ram_02 = `KLR_DUMPVCD_PATH.ram_02; wire [7:0] ram_03 = `KLR_DUMPVCD_PATH.ram_03;
+        wire [7:0] ram_04 = `KLR_DUMPVCD_PATH.ram_04; wire [7:0] ram_05 = `KLR_DUMPVCD_PATH.ram_05;
+        wire [7:0] ram_06 = `KLR_DUMPVCD_PATH.ram_06; wire [7:0] ram_07 = `KLR_DUMPVCD_PATH.ram_07;
+        wire [7:0] ram_08 = `KLR_DUMPVCD_PATH.ram_08; wire [7:0] ram_09 = `KLR_DUMPVCD_PATH.ram_09;
+        wire [7:0] ram_0a = `KLR_DUMPVCD_PATH.ram_0a; wire [7:0] ram_0b = `KLR_DUMPVCD_PATH.ram_0b;
+        wire [7:0] ram_0c = `KLR_DUMPVCD_PATH.ram_0c; wire [7:0] ram_0d = `KLR_DUMPVCD_PATH.ram_0d;
+        wire [7:0] ram_0e = `KLR_DUMPVCD_PATH.ram_0e; wire [7:0] ram_0f = `KLR_DUMPVCD_PATH.ram_0f;
+        wire [7:0] ram_10 = `KLR_DUMPVCD_PATH.ram_10; wire [7:0] ram_11 = `KLR_DUMPVCD_PATH.ram_11;
+        wire [7:0] ram_12 = `KLR_DUMPVCD_PATH.ram_12; wire [7:0] ram_13 = `KLR_DUMPVCD_PATH.ram_13;
+        wire [7:0] ram_14 = `KLR_DUMPVCD_PATH.ram_14; wire [7:0] ram_15 = `KLR_DUMPVCD_PATH.ram_15;
+        wire [7:0] ram_16 = `KLR_DUMPVCD_PATH.ram_16; wire [7:0] ram_17 = `KLR_DUMPVCD_PATH.ram_17;
+        wire [7:0] ram_18 = `KLR_DUMPVCD_PATH.ram_18; wire [7:0] ram_19 = `KLR_DUMPVCD_PATH.ram_19;
+        wire [7:0] ram_1a = `KLR_DUMPVCD_PATH.ram_1a; wire [7:0] ram_1b = `KLR_DUMPVCD_PATH.ram_1b;
+        wire [7:0] ram_1c = `KLR_DUMPVCD_PATH.ram_1c; wire [7:0] ram_1d = `KLR_DUMPVCD_PATH.ram_1d;
+        wire [7:0] ram_1e = `KLR_DUMPVCD_PATH.ram_1e; wire [7:0] ram_1f = `KLR_DUMPVCD_PATH.ram_1f;
+        wire [7:0] ram_20 = `KLR_DUMPVCD_PATH.ram_20; wire [7:0] ram_21 = `KLR_DUMPVCD_PATH.ram_21;
+        wire [7:0] ram_22 = `KLR_DUMPVCD_PATH.ram_22; wire [7:0] ram_23 = `KLR_DUMPVCD_PATH.ram_23;
+        wire [7:0] ram_24 = `KLR_DUMPVCD_PATH.ram_24; wire [7:0] ram_25 = `KLR_DUMPVCD_PATH.ram_25;
+        wire [7:0] ram_26 = `KLR_DUMPVCD_PATH.ram_26; wire [7:0] ram_27 = `KLR_DUMPVCD_PATH.ram_27;
+        wire [7:0] ram_28 = `KLR_DUMPVCD_PATH.ram_28; wire [7:0] ram_29 = `KLR_DUMPVCD_PATH.ram_29;
+        wire [7:0] ram_2a = `KLR_DUMPVCD_PATH.ram_2a; wire [7:0] ram_2b = `KLR_DUMPVCD_PATH.ram_2b;
+        wire [7:0] ram_2c = `KLR_DUMPVCD_PATH.ram_2c; wire [7:0] ram_2d = `KLR_DUMPVCD_PATH.ram_2d;
+        wire [7:0] ram_2e = `KLR_DUMPVCD_PATH.ram_2e; wire [7:0] ram_2f = `KLR_DUMPVCD_PATH.ram_2f;
+        wire [7:0] ram_30 = `KLR_DUMPVCD_PATH.ram_30; wire [7:0] ram_31 = `KLR_DUMPVCD_PATH.ram_31;
+        wire [7:0] ram_32 = `KLR_DUMPVCD_PATH.ram_32; wire [7:0] ram_33 = `KLR_DUMPVCD_PATH.ram_33;
+        wire [7:0] ram_34 = `KLR_DUMPVCD_PATH.ram_34; wire [7:0] ram_35 = `KLR_DUMPVCD_PATH.ram_35;
+        wire [7:0] ram_36 = `KLR_DUMPVCD_PATH.ram_36; wire [7:0] ram_37 = `KLR_DUMPVCD_PATH.ram_37;
+        wire [7:0] ram_38 = `KLR_DUMPVCD_PATH.ram_38; wire [7:0] ram_39 = `KLR_DUMPVCD_PATH.ram_39;
+        wire [7:0] ram_3a = `KLR_DUMPVCD_PATH.ram_3a; wire [7:0] ram_3b = `KLR_DUMPVCD_PATH.ram_3b;
+        wire [7:0] ram_3c = `KLR_DUMPVCD_PATH.ram_3c; wire [7:0] ram_3d = `KLR_DUMPVCD_PATH.ram_3d;
+        wire [7:0] ram_3e = `KLR_DUMPVCD_PATH.ram_3e; wire [7:0] ram_3f = `KLR_DUMPVCD_PATH.ram_3f;
+        wire [7:0] ram_40 = `KLR_DUMPVCD_PATH.ram_40; wire [7:0] ram_41 = `KLR_DUMPVCD_PATH.ram_41;
+        wire [7:0] ram_42 = `KLR_DUMPVCD_PATH.ram_42; wire [7:0] ram_43 = `KLR_DUMPVCD_PATH.ram_43;
+        wire [7:0] ram_44 = `KLR_DUMPVCD_PATH.ram_44; wire [7:0] ram_45 = `KLR_DUMPVCD_PATH.ram_45;
+        wire [7:0] ram_46 = `KLR_DUMPVCD_PATH.ram_46; wire [7:0] ram_47 = `KLR_DUMPVCD_PATH.ram_47;
+        wire [7:0] ram_48 = `KLR_DUMPVCD_PATH.ram_48; wire [7:0] ram_49 = `KLR_DUMPVCD_PATH.ram_49;
+        wire [7:0] ram_4a = `KLR_DUMPVCD_PATH.ram_4a; wire [7:0] ram_4b = `KLR_DUMPVCD_PATH.ram_4b;
+        wire [7:0] ram_4c = `KLR_DUMPVCD_PATH.ram_4c; wire [7:0] ram_4d = `KLR_DUMPVCD_PATH.ram_4d;
+        wire [7:0] ram_4e = `KLR_DUMPVCD_PATH.ram_4e; wire [7:0] ram_4f = `KLR_DUMPVCD_PATH.ram_4f;
+        wire [7:0] ram_50 = `KLR_DUMPVCD_PATH.ram_50; wire [7:0] ram_51 = `KLR_DUMPVCD_PATH.ram_51;
+        wire [7:0] ram_52 = `KLR_DUMPVCD_PATH.ram_52; wire [7:0] ram_53 = `KLR_DUMPVCD_PATH.ram_53;
+        wire [7:0] ram_54 = `KLR_DUMPVCD_PATH.ram_54; wire [7:0] ram_55 = `KLR_DUMPVCD_PATH.ram_55;
+        wire [7:0] ram_56 = `KLR_DUMPVCD_PATH.ram_56; wire [7:0] ram_57 = `KLR_DUMPVCD_PATH.ram_57;
+        wire [7:0] ram_58 = `KLR_DUMPVCD_PATH.ram_58; wire [7:0] ram_59 = `KLR_DUMPVCD_PATH.ram_59;
+        wire [7:0] ram_5a = `KLR_DUMPVCD_PATH.ram_5a; wire [7:0] ram_5b = `KLR_DUMPVCD_PATH.ram_5b;
+        wire [7:0] ram_5c = `KLR_DUMPVCD_PATH.ram_5c; wire [7:0] ram_5d = `KLR_DUMPVCD_PATH.ram_5d;
+        wire [7:0] ram_5e = `KLR_DUMPVCD_PATH.ram_5e; wire [7:0] ram_5f = `KLR_DUMPVCD_PATH.ram_5f;
+        wire [7:0] ram_60 = `KLR_DUMPVCD_PATH.ram_60; wire [7:0] ram_61 = `KLR_DUMPVCD_PATH.ram_61;
+        wire [7:0] ram_62 = `KLR_DUMPVCD_PATH.ram_62; wire [7:0] ram_63 = `KLR_DUMPVCD_PATH.ram_63;
+        wire [7:0] ram_64 = `KLR_DUMPVCD_PATH.ram_64; wire [7:0] ram_65 = `KLR_DUMPVCD_PATH.ram_65;
+        wire [7:0] ram_66 = `KLR_DUMPVCD_PATH.ram_66; wire [7:0] ram_67 = `KLR_DUMPVCD_PATH.ram_67;
+        wire [7:0] ram_68 = `KLR_DUMPVCD_PATH.ram_68; wire [7:0] ram_69 = `KLR_DUMPVCD_PATH.ram_69;
+        wire [7:0] ram_6a = `KLR_DUMPVCD_PATH.ram_6a; wire [7:0] ram_6b = `KLR_DUMPVCD_PATH.ram_6b;
+        wire [7:0] ram_6c = `KLR_DUMPVCD_PATH.ram_6c; wire [7:0] ram_6d = `KLR_DUMPVCD_PATH.ram_6d;
+        wire [7:0] ram_6e = `KLR_DUMPVCD_PATH.ram_6e; wire [7:0] ram_6f = `KLR_DUMPVCD_PATH.ram_6f;
+        wire [7:0] ram_70 = `KLR_DUMPVCD_PATH.ram_70; wire [7:0] ram_71 = `KLR_DUMPVCD_PATH.ram_71;
+        wire [7:0] ram_72 = `KLR_DUMPVCD_PATH.ram_72; wire [7:0] ram_73 = `KLR_DUMPVCD_PATH.ram_73;
+        wire [7:0] ram_74 = `KLR_DUMPVCD_PATH.ram_74; wire [7:0] ram_75 = `KLR_DUMPVCD_PATH.ram_75;
+        wire [7:0] ram_76 = `KLR_DUMPVCD_PATH.ram_76; wire [7:0] ram_77 = `KLR_DUMPVCD_PATH.ram_77;
+        wire [7:0] ram_78 = `KLR_DUMPVCD_PATH.ram_78; wire [7:0] ram_79 = `KLR_DUMPVCD_PATH.ram_79;
+        wire [7:0] ram_7a = `KLR_DUMPVCD_PATH.ram_7a; wire [7:0] ram_7b = `KLR_DUMPVCD_PATH.ram_7b;
+        wire [7:0] ram_7c = `KLR_DUMPVCD_PATH.ram_7c; wire [7:0] ram_7d = `KLR_DUMPVCD_PATH.ram_7d;
+        wire [7:0] ram_7e = `KLR_DUMPVCD_PATH.ram_7e; wire [7:0] ram_7f = `KLR_DUMPVCD_PATH.ram_7f;
+    end
+endgenerate
+
+generate
+    begin : asm_debug
+        wire [159:0] asmlabel       = `KLR_DUMPVCD_PATH.asmlabel;
+        wire [159:0] asmopcode      = `KLR_DUMPVCD_PATH.asmopcode;
+        wire [159:0] asminstr       = `KLR_DUMPVCD_PATH.asminstr;
+        wire [159:0] asmoperands    = `KLR_DUMPVCD_PATH.asmoperands;
+        wire [159:0] asmoperandnums = `KLR_DUMPVCD_PATH.asmoperandnums;
+        wire [15:0]  msg_addr       = `KLR_DUMPVCD_PATH.msg_addr;
+        wire [31:0]  msg_count      = `KLR_DUMPVCD_PATH.msg_count;
+    end
+endgenerate
+
+generate
+    begin : tps
+        wire [7:0] tps_supply     = `KLR_DUMPVCD_PATH.tps_supply;
+        wire [7:0] tps_raw_angle  = `KLR_DUMPVCD_PATH.tps_raw_angle;
+        wire [7:0] tps_degrees    = `KLR_DUMPVCD_PATH.tps_degrees;
+        wire [7:0] tps_wot_thresh = `KLR_DUMPVCD_PATH.tps_wot_thresh;
+    end
+endgenerate
+// ============================================================
 //  Interrupt entry tracker
 //  service_interrupt() pushes to the stack and sets irq_in_progress.
 //  The shadow call tracker only watches CALL opcodes, so it misses
@@ -238,7 +359,11 @@ initial begin
     $dumpvars(1, `KLR_TOP_TB);
     $dumpvars(1, `KLR_TB_PATH);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
-    $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
+    $dumpvars(1, `KLR_DUMPVCD_PATH);   // flat: sweeps all 128 ram_XX wires, r0-r7, asm*, tps*, etc.
+    $dumpvars(1, `KLR_DUMPVCD_PATH.registers);  // grouped view — see FST hierarchy grouping above
+    $dumpvars(1, `KLR_DUMPVCD_PATH.memory);
+    $dumpvars(1, `KLR_DUMPVCD_PATH.asm_debug);
+    $dumpvars(1, `KLR_DUMPVCD_PATH.tps);
     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
     $dumpvars(1, `KLR_TOP_TB.u_knock_sp);
 `endif
