@@ -1066,6 +1066,79 @@ initial begin
     run_test("35_TF1_SURVIVES_TCON_FULL_WRITE", 5000);
 
     // =========================================================================
+    // Test 36: TF1 survives ORL TCON,#imm racing with T1 overflow
+    //
+    //  This is the exact DME firmware scenario that caused the P1.4/ISV
+    //  watchdog deadlock: ORL TCON,#0x05 at ROM address 0x1F43. Unlike test 35
+    //  (a single-cycle full-byte MOV TCON write), ORL/ANL/XRL direct,#imm are
+    //  TWO-cycle read-modify-write instructions — cycle 1 latches the current
+    //  byte into tmp1, cycle 2 writes back tmp1 | imm one machine cycle later.
+    //  If T1 overflows in that one-cycle gap, the write-back's tmp1 snapshot
+    //  predates the hardware-set TF1, so the write-back silently discards it
+    //  before the interrupt arbiter (checked only at instruction boundaries)
+    //  ever sees it — even though ORL never intends to touch bit 7.
+    //
+    //  Fix: for ORL/ANL/XRL direct,#imm, the write-back re-reads TCON live
+    //  (via direct_read(), which OR's in a same-cycle overflow) instead of the
+    //  stale tmp1 snapshot, whenever the target address is TCON (0x88).
+    //
+    //  Strategy: 32 loop iterations hammering ORL TCON,#0x05, each iteration
+    //  2-cycle RMW + 2-cycle DJNZ = 4 machine cycles (comfortably longer than
+    //  the whole test needs to run). The timer reload is chosen so the
+    //  overflow's machine-cycle phase actually lands inside an ORL's own
+    //  read→write-back gap: a reload that is a multiple of the 4-machine-
+    //  cycle loop period (e.g. 16 ticks, as in test 35) keeps the SAME phase
+    //  on every pass through the loop and can systematically miss the gap
+    //  entirely — this was verified empirically (16 ticks never reproduces
+    //  the race here; 19 ticks reliably does, confirmed to FAIL on the
+    //  pre-fix core and PASS on the fixed core).
+    //
+    //  PASS if iram[0x52]==0xA5, FAIL=0x39.
+    //
+    //  Memory layout:
+    //    0x0000: LJMP 0x0050
+    //    0x001B: T1 ISR — MOV iram[0x52],#0xA5 ; RETI
+    //    0x0050: Main body
+    // =========================================================================
+    clear_rom;
+    // 0x0000: LJMP 0x0050
+    wb(8'h02); wb(8'h00); wb(8'h50);
+
+    // --- T1 ISR at 0x001B ---
+    rom[16'h001B] = 8'h75;   // MOV iram[0x52],#0xA5
+    rom[16'h001C] = 8'h52;
+    rom[16'h001D] = 8'hA5;
+    rom[16'h001E] = 8'h32;   // RETI
+
+    // --- Main at 0x0050 ---
+    rp = 16'h0050;
+    wb(8'h75); wb(8'h89); wb(8'h11);   // MOV TMOD,#0x11  T1 mode 1 (16-bit)
+    wb(8'h75); wb(8'h8D); wb(8'hFF);   // MOV TH1,#0xFF
+    wb(8'h75); wb(8'h8B); wb(8'hED);   // MOV TL1,#0xED  → 19 ticks to overflow
+    wb(8'h75); wb(8'h52); wb(8'h00);   // MOV iram[0x52],#0x00  clear sentinel
+    wb(8'h75); wb(8'hA8); wb(8'h08);   // MOV IE,#0x08  ET1=1, EA=0
+    wb(8'hD2); wb(8'h8E);               // SETB TR1  start T1
+    wb(8'h78); wb(8'h20);               // MOV R0,#32  loop counter
+    // Loop: hammer ORL TCON,#0x05 — the exact DME instruction (0x1F43).
+    // TR1 is preserved via the OR against tmp1's bit6 (imm doesn't set it),
+    // so T1 keeps counting; each iteration: ORL(2-cyc)+DJNZ(2-cyc) = 4
+    // machine cycles = 48 osc clocks; 32× = 1536, comfortably more than
+    // needed to reach the 19-tick (228-osc-clock) overflow point.
+    // Loop body is 5 bytes (3-byte ORL + 2-byte DJNZ); DJNZ's relative
+    // offset is taken from the PC immediately after its own 2 bytes, so
+    // the branch-back offset is -5, not -3 (that would land mid-opcode).
+    wb(8'h43); wb(8'h88); wb(8'h05);   // ORL TCON,#0x05  (collision point)
+    wb(8'hD8); wb(8'hFB);               // DJNZ R0,-5
+    // Re-enable EA — TF1 should have survived one of the ORL write-backs
+    wb(8'hD2); wb(8'hAF);               // SETB EA
+    wb(8'h00); wb(8'h00); wb(8'h00); wb(8'h00);
+    wb(8'h00); wb(8'h00); wb(8'h00); wb(8'h00);
+    wb(8'hE5); wb(8'h52);               // MOV A,iram[0x52]
+    check(8'hA5, 8'h39);                // PASS=0xA5, FAIL=0x39
+
+    run_test("36_TF1_SURVIVES_TCON_ORL_RMW", 5000);
+
+    // =========================================================================
     // Final summary
     // =========================================================================
     #200;

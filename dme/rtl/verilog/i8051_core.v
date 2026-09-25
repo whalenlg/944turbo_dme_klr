@@ -1464,7 +1464,20 @@ module i8051_core (
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b1;
                     end else begin
-                        direct_write(dir_addr_latch, tmp1 | rom_data_latch);
+                        // TCON write-back re-reads the LIVE value instead of
+                        // the stale cycle-1 tmp1 snapshot: a hardware-set
+                        // TF0/TF1/IE0/IE1 landing in the one-cycle gap
+                        // between the read and this write-back would
+                        // otherwise be silently lost from tmp1 before the
+                        // interrupt arbiter ever sees it set. direct_read()
+                        // already OR's in any overflow on this exact cycle
+                        // (see sfr_read's TCON case), so this is safe and
+                        // strictly more accurate than tmp1 for TCON only;
+                        // every other direct address is unaffected.
+                        direct_write(dir_addr_latch,
+                            (dir_addr_latch == 8'h88)
+                                ? (direct_read(dir_addr_latch) | rom_data_latch)
+                                : (tmp1 | rom_data_latch));
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b0;
                     end
@@ -1537,7 +1550,12 @@ module i8051_core (
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b1;
                     end else begin
-                        direct_write(dir_addr_latch, tmp1 & rom_data_latch);
+                        // See ORL direct,#imm above: TCON write-back uses
+                        // the live value, not the stale cycle-1 tmp1.
+                        direct_write(dir_addr_latch,
+                            (dir_addr_latch == 8'h88)
+                                ? (direct_read(dir_addr_latch) & rom_data_latch)
+                                : (tmp1 & rom_data_latch));
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b0;
                     end
@@ -1610,7 +1628,12 @@ module i8051_core (
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b1;
                     end else begin
-                        direct_write(dir_addr_latch, tmp1 ^ rom_data_latch);
+                        // See ORL direct,#imm above: TCON write-back uses
+                        // the live value, not the stale cycle-1 tmp1.
+                        direct_write(dir_addr_latch,
+                            (dir_addr_latch == 8'h88)
+                                ? (direct_read(dir_addr_latch) ^ rom_data_latch)
+                                : (tmp1 ^ rom_data_latch));
                         pc      <= pc + 1'b1;
                         cycle_2 <= 1'b0;
                     end
