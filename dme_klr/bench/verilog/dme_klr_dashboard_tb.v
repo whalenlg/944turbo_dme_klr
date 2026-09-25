@@ -48,13 +48,22 @@ module dme_klr_dashboard_tb;
     // ORPHANED MODULE note at the top of that file. Added here instead,
     // directly in this module (guaranteed to run, since this IS the
     // top-level testbench), so the six DME<->KLR interconnect signals
-    // — tach_dme_to_klr, ign_out_dme_to_klr, klr_ign_out, full_load,
-    // tdc, tps_wiper_sig — show up in every FST trace regardless of
-    // debug flags. The DME/KLR sub-testbenches each already set up
-    // their own $dumpfile (vcd.v / klr_vcd.v); this only adds more
-    // variables to whichever of those opens the file first — no new
-    // $dumpfile call needed here.
-    initial $dumpvars(1, dme_klr_dashboard_tb);
+    // show up in every FST trace regardless of debug flags. One
+    // $dumpvars line per signal (not a level-1 sweep of the whole
+    // module) so dme_clk and the snapshot-task bookkeeping regs
+    // (snapshot_busy, next_snap_ns) stay out of the always-on trace.
+    // The DME/KLR sub-testbenches each already set up their own
+    // $dumpfile (vcd.v / klr_vcd.v); this only adds more variables to
+    // whichever of those opens the file first — no new $dumpfile call
+    // needed here.
+    initial begin
+        $dumpvars(1, tach_dme_to_klr);
+        $dumpvars(1, ign_out_dme_to_klr);
+        $dumpvars(1, klr_ign_out);
+        $dumpvars(1, full_load);
+        $dumpvars(1, tdc);
+        $dumpvars(1, tps_wiper_sig);
+    end
 
     // ── DME sub-TB ───────────────────────────────────────────
     // ign tied high — ignition switch always on.
