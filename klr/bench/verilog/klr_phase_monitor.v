@@ -57,7 +57,7 @@ initial begin
     ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
     ph_klr_res_n_prev     = 1'b0;
-    ph_klr_knock_sensor_prev = knock_sensor;
+    ph_klr_knock_sensor_prev = knock_sensor_gen;
     ph_klr_knock_count    = 32'd0;
 end
 
@@ -132,17 +132,17 @@ always @(posedge clk) begin  // klr_phase_monitor
         // exactly when/how the testbench drives it — no timing values
         // to keep in sync between two files. "dropping"/"restoring"
         // wording matches what validate_dash_log.py's expect_knock_pulse
-        // check searches for; outside TEST_KNOCK_PULSE, knock_sensor is
+        // check searches for; outside TEST_KNOCK_PULSE, knock_sensor_gen is
         // a constant wire and this simply never fires.
-        if (knock_sensor != ph_klr_knock_sensor_prev) begin
-            if (knock_sensor < ph_klr_knock_sensor_prev)
+        if (knock_sensor_gen != ph_klr_knock_sensor_prev) begin
+            if (knock_sensor_gen < ph_klr_knock_sensor_prev)
                 $display("KLR: [PHASE] t=%0d ms  Knock pulse: dropping knock_sensor %0d -> %0d",
-                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor);
+                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor_gen);
             else
                 $display("KLR: [PHASE] t=%0d ms  Knock pulse: restoring knock_sensor %0d -> %0d",
-                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor);
+                         `KLR_MS(0), ph_klr_knock_sensor_prev, knock_sensor_gen);
         end
-        ph_klr_knock_sensor_prev <= knock_sensor;
+        ph_klr_knock_sensor_prev <= knock_sensor_gen;
 
         // ── knock logic execution (PC enters knock map axis read @0x900) ──
         // Edge-detected on PC so we log once per entry, not every clock the
