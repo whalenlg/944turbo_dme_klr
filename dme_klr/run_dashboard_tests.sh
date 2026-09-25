@@ -2,8 +2,8 @@
 # ============================================================
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
-#  Uses i8051_tb (dashboard edition) instead of the standard i8051_tb,
-#  compact DME: [DS] snapshot lines for the React dashboard.
+#  Uses i8051_dashboard_tb, which emits compact DME: [DS] snapshot
+#  lines for the React dashboard.
 #  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
 #  Usage:

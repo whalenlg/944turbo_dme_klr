@@ -10,8 +10,6 @@ module dumpvcd(
   `define TB i8051_dashboard_tb
 `elsif DME_KLR_TB
   `define TB dme_klr_tb.u_dme
-`else
-  `define TB i8051_tb
 `endif
 integer clk_count;
 reg [15:0] read_addr,write_addr,last_pc;
@@ -37,7 +35,9 @@ reg [1023:0] fst_path;
 //  Named-scope signal groups so the debug waveform view organizes
 //  related signals under readable sub-scopes instead of one flat
 //  list under u_dumpvcd:
-//    registers   — r0-r7 (currently-selected bank, per psw[4:3])
+//    registers   — r0-r7 (currently-selected bank, per psw[4:3]), sp,
+//                  acc, b, and call_depth (nested ACALL/LCALL/interrupt
+//                  frames currently active — see the tracker below)
 //    reg_bank_0  — rb0_0-rb0_7 (iram[0]-iram[7], bank 0, static)
 //    reg_bank_1  — rb1_0-rb1_7 (iram[8]-iram[15], bank 1, static)
 //    reg_bank_2  — rb2_0-rb2_7 (iram[16]-iram[23], bank 2, static)
@@ -50,6 +50,12 @@ reg [1023:0] fst_path;
 //                  drives them — see below)
 //    closed_loop — cl_iram_21, cl_iram_23, cl_enginesync,
 //                  cl_fueloffcoast (CL-mode diagnostic aliases)
+//    processor_flags — one 1-bit wire per bit of each interrupt/
+//                  control SFR (PSW, TCON, PCON, SCON, IE, IP),
+//                  named after its conventional 8051 flag mnemonic,
+//                  so individual flags can be dragged into the
+//                  waveform view without hand bit-slicing the byte
+//                  registers.
 //  These are the only declarations of these signals — no separate
 //  flat copies exist elsewhere in this module. The DME_DEBUG dump
 //  below uses $dumpvars(0, `TB.u_dumpvcd) (level 0 = full
@@ -69,6 +75,58 @@ generate
         wire [7:0] r5 = `TB.i8051_top.u_cpu.iram[rb+5];
         wire [7:0] r6 = `TB.i8051_top.u_cpu.iram[rb+6];
         wire [7:0] r7 = `TB.i8051_top.u_cpu.iram[rb+7];
+        wire [7:0] sp  = `TB.i8051_top.u_cpu.sp;
+        wire [7:0] acc = `TB.i8051_top.u_cpu.acc;
+        wire [7:0] b   = `TB.i8051_top.u_cpu.b_reg;
+
+        // ------------------------------------------------------------
+        // call_depth: counts nested ACALL/LCALL/interrupt frames
+        // currently active (decremented on RET/RETI). Two independent
+        // trackers on opposite clock edges, so they can't race:
+        //   - opcode watcher (negedge clk): fires once per instruction
+        //     boundary (cycle_2==0 and pc just changed) and inspects
+        //     the freshly-fetched opcode byte read directly from the
+        //     EPROM model.
+        //   - interrupt-entry watcher (posedge clk): the core's
+        //     hardware interrupt dispatch pushes PC directly
+        //     (i8051_core.v ~line 418) — no opcode visible in the
+        //     normal fetch stream — so entry needs a dedicated watch
+        //     on irq_in_progress/irq_hi_active. The 8051 supports at
+        //     most two nested levels (one low-priority ISR preempted
+        //     by one high-priority ISR). RETI is opcode-visible, so
+        //     exit is handled by the same opcode watcher as RET — no
+        //     separate exit tracking needed.
+        // ------------------------------------------------------------
+        integer    call_depth;
+        reg [15:0] call_depth_last_pc;
+        reg        call_depth_irq_prev, call_depth_hi_prev;
+
+        always @(negedge clk) begin : call_depth_opcode_tracker
+            reg [7:0] curr_op;
+            if (!`TB.i8051_top.u_cpu.cycle_2 &&
+                call_depth_last_pc !== `TB.i8051_top.u_cpu.pc) begin
+                curr_op = `TB.i8051_top.u_eprom.mem[`TB.i8051_top.u_cpu.pc[12:0]];
+                // ACALL addr11 [opcodes x1: 11h,31h,51h,71h,91h,B1h,D1h,F1h]
+                if ((curr_op & 8'h1F) == 8'h11)
+                    call_depth = call_depth + 1;
+                // LCALL addr16 [12h]
+                else if (curr_op == 8'h12)
+                    call_depth = call_depth + 1;
+                // RET [22h] / RETI [32h]
+                else if ((curr_op == 8'h22 || curr_op == 8'h32) && call_depth > 0)
+                    call_depth = call_depth - 1;
+            end
+            call_depth_last_pc = `TB.i8051_top.u_cpu.pc;
+        end
+
+        always @(posedge clk) begin : call_depth_irq_tracker
+            if (`TB.i8051_top.u_cpu.irq_in_progress && !call_depth_irq_prev)
+                call_depth = call_depth + 1;   // outer ISR entry
+            else if (`TB.i8051_top.u_cpu.irq_hi_active && !call_depth_hi_prev)
+                call_depth = call_depth + 1;   // hi-pri preempts an active lo-pri ISR
+            call_depth_irq_prev = `TB.i8051_top.u_cpu.irq_in_progress;
+            call_depth_hi_prev  = `TB.i8051_top.u_cpu.irq_hi_active;
+        end
     end
 endgenerate
 
@@ -322,6 +380,75 @@ generate
 endgenerate
 
 generate
+    if (1) begin : processor_flags
+        // One 1-bit wire per bit of each interrupt/control SFR, named
+        // after its conventional 8051 flag mnemonic. "rsvd_bN" marks a
+        // bit with no defined function in this core (still exposed for
+        // completeness — e.g. software may stash scratch state there).
+        //
+        // PSW (D0h): CY AC F0 RS1 RS0 OV rsvd_b1 P
+        wire psw_cy      = `TB.i8051_top.u_cpu.psw[7];
+        wire psw_ac      = `TB.i8051_top.u_cpu.psw[6];
+        wire psw_f0      = `TB.i8051_top.u_cpu.psw[5];
+        wire psw_rs1     = `TB.i8051_top.u_cpu.psw[4];
+        wire psw_rs0     = `TB.i8051_top.u_cpu.psw[3];
+        wire psw_ov      = `TB.i8051_top.u_cpu.psw[2];
+        wire psw_rsvd_b1 = `TB.i8051_top.u_cpu.psw[1];
+        wire psw_p       = `TB.i8051_top.u_cpu.psw[0];
+
+        // TCON (88h): TF1 TR1 TF0 TR0 IE1 IT1 IE0 IT0
+        wire tcon_tf1 = `TB.i8051_top.u_cpu.tcon[7];
+        wire tcon_tr1 = `TB.i8051_top.u_cpu.tcon[6];
+        wire tcon_tf0 = `TB.i8051_top.u_cpu.tcon[5];
+        wire tcon_tr0 = `TB.i8051_top.u_cpu.tcon[4];
+        wire tcon_ie1 = `TB.i8051_top.u_cpu.tcon[3];
+        wire tcon_it1 = `TB.i8051_top.u_cpu.tcon[2];
+        wire tcon_ie0 = `TB.i8051_top.u_cpu.tcon[1];
+        wire tcon_it0 = `TB.i8051_top.u_cpu.tcon[0];
+
+        // PCON (87h): SMOD rsvd_b6 rsvd_b5 rsvd_b4 GF1 GF0 PD IDL
+        wire pcon_smod    = `TB.i8051_top.u_cpu.pcon[7];
+        wire pcon_rsvd_b6 = `TB.i8051_top.u_cpu.pcon[6];
+        wire pcon_rsvd_b5 = `TB.i8051_top.u_cpu.pcon[5];
+        wire pcon_rsvd_b4 = `TB.i8051_top.u_cpu.pcon[4];
+        wire pcon_gf1     = `TB.i8051_top.u_cpu.pcon[3];
+        wire pcon_gf0     = `TB.i8051_top.u_cpu.pcon[2];
+        wire pcon_pd      = `TB.i8051_top.u_cpu.pcon[1];
+        wire pcon_idl     = `TB.i8051_top.u_cpu.pcon[0];
+
+        // SCON (98h): SM0 SM1 SM2 REN TB8 RB8 TI RI
+        wire scon_sm0 = `TB.i8051_top.u_cpu.scon[7];
+        wire scon_sm1 = `TB.i8051_top.u_cpu.scon[6];
+        wire scon_sm2 = `TB.i8051_top.u_cpu.scon[5];
+        wire scon_ren = `TB.i8051_top.u_cpu.scon[4];
+        wire scon_tb8 = `TB.i8051_top.u_cpu.scon[3];
+        wire scon_rb8 = `TB.i8051_top.u_cpu.scon[2];
+        wire scon_ti  = `TB.i8051_top.u_cpu.scon[1];
+        wire scon_ri  = `TB.i8051_top.u_cpu.scon[0];
+
+        // IE (A8h): EA rsvd_b6 rsvd_b5 ES ET1 EX1 ET0 EX0
+        wire ie_ea      = `TB.i8051_top.u_cpu.ie[7];
+        wire ie_rsvd_b6 = `TB.i8051_top.u_cpu.ie[6];
+        wire ie_rsvd_b5 = `TB.i8051_top.u_cpu.ie[5];
+        wire ie_es      = `TB.i8051_top.u_cpu.ie[4];
+        wire ie_et1     = `TB.i8051_top.u_cpu.ie[3];
+        wire ie_ex1     = `TB.i8051_top.u_cpu.ie[2];
+        wire ie_et0     = `TB.i8051_top.u_cpu.ie[1];
+        wire ie_ex0     = `TB.i8051_top.u_cpu.ie[0];
+
+        // IP (B8h): rsvd_b7 rsvd_b6 rsvd_b5 PS PT1 PX1 PT0 PX0
+        wire ip_rsvd_b7 = `TB.i8051_top.u_cpu.ip[7];
+        wire ip_rsvd_b6 = `TB.i8051_top.u_cpu.ip[6];
+        wire ip_rsvd_b5 = `TB.i8051_top.u_cpu.ip[5];
+        wire ip_ps      = `TB.i8051_top.u_cpu.ip[4];
+        wire ip_pt1     = `TB.i8051_top.u_cpu.ip[3];
+        wire ip_px1     = `TB.i8051_top.u_cpu.ip[2];
+        wire ip_pt0     = `TB.i8051_top.u_cpu.ip[1];
+        wire ip_px0     = `TB.i8051_top.u_cpu.ip[0];
+    end
+endgenerate
+
+generate
     if (1) begin : asm_debug
         reg [159:0] asmlabel, asmopcode, asminstr, asmoperands, asmoperandnums;
         reg [15:0]  msg_addr;
@@ -399,7 +526,6 @@ if (fst_path != "/dev/null") begin
 end else begin
     $display("DME: FST Dump suppressed (/dev/null)");
 end
-//$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
 `ifdef DME_DEBUG
@@ -471,6 +597,10 @@ $dumpvars(1,`TB.tdc);
     last_pc=16'hFFFF;
     last_msg="FFFF";
     asm_debug.msg_count=1;
+    registers.call_depth=0;
+    registers.call_depth_last_pc=16'hFFFF;
+    registers.call_depth_irq_prev=1'b0;
+    registers.call_depth_hi_prev=1'b0;
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/test_sim.hex",debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_byte_map.hex",memory_byte_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);

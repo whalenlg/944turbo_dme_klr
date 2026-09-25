@@ -163,8 +163,6 @@ module var_interrupt_generator (
 
 `ifdef DASHBOARD_TB
   `define CYCLE_COUNT i8051_dashboard_tb.i8051_top.u_cpu.cycle_count
-`else
-  `define CYCLE_COUNT i8051_tb.i8051_top.u_cpu.cycle_count
 `endif
 
 `ifdef ISV_LOAD_DROOP
