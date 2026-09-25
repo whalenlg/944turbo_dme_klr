@@ -8,6 +8,9 @@
 //    KLR full_load       → DME full_load   (WOT flag → DME TPS ch6)
 //    DME afm_wiper      → KLR tps_wiper   (TPS angle ch7)
 //    DME ref_rpm        → KLR rpm_in      (RPM, only used by -DBOOST)
+//    DME clk/tdc/speed_sensor → KLR dme_clk/tdc/speed_sensor
+//                        (drives KLR's internal knock_signal_generator —
+//                         see klr_tb.v / klr_knock_gen.v)
 //
 //  Snapshot format (every DASH_INTERVAL_MS, latched to DME clock):
 //    [DS]  <ms>,<256hex_dme_iram>,<p1p2p3>,<rpm>
@@ -66,22 +69,6 @@ module dme_klr_dashboard_tb;
 
     wire dme_clk = u_dme.clk;
 
-    // ── Knock sensor stimulus (TEST_KNOCK_PULSE / _SHORT_TO_GROUND) ──
-    // Crank-position-synchronized knock pulse train — engine knock is
-    // specific to crank position, so this is wired up here (not inside
-    // klr_tb.v) where tdc/speed_sensor (DME-side, crank-position
-    // signals) and knock_sensor (KLR-side, an input port) are both
-    // reachable — klr_tb and the DME sub-TB are sibling instances,
-    // neither can see the other's internals directly. See
-    // klr_knock_gen.v for the state machine itself.
-    wire [7:0] knock_sensor_sig;
-    klr_knock_gen u_knock_stim (
-        .clk          ( dme_clk            ),
-        .tdc          ( tdc                ),
-        .speed_sensor ( u_dme.speed_sensor ),
-        .knock_sensor ( knock_sensor_sig   )
-    );
-
     // ── KLR sub-TB ───────────────────────────────────────────
     // EXT_STIM=1: external trigger/ign signals (not internal generator)
     // Signals are inverted: DME active-high → KLR active-low inputs
@@ -92,7 +79,9 @@ module dme_klr_dashboard_tb;
         .full_load       ( full_load           ),  // KLR WOT flag → DME
         .tps_wiper   ( tps_wiper_sig       ),  // AFM → KLR TPS angle ch7
         .rpm_in          ( u_dme.ref_rpm       ),  // DME tick-measured RPM (reg [31:0]) → KLR -DBOOST map (unused if -DBOOST undefined)
-        .knock_sensor    ( knock_sensor_sig    )   // crank-synchronized knock pulse train, see above
+        .dme_clk         ( dme_clk             ),  // → KLR's knock_signal_generator (crank-synced knock_sensor waveform)
+        .tdc             ( tdc                 ),  // → KLR's knock_signal_generator
+        .speed_sensor    ( u_dme.speed_sensor  )   // → KLR's knock_signal_generator
     );
 
     // ── Snapshot-busy flag ───────────────────────────────────

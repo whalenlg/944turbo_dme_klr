@@ -19,6 +19,10 @@
 //                              (rising edge) — see knock_gen.v
 //                              (knock_sensor currently a fixed 110d
 //                              placeholder — real model TBD)
+//    klr_knock_gen.v         — knock_signal_generator instance below:
+//                              crank-synchronized knock_sensor waveform
+//                              (TEST_KNOCK_PULSE / _SHORT_TO_GROUND),
+//                              driven by dme_clk/tdc/speed_sensor ports
 //
 //  Compile:
 //    iverilog -o klr.vvp -s klr_tb \
@@ -76,18 +80,21 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // model below (ch4). Harmless if left unconnected/unused when
     // -DBOOST isn't defined.
     input  wire [31:0] rpm_in,
-    // Knock sensor input — only meaningful when EXT_STIM=1. Driven from
-    // dme_klr_dashboard_tb.v (crank-position-synchronized pulse logic
-    // lives there now, alongside tdc/speed_sensor from the DME side —
-    // see that file for TEST_KNOCK_PULSE). No default value on the
-    // port itself — that's SystemVerilog-only syntax iverilog rejects
-    // in default (non-SV) mode. Standalone klr_tb (top-level,
-    // unconnected, EXT_STIM=0) substitutes nominal 110 via
-    // knock_sensor_i below instead, so standalone behaves exactly as
-    // before this port existed — see that wire's own comment for why
-    // this isn't a 'z'-detection idiom (Verilator rejects that as
-    // unsupported tristate I/O).
-    input  wire [7:0] knock_sensor
+    // Crank-position signals feeding the knock_signal_generator instance
+    // below — only meaningful when EXT_STIM=1. Driven from the DME side
+    // (u_dme.clk/tdc/speed_sensor) by dme_klr_dashboard_tb.v — klr_tb
+    // and the DME sub-TB are sibling instances there, so this top level
+    // is where both are reachable. No default value on the ports
+    // themselves — that's SystemVerilog-only syntax iverilog rejects in
+    // default (non-SV) mode. Standalone klr_tb (top-level, unconnected,
+    // EXT_STIM=0) substitutes nominal 110 via knock_sensor_i below
+    // instead, so standalone behaves exactly as before these ports
+    // existed — see that wire's own comment for why this isn't a
+    // 'z'-detection idiom (Verilator rejects that as unsupported
+    // tristate I/O).
+    input  wire        dme_clk,
+    input  wire        tdc,
+    input  wire        speed_sensor
 );
 
     // ── Clock ─────────────────────────────────────────────
@@ -418,15 +425,12 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //    fine here — Verilog resolves wire connections at
     //    elaboration, not by textual order). 1 bit. Gates knock_sum
     //    only (see formulas below) — knock_noise is unaffected.
-    //  knock_sensor: real knock sensor input, now an input port (see
-    //    port list above) rather than a fixed/internal tie-off — the
-    //    timed pulse logic (TEST_KNOCK_PULSE) moved to
-    //    dme_klr_dashboard_tb.v, since real knock is crank-position-
-    //    specific and needs tdc/speed_sensor from the DME side, which
-    //    aren't visible from here (klr_tb and the DME sub-TB are
-    //    sibling instances under that top-level testbench). This is
-    //    the baseline value for both outputs below; 8'd145 is added
-    //    on top only while fake_knock is asserted.
+    //  knock_sensor: real knock sensor input, generated locally below by
+    //    knock_signal_generator (klr_knock_gen.v) from the dme_clk/tdc/
+    //    speed_sensor ports (see port list above) rather than a fixed/
+    //    internal tie-off. This is the baseline value for both outputs
+    //    below; 8'd145 is added on top only while fake_knock is
+    //    asserted.
     //  knock_gen is clocked (needs .clk below) — knock_sum is
     //    combinational off `clk`-driven fake_knock burst-stretcher
     //    state; knock_noise is now a clocked rolling average, sampled
@@ -450,16 +454,29 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] knock_sum;
     wire [7:0] knock_noise;
 
+    // Crank-synchronized knock_sensor waveform — TEST_KNOCK_PULSE /
+    // TEST_KNOCK_SHORT_TO_GROUND, or flat nominal 110 by default. See
+    // klr_knock_gen.v. dme_clk/tdc/speed_sensor are only meaningful
+    // when EXT_STIM=1 (see port list comment above); harmless if left
+    // unconnected in standalone mode since the mux below substitutes
+    // nominal 110 there regardless of what this instance outputs.
+    wire [7:0] knock_sensor_gen;
+    klr_knock_gen knock_signal_generator (
+        .clk          ( dme_clk          ),
+        .tdc          ( tdc              ),
+        .speed_sensor ( speed_sensor     ),
+        .knock_sensor ( knock_sensor_gen )
+    );
+
     // Substitutes nominal 110 in standalone mode (EXT_STIM=0), where
-    // this port is left unconnected — same EXT_STIM gating this file
-    // already uses for ext_trigger/ext_ign (see port list comment
-    // above). Passes the real value through unchanged in combined
-    // mode (dme_klr_dashboard_tb.v always drives it, even to 110 when
-    // TEST_KNOCK_PULSE isn't defined — see that file). Deliberately
-    // NOT a 'z'-detection idiom here — Verilator rejects that as
-    // unsupported tristate I/O at the top level; a plain parameter-
-    // gated mux avoids tristate semantics entirely.
-    wire [7:0] knock_sensor_i = EXT_STIM ? knock_sensor : 8'd110;
+    // dme_clk/tdc/speed_sensor are left unconnected — same EXT_STIM
+    // gating this file already uses for ext_trigger/ext_ign (see port
+    // list comment above). Passes the generated value through
+    // unchanged in combined mode. Deliberately NOT a 'z'-detection
+    // idiom here — Verilator rejects that as unsupported tristate I/O
+    // at the top level; a plain parameter-gated mux avoids tristate
+    // semantics entirely.
+    wire [7:0] knock_sensor_i = EXT_STIM ? knock_sensor_gen : 8'd110;
 
     knock_gen u_knock_gen (
         .clk          ( clk            ),
@@ -686,14 +703,6 @@ module klr_tb #(parameter EXT_STIM = 0) (
             trigger_ram_patch_done <= 1'b1;
         end
     end
-
-    // ============================================================
-    //  knock_sensor is now an input port (see port list above),
-    //  driven from dme_klr_dashboard_tb.v — real knock timing needs
-    //  tdc/speed_sensor from the DME side, which this file can't see
-    //  (klr_tb and the DME sub-TB are sibling instances under that
-    //  top-level testbench). See TEST_KNOCK_PULSE there.
-    // ============================================================
 
 `include "klr_phase_monitor.v"
 

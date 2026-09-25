@@ -23,10 +23,10 @@
 ../dme/bench/verilog/var_interrupt_gen_cl.v
 ../klr/bench/verilog/var_timing_gen.v
 ../klr/bench/verilog/knock_gen.v
+../klr/bench/verilog/klr_knock_gen.v
 ../dme/bench/verilog/interrupt_gen.v
 ../dme/bench/verilog/o2_gen.v
 ../klr/rtl/verilog/klr_top.v
 bench/verilog/klr_vcd_combined.v
 ../dme/bench/verilog/i8051_dashboard_tb.v
-../klr/bench/verilog/klr_knock_gen.v
 bench/verilog/dme_klr_dashboard_tb.v
