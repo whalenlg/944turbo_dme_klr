@@ -435,6 +435,12 @@ $dumpvars(1,data_from_rom);
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 $dumpvars(1,`TB.i8051_top.u_cpu.t0);
 $dumpvars(1,`TB.i8051_top.u_cpu.t1);
+// Interrupt-control SFRs (TCON 88h, IE A8h, IP B8h) — needed to debug
+// IT1/IE1 (TCON.2/TCON.3) polling-vs-vectored-ISR races on external
+// interrupt 1 (speed_sensor), e.g. the P1.4 ISV deadlock detector.
+$dumpvars(1,`TB.i8051_top.u_cpu.tcon);
+$dumpvars(1,`TB.i8051_top.u_cpu.ie);
+$dumpvars(1,`TB.i8051_top.u_cpu.ip);
 
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
 //$dumpvars(1,`TB.xdata [7:0]);
