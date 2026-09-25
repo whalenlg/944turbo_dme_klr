@@ -240,7 +240,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
     $dumpvars(1, `KLR_DUMPVCD_PATH);   // sweeps all 128 ram_XX wires
     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
-    $dumpvars(1, `KLR_TOP_TB.u_knock_gen);
+    $dumpvars(1, `KLR_TOP_TB.u_knock_sp);
 `endif
 
     clk_count = 0;

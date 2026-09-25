@@ -431,7 +431,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //    internal tie-off. This is the baseline value for both outputs
     //    below; 8'd145 is added on top only while fake_knock is
     //    asserted.
-    //  knock_gen is clocked (needs .clk below) — knock_sum is
+    //  knock_signal_processing is clocked (needs .clk below) — knock_sum is
     //    combinational off `clk`-driven fake_knock burst-stretcher
     //    state; knock_noise is now a clocked rolling average, sampled
     //    on trigger_in (see below):
@@ -443,8 +443,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                  (knock_sensor/4 + fake_knock*32), sampled on
     //                  each rising edge of trigger_in (klr_system's own
     //                  crank-synchronized trigger — see trigger_in_mux
-    //                  below, wired into knock_gen's new trigger_in
-    //                  port) — drives adc_ch0. Uses the RAW fake_knock
+    //                  below, wired into knock_signal_processing's new
+    //                  trigger_in port) — drives adc_ch0. Uses the RAW fake_knock
     //                  input directly (not the stretched version
     //                  knock_sum uses) — not affected by the
     //                  burst-stretcher, and not gated by knock_reset at
@@ -478,7 +478,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // semantics entirely.
     wire [7:0] knock_sensor_i = EXT_STIM ? knock_sensor_gen : 8'd110;
 
-    knock_gen u_knock_gen (
+    knock_signal_processing u_knock_sp (
         .clk          ( clk            ),
         .fake_knock   ( fake_knock     ),
         .knock_reset  ( knock_reset    ),

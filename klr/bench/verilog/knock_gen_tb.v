@@ -47,7 +47,7 @@
 //       (3 valid combinations only — knock_reset and fake_knock are
 //       NEVER both 0)
 //
-//  The hold-release check watches knock_gen's internal
+//  The hold-release check watches knock_signal_processing's internal
 //  fake_knock_stretched signal (knock_sum's hold) directly via
 //  hierarchical reference (dut.fake_knock_stretched), and confirms
 //  each release lands exactly on a trigger_in rising edge (scenarios
@@ -84,13 +84,13 @@ module knock_gen_tb;
     always #(TRIGGER_PERIOD_NS / 2) trigger_in = ~trigger_in;
 
     // ── DUT I/O ────────────────────────────────────────────────
-    reg        fake_knock   = 1'b1;  // idle-high, matches knock_gen's reset assumption
+    reg        fake_knock   = 1'b1;  // idle-high, matches knock_signal_processing's reset assumption
     reg        knock_reset  = 1'b1;  // gate open by default
     reg  [7:0] knock_sensor = 8'd110;  // matches klr_tb.v's tied value; the baseline for both outputs
     wire [7:0] knock_sum;
     wire [7:0] knock_noise;
 
-    knock_gen dut (
+    knock_signal_processing dut (
         .clk          ( clk          ),
         .fake_knock   ( fake_knock   ),
         .knock_reset  ( knock_reset  ),
