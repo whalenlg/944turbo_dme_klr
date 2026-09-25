@@ -6,15 +6,18 @@
 //
 //  RAM visibility strategy
 //  ────────────────────────
-//  128 continuous-assign wires (ram_00–ram_7f) mirror every byte
-//  of the 8049 internal RAM.  Because they live in this module and
-//  this module is swept by $dumpvars(1,`KLR_DUMPVCD_PATH), every
-//  RAM location is visible in the FST waveform viewer at every
-//  simulation timestep — no sampling gaps.
+//  128 continuous-assign wires (memory.ram_00–memory.ram_7f) mirror
+//  every byte of the 8049 internal RAM, grouped under the "memory"
+//  named scope below (see FST hierarchy grouping). Being signals in
+//  this module's hierarchy they are captured by
+//  $dumpvars(1,`KLR_DUMPVCD_PATH.memory) at every timestep, making
+//  all 128 bytes permanently visible in the FST waveform viewer
+//  without any sampling gaps.
 //
 //  Per-instruction $display
 //  ─────────────────────────
-//  On every PC change the always block prints:
+//  On every PC change the always block (inside the asm_debug scope
+//  below) prints:
 //    • the disassembly line (existing)
 //    • R0–R7 both banks (existing)
 //    • a labelled one-liner for each address of interest
@@ -35,258 +38,277 @@ module klr_dumpvcd();
 `endif
 
 `define MEMMAX 4095
-integer clk_count, msg_count;
-reg [15:0]  read_addr, write_addr, msg_addr, last_pc;
+integer clk_count;
+reg [15:0]  read_addr, write_addr, last_pc;
 
 // ── Call depth tracking ───────────────────────────────────────
 // Mirrors SP (psw[2:0]) with one cycle of lookahead so we can
 // print the full stack frame BEFORE the return destroys it.
 integer call_depth;
 reg [11:0] call_stack [0:7];   // shadow return addresses for display
-reg [159:0] debug_msg [0:`MEMMAX], asmlabel, last_msg;
+reg [159:0] debug_msg [0:`MEMMAX], last_msg;
 reg [255:0] memory_byte_map [0:255], msg;
 reg [7:0]   memda, bytememdat, bitmemdat;
 reg [255:0] memory_bit_map [0:255];
 reg [159:0] opcode[0:`MEMMAX], instr[0:`MEMMAX],
-            ops[0:`MEMMAX], opsnums[0:`MEMMAX],
-            asmopcode, asminstr, asmoperands, asmoperandnums;
+            ops[0:`MEMMAX], opsnums[0:`MEMMAX];
 
-// ============================================================
-//  RAM mirror wires  (ram_00 – ram_7f)
-//
-//  Each wire is a continuous alias of the corresponding RAM cell
-//  inside `KLR_TB_PATH.i8048_core_1.ram[].  Being signals in this
-//  module they are captured by $dumpvars(1,`KLR_DUMPVCD_PATH) at
-//  every timestep, making all 128 bytes permanently visible in
-//  the FST waveform viewer without any sampling gaps.
-//
-//  The always block below references these wires by name
-//  (e.g. ram_24) rather than hierarchical paths, for readability.
-// ============================================================
 `define RAM `KLR_TB_PATH.i8048_core_1.ram
 
-// 0x00 – 0x0F  (Bank 0 R0–R7 = ram_00–ram_07; Stack = ram_08–ram_17)
-wire [7:0] ram_00 = `RAM[8'h00]; wire [7:0] ram_01 = `RAM[8'h01];
-wire [7:0] ram_02 = `RAM[8'h02]; wire [7:0] ram_03 = `RAM[8'h03];
-wire [7:0] ram_04 = `RAM[8'h04]; wire [7:0] ram_05 = `RAM[8'h05];
-wire [7:0] ram_06 = `RAM[8'h06]; wire [7:0] ram_07 = `RAM[8'h07];
-wire [7:0] ram_08 = `RAM[8'h08]; wire [7:0] ram_09 = `RAM[8'h09];
-wire [7:0] ram_0a = `RAM[8'h0a]; wire [7:0] ram_0b = `RAM[8'h0b];
-wire [7:0] ram_0c = `RAM[8'h0c]; wire [7:0] ram_0d = `RAM[8'h0d];
-wire [7:0] ram_0e = `RAM[8'h0e]; wire [7:0] ram_0f = `RAM[8'h0f];
-
-// 0x10 – 0x1F  (Stack cont.; Bank 1 R0–R7 = ram_18–ram_1f)
-wire [7:0] ram_10 = `RAM[8'h10]; wire [7:0] ram_11 = `RAM[8'h11];
-wire [7:0] ram_12 = `RAM[8'h12]; wire [7:0] ram_13 = `RAM[8'h13];
-wire [7:0] ram_14 = `RAM[8'h14]; wire [7:0] ram_15 = `RAM[8'h15];
-wire [7:0] ram_16 = `RAM[8'h16]; wire [7:0] ram_17 = `RAM[8'h17];
-wire [7:0] ram_18 = `RAM[8'h18]; wire [7:0] ram_19 = `RAM[8'h19];
-wire [7:0] ram_1a = `RAM[8'h1a]; wire [7:0] ram_1b = `RAM[8'h1b];
-wire [7:0] ram_1c = `RAM[8'h1c]; wire [7:0] ram_1d = `RAM[8'h1d];
-wire [7:0] ram_1e = `RAM[8'h1e]; wire [7:0] ram_1f = `RAM[8'h1f];
-
-// 0x20 – 0x2F
-wire [7:0] ram_20 = `RAM[8'h20]; wire [7:0] ram_21 = `RAM[8'h21];
-wire [7:0] ram_22 = `RAM[8'h22]; wire [7:0] ram_23 = `RAM[8'h23];
-wire [7:0] ram_24 = `RAM[8'h24]; wire [7:0] ram_25 = `RAM[8'h25];
-wire [7:0] ram_26 = `RAM[8'h26]; wire [7:0] ram_27 = `RAM[8'h27];
-wire [7:0] ram_28 = `RAM[8'h28]; wire [7:0] ram_29 = `RAM[8'h29];
-wire [7:0] ram_2a = `RAM[8'h2a]; wire [7:0] ram_2b = `RAM[8'h2b];
-wire [7:0] ram_2c = `RAM[8'h2c]; wire [7:0] ram_2d = `RAM[8'h2d];
-wire [7:0] ram_2e = `RAM[8'h2e]; wire [7:0] ram_2f = `RAM[8'h2f];
-
-// 0x30 – 0x3F
-wire [7:0] ram_30 = `RAM[8'h30]; wire [7:0] ram_31 = `RAM[8'h31];
-wire [7:0] ram_32 = `RAM[8'h32]; wire [7:0] ram_33 = `RAM[8'h33];
-wire [7:0] ram_34 = `RAM[8'h34]; wire [7:0] ram_35 = `RAM[8'h35];
-wire [7:0] ram_36 = `RAM[8'h36]; wire [7:0] ram_37 = `RAM[8'h37];
-wire [7:0] ram_38 = `RAM[8'h38]; wire [7:0] ram_39 = `RAM[8'h39];
-wire [7:0] ram_3a = `RAM[8'h3a]; wire [7:0] ram_3b = `RAM[8'h3b];
-wire [7:0] ram_3c = `RAM[8'h3c]; wire [7:0] ram_3d = `RAM[8'h3d];
-wire [7:0] ram_3e = `RAM[8'h3e]; wire [7:0] ram_3f = `RAM[8'h3f];
-
-// ── TPS named aliases (for readable FST traces) ───────────────────────────
-wire [7:0] tps_supply       = ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
-wire [7:0] tps_raw_angle    = ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
-wire [7:0] tps_degrees      = ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
-wire [7:0] tps_wot_thresh   = ram_3e;  // KLR ram[3Eh] — WOT threshold angle (~66)
 wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage ADC
-
-// 0x40 – 0x4F
-wire [7:0] ram_40 = `RAM[8'h40]; wire [7:0] ram_41 = `RAM[8'h41];
-wire [7:0] ram_42 = `RAM[8'h42]; wire [7:0] ram_43 = `RAM[8'h43];
-wire [7:0] ram_44 = `RAM[8'h44]; wire [7:0] ram_45 = `RAM[8'h45];
-wire [7:0] ram_46 = `RAM[8'h46]; wire [7:0] ram_47 = `RAM[8'h47];
-wire [7:0] ram_48 = `RAM[8'h48]; wire [7:0] ram_49 = `RAM[8'h49];
-wire [7:0] ram_4a = `RAM[8'h4a]; wire [7:0] ram_4b = `RAM[8'h4b];
-wire [7:0] ram_4c = `RAM[8'h4c]; wire [7:0] ram_4d = `RAM[8'h4d];
-wire [7:0] ram_4e = `RAM[8'h4e]; wire [7:0] ram_4f = `RAM[8'h4f];
-
-// 0x50 – 0x5F
-wire [7:0] ram_50 = `RAM[8'h50]; wire [7:0] ram_51 = `RAM[8'h51];
-wire [7:0] ram_52 = `RAM[8'h52]; wire [7:0] ram_53 = `RAM[8'h53];
-wire [7:0] ram_54 = `RAM[8'h54]; wire [7:0] ram_55 = `RAM[8'h55];
-wire [7:0] ram_56 = `RAM[8'h56]; wire [7:0] ram_57 = `RAM[8'h57];
-wire [7:0] ram_58 = `RAM[8'h58]; wire [7:0] ram_59 = `RAM[8'h59];
-wire [7:0] ram_5a = `RAM[8'h5a]; wire [7:0] ram_5b = `RAM[8'h5b];
-wire [7:0] ram_5c = `RAM[8'h5c]; wire [7:0] ram_5d = `RAM[8'h5d];
-wire [7:0] ram_5e = `RAM[8'h5e]; wire [7:0] ram_5f = `RAM[8'h5f];
-
-// ── Boost/MAP sensor named alias (for readable FST traces) ───────────────
-wire [7:0] map_sensor = ram_52;  // KLR ram[52h] — processed boost/MAP value (see -DBOOST)
-
-// 0x60 – 0x6F
-wire [7:0] ram_60 = `RAM[8'h60]; wire [7:0] ram_61 = `RAM[8'h61];
-wire [7:0] ram_62 = `RAM[8'h62]; wire [7:0] ram_63 = `RAM[8'h63];
-wire [7:0] ram_64 = `RAM[8'h64]; wire [7:0] ram_65 = `RAM[8'h65];
-wire [7:0] ram_66 = `RAM[8'h66]; wire [7:0] ram_67 = `RAM[8'h67];
-wire [7:0] ram_68 = `RAM[8'h68]; wire [7:0] ram_69 = `RAM[8'h69];
-wire [7:0] ram_6a = `RAM[8'h6a]; wire [7:0] ram_6b = `RAM[8'h6b];
-wire [7:0] ram_6c = `RAM[8'h6c]; wire [7:0] ram_6d = `RAM[8'h6d];
-wire [7:0] ram_6e = `RAM[8'h6e]; wire [7:0] ram_6f = `RAM[8'h6f];
-
-// 0x70 – 0x7F
-wire [7:0] ram_70 = `RAM[8'h70]; wire [7:0] ram_71 = `RAM[8'h71];
-wire [7:0] ram_72 = `RAM[8'h72]; wire [7:0] ram_73 = `RAM[8'h73];
-wire [7:0] ram_74 = `RAM[8'h74]; wire [7:0] ram_75 = `RAM[8'h75];
-wire [7:0] ram_76 = `RAM[8'h76]; wire [7:0] ram_77 = `RAM[8'h77];
-wire [7:0] ram_78 = `RAM[8'h78]; wire [7:0] ram_79 = `RAM[8'h79];
-wire [7:0] ram_7a = `RAM[8'h7a]; wire [7:0] ram_7b = `RAM[8'h7b];
-wire [7:0] ram_7c = `RAM[8'h7c]; wire [7:0] ram_7d = `RAM[8'h7d];
-wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
-
-    wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
-    wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
-    wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
-    wire [7:0] r3 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1b] : `RAM[7'h3];
-    wire [7:0] r4 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1c] : `RAM[7'h4];
-    wire [7:0] r5 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1d] : `RAM[7'h5];
-    wire [7:0] r6 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1e] : `RAM[7'h6];
-    wire [7:0] r7 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1f] : `RAM[7'h7];
-    wire [7:0] r_at_0 = `RAM[r0];
-    wire [7:0] r_at_1 = `RAM[r1];
 
 // ============================================================
 //  FST hierarchy grouping (KLR_DEBUG waveform organization)
 //  ────────────────────────────────────────────────────────
-//  Named-scope aliases of the signals declared above, so the
-//  KLR_DEBUG waveform view groups them under readable
-//  sub-scopes (registers / memory / asm_debug / tps) instead
-//  of one flat list under u_dumpvcd. Each alias reads the real
-//  signal via the full `KLR_DUMPVCD_PATH, since an unqualified
-//  same-name reference from inside the block would otherwise
-//  resolve to itself (undriven) rather than the outer wire —
-//  the original flat signals above are untouched, so anything
-//  in this file that already references them by bare name
-//  keeps working exactly as before. Swept separately from the
-//  flat `KLR_DUMPVCD_PATH dump below (see KLR_DEBUG block), so
-//  KLR_DEBUG waveforms show both the flat and grouped views.
+//  Named-scope signal groups so the KLR_DEBUG waveform view
+//  organizes related signals under readable sub-scopes instead of
+//  one flat list under u_dumpvcd:
+//    registers  — r0-r7, r_at_0, r_at_1, mb_latch
+//    memory     — ram_00-ram_7f (all 128 RAM bytes)
+//    asm_debug  — asmlabel, asmopcode, asminstr, asmoperands,
+//                 asmoperandnums, msg_addr, msg_count (plus the
+//                 per-instruction disassembly always block that
+//                 drives them — see below)
+//    tps        — tps_supply, tps_raw_angle, tps_degrees,
+//                 tps_wot_thresh
+//  These are the only declarations of these signals — no separate
+//  flat copies exist elsewhere in this module.
 // ============================================================
 generate
     begin : registers
-        wire [7:0] r0 = `KLR_DUMPVCD_PATH.r0;
-        wire [7:0] r1 = `KLR_DUMPVCD_PATH.r1;
-        wire [7:0] r2 = `KLR_DUMPVCD_PATH.r2;
-        wire [7:0] r3 = `KLR_DUMPVCD_PATH.r3;
-        wire [7:0] r4 = `KLR_DUMPVCD_PATH.r4;
-        wire [7:0] r5 = `KLR_DUMPVCD_PATH.r5;
-        wire [7:0] r6 = `KLR_DUMPVCD_PATH.r6;
-        wire [7:0] r7 = `KLR_DUMPVCD_PATH.r7;
-        wire [7:0] r_at_0   = `KLR_DUMPVCD_PATH.r_at_0;
-        wire [7:0] r_at_1   = `KLR_DUMPVCD_PATH.r_at_1;
+        wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
+        wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
+        wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
+        wire [7:0] r3 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1b] : `RAM[7'h3];
+        wire [7:0] r4 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1c] : `RAM[7'h4];
+        wire [7:0] r5 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1d] : `RAM[7'h5];
+        wire [7:0] r6 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1e] : `RAM[7'h6];
+        wire [7:0] r7 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1f] : `RAM[7'h7];
+        wire [7:0] r_at_0   = `RAM[r0];
+        wire [7:0] r_at_1   = `RAM[r1];
         wire       mb_latch = `KLR_TB_PATH.i8048_core_1.mb_latch;
     end
 endgenerate
 
 generate
     begin : memory
-        wire [7:0] ram_00 = `KLR_DUMPVCD_PATH.ram_00; wire [7:0] ram_01 = `KLR_DUMPVCD_PATH.ram_01;
-        wire [7:0] ram_02 = `KLR_DUMPVCD_PATH.ram_02; wire [7:0] ram_03 = `KLR_DUMPVCD_PATH.ram_03;
-        wire [7:0] ram_04 = `KLR_DUMPVCD_PATH.ram_04; wire [7:0] ram_05 = `KLR_DUMPVCD_PATH.ram_05;
-        wire [7:0] ram_06 = `KLR_DUMPVCD_PATH.ram_06; wire [7:0] ram_07 = `KLR_DUMPVCD_PATH.ram_07;
-        wire [7:0] ram_08 = `KLR_DUMPVCD_PATH.ram_08; wire [7:0] ram_09 = `KLR_DUMPVCD_PATH.ram_09;
-        wire [7:0] ram_0a = `KLR_DUMPVCD_PATH.ram_0a; wire [7:0] ram_0b = `KLR_DUMPVCD_PATH.ram_0b;
-        wire [7:0] ram_0c = `KLR_DUMPVCD_PATH.ram_0c; wire [7:0] ram_0d = `KLR_DUMPVCD_PATH.ram_0d;
-        wire [7:0] ram_0e = `KLR_DUMPVCD_PATH.ram_0e; wire [7:0] ram_0f = `KLR_DUMPVCD_PATH.ram_0f;
-        wire [7:0] ram_10 = `KLR_DUMPVCD_PATH.ram_10; wire [7:0] ram_11 = `KLR_DUMPVCD_PATH.ram_11;
-        wire [7:0] ram_12 = `KLR_DUMPVCD_PATH.ram_12; wire [7:0] ram_13 = `KLR_DUMPVCD_PATH.ram_13;
-        wire [7:0] ram_14 = `KLR_DUMPVCD_PATH.ram_14; wire [7:0] ram_15 = `KLR_DUMPVCD_PATH.ram_15;
-        wire [7:0] ram_16 = `KLR_DUMPVCD_PATH.ram_16; wire [7:0] ram_17 = `KLR_DUMPVCD_PATH.ram_17;
-        wire [7:0] ram_18 = `KLR_DUMPVCD_PATH.ram_18; wire [7:0] ram_19 = `KLR_DUMPVCD_PATH.ram_19;
-        wire [7:0] ram_1a = `KLR_DUMPVCD_PATH.ram_1a; wire [7:0] ram_1b = `KLR_DUMPVCD_PATH.ram_1b;
-        wire [7:0] ram_1c = `KLR_DUMPVCD_PATH.ram_1c; wire [7:0] ram_1d = `KLR_DUMPVCD_PATH.ram_1d;
-        wire [7:0] ram_1e = `KLR_DUMPVCD_PATH.ram_1e; wire [7:0] ram_1f = `KLR_DUMPVCD_PATH.ram_1f;
-        wire [7:0] ram_20 = `KLR_DUMPVCD_PATH.ram_20; wire [7:0] ram_21 = `KLR_DUMPVCD_PATH.ram_21;
-        wire [7:0] ram_22 = `KLR_DUMPVCD_PATH.ram_22; wire [7:0] ram_23 = `KLR_DUMPVCD_PATH.ram_23;
-        wire [7:0] ram_24 = `KLR_DUMPVCD_PATH.ram_24; wire [7:0] ram_25 = `KLR_DUMPVCD_PATH.ram_25;
-        wire [7:0] ram_26 = `KLR_DUMPVCD_PATH.ram_26; wire [7:0] ram_27 = `KLR_DUMPVCD_PATH.ram_27;
-        wire [7:0] ram_28 = `KLR_DUMPVCD_PATH.ram_28; wire [7:0] ram_29 = `KLR_DUMPVCD_PATH.ram_29;
-        wire [7:0] ram_2a = `KLR_DUMPVCD_PATH.ram_2a; wire [7:0] ram_2b = `KLR_DUMPVCD_PATH.ram_2b;
-        wire [7:0] ram_2c = `KLR_DUMPVCD_PATH.ram_2c; wire [7:0] ram_2d = `KLR_DUMPVCD_PATH.ram_2d;
-        wire [7:0] ram_2e = `KLR_DUMPVCD_PATH.ram_2e; wire [7:0] ram_2f = `KLR_DUMPVCD_PATH.ram_2f;
-        wire [7:0] ram_30 = `KLR_DUMPVCD_PATH.ram_30; wire [7:0] ram_31 = `KLR_DUMPVCD_PATH.ram_31;
-        wire [7:0] ram_32 = `KLR_DUMPVCD_PATH.ram_32; wire [7:0] ram_33 = `KLR_DUMPVCD_PATH.ram_33;
-        wire [7:0] ram_34 = `KLR_DUMPVCD_PATH.ram_34; wire [7:0] ram_35 = `KLR_DUMPVCD_PATH.ram_35;
-        wire [7:0] ram_36 = `KLR_DUMPVCD_PATH.ram_36; wire [7:0] ram_37 = `KLR_DUMPVCD_PATH.ram_37;
-        wire [7:0] ram_38 = `KLR_DUMPVCD_PATH.ram_38; wire [7:0] ram_39 = `KLR_DUMPVCD_PATH.ram_39;
-        wire [7:0] ram_3a = `KLR_DUMPVCD_PATH.ram_3a; wire [7:0] ram_3b = `KLR_DUMPVCD_PATH.ram_3b;
-        wire [7:0] ram_3c = `KLR_DUMPVCD_PATH.ram_3c; wire [7:0] ram_3d = `KLR_DUMPVCD_PATH.ram_3d;
-        wire [7:0] ram_3e = `KLR_DUMPVCD_PATH.ram_3e; wire [7:0] ram_3f = `KLR_DUMPVCD_PATH.ram_3f;
-        wire [7:0] ram_40 = `KLR_DUMPVCD_PATH.ram_40; wire [7:0] ram_41 = `KLR_DUMPVCD_PATH.ram_41;
-        wire [7:0] ram_42 = `KLR_DUMPVCD_PATH.ram_42; wire [7:0] ram_43 = `KLR_DUMPVCD_PATH.ram_43;
-        wire [7:0] ram_44 = `KLR_DUMPVCD_PATH.ram_44; wire [7:0] ram_45 = `KLR_DUMPVCD_PATH.ram_45;
-        wire [7:0] ram_46 = `KLR_DUMPVCD_PATH.ram_46; wire [7:0] ram_47 = `KLR_DUMPVCD_PATH.ram_47;
-        wire [7:0] ram_48 = `KLR_DUMPVCD_PATH.ram_48; wire [7:0] ram_49 = `KLR_DUMPVCD_PATH.ram_49;
-        wire [7:0] ram_4a = `KLR_DUMPVCD_PATH.ram_4a; wire [7:0] ram_4b = `KLR_DUMPVCD_PATH.ram_4b;
-        wire [7:0] ram_4c = `KLR_DUMPVCD_PATH.ram_4c; wire [7:0] ram_4d = `KLR_DUMPVCD_PATH.ram_4d;
-        wire [7:0] ram_4e = `KLR_DUMPVCD_PATH.ram_4e; wire [7:0] ram_4f = `KLR_DUMPVCD_PATH.ram_4f;
-        wire [7:0] ram_50 = `KLR_DUMPVCD_PATH.ram_50; wire [7:0] ram_51 = `KLR_DUMPVCD_PATH.ram_51;
-        wire [7:0] ram_52 = `KLR_DUMPVCD_PATH.ram_52; wire [7:0] ram_53 = `KLR_DUMPVCD_PATH.ram_53;
-        wire [7:0] ram_54 = `KLR_DUMPVCD_PATH.ram_54; wire [7:0] ram_55 = `KLR_DUMPVCD_PATH.ram_55;
-        wire [7:0] ram_56 = `KLR_DUMPVCD_PATH.ram_56; wire [7:0] ram_57 = `KLR_DUMPVCD_PATH.ram_57;
-        wire [7:0] ram_58 = `KLR_DUMPVCD_PATH.ram_58; wire [7:0] ram_59 = `KLR_DUMPVCD_PATH.ram_59;
-        wire [7:0] ram_5a = `KLR_DUMPVCD_PATH.ram_5a; wire [7:0] ram_5b = `KLR_DUMPVCD_PATH.ram_5b;
-        wire [7:0] ram_5c = `KLR_DUMPVCD_PATH.ram_5c; wire [7:0] ram_5d = `KLR_DUMPVCD_PATH.ram_5d;
-        wire [7:0] ram_5e = `KLR_DUMPVCD_PATH.ram_5e; wire [7:0] ram_5f = `KLR_DUMPVCD_PATH.ram_5f;
-        wire [7:0] ram_60 = `KLR_DUMPVCD_PATH.ram_60; wire [7:0] ram_61 = `KLR_DUMPVCD_PATH.ram_61;
-        wire [7:0] ram_62 = `KLR_DUMPVCD_PATH.ram_62; wire [7:0] ram_63 = `KLR_DUMPVCD_PATH.ram_63;
-        wire [7:0] ram_64 = `KLR_DUMPVCD_PATH.ram_64; wire [7:0] ram_65 = `KLR_DUMPVCD_PATH.ram_65;
-        wire [7:0] ram_66 = `KLR_DUMPVCD_PATH.ram_66; wire [7:0] ram_67 = `KLR_DUMPVCD_PATH.ram_67;
-        wire [7:0] ram_68 = `KLR_DUMPVCD_PATH.ram_68; wire [7:0] ram_69 = `KLR_DUMPVCD_PATH.ram_69;
-        wire [7:0] ram_6a = `KLR_DUMPVCD_PATH.ram_6a; wire [7:0] ram_6b = `KLR_DUMPVCD_PATH.ram_6b;
-        wire [7:0] ram_6c = `KLR_DUMPVCD_PATH.ram_6c; wire [7:0] ram_6d = `KLR_DUMPVCD_PATH.ram_6d;
-        wire [7:0] ram_6e = `KLR_DUMPVCD_PATH.ram_6e; wire [7:0] ram_6f = `KLR_DUMPVCD_PATH.ram_6f;
-        wire [7:0] ram_70 = `KLR_DUMPVCD_PATH.ram_70; wire [7:0] ram_71 = `KLR_DUMPVCD_PATH.ram_71;
-        wire [7:0] ram_72 = `KLR_DUMPVCD_PATH.ram_72; wire [7:0] ram_73 = `KLR_DUMPVCD_PATH.ram_73;
-        wire [7:0] ram_74 = `KLR_DUMPVCD_PATH.ram_74; wire [7:0] ram_75 = `KLR_DUMPVCD_PATH.ram_75;
-        wire [7:0] ram_76 = `KLR_DUMPVCD_PATH.ram_76; wire [7:0] ram_77 = `KLR_DUMPVCD_PATH.ram_77;
-        wire [7:0] ram_78 = `KLR_DUMPVCD_PATH.ram_78; wire [7:0] ram_79 = `KLR_DUMPVCD_PATH.ram_79;
-        wire [7:0] ram_7a = `KLR_DUMPVCD_PATH.ram_7a; wire [7:0] ram_7b = `KLR_DUMPVCD_PATH.ram_7b;
-        wire [7:0] ram_7c = `KLR_DUMPVCD_PATH.ram_7c; wire [7:0] ram_7d = `KLR_DUMPVCD_PATH.ram_7d;
-        wire [7:0] ram_7e = `KLR_DUMPVCD_PATH.ram_7e; wire [7:0] ram_7f = `KLR_DUMPVCD_PATH.ram_7f;
+        wire [7:0] ram_00 = `RAM[8'h00]; wire [7:0] ram_01 = `RAM[8'h01];
+        wire [7:0] ram_02 = `RAM[8'h02]; wire [7:0] ram_03 = `RAM[8'h03];
+        wire [7:0] ram_04 = `RAM[8'h04]; wire [7:0] ram_05 = `RAM[8'h05];
+        wire [7:0] ram_06 = `RAM[8'h06]; wire [7:0] ram_07 = `RAM[8'h07];
+        wire [7:0] ram_08 = `RAM[8'h08]; wire [7:0] ram_09 = `RAM[8'h09];
+        wire [7:0] ram_0a = `RAM[8'h0a]; wire [7:0] ram_0b = `RAM[8'h0b];
+        wire [7:0] ram_0c = `RAM[8'h0c]; wire [7:0] ram_0d = `RAM[8'h0d];
+        wire [7:0] ram_0e = `RAM[8'h0e]; wire [7:0] ram_0f = `RAM[8'h0f];
+        wire [7:0] ram_10 = `RAM[8'h10]; wire [7:0] ram_11 = `RAM[8'h11];
+        wire [7:0] ram_12 = `RAM[8'h12]; wire [7:0] ram_13 = `RAM[8'h13];
+        wire [7:0] ram_14 = `RAM[8'h14]; wire [7:0] ram_15 = `RAM[8'h15];
+        wire [7:0] ram_16 = `RAM[8'h16]; wire [7:0] ram_17 = `RAM[8'h17];
+        wire [7:0] ram_18 = `RAM[8'h18]; wire [7:0] ram_19 = `RAM[8'h19];
+        wire [7:0] ram_1a = `RAM[8'h1a]; wire [7:0] ram_1b = `RAM[8'h1b];
+        wire [7:0] ram_1c = `RAM[8'h1c]; wire [7:0] ram_1d = `RAM[8'h1d];
+        wire [7:0] ram_1e = `RAM[8'h1e]; wire [7:0] ram_1f = `RAM[8'h1f];
+        wire [7:0] ram_20 = `RAM[8'h20]; wire [7:0] ram_21 = `RAM[8'h21];
+        wire [7:0] ram_22 = `RAM[8'h22]; wire [7:0] ram_23 = `RAM[8'h23];
+        wire [7:0] ram_24 = `RAM[8'h24]; wire [7:0] ram_25 = `RAM[8'h25];
+        wire [7:0] ram_26 = `RAM[8'h26]; wire [7:0] ram_27 = `RAM[8'h27];
+        wire [7:0] ram_28 = `RAM[8'h28]; wire [7:0] ram_29 = `RAM[8'h29];
+        wire [7:0] ram_2a = `RAM[8'h2a]; wire [7:0] ram_2b = `RAM[8'h2b];
+        wire [7:0] ram_2c = `RAM[8'h2c]; wire [7:0] ram_2d = `RAM[8'h2d];
+        wire [7:0] ram_2e = `RAM[8'h2e]; wire [7:0] ram_2f = `RAM[8'h2f];
+        wire [7:0] ram_30 = `RAM[8'h30]; wire [7:0] ram_31 = `RAM[8'h31];
+        wire [7:0] ram_32 = `RAM[8'h32]; wire [7:0] ram_33 = `RAM[8'h33];
+        wire [7:0] ram_34 = `RAM[8'h34]; wire [7:0] ram_35 = `RAM[8'h35];
+        wire [7:0] ram_36 = `RAM[8'h36]; wire [7:0] ram_37 = `RAM[8'h37];
+        wire [7:0] ram_38 = `RAM[8'h38]; wire [7:0] ram_39 = `RAM[8'h39];
+        wire [7:0] ram_3a = `RAM[8'h3a]; wire [7:0] ram_3b = `RAM[8'h3b];
+        wire [7:0] ram_3c = `RAM[8'h3c]; wire [7:0] ram_3d = `RAM[8'h3d];
+        wire [7:0] ram_3e = `RAM[8'h3e]; wire [7:0] ram_3f = `RAM[8'h3f];
+        wire [7:0] ram_40 = `RAM[8'h40]; wire [7:0] ram_41 = `RAM[8'h41];
+        wire [7:0] ram_42 = `RAM[8'h42]; wire [7:0] ram_43 = `RAM[8'h43];
+        wire [7:0] ram_44 = `RAM[8'h44]; wire [7:0] ram_45 = `RAM[8'h45];
+        wire [7:0] ram_46 = `RAM[8'h46]; wire [7:0] ram_47 = `RAM[8'h47];
+        wire [7:0] ram_48 = `RAM[8'h48]; wire [7:0] ram_49 = `RAM[8'h49];
+        wire [7:0] ram_4a = `RAM[8'h4a]; wire [7:0] ram_4b = `RAM[8'h4b];
+        wire [7:0] ram_4c = `RAM[8'h4c]; wire [7:0] ram_4d = `RAM[8'h4d];
+        wire [7:0] ram_4e = `RAM[8'h4e]; wire [7:0] ram_4f = `RAM[8'h4f];
+        wire [7:0] ram_50 = `RAM[8'h50]; wire [7:0] ram_51 = `RAM[8'h51];
+        wire [7:0] ram_52 = `RAM[8'h52]; wire [7:0] ram_53 = `RAM[8'h53];
+        wire [7:0] ram_54 = `RAM[8'h54]; wire [7:0] ram_55 = `RAM[8'h55];
+        wire [7:0] ram_56 = `RAM[8'h56]; wire [7:0] ram_57 = `RAM[8'h57];
+        wire [7:0] ram_58 = `RAM[8'h58]; wire [7:0] ram_59 = `RAM[8'h59];
+        wire [7:0] ram_5a = `RAM[8'h5a]; wire [7:0] ram_5b = `RAM[8'h5b];
+        wire [7:0] ram_5c = `RAM[8'h5c]; wire [7:0] ram_5d = `RAM[8'h5d];
+        wire [7:0] ram_5e = `RAM[8'h5e]; wire [7:0] ram_5f = `RAM[8'h5f];
+        wire [7:0] ram_60 = `RAM[8'h60]; wire [7:0] ram_61 = `RAM[8'h61];
+        wire [7:0] ram_62 = `RAM[8'h62]; wire [7:0] ram_63 = `RAM[8'h63];
+        wire [7:0] ram_64 = `RAM[8'h64]; wire [7:0] ram_65 = `RAM[8'h65];
+        wire [7:0] ram_66 = `RAM[8'h66]; wire [7:0] ram_67 = `RAM[8'h67];
+        wire [7:0] ram_68 = `RAM[8'h68]; wire [7:0] ram_69 = `RAM[8'h69];
+        wire [7:0] ram_6a = `RAM[8'h6a]; wire [7:0] ram_6b = `RAM[8'h6b];
+        wire [7:0] ram_6c = `RAM[8'h6c]; wire [7:0] ram_6d = `RAM[8'h6d];
+        wire [7:0] ram_6e = `RAM[8'h6e]; wire [7:0] ram_6f = `RAM[8'h6f];
+        wire [7:0] ram_70 = `RAM[8'h70]; wire [7:0] ram_71 = `RAM[8'h71];
+        wire [7:0] ram_72 = `RAM[8'h72]; wire [7:0] ram_73 = `RAM[8'h73];
+        wire [7:0] ram_74 = `RAM[8'h74]; wire [7:0] ram_75 = `RAM[8'h75];
+        wire [7:0] ram_76 = `RAM[8'h76]; wire [7:0] ram_77 = `RAM[8'h77];
+        wire [7:0] ram_78 = `RAM[8'h78]; wire [7:0] ram_79 = `RAM[8'h79];
+        wire [7:0] ram_7a = `RAM[8'h7a]; wire [7:0] ram_7b = `RAM[8'h7b];
+        wire [7:0] ram_7c = `RAM[8'h7c]; wire [7:0] ram_7d = `RAM[8'h7d];
+        wire [7:0] ram_7e = `RAM[8'h7e]; wire [7:0] ram_7f = `RAM[8'h7f];
+    end
+endgenerate
+
+// ── Boost/MAP sensor named alias (for readable FST traces) ───────────────
+wire [7:0] map_sensor = memory.ram_52;  // KLR ram[52h] — processed boost/MAP value (see -DBOOST)
+
+generate
+    begin : tps
+        wire [7:0] tps_supply     = memory.ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
+        wire [7:0] tps_raw_angle  = memory.ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
+        wire [7:0] tps_degrees    = memory.ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
+        wire [7:0] tps_wot_thresh = memory.ram_3e;  // KLR ram[3Eh] — WOT threshold angle (~66)
     end
 endgenerate
 
 generate
     begin : asm_debug
-        wire [159:0] asmlabel       = `KLR_DUMPVCD_PATH.asmlabel;
-        wire [159:0] asmopcode      = `KLR_DUMPVCD_PATH.asmopcode;
-        wire [159:0] asminstr       = `KLR_DUMPVCD_PATH.asminstr;
-        wire [159:0] asmoperands    = `KLR_DUMPVCD_PATH.asmoperands;
-        wire [159:0] asmoperandnums = `KLR_DUMPVCD_PATH.asmoperandnums;
-        wire [15:0]  msg_addr       = `KLR_DUMPVCD_PATH.msg_addr;
-        wire [31:0]  msg_count      = `KLR_DUMPVCD_PATH.msg_count;
+        reg [159:0] asmlabel, asmopcode, asminstr, asmoperands, asmoperandnums;
+        reg [15:0]  msg_addr;
+        integer     msg_count;
+
+        // ============================================================
+        //  Per-instruction disassembly + register + key address display
+        // ============================================================
+        always @(negedge top.clk) begin
+            clk_count      <= clk_count + 1;
+            msg_addr        = top.pc;
+            asmlabel        = debug_msg[msg_addr];
+            asmopcode       = opcode[msg_addr];
+            asminstr        = instr[msg_addr][159:120];
+            asmoperands     = ops[msg_addr];
+            asmoperandnums  = opsnums[msg_addr];
+
+            if (last_pc !== msg_addr && !`KLR_TB_PATH.i8048_core_1.cycle_2) begin
+
+                if (last_msg !== asmlabel)
+                    msg_count = 1;
+                else
+                    msg_count = msg_count + 1;
+
+`ifdef KLR_DEBUG
+                // ── Disassembly line (KLR_DEBUG only) ──────────────
+                // Suppressed while u_dbg_loop has confirmed a repeating tight
+                // loop (e.g. wait_ign_1/wait_ign_2) — see klr_debug_loop_detect.v
+                // and the loop-exit summary block below.
+                if (!`KLR_TB_PATH.i8048_core_1.u_dbg_loop.suppress)
+                if (asmopcode[159:152] != 8'h20)
+                    if (asmlabel[159:152] != 8'h20)
+                        $display("KLR: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
+                            asmlabel, clk_count, msg_addr,
+                            asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
+                    else
+                        $display("KLR: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
+                            clk_count, msg_addr,
+                            asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
+`endif // KLR_DEBUG
+
+                // ── R0–R7 register banks ────────────────────────────
+                // ── Call depth tracker ──────────────────────────────
+                // Guard: only fires when cycle_2=0 (start of a new instruction).
+                // cycle_2=1 means we are in the middle of a 2-cycle instruction;
+                // suppressing here prevents intermediate PC+1 steps from being
+                // misidentified as new instructions (e.g. JC operand byte 0xB4
+                // falsely matching the CALL opcode pattern).
+                // Return address for CALL = msg_addr+2 — correct because we fire
+                // at the CALL instruction address itself (cycle_2=0, not yet executed).
+                begin : track_calls
+                    integer sp_now;
+                    reg [7:0] curr_op;
+                    sp_now  = `KLR_TB_PATH.i8048_core_1.psw[2:0];
+                    curr_op = `KLR_TB_PATH.rom_1.rom[msg_addr];
+
+                    // CALL family: opcodes x14,x34,x54,x74,x94,xB4,xD4,xF4
+                    if ((curr_op & 8'h1F) == 8'h14) begin
+                        begin : call_track
+                            reg [11:0] call_target;
+                            reg [11:0] ret_addr;
+                            // Target: {mb_latch, ir[7:5], operand_byte}
+                            // ir[7:5] = curr_op[7:5] (upper 3 target bits from opcode)
+                            // operand byte = rom[msg_addr + 1]
+                            call_target = {`KLR_TB_PATH.i8048_core_1.mb_latch,
+                                           curr_op[7:5],
+                                           `KLR_TB_PATH.rom_1.rom[msg_addr + 1]};
+                            ret_addr = msg_addr[11:0] + 12'h002;
+                            if (call_depth < 8) begin
+                                call_stack[call_depth] = ret_addr;
+                                call_depth = call_depth + 1;
+                            end
+`ifdef KLR_DEBUG
+                            $display("KLR: \t\tCALL  target=%03h  retaddr=%03h",
+                                call_target, ret_addr);
+`endif // KLR_DEBUG
+                        end
+                    end
+
+                    // RET / RETR
+                    else if (curr_op == 8'h83 || curr_op == 8'h93) begin
+                        if (sp_now == 0) begin
+                            // 0x2b0 is an intentional computed jump via SP wrap:
+                            // firmware sets ram[0x16/0x17] as a fake MB1 frame,
+                            // SP=0→7, then RET jumps into MB1. Not a real underflow.
+                            if (msg_addr != 12'h2b0) begin
+`ifdef DME_DEEP_DEBUG
+                                $display("KLR: *** STACK UNDERFLOW at PC=%03h opcode=%02h — SP=0, PSW will wrap to 7 ***",
+                                    msg_addr, curr_op);
+                                $display("KLR:     Shadow call stack:");
+                                $display("KLR:     [0]=%03h [1]=%03h [2]=%03h [3]=%03h [4]=%03h [5]=%03h [6]=%03h [7]=%03h",
+                                    call_stack[0], call_stack[1], call_stack[2], call_stack[3],
+                                    call_stack[4], call_stack[5], call_stack[6], call_stack[7]);
+                                $display("KLR:     RAM stack slots:");
+                                $display("KLR:     [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
+                                    `RAM[8'h08], `RAM[8'h09], `RAM[8'h0a], `RAM[8'h0b],
+                                    `RAM[8'h0c], `RAM[8'h0d], `RAM[8'h0e], `RAM[8'h0f]);
+                                $display("KLR:     [10]=%02h [11]=%02h [12]=%02h [13]=%02h [14]=%02h [15]=%02h [16]=%02h [17]=%02h",
+                                    `RAM[8'h10], `RAM[8'h11], `RAM[8'h12], `RAM[8'h13],
+                                    `RAM[8'h14], `RAM[8'h15], `RAM[8'h16], `RAM[8'h17]);
+`endif
+                            end else begin
+                                // Intentional computed jump to MB1 via SP wrap.
+                                // SP: 0→7. MB1 entry code will then CALL further
+                                // functions: SP 7→0→1... MB1 calls must be balanced
+                                // so SP returns to 7 before the next trigger reset.
+                                // Set call_depth=7 to mirror SP so subsequent CALL/RET
+                                // tracking in MB1 stays accurate.
+                                call_depth = 7;
+                            end
+                        end else begin
+                            call_depth = call_depth - 1;
+                        end
+`ifdef KLR_DEBUG
+                        $display("KLR: \t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
+                            (curr_op == 8'h93) ? "RETR" : "RET ",
+                            ({sp_now[2:0] - 1'b1, 1'b0} + 6'h08),
+                            ({sp_now[2:0] - 1'b1, 1'b1} + 6'h08),
+                            `RAM[{sp_now[2:0] - 1'b1, 1'b1} + 6'h08],
+                            `RAM[{sp_now[2:0] - 1'b1, 1'b0} + 6'h08]);
+`endif // KLR_DEBUG
+                    end
+
+                    else begin
+
+                    end
+                end
+
+
+
+                last_msg = asmlabel;
+            end
+            last_pc = msg_addr;
+        end
     end
 endgenerate
 
-generate
-    begin : tps
-        wire [7:0] tps_supply     = `KLR_DUMPVCD_PATH.tps_supply;
-        wire [7:0] tps_raw_angle  = `KLR_DUMPVCD_PATH.tps_raw_angle;
-        wire [7:0] tps_degrees    = `KLR_DUMPVCD_PATH.tps_degrees;
-        wire [7:0] tps_wot_thresh = `KLR_DUMPVCD_PATH.tps_wot_thresh;
-    end
-endgenerate
 // ============================================================
 //  Interrupt entry tracker
 //  service_interrupt() pushes to the stack and sets irq_in_progress.
@@ -350,7 +372,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
     $dumpvars(1, map_sensor);                  // ram[52h] — processed boost/MAP value
-    $dumpvars(1, tps_degrees);                 // ram[3Ah] — TPS throttle angle (degrees)
+    $dumpvars(1, tps.tps_degrees);              // ram[3Ah] — TPS throttle angle (degrees)
     $dumpvars(1, `KLR_TOP_TB.knock_sensor_i);  // knock sensor input (raw or fixed 110)
 
     // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
@@ -359,8 +381,8 @@ initial begin
     $dumpvars(1, `KLR_TOP_TB);
     $dumpvars(1, `KLR_TB_PATH);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
-    $dumpvars(1, `KLR_DUMPVCD_PATH);   // flat: sweeps all 128 ram_XX wires, r0-r7, asm*, tps*, etc.
-    $dumpvars(1, `KLR_DUMPVCD_PATH.registers);  // grouped view — see FST hierarchy grouping above
+    $dumpvars(1, `KLR_DUMPVCD_PATH);            // this module's own remaining flat signals (clk_count, last_pc, call_depth, call_stack, lookup tables, etc.)
+    $dumpvars(1, `KLR_DUMPVCD_PATH.registers);  // see FST hierarchy grouping above
     $dumpvars(1, `KLR_DUMPVCD_PATH.memory);
     $dumpvars(1, `KLR_DUMPVCD_PATH.asm_debug);
     $dumpvars(1, `KLR_DUMPVCD_PATH.tps);
@@ -371,7 +393,7 @@ initial begin
     clk_count = 0;
     last_pc   = 16'hFFFF;
     last_msg  = "FFFF";
-    msg_count = 1;
+    asm_debug.msg_count = 1;
     call_depth = 0;
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/test_sim.hex",             debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/memory_byte_map.hex",      memory_byte_map);
@@ -398,136 +420,6 @@ always @(negedge top.clk) begin
             `KLR_TB_PATH.i8048_core_1.u_dbg_loop.loop_reps);
 end
 `endif // KLR_DEBUG
-
-// ============================================================
-//  Per-instruction disassembly + register + key address display
-// ============================================================
-always @(negedge top.clk) begin
-    clk_count      <= clk_count + 1;
-    msg_addr        = top.pc;
-    asmlabel        = debug_msg[msg_addr];
-    asmopcode       = opcode[msg_addr];
-    asminstr        = instr[msg_addr][159:120];
-    asmoperands     = ops[msg_addr];
-    asmoperandnums  = opsnums[msg_addr];
-
-    if (last_pc !== msg_addr && !`KLR_TB_PATH.i8048_core_1.cycle_2) begin
-
-        if (last_msg !== asmlabel)
-            msg_count = 1;
-        else
-            msg_count = msg_count + 1;
-
-`ifdef KLR_DEBUG
-        // ── Disassembly line (KLR_DEBUG only) ──────────────
-        // Suppressed while u_dbg_loop has confirmed a repeating tight
-        // loop (e.g. wait_ign_1/wait_ign_2) — see klr_debug_loop_detect.v
-        // and the loop-exit summary block below.
-        if (!`KLR_TB_PATH.i8048_core_1.u_dbg_loop.suppress)
-        if (asmopcode[159:152] != 8'h20)
-            if (asmlabel[159:152] != 8'h20)
-                $display("KLR: %15s%8d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
-                    asmlabel, clk_count, msg_addr,
-                    asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
-            else
-                $display("KLR: \t\t%12d PC: %4h %s %s\tOPCODE:%s\t %s\t count:%8d",
-                    clk_count, msg_addr,
-                    asminstr, asmoperands, asmopcode, asmoperandnums, msg_count);
-`endif // KLR_DEBUG
-
-        // ── R0–R7 register banks ────────────────────────────
-        // ── Call depth tracker ──────────────────────────────
-        // Guard: only fires when cycle_2=0 (start of a new instruction).
-        // cycle_2=1 means we are in the middle of a 2-cycle instruction;
-        // suppressing here prevents intermediate PC+1 steps from being
-        // misidentified as new instructions (e.g. JC operand byte 0xB4
-        // falsely matching the CALL opcode pattern).
-        // Return address for CALL = msg_addr+2 — correct because we fire
-        // at the CALL instruction address itself (cycle_2=0, not yet executed).
-        begin : track_calls
-            integer sp_now;
-            reg [7:0] curr_op;
-            sp_now  = `KLR_TB_PATH.i8048_core_1.psw[2:0];
-            curr_op = `KLR_TB_PATH.rom_1.rom[msg_addr];
-
-            // CALL family: opcodes x14,x34,x54,x74,x94,xB4,xD4,xF4
-            if ((curr_op & 8'h1F) == 8'h14) begin
-                begin : call_track
-                    reg [11:0] call_target;
-                    reg [11:0] ret_addr;
-                    // Target: {mb_latch, ir[7:5], operand_byte}
-                    // ir[7:5] = curr_op[7:5] (upper 3 target bits from opcode)
-                    // operand byte = rom[msg_addr + 1]
-                    call_target = {`KLR_TB_PATH.i8048_core_1.mb_latch,
-                                   curr_op[7:5],
-                                   `KLR_TB_PATH.rom_1.rom[msg_addr + 1]};
-                    ret_addr = msg_addr[11:0] + 12'h002;
-                    if (call_depth < 8) begin
-                        call_stack[call_depth] = ret_addr;
-                        call_depth = call_depth + 1;
-                    end
-`ifdef KLR_DEBUG
-                    $display("KLR: \t\tCALL  target=%03h  retaddr=%03h",
-                        call_target, ret_addr);
-`endif // KLR_DEBUG
-                end
-            end
-
-            // RET / RETR
-            else if (curr_op == 8'h83 || curr_op == 8'h93) begin
-                if (sp_now == 0) begin
-                    // 0x2b0 is an intentional computed jump via SP wrap:
-                    // firmware sets ram[0x16/0x17] as a fake MB1 frame,
-                    // SP=0→7, then RET jumps into MB1. Not a real underflow.
-                    if (msg_addr != 12'h2b0) begin
-`ifdef DME_DEEP_DEBUG
-                        $display("KLR: *** STACK UNDERFLOW at PC=%03h opcode=%02h — SP=0, PSW will wrap to 7 ***",
-                            msg_addr, curr_op);
-                        $display("KLR:     Shadow call stack:");
-                        $display("KLR:     [0]=%03h [1]=%03h [2]=%03h [3]=%03h [4]=%03h [5]=%03h [6]=%03h [7]=%03h",
-                            call_stack[0], call_stack[1], call_stack[2], call_stack[3],
-                            call_stack[4], call_stack[5], call_stack[6], call_stack[7]);
-                        $display("KLR:     RAM stack slots:");
-                        $display("KLR:     [08]=%02h [09]=%02h [0A]=%02h [0B]=%02h [0C]=%02h [0D]=%02h [0E]=%02h [0F]=%02h",
-                            `RAM[8'h08], `RAM[8'h09], `RAM[8'h0a], `RAM[8'h0b],
-                            `RAM[8'h0c], `RAM[8'h0d], `RAM[8'h0e], `RAM[8'h0f]);
-                        $display("KLR:     [10]=%02h [11]=%02h [12]=%02h [13]=%02h [14]=%02h [15]=%02h [16]=%02h [17]=%02h",
-                            `RAM[8'h10], `RAM[8'h11], `RAM[8'h12], `RAM[8'h13],
-                            `RAM[8'h14], `RAM[8'h15], `RAM[8'h16], `RAM[8'h17]);
-`endif
-                    end else begin
-                        // Intentional computed jump to MB1 via SP wrap.
-                        // SP: 0→7. MB1 entry code will then CALL further
-                        // functions: SP 7→0→1... MB1 calls must be balanced
-                        // so SP returns to 7 before the next trigger reset.
-                        // Set call_depth=7 to mirror SP so subsequent CALL/RET
-                        // tracking in MB1 stays accurate.
-                        call_depth = 7;
-                    end
-                end else begin
-                    call_depth = call_depth - 1;
-                end
-`ifdef KLR_DEBUG
-                $display("KLR: \t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
-                    (curr_op == 8'h93) ? "RETR" : "RET ",
-                    ({sp_now[2:0] - 1'b1, 1'b0} + 6'h08),
-                    ({sp_now[2:0] - 1'b1, 1'b1} + 6'h08),
-                    `RAM[{sp_now[2:0] - 1'b1, 1'b1} + 6'h08],
-                    `RAM[{sp_now[2:0] - 1'b1, 1'b0} + 6'h08]);
-`endif // KLR_DEBUG
-            end
-
-            else begin
-
-            end
-        end
-
-
-
-        last_msg = asmlabel;
-    end
-    last_pc = msg_addr;
-end
 
 // ============================================================
 //  Full internal RAM dump at end of simulation
