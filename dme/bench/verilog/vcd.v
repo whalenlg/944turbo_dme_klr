@@ -441,6 +441,11 @@ $dumpvars(1,`TB.i8051_top.u_cpu.t1);
 $dumpvars(1,`TB.i8051_top.u_cpu.tcon);
 $dumpvars(1,`TB.i8051_top.u_cpu.ie);
 $dumpvars(1,`TB.i8051_top.u_cpu.ip);
+// Timer 1's live count (TL1 8Bh, TH1 8Dh) — confirms the timer hardware
+// itself keeps counting/wrapping even while TF1 servicing is starved
+// (see the tcon/ie/ip comment above).
+$dumpvars(1,`TB.i8051_top.u_cpu.tl1);
+$dumpvars(1,`TB.i8051_top.u_cpu.th1);
 
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
 //$dumpvars(1,`TB.xdata [7:0]);
