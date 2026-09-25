@@ -34,9 +34,20 @@ def main():
     
     max_addr = int(df['addr_int'].max())
     output_lines = []
-    
-    # Process every address from 0 to max_addr
-    for addr in range(0, max_addr + 1):
+
+    # Process every address from 0 to ARRAY_SIZE-1 (not just max_addr) so the
+    # output always has exactly as many words as the Verilog array it feeds
+    # (debug_msg[0:8191] in vcd.v) — otherwise $readmemh warns "Not enough
+    # words in the file for the requested range" for every address beyond
+    # max_addr. Addresses past max_addr just get the same blank filler as
+    # any other unlabeled address.
+    ARRAY_SIZE = 8192
+    if max_addr >= ARRAY_SIZE:
+        print(f"WARNING: max address 0x{max_addr:04x} exceeds the "
+              f"{ARRAY_SIZE}-word array size — output will be truncated, "
+              f"increase ARRAY_SIZE (and the matching Verilog array bound "
+              f"in vcd.v) to fix.")
+    for addr in range(0, ARRAY_SIZE):
         label = addr_to_label.get(addr)
         
         # Determine 20-character string (label padded with spaces or 20 spaces)

@@ -34,14 +34,26 @@ def main():
         # Targeted columns
         columns_to_extract = ['Opcode Ins', 'instr', 'operand_mapped', 'operands numeric']
         WIDTH = 20
-        
+        # Iterate through every address up to ARRAY_SIZE-1 (not just
+        # max_addr) so each output file always has exactly as many words as
+        # the Verilog array it feeds (opcode/instr/ops/opsnums[0:8191] in
+        # vcd.v) — otherwise $readmemh warns "Not enough words in the file
+        # for the requested range" for every address beyond max_addr.
+        # Addresses past max_addr just get the same blank filler as any
+        # other unlabeled address.
+        ARRAY_SIZE = 8192
+        if max_addr >= ARRAY_SIZE:
+            print(f"WARNING: max address 0x{max_addr:04x} exceeds the "
+                  f"{ARRAY_SIZE}-word array size — output will be truncated, "
+                  f"increase ARRAY_SIZE (and the matching Verilog array "
+                  f"bounds in vcd.v) to fix.")
+
         for col in columns_to_extract:
             # Create a dictionary mapping for quick lookup
             addr_map = dict(zip(df['addr_int'], df[col]))
             output_lines = []
-            
-            # Iterate through every address from 0 to the maximum address
-            for addr in range(0, max_addr + 1):
+
+            for addr in range(0, ARRAY_SIZE):
                 val = addr_map.get(addr)
                 
                 # If missing/empty, use spaces. Otherwise pad or truncate to 20.
