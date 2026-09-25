@@ -159,9 +159,6 @@ generate
     end
 endgenerate
 
-// ── Boost/MAP sensor named alias (for readable FST traces) ───────────────
-wire [7:0] map_sensor = memory.ram_52;  // KLR ram[52h] — processed boost/MAP value (see -DBOOST)
-
 generate
     begin : tps
         wire [7:0] tps_supply     = memory.ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
@@ -371,8 +368,8 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.CV_PWM);
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
-    $dumpvars(1, map_sensor);                  // ram[52h] — processed boost/MAP value
-    $dumpvars(1, tps.tps_degrees);              // ram[3Ah] — TPS throttle angle (degrees)
+    $dumpvars(1, `KLR_TOP_TB.map_sensor);       // ram[52h] — processed boost/MAP value (declared in klr_tb.v, not here)
+    $dumpvars(1, `KLR_TOP_TB.tps_degrees);      // ram[3Ah] — TPS throttle angle (degrees) (declared in klr_tb.v, not here)
     $dumpvars(1, `KLR_TOP_TB.knock_sensor_i);  // knock sensor input (raw or fixed 110)
 
     // ── KLR_DEBUG: full core + ADC internals (large FST) ──────────
