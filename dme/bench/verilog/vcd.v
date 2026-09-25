@@ -50,6 +50,12 @@ reg [1023:0] fst_path;
 //                  drives them — see below)
 //    closed_loop — cl_iram_21, cl_iram_23, cl_enginesync,
 //                  cl_fueloffcoast (CL-mode diagnostic aliases)
+//    processor_flags — one 1-bit wire per bit of each interrupt/
+//                  control SFR (PSW, TCON, PCON, SCON, IE, IP),
+//                  named after its conventional 8051 flag mnemonic,
+//                  so individual flags can be dragged into the
+//                  waveform view without hand bit-slicing the byte
+//                  registers.
 //  These are the only declarations of these signals — no separate
 //  flat copies exist elsewhere in this module. The DME_DEBUG dump
 //  below uses $dumpvars(0, `TB.u_dumpvcd) (level 0 = full
@@ -318,6 +324,75 @@ generate
         wire [7:0] cl_iram_23    = `TB.i8051_top.u_cpu.iram[8'h23];  // FuelOffCoast byte
         wire       cl_enginesync = cl_iram_21[0];                    // iram[21h].0
         wire       cl_fueloffcoast = cl_iram_23[5];                  // iram[23h].5
+    end
+endgenerate
+
+generate
+    if (1) begin : processor_flags
+        // One 1-bit wire per bit of each interrupt/control SFR, named
+        // after its conventional 8051 flag mnemonic. "rsvd_bN" marks a
+        // bit with no defined function in this core (still exposed for
+        // completeness — e.g. software may stash scratch state there).
+        //
+        // PSW (D0h): CY AC F0 RS1 RS0 OV rsvd_b1 P
+        wire psw_cy      = `TB.i8051_top.u_cpu.psw[7];
+        wire psw_ac      = `TB.i8051_top.u_cpu.psw[6];
+        wire psw_f0      = `TB.i8051_top.u_cpu.psw[5];
+        wire psw_rs1     = `TB.i8051_top.u_cpu.psw[4];
+        wire psw_rs0     = `TB.i8051_top.u_cpu.psw[3];
+        wire psw_ov      = `TB.i8051_top.u_cpu.psw[2];
+        wire psw_rsvd_b1 = `TB.i8051_top.u_cpu.psw[1];
+        wire psw_p       = `TB.i8051_top.u_cpu.psw[0];
+
+        // TCON (88h): TF1 TR1 TF0 TR0 IE1 IT1 IE0 IT0
+        wire tcon_tf1 = `TB.i8051_top.u_cpu.tcon[7];
+        wire tcon_tr1 = `TB.i8051_top.u_cpu.tcon[6];
+        wire tcon_tf0 = `TB.i8051_top.u_cpu.tcon[5];
+        wire tcon_tr0 = `TB.i8051_top.u_cpu.tcon[4];
+        wire tcon_ie1 = `TB.i8051_top.u_cpu.tcon[3];
+        wire tcon_it1 = `TB.i8051_top.u_cpu.tcon[2];
+        wire tcon_ie0 = `TB.i8051_top.u_cpu.tcon[1];
+        wire tcon_it0 = `TB.i8051_top.u_cpu.tcon[0];
+
+        // PCON (87h): SMOD rsvd_b6 rsvd_b5 rsvd_b4 GF1 GF0 PD IDL
+        wire pcon_smod    = `TB.i8051_top.u_cpu.pcon[7];
+        wire pcon_rsvd_b6 = `TB.i8051_top.u_cpu.pcon[6];
+        wire pcon_rsvd_b5 = `TB.i8051_top.u_cpu.pcon[5];
+        wire pcon_rsvd_b4 = `TB.i8051_top.u_cpu.pcon[4];
+        wire pcon_gf1     = `TB.i8051_top.u_cpu.pcon[3];
+        wire pcon_gf0     = `TB.i8051_top.u_cpu.pcon[2];
+        wire pcon_pd      = `TB.i8051_top.u_cpu.pcon[1];
+        wire pcon_idl     = `TB.i8051_top.u_cpu.pcon[0];
+
+        // SCON (98h): SM0 SM1 SM2 REN TB8 RB8 TI RI
+        wire scon_sm0 = `TB.i8051_top.u_cpu.scon[7];
+        wire scon_sm1 = `TB.i8051_top.u_cpu.scon[6];
+        wire scon_sm2 = `TB.i8051_top.u_cpu.scon[5];
+        wire scon_ren = `TB.i8051_top.u_cpu.scon[4];
+        wire scon_tb8 = `TB.i8051_top.u_cpu.scon[3];
+        wire scon_rb8 = `TB.i8051_top.u_cpu.scon[2];
+        wire scon_ti  = `TB.i8051_top.u_cpu.scon[1];
+        wire scon_ri  = `TB.i8051_top.u_cpu.scon[0];
+
+        // IE (A8h): EA rsvd_b6 rsvd_b5 ES ET1 EX1 ET0 EX0
+        wire ie_ea      = `TB.i8051_top.u_cpu.ie[7];
+        wire ie_rsvd_b6 = `TB.i8051_top.u_cpu.ie[6];
+        wire ie_rsvd_b5 = `TB.i8051_top.u_cpu.ie[5];
+        wire ie_es      = `TB.i8051_top.u_cpu.ie[4];
+        wire ie_et1     = `TB.i8051_top.u_cpu.ie[3];
+        wire ie_ex1     = `TB.i8051_top.u_cpu.ie[2];
+        wire ie_et0     = `TB.i8051_top.u_cpu.ie[1];
+        wire ie_ex0     = `TB.i8051_top.u_cpu.ie[0];
+
+        // IP (B8h): rsvd_b7 rsvd_b6 rsvd_b5 PS PT1 PX1 PT0 PX0
+        wire ip_rsvd_b7 = `TB.i8051_top.u_cpu.ip[7];
+        wire ip_rsvd_b6 = `TB.i8051_top.u_cpu.ip[6];
+        wire ip_rsvd_b5 = `TB.i8051_top.u_cpu.ip[5];
+        wire ip_ps      = `TB.i8051_top.u_cpu.ip[4];
+        wire ip_pt1     = `TB.i8051_top.u_cpu.ip[3];
+        wire ip_px1     = `TB.i8051_top.u_cpu.ip[2];
+        wire ip_pt0     = `TB.i8051_top.u_cpu.ip[1];
+        wire ip_px0     = `TB.i8051_top.u_cpu.ip[0];
     end
 endgenerate
 

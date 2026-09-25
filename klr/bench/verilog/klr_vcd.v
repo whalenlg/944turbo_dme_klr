@@ -71,6 +71,9 @@ wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage A
 //                 drives them — see below)
 //    tps        — tps_supply, tps_raw_angle, tps_degrees,
 //                 tps_wot_thresh
+//    processor_flags — one 1-bit wire per bit of PSW, named after its
+//                 conventional 8048 flag mnemonic (CY, AC, F0, BS) or
+//                 as an SP stack-pointer bit.
 //  These are the only declarations of these signals — no separate
 //  flat copies exist elsewhere in this module.
 // ============================================================
@@ -165,6 +168,24 @@ generate
         wire [7:0] tps_raw_angle  = memory.ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
         wire [7:0] tps_degrees    = memory.ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
         wire [7:0] tps_wot_thresh = memory.ram_3e;  // KLR ram[3Eh] — WOT threshold angle (~66)
+    end
+endgenerate
+
+generate
+    if (1) begin : processor_flags
+        // One 1-bit wire per bit of PSW, named after its conventional
+        // 8048 flag mnemonic. PSW[2:0] is the 3-level call stack
+        // pointer rather than a flag; PSW[3] has no defined function
+        // in this core (still exposed for completeness).
+        // PSW: CY AC F0 BS rsvd_b3 SP2 SP1 SP0
+        wire psw_cy      = `KLR_TB_PATH.i8048_core_1.psw[7];
+        wire psw_ac      = `KLR_TB_PATH.i8048_core_1.psw[6];
+        wire psw_f0      = `KLR_TB_PATH.i8048_core_1.psw[5];
+        wire psw_bs      = `KLR_TB_PATH.i8048_core_1.psw[4];
+        wire psw_rsvd_b3 = `KLR_TB_PATH.i8048_core_1.psw[3];
+        wire psw_sp2     = `KLR_TB_PATH.i8048_core_1.psw[2];
+        wire psw_sp1     = `KLR_TB_PATH.i8048_core_1.psw[1];
+        wire psw_sp0     = `KLR_TB_PATH.i8048_core_1.psw[0];
     end
 endgenerate
 
@@ -383,6 +404,7 @@ initial begin
     $dumpvars(1, `KLR_DUMPVCD_PATH.memory);
     $dumpvars(1, `KLR_DUMPVCD_PATH.asm_debug);
     $dumpvars(1, `KLR_DUMPVCD_PATH.tps);
+    $dumpvars(1, `KLR_DUMPVCD_PATH.processor_flags);
     $dumpvars(1, `KLR_TB_PATH.u_adc_mux);
     $dumpvars(1, `KLR_TOP_TB.u_knock_sp);
 `endif
