@@ -174,9 +174,9 @@
 //
 // Auto-enabled from TEST_CL_COLD_START (already passed via -D on the
 // run-script command line for that test) rather than relying on an
-// in-source `define inside i8051_dashboard_tb.v/i8051_tb.v — this file
-// compiles BEFORE those in files/files_cl, so an in-source `define
-// there would still be undefined when the `ifdef below is evaluated.
+// in-source `define inside i8051_dashboard_tb.v — this file compiles
+// BEFORE that in files/files_cl, so an in-source `define there would
+// still be undefined when the `ifdef below is evaluated.
 // A command-line -D is active from the very start of preprocessing,
 // so deriving it here instead sidesteps that file-order problem.
 `ifdef TEST_CL_COLD_START
@@ -208,8 +208,6 @@
 
 `ifdef DASHBOARD_TB
   `define CL_TB          i8051_dashboard_tb
-`else
-  `define CL_TB          i8051_tb
 `endif
 // NOTE: avoid Verilog's `` (token-paste) here — pasting hex digits onto
 // 7'h via a nested macro (`CL_TB` expands first, then this macro) is

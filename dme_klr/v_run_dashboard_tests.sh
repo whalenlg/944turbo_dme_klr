@@ -2,8 +2,8 @@
 # ============================================================
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
-#  Uses Verilator (replaces iverilog/vvp) with i8051_tb (dashboard edition)
-#  compact DME: [DS] snapshot lines for the React dashboard.
+#  Uses Verilator (replaces iverilog/vvp) with i8051_dashboard_tb,
+#  which emits compact DME: [DS] snapshot lines for the React dashboard.
 #  DME phase/status lines prefixed DME: by phase_monitor.v directly.
 #
 #  Usage:

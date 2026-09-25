@@ -10,8 +10,6 @@ module dumpvcd(
   `define TB i8051_dashboard_tb
 `elsif DME_KLR_TB
   `define TB dme_klr_tb.u_dme
-`else
-  `define TB i8051_tb
 `endif
 integer clk_count;
 reg [15:0] read_addr,write_addr,last_pc;
@@ -528,7 +526,6 @@ if (fst_path != "/dev/null") begin
 end else begin
     $display("DME: FST Dump suppressed (/dev/null)");
 end
-//$dumpvars(1,i8051_tb);
 //$dumpvars(1,clk_count);
 //$dumpvars(1,`TB.var_interrupt_generator_1);
 `ifdef DME_DEBUG
