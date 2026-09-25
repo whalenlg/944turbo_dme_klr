@@ -75,7 +75,7 @@ wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage A
 //  flat copies exist elsewhere in this module.
 // ============================================================
 generate
-    begin : registers
+    if (1) begin : registers
         wire [7:0] r0 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h18] : `RAM[7'h0];
         wire [7:0] r1 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h19] : `RAM[7'h1];
         wire [7:0] r2 = (`KLR_TB_PATH.i8048_core_1.psw[4]) ? `RAM[7'h1a] : `RAM[7'h2];
@@ -91,7 +91,7 @@ generate
 endgenerate
 
 generate
-    begin : memory
+    if (1) begin : memory
         wire [7:0] ram_00 = `RAM[8'h00]; wire [7:0] ram_01 = `RAM[8'h01];
         wire [7:0] ram_02 = `RAM[8'h02]; wire [7:0] ram_03 = `RAM[8'h03];
         wire [7:0] ram_04 = `RAM[8'h04]; wire [7:0] ram_05 = `RAM[8'h05];
@@ -160,7 +160,7 @@ generate
 endgenerate
 
 generate
-    begin : tps
+    if (1) begin : tps
         wire [7:0] tps_supply     = memory.ram_39;  // KLR ram[39h] — TPS 5V supply (from adc_ch3)
         wire [7:0] tps_raw_angle  = memory.ram_3c;  // KLR ram[3Ch] — TPS raw wiper (from adc_ch7)
         wire [7:0] tps_degrees    = memory.ram_3a;  // KLR ram[3Ah] — TPS throttle degrees (processed)
@@ -169,7 +169,7 @@ generate
 endgenerate
 
 generate
-    begin : asm_debug
+    if (1) begin : asm_debug
         reg [159:0] asmlabel, asmopcode, asminstr, asmoperands, asmoperandnums;
         reg [15:0]  msg_addr;
         integer     msg_count;

@@ -58,7 +58,7 @@ reg [1023:0] fst_path;
 //  calls needed per group.
 // ============================================================
 generate
-    begin : registers
+    if (1) begin : registers
         wire [4:0] rb = {`TB.i8051_top.u_cpu.psw[4],
                           `TB.i8051_top.u_cpu.psw[3], 3'b000};
         wire [7:0] r0 = `TB.i8051_top.u_cpu.iram[rb+0];
@@ -73,7 +73,7 @@ generate
 endgenerate
 
 generate
-    begin : reg_bank_0
+    if (1) begin : reg_bank_0
         wire [7:0] rb0_0 = `TB.i8051_top.u_cpu.iram[0];
         wire [7:0] rb0_1 = `TB.i8051_top.u_cpu.iram[1];
         wire [7:0] rb0_2 = `TB.i8051_top.u_cpu.iram[2];
@@ -86,7 +86,7 @@ generate
 endgenerate
 
 generate
-    begin : reg_bank_1
+    if (1) begin : reg_bank_1
         wire [7:0] rb1_0 = `TB.i8051_top.u_cpu.iram[8];
         wire [7:0] rb1_1 = `TB.i8051_top.u_cpu.iram[9];
         wire [7:0] rb1_2 = `TB.i8051_top.u_cpu.iram[10];
@@ -99,7 +99,7 @@ generate
 endgenerate
 
 generate
-    begin : reg_bank_2
+    if (1) begin : reg_bank_2
         wire [7:0] rb2_0 = `TB.i8051_top.u_cpu.iram[16];
         wire [7:0] rb2_1 = `TB.i8051_top.u_cpu.iram[17];
         wire [7:0] rb2_2 = `TB.i8051_top.u_cpu.iram[18];
@@ -112,7 +112,7 @@ generate
 endgenerate
 
 generate
-    begin : reg_bank_3
+    if (1) begin : reg_bank_3
         wire [7:0] rb3_0 = `TB.i8051_top.u_cpu.iram[24];
         wire [7:0] rb3_1 = `TB.i8051_top.u_cpu.iram[25];
         wire [7:0] rb3_2 = `TB.i8051_top.u_cpu.iram[26];
@@ -125,7 +125,7 @@ generate
 endgenerate
 
 generate
-    begin : memory
+    if (1) begin : memory
         wire [7:0] r00 = `TB.i8051_top.u_cpu.iram[7'h00];
         wire [7:0] r01 = `TB.i8051_top.u_cpu.iram[7'h01];
         wire [7:0] r02 = `TB.i8051_top.u_cpu.iram[7'h02];
@@ -258,7 +258,7 @@ generate
 endgenerate
 
 generate
-    begin : bit_memory
+    if (1) begin : bit_memory
         wire b00 = `TB.i8051_top.u_cpu.iram[32][0];
         wire b01 = `TB.i8051_top.u_cpu.iram[32][1];
         wire b02 = `TB.i8051_top.u_cpu.iram[32][2];
@@ -311,7 +311,7 @@ generate
 endgenerate
 
 generate
-    begin : closed_loop
+    if (1) begin : closed_loop
         // CL-mode diagnostic aliases (so individual iram bytes appear in
         // the VCD; $dumpvars does not capture array elements directly)
         wire [7:0] cl_iram_21    = `TB.i8051_top.u_cpu.iram[8'h21];  // EngineSync byte
@@ -322,7 +322,7 @@ generate
 endgenerate
 
 generate
-    begin : asm_debug
+    if (1) begin : asm_debug
         reg [159:0] asmlabel, asmopcode, asminstr, asmoperands, asmoperandnums;
         reg [15:0]  msg_addr;
         integer     msg_count;
