@@ -44,7 +44,9 @@ reg [15:0]  read_addr, write_addr, last_pc;
 // ── Call depth tracking ───────────────────────────────────────
 // Mirrors SP (psw[2:0]) with one cycle of lookahead so we can
 // print the full stack frame BEFORE the return destroys it.
-integer call_depth;
+// call_depth itself is declared inside the "registers" named scope
+// below (see FST hierarchy grouping) so it shows up there; it's
+// referenced here via the hierarchical path registers.call_depth.
 reg [11:0] call_stack [0:7];   // shadow return addresses for display
 reg [159:0] debug_msg [0:`MEMMAX], last_msg;
 reg [255:0] memory_byte_map [0:255], msg;
@@ -63,7 +65,11 @@ wire [7:0] battery_volts_r  = `RAM[8'h2e]; // KLR ram[2Eh] — battery voltage A
 //  Named-scope signal groups so the KLR_DEBUG waveform view
 //  organizes related signals under readable sub-scopes instead of
 //  one flat list under u_dumpvcd:
-//    registers  — r0-r7, r_at_0, r_at_1, mb_latch
+//    registers  — r0-r7, r_at_0, r_at_1, mb_latch, sp, acc, and
+//                 call_depth (nested CALL/interrupt frames currently
+//                 active — tracking logic lives in asm_debug and the
+//                 interrupt-entry watcher below, referenced here via
+//                 registers.call_depth)
 //    memory     — ram_00-ram_7f (all 128 RAM bytes)
 //    asm_debug  — asmlabel, asmopcode, asminstr, asmoperands,
 //                 asmoperandnums, msg_addr, msg_count (plus the
@@ -90,6 +96,15 @@ generate
         wire [7:0] r_at_0   = `RAM[r0];
         wire [7:0] r_at_1   = `RAM[r1];
         wire       mb_latch = `KLR_TB_PATH.i8048_core_1.mb_latch;
+        wire [2:0] sp       = `KLR_TB_PATH.i8048_core_1.sp;
+        wire [7:0] acc      = `KLR_TB_PATH.i8048_core_1.acc;
+
+        // Nested CALL/interrupt frame counter. Declared here (rather
+        // than at module scope) so it shows up in this named FST
+        // group; written from the call/return opcode tracker inside
+        // asm_debug and from the interrupt-entry watcher further
+        // below, both via the hierarchical path registers.call_depth.
+        integer call_depth;
     end
 endgenerate
 
@@ -258,9 +273,9 @@ generate
                                            curr_op[7:5],
                                            `KLR_TB_PATH.rom_1.rom[msg_addr + 1]};
                             ret_addr = msg_addr[11:0] + 12'h002;
-                            if (call_depth < 8) begin
-                                call_stack[call_depth] = ret_addr;
-                                call_depth = call_depth + 1;
+                            if (registers.call_depth < 8) begin
+                                call_stack[registers.call_depth] = ret_addr;
+                                registers.call_depth = registers.call_depth + 1;
                             end
 `ifdef KLR_DEBUG
                             $display("KLR: \t\tCALL  target=%03h  retaddr=%03h",
@@ -298,10 +313,10 @@ generate
                                 // so SP returns to 7 before the next trigger reset.
                                 // Set call_depth=7 to mirror SP so subsequent CALL/RET
                                 // tracking in MB1 stays accurate.
-                                call_depth = 7;
+                                registers.call_depth = 7;
                             end
                         end else begin
-                            call_depth = call_depth - 1;
+                            registers.call_depth = registers.call_depth - 1;
                         end
 `ifdef KLR_DEBUG
                         $display("KLR: \t\t%s  retaddr=ram[%02h/%02h]=%02h%02h",
@@ -335,7 +350,7 @@ endgenerate
 //  with SP on every interrupt entry and exit.
 // ============================================================
 always @(posedge `KLR_TB_PATH.i8048_core_1.irq_in_progress) begin
-    call_depth = call_depth + 1;
+    registers.call_depth = registers.call_depth + 1;
 `ifdef KLR_DEBUG
     $display("KLR: >>> IRQ ENTRY: retaddr=ram[%02h/%02h]=%02h%02h  → ISR",
         ({`KLR_TB_PATH.i8048_core_1.psw[2:0] - 1'b1, 1'b0} + 6'h08),
@@ -399,7 +414,7 @@ initial begin
     $dumpvars(1, `KLR_TOP_TB);
     $dumpvars(1, `KLR_TB_PATH);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1);
-    $dumpvars(1, `KLR_DUMPVCD_PATH);            // this module's own remaining flat signals (clk_count, last_pc, call_depth, call_stack, lookup tables, etc.)
+    $dumpvars(1, `KLR_DUMPVCD_PATH);            // this module's own remaining flat signals (clk_count, last_pc, call_stack, lookup tables, etc.)
     $dumpvars(1, `KLR_DUMPVCD_PATH.registers);  // see FST hierarchy grouping above
     $dumpvars(1, `KLR_DUMPVCD_PATH.memory);
     $dumpvars(1, `KLR_DUMPVCD_PATH.asm_debug);
@@ -413,7 +428,7 @@ initial begin
     last_pc   = 16'hFFFF;
     last_msg  = "FFFF";
     asm_debug.msg_count = 1;
-    call_depth = 0;
+    registers.call_depth = 0;
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/test_sim.hex",             debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/memory_byte_map.hex",      memory_byte_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_opcode_ins.hex",       opcode);

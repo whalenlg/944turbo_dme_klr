@@ -37,7 +37,9 @@ reg [1023:0] fst_path;
 //  Named-scope signal groups so the debug waveform view organizes
 //  related signals under readable sub-scopes instead of one flat
 //  list under u_dumpvcd:
-//    registers   — r0-r7 (currently-selected bank, per psw[4:3])
+//    registers   — r0-r7 (currently-selected bank, per psw[4:3]), sp,
+//                  acc, b, and call_depth (nested ACALL/LCALL/interrupt
+//                  frames currently active — see the tracker below)
 //    reg_bank_0  — rb0_0-rb0_7 (iram[0]-iram[7], bank 0, static)
 //    reg_bank_1  — rb1_0-rb1_7 (iram[8]-iram[15], bank 1, static)
 //    reg_bank_2  — rb2_0-rb2_7 (iram[16]-iram[23], bank 2, static)
@@ -75,6 +77,58 @@ generate
         wire [7:0] r5 = `TB.i8051_top.u_cpu.iram[rb+5];
         wire [7:0] r6 = `TB.i8051_top.u_cpu.iram[rb+6];
         wire [7:0] r7 = `TB.i8051_top.u_cpu.iram[rb+7];
+        wire [7:0] sp  = `TB.i8051_top.u_cpu.sp;
+        wire [7:0] acc = `TB.i8051_top.u_cpu.acc;
+        wire [7:0] b   = `TB.i8051_top.u_cpu.b_reg;
+
+        // ------------------------------------------------------------
+        // call_depth: counts nested ACALL/LCALL/interrupt frames
+        // currently active (decremented on RET/RETI). Two independent
+        // trackers on opposite clock edges, so they can't race:
+        //   - opcode watcher (negedge clk): fires once per instruction
+        //     boundary (cycle_2==0 and pc just changed) and inspects
+        //     the freshly-fetched opcode byte read directly from the
+        //     EPROM model.
+        //   - interrupt-entry watcher (posedge clk): the core's
+        //     hardware interrupt dispatch pushes PC directly
+        //     (i8051_core.v ~line 418) — no opcode visible in the
+        //     normal fetch stream — so entry needs a dedicated watch
+        //     on irq_in_progress/irq_hi_active. The 8051 supports at
+        //     most two nested levels (one low-priority ISR preempted
+        //     by one high-priority ISR). RETI is opcode-visible, so
+        //     exit is handled by the same opcode watcher as RET — no
+        //     separate exit tracking needed.
+        // ------------------------------------------------------------
+        integer    call_depth;
+        reg [15:0] call_depth_last_pc;
+        reg        call_depth_irq_prev, call_depth_hi_prev;
+
+        always @(negedge clk) begin : call_depth_opcode_tracker
+            reg [7:0] curr_op;
+            if (!`TB.i8051_top.u_cpu.cycle_2 &&
+                call_depth_last_pc !== `TB.i8051_top.u_cpu.pc) begin
+                curr_op = `TB.i8051_top.u_eprom.mem[`TB.i8051_top.u_cpu.pc[12:0]];
+                // ACALL addr11 [opcodes x1: 11h,31h,51h,71h,91h,B1h,D1h,F1h]
+                if ((curr_op & 8'h1F) == 8'h11)
+                    call_depth = call_depth + 1;
+                // LCALL addr16 [12h]
+                else if (curr_op == 8'h12)
+                    call_depth = call_depth + 1;
+                // RET [22h] / RETI [32h]
+                else if ((curr_op == 8'h22 || curr_op == 8'h32) && call_depth > 0)
+                    call_depth = call_depth - 1;
+            end
+            call_depth_last_pc = `TB.i8051_top.u_cpu.pc;
+        end
+
+        always @(posedge clk) begin : call_depth_irq_tracker
+            if (`TB.i8051_top.u_cpu.irq_in_progress && !call_depth_irq_prev)
+                call_depth = call_depth + 1;   // outer ISR entry
+            else if (`TB.i8051_top.u_cpu.irq_hi_active && !call_depth_hi_prev)
+                call_depth = call_depth + 1;   // hi-pri preempts an active lo-pri ISR
+            call_depth_irq_prev = `TB.i8051_top.u_cpu.irq_in_progress;
+            call_depth_hi_prev  = `TB.i8051_top.u_cpu.irq_hi_active;
+        end
     end
 endgenerate
 
@@ -546,6 +600,10 @@ $dumpvars(1,`TB.tdc);
     last_pc=16'hFFFF;
     last_msg="FFFF";
     asm_debug.msg_count=1;
+    registers.call_depth=0;
+    registers.call_depth_last_pc=16'hFFFF;
+    registers.call_depth_irq_prev=1'b0;
+    registers.call_depth_hi_prev=1'b0;
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/test_sim.hex",debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_byte_map.hex",memory_byte_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);
