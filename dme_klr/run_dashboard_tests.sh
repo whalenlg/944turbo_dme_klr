@@ -3,8 +3,8 @@
 #  89 DME 951 simulation test suite  —  DASHBOARD EDITION
 #
 #  Uses i8051_dashboard_tb, which emits compact DME: [DS] snapshot
-#  lines for the React dashboard.
-#  DME phase/status lines prefixed DME: by phase_monitor.v directly.
+#  lines for the React dashboard, plus DME: [PHASE/STATUS/SEED]
+#  lines from its own inlined phase monitor.
 #
 #  Usage:
 #    ./run_dashboard_tests.sh                   # run all tests
@@ -283,7 +283,8 @@ compile_and_run_klr() {
     done
 
     # Extract all DME: and KLR: lines into dashboard log.
-    # dme_klr_dashboard_tb emits DME: [DS]; phase_monitor.v emits DME: [PHASE/STATUS/SEED].
+    # dme_klr_dashboard_tb emits both DME: [DS] and (from its inlined
+    # phase monitor) DME: [PHASE/STATUS/SEED].
     # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
     grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]" "$log" > "$LOGDIR/${name}.dash.log"
     local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)

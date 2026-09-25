@@ -3,12 +3,10 @@
 // ============================================================
 //  i8051_dashboard_tb.v  —  89 DME 951 Dashboard Testbench
 //
-//  Drop-in companion to i8051_dashboard_tb.v that emits compact [DS]
-//  snapshot lines covering ALL 128 iram bytes + P1/P2/P3,
-//  readable by the React dashboard.  PHASE event lines are
-//  identical to phase_monitor.v so the dashboard Phase tab
-//  still works.  All test defines from i8051_dashboard_tb.v are
-//  supported unchanged.
+//  Emits compact [DS] snapshot lines covering ALL 128 iram bytes +
+//  P1/P2/P3, readable by the React dashboard, plus inlined PHASE
+//  event lines (see the PHASE MONITOR section below) so the
+//  dashboard Phase tab works from this file alone.
 //
 //  Compile (example — same flags as i8051_dashboard_tb.v):
 //    iverilog -o dash.vvp \
@@ -1577,10 +1575,9 @@ always @(posedge xwr_n)
      diag_data <= xdata; 
      diag_addr <= p2;
     end
-// ─── Lambda warmup skip (matches phase_monitor.v exactly) ───
+// ─── Lambda warmup skip ───
 //  Watches for the falling edge of iram[23h].4 (bit1Ch) then
-//  seeds bit08h+09h+1Dh and wu=0x0001 — identical to the original
-//  TB which implements this in the included phase_monitor.v.
+//  seeds bit08h+09h+1Dh and wu=0x0001.
 `ifdef SKIP_LAMBDA_WARMUP
 reg skip_lambda_done;
 reg skip_lambda_intblock_prev;
@@ -1732,7 +1729,7 @@ end
 `endif // DME_KLR_COMBINED
 
 // ============================================================
-//  PHASE MONITOR (inlined — same events as phase_monitor.v)
+//  PHASE MONITOR
 // ============================================================
 // ── NTC linearised-value → degrees Celsius ──────────────────────
 function automatic integer ntc_celsius;
