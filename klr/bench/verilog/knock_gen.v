@@ -68,7 +68,7 @@
 
 `include "timescale.v"
 
-module knock_gen (
+module knock_signal_processing (
     input  wire       clk,
     input  wire       fake_knock,
     input  wire       knock_reset,
