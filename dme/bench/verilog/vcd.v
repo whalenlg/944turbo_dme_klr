@@ -375,7 +375,7 @@ $dumpvars(0,`TB.interrupt_generator_1);
 `endif
 
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
-$dumpvars(1,pc);
+$dumpvars(1,`TB.i8051_top.u_cpu.pc);
 `ifdef DME_DEEP_DEBUG
 $dumpvars(1,data_from_rom);
 `endif

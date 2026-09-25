@@ -218,10 +218,8 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.pc);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.ir);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.acc);
-    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.psw);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.mb_latch);
     $dumpvars(1, `KLR_TB_PATH.i8048_core_1.irq_in_progress);
-    $dumpvars(1, `KLR_TB_PATH.i8048_core_1.timer_val);
     $dumpvars(1, `KLR_TB_PATH.ign_out);
     $dumpvars(1, `KLR_TB_PATH.ign_out_n);
     $dumpvars(1, `KLR_TB_PATH.trigger_in);
