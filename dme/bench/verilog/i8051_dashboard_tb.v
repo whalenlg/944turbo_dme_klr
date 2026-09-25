@@ -216,29 +216,39 @@
   `endif
 `endif
 
-// TEST_CL_RAMP_TO_2000: same structure as TEST_CL_RAMP_TO_3000, for a
-// lower operating point below it.
+// TEST_CL_RAMP_TO_2100: same structure as TEST_CL_RAMP_TO_3000, for a
+// lower operating point below it. (Originally targeted 2000rpm as
+// TEST_CL_RAMP_TO_2000 — renamed to 2100 when the target itself moved,
+// keeping the macro name matching its actual target like every other
+// test in this family.)
 //
 // CALIBRATION HISTORY:
-//   0x53 (1st attempt) — linearly interpolated between the two nearest
-//   real anchors then available: idle (840rpm, AFM=0x28/40) and the
-//   3000-family's own real settling point (2853rpm, AFM=0x72/114).
-//   Actual result: ~1794rpm — undershot by ~206rpm (~10%), confirming
-//   real local nonlinearity in this region (same pattern the
-//   TEST_CL_RAMP_TO_4500 calibration history hit and warns about).
-//   0x59 (FINAL) — refined by directly bracketing between the 1st
-//   attempt's own real result (1794rpm, AFM=0x53/83) and the 3000-
-//   family anchor (2853rpm, AFM=0x72/114): local slope ~0.0293
-//   AFM-counts/rpm. Still unverified against a real run — check the
-//   actual settled RPM in the resulting log and refine the same way
-//   again (bracket between the two nearest real points) if it's
-//   meaningfully off.
-`ifdef TEST_CL_RAMP_TO_2000
+//   0x53 (1st attempt, target was 2000rpm) — linearly interpolated
+//   between the two nearest real anchors then available: idle (840rpm,
+//   AFM=0x28/40) and the 3000-family's own real settling point
+//   (2853rpm, AFM=0x72/114). Actual result: ~1794rpm — undershot by
+//   ~206rpm (~10%), confirming real local nonlinearity in this region
+//   (same pattern the TEST_CL_RAMP_TO_4500 calibration history hit and
+//   warns about).
+//   0x59 (2nd attempt, target was still 2000rpm) — refined by directly
+//   bracketing between the 1st attempt's own real result (1794rpm,
+//   AFM=0x53/83) and the 3000-family anchor (2853rpm, AFM=0x72/114):
+//   local slope ~0.0293 AFM-counts/rpm. Actual result: ~1944rpm — much
+//   closer, confirming the bracketing-refinement approach.
+//   0x5F (FINAL, target moved to 2100rpm) — extrapolated using the two
+//   most recent real points, now bracketing more tightly and locally
+//   than the distant 3000-family anchor: (1794rpm, AFM=0x53/83) and
+//   (1944rpm, AFM=0x59/89), local slope ~0.04 AFM-counts/rpm. This is
+//   an EXTRAPOLATION (2100 is above both real anchors, not between
+//   them), so somewhat less reliable than the earlier interpolations —
+//   still unverified against a real run; refine again the same way
+//   (bracket the two nearest real points) if it's meaningfully off.
+`ifdef TEST_CL_RAMP_TO_2100
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h59      // ~2000 RPM (REFINED — see calibration history above)
+  `define AFM_CL_TARGET  8'h5F      // ~2100 RPM (REFINED — see calibration history above)
   `ifndef SIM_TIME
   `define SIM_TIME  30000000000     // 30s — matches the 3000-family's duration
   `endif
