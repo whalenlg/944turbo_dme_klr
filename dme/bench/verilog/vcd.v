@@ -537,7 +537,6 @@ end
 
 `ifdef DO_DME_DEBUG_DUMP
 $dumpvars(1,`TB);
-$dumpvars(1,`TB.i8051_top.u_cpu);
 $dumpvars(0,`TB.u_dumpvcd);
 $dumpvars(0,`TB.adc_delay_8_1);
 // Dump the full RPM-ramp stimulus generator (level 0 = all internal regs:
@@ -553,15 +552,44 @@ $dumpvars(0,`TB.interrupt_generator_1);
 `endif
 `endif
 
+// CPU_Core: the full CPU-core sweep is DME_DEEP_DEBUG-only, not plain
+// DME_DEBUG — it's a lot of signal volume (every SFR, timer, interrupt,
+// and internal temp reg) for a level most debugging doesn't need. Plain
+// DME_DEBUG still gets the handful of individual CPU-core signals below
+// (ir/pc/acc/t0/t1/irq_in_progress), same as a no-debug build.
+`ifdef DME_DEEP_DEBUG
+$dumpvars(1,`TB.i8051_top.u_cpu);
+`endif
+
+// phase_status: the STATUS-display shadow regs (isv_shadow,
+// afm_raw_shadow, coolant_shadow, airtemp_shadow) and the ph_*
+// phase-transition/watchdog edge state, moved out of $dumpvars(1,`TB)'s
+// direct reach into their own named scope (see i8051_dashboard_tb.v) —
+// same DME_DEEP_DEBUG-only treatment as CPU_Core above. The underlying
+// $display logic that drives DME: [PHASE]/[STATUS] log lines is
+// unaffected and keeps running in every build; this only controls
+// whether these regs also land in the FST.
+`ifdef DME_DEEP_DEBUG
+$dumpvars(1,`TB.phase_status);
+`endif
+
+// CPU-core defaults: traced except when DME_DEEP_DEBUG's broader CPU_Core
+// sweep above already covers them.
+`ifndef DME_DEEP_DEBUG
 $dumpvars(1,`TB.i8051_top.u_cpu.ir);
 $dumpvars(1,`TB.i8051_top.u_cpu.pc);
-`ifdef DME_DEEP_DEBUG
-$dumpvars(1,data_from_rom);
-`endif
 $dumpvars(1,`TB.i8051_top.u_cpu.acc);
 $dumpvars(1,`TB.i8051_top.u_cpu.t0);
 $dumpvars(1,`TB.i8051_top.u_cpu.t1);
+$dumpvars(1,`TB.i8051_top.u_cpu.irq_in_progress);
+`endif // !DME_DEEP_DEBUG
 
+// Testbench-level defaults: always traced except when the broader
+// $dumpvars(1,`TB) sweep above (DME_DEBUG or DME_DEEP_DEBUG) already
+// covers them — re-listing them in that case would just produce a
+// "skipping signal ... it was previously included" VCD warning per
+// signal.
+`ifndef DO_DME_DEBUG_DUMP
 //$dumpvars(1,`TB.xadc_data_out [7:0]);
 //$dumpvars(1,`TB.xdata [7:0]);
 //$dumpvars(1,`TB.xwr_n);
@@ -588,6 +616,7 @@ $dumpvars(1,`TB.A_2_dme_relay);
 $dumpvars(1,`TB.A_1_tach_pulse);
 $dumpvars(1,`TB.A_0_inj_driver);
 $dumpvars(1,`TB.tdc);
+`endif // !DO_DME_DEBUG_DUMP
 //$dumpvars(1,clk);
 
 

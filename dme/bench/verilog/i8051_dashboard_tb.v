@@ -993,7 +993,6 @@ reg  [7:0]  xdata_in;
 wire [7:0]  adc_data, xadc_data_out, adc_data_out;
 wire        ale, txd;
 wire        xrd_n, xwr_n;
-wire        dumreference_sensor, dumspeed_sensor;
 
 // ─── P1 signal aliases — A_1_tach_pulse and A_5_KLR_ign_out are module ports
 wire A_0_inj_driver;
@@ -1744,6 +1743,20 @@ endfunction
 // Shadow registers — prevent ADC bleed in STATUS snapshots
 integer cool_c_disp;
 integer air_c_disp;
+
+// ── phase_status named scope ──────────────────────────────────
+// Everything below through the watchdog stall detector (shadow regs,
+// phase-transition edge state, and the always blocks that drive them)
+// lives in this named scope so it can get its own dedicated dumpvars
+// call under DME_DEEP_DEBUG instead of always riding along with the
+// broad $dumpvars(1,`TB) sweep — see vcd.v. This is purely a waveform-
+// grouping/visibility change: the `if (1)` is permanently true, so all
+// the $display("DME: [PHASE] ...") / $display("DME: [STATUS] ...")
+// logic inside keeps running unconditionally in every build, debug or
+// not — those lines feed the always-on dashboard/.dash.log pipeline,
+// not just debug tracing.
+generate
+if (1) begin : phase_status
 reg [7:0] isv_shadow;
 reg [7:0] afm_raw_shadow;
 reg [7:0] coolant_shadow;
@@ -1990,6 +2003,8 @@ always @(posedge clk) begin : wdog_stall_detect
         end
     end
 end
+end // phase_status
+endgenerate
 
 // ----------------------------------------------------------------
 //  Condition-cycle phase announcements (TEST_CL_CONDITION_CYCLE /
