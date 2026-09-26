@@ -57,7 +57,13 @@ initial begin
     ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
     ph_klr_res_n_prev     = 1'b0;
-    ph_klr_knock_sensor_prev = knock_sensor_gen;
+    // Not sampled from knock_sensor_gen here — that wire is driven by an
+    // instantiated generator module whose own initial-block ordering
+    // relative to this one isn't guaranteed (Verilator vs Icarus init
+    // uninitialized regs differently), so this placeholder gets
+    // overwritten by the reset-hold/reset-release sampling below before
+    // the edge-detect logic ever runs on it.
+    ph_klr_knock_sensor_prev = 8'd110;
     ph_klr_knock_count    = 32'd0;
 end
 
@@ -74,6 +80,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         ph_klr_pc_prev       <= top.i8048_core_1.pc;
         ph_klr_ign_in_prev   <= ign_in_mux;
         ph_klr_mb_prev       <= top.i8048_core_1.mb_latch;
+        ph_klr_knock_sensor_prev <= knock_sensor_gen;
     end else if (!ph_klr_res_n_prev && top.res_n) begin
         // Reset just released — sample actual signal values to prevent
         // false edges. vlt inits all regs to 0 so signals may already
@@ -84,6 +91,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         ph_klr_pc_prev       <= top.i8048_core_1.pc;
         ph_klr_ign_in_prev   <= ign_in_mux;
         ph_klr_mb_prev       <= top.i8048_core_1.mb_latch;
+        ph_klr_knock_sensor_prev <= knock_sensor_gen;
     end else begin
 
         // ── ign_in: track edge (trigger reference for spark-delay calc) ──
