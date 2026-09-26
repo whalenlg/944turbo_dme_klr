@@ -909,6 +909,7 @@ if [ -n "$1" ]; then
             --DME_DEBUG)      _dbg_flags="$_dbg_flags -DDME_DEBUG" ;;
             --DME_DEEP_DEBUG) _dbg_flags="$_dbg_flags -DDME_DEEP_DEBUG" ;;
             --KLR_DEBUG)      _dbg_flags="$_dbg_flags -DKLR_DEBUG" ;;
+            --CL_DEBUG)       _dbg_flags="$_dbg_flags -DCL_DEBUG" ;;
             [0-9]*)           _interval="$_a" ;;
         esac
     done
