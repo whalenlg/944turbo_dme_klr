@@ -330,17 +330,30 @@ module var_interrupt_generator_cl (
     // ── Pre-sync clamp target (crank ramp when enabled) ────────────
     // See the CL_RPM_CRANK_RAMP header comment above. Every pre-sync
     // clamp point calls this instead of using `CL_RPM_TARGET directly.
+    //
+    // Pure 64-bit integer arithmetic, not real/$time mixed math: with
+    // CL_RPM_CRANK_RAMP_NS at 3e10 (30s in ns), $time-in-a-real-expression
+    // diverges between Icarus and Verilator (confirmed via cl_cold_start —
+    // iverilog ramps 100->840 RPM smoothly across the 30s window while
+    // Verilator holds flat at 0 the entire time, then snaps correctly to
+    // CL_RPM_TARGET right at $time>=CL_RPM_CRANK_RAMP_NS — i.e. only the
+    // real-math ramp branch was affected, not the plain integer-compare
+    // branch above it). (`CL_RPM_TARGET - `CL_RPM_CRANK_START) * $time can
+    // reach ~2e14, far past 32-bit `integer` range, so the multiply must
+    // happen in a wider reg — same overflow class as this file's
+    // highrpm_delta, not a new risk.
     function integer crank_ramp_target;
         input integer dummy;
-        real frac;
+        reg [63:0] ramp_ns;
+        reg [63:0] scaled_rise;
         begin
 `ifdef CL_RPM_CRANK_RAMP
-            if ($time >= `CL_RPM_CRANK_RAMP_NS)
+            ramp_ns = `CL_RPM_CRANK_RAMP_NS;
+            if ($time >= ramp_ns)
                 crank_ramp_target = `CL_RPM_TARGET;
             else begin
-                frac = $time / (`CL_RPM_CRANK_RAMP_NS * 1.0);
-                crank_ramp_target = `CL_RPM_CRANK_START +
-                    $rtoi((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * frac);
+                scaled_rise = ((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * $time) / ramp_ns;
+                crank_ramp_target = `CL_RPM_CRANK_START + scaled_rise;
             end
 `else
             crank_ramp_target = `CL_RPM_TARGET;
