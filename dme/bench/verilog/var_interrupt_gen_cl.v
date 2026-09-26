@@ -189,7 +189,15 @@
     `define CL_RPM_CRANK_START     100          // cranking speed — matches cold_start's RPMSTART
   `endif
   `ifndef CL_RPM_CRANK_RAMP_NS
-    `define CL_RPM_CRANK_RAMP_NS   30_000_000_000  // 30s — matches cold_start's real-world
+    // Explicitly sized/unsigned (64'd...): 30_000_000_000 exceeds 32 bits,
+    // and an unsized decimal literal defaults to 32-bit *signed* per the
+    // Verilog LRM — simulators are free to disagree on how a literal that
+    // large gets represented when left unsized (Icarus vs. the other
+    // Verilog simulator this project targets diverged here: crank_ramp_
+    // target() stayed pinned at CL_RPM_CRANK_START for the entire ramp
+    // window and beyond under one of them, consistent with ramp_ns coming
+    // out wrong/oversized so the ramp fraction always truncated to 0).
+    `define CL_RPM_CRANK_RAMP_NS   64'd30_000_000_000  // 30s — matches cold_start's real-world
                                                      // ramp duration to 840 (its own
                                                      // RPMSTART=100/RPMEND=840/RPM_RAMP_PCT=25
                                                      // over a 120s SIM_TIME), so cl_cold_start
