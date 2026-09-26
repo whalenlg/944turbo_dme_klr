@@ -334,26 +334,31 @@ module var_interrupt_generator_cl (
     // Pure 64-bit integer arithmetic, not real/$time mixed math: with
     // CL_RPM_CRANK_RAMP_NS at 3e10 (30s in ns), $time-in-a-real-expression
     // diverges between Icarus and the other Verilog simulator this project
-    // targets (confirmed via cl_cold_start — iverilog ramps 100->840 RPM
-    // smoothly across the 30s window while that other simulator holds flat
-    // at 0 the entire time, then snaps correctly to CL_RPM_TARGET right at
-    // $time>=CL_RPM_CRANK_RAMP_NS — i.e. only the real-math ramp branch was
-    // affected, not the plain integer-compare branch above it).
-    // (`CL_RPM_TARGET - `CL_RPM_CRANK_START) * $time can reach ~2e14, far
-    // past 32-bit `integer` range, so the multiply must happen in a wider
-    // reg — same overflow class as this file's highrpm_delta, not a new
-    // risk.
+    // targets. (`CL_RPM_TARGET - `CL_RPM_CRANK_START) * now_ns can reach
+    // ~2e14, far past 32-bit `integer` range, so the multiply must happen
+    // in a wider reg — same overflow class as this file's highrpm_delta,
+    // not a new risk.
+    //
+    // Takes the current sim time as an explicit argument rather than
+    // reading $time internally: confirmed via cl_cold_start that $time
+    // read from inside this (non-automatic) function evaluates as stuck
+    // at 0 under the other simulator — every call returned exactly
+    // CL_RPM_CRANK_START (100) for the entire 60s test, never ramping and
+    // never reaching the post-ramp CL_RPM_TARGET snap, while Icarus ramped
+    // correctly using the same code. Every call site below passes $time
+    // in from its own (non-function) context instead, where it's known
+    // to read correctly in both simulators.
     function integer crank_ramp_target;
-        input integer dummy;
+        input [63:0] now_ns;
         reg [63:0] ramp_ns;
         reg [63:0] scaled_rise;
         begin
 `ifdef CL_RPM_CRANK_RAMP
             ramp_ns = `CL_RPM_CRANK_RAMP_NS;
-            if ($time >= ramp_ns)
+            if (now_ns >= ramp_ns)
                 crank_ramp_target = `CL_RPM_TARGET;
             else begin
-                scaled_rise = ((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * $time) / ramp_ns;
+                scaled_rise = ((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * now_ns) / ramp_ns;
                 crank_ramp_target = `CL_RPM_CRANK_START + scaled_rise;
             end
 `else
@@ -403,10 +408,10 @@ module var_interrupt_generator_cl (
     // ── Initial state ────────────────────────────────────────────
     initial begin
         tick_counter    = 0;
-        rpm_fp          = crank_ramp_target(0) * `CL_INERTIA;
+        rpm_fp          = crank_ramp_target($time) * `CL_INERTIA;
         rpm_fp_min      = `CL_RPM_MIN    * `CL_INERTIA;
         rpm_fp_max      = `CL_RPM_MAX    * `CL_INERTIA;
-        period_current  = `RPMCONST / crank_ramp_target(0);
+        period_current  = `RPMCONST / crank_ramp_target($time);
         fuel_pulse_prev = 16'd0;
         fuel_ms_x100    = 0;
         int_0           = 1'b1;
@@ -490,8 +495,8 @@ module var_interrupt_generator_cl (
             ref_low_active <= 1'b0;
             ref_low_cnt    <= 22'd0;
             ref_fired_this_rev <= 1'b0;
-            rpm_fp         <= crank_ramp_target(0) * `CL_INERTIA;
-            period_current <= `RPMCONST / crank_ramp_target(0);
+            rpm_fp         <= crank_ramp_target($time) * `CL_INERTIA;
+            period_current <= `RPMCONST / crank_ramp_target($time);
             synced_once    <= 1'b0;
         end else begin
 
@@ -529,12 +534,12 @@ module var_interrupt_generator_cl (
                     // Diagnostic: report WHY the RPM was clamped to target.
                     // EngineSync   = iram[21h].0   FuelOffCoast = iram[23h].5
                     $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=%s  (synced_once=%0b iram21=%02h iram23=%02h)",
-                             ($time/1_000_000), crank_ramp_target(0),
+                             ($time/1_000_000), crank_ramp_target($time),
                              (!synced_once) ? "PRE-SYNC" : "FUEL-OFF-COAST",
                              synced_once, `CL_IRAM(8'h21), `CL_IRAM(8'h23));
 `endif
-                    rpm_fp         <= crank_ramp_target(0) * `CL_INERTIA;
-                    period_current <= `RPMCONST / crank_ramp_target(0);
+                    rpm_fp         <= crank_ramp_target($time) * `CL_INERTIA;
+                    period_current <= `RPMCONST / crank_ramp_target($time);
                 end else begin
                     // Fuel-quality compensation (FQS driver switch): firmware
                     // widens/narrows the injector pulse to compensate for
