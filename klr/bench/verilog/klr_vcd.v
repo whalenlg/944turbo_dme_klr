@@ -385,8 +385,17 @@ end
 
 initial begin
     $display("KLR: FST Dump enabled");
+`ifndef DME_KLR_COMBINED
+    // In the combined DME+KLR build, DME's vcd.v (compiled first in
+    // dme_klr/files) already opened this same `VCD_FILE and started
+    // dumping by the time this initial block runs — a second
+    // $dumpfile call here is too late to matter and just produces
+    // "VCD warning: $dumpfile called after $dumpvars started, using
+    // existing file". Standalone KLR builds have no DME side to do
+    // this, so they still need to open the file themselves.
     $dumpfile(`VCD_FILE);
     $dumpon;
+`endif
 
     // ── Always-on: minimal signal set (small FST) ─────────────────
     // Key inter-ECU and output signals always captured regardless of
