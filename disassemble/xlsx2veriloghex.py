@@ -12,11 +12,16 @@ def parse_addr(addr_str):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python extract_labels.py <input.xlsx> <output.hex>")
+        print("Usage: python extract_labels.py <input.xlsx> <output.hex> [array_size]")
         sys.exit(1)
 
     input_file = sys.argv[1]
     output_file = sys.argv[2]
+    # Default 8192 matches the DME 8051's debug_msg[0:8191] (vcd.v). The
+    # KLR side's i8048 core has a smaller 4096-entry address space
+    # (debug_msg[0:4095] in klr_vcd.v) — klr/run_klr_regression passes
+    # 4096 explicitly for that invocation.
+    array_size_arg = int(sys.argv[3]) if len(sys.argv) > 3 else 8192
 
     if not os.path.exists(input_file):
         print(f"Error: {input_file} not found")
@@ -37,11 +42,11 @@ def main():
 
     # Process every address from 0 to ARRAY_SIZE-1 (not just max_addr) so the
     # output always has exactly as many words as the Verilog array it feeds
-    # (debug_msg[0:8191] in vcd.v) — otherwise $readmemh warns "Not enough
-    # words in the file for the requested range" for every address beyond
-    # max_addr. Addresses past max_addr just get the same blank filler as
-    # any other unlabeled address.
-    ARRAY_SIZE = 8192
+    # (debug_msg[0:ARRAY_SIZE-1] in vcd.v/klr_vcd.v) — otherwise $readmemh
+    # warns "Not enough words in the file for the requested range" for
+    # every address beyond max_addr. Addresses past max_addr just get the
+    # same blank filler as any other unlabeled address.
+    ARRAY_SIZE = array_size_arg
     if max_addr >= ARRAY_SIZE:
         print(f"WARNING: max address 0x{max_addr:04x} exceeds the "
               f"{ARRAY_SIZE}-word array size — output will be truncated, "

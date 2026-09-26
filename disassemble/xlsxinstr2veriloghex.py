@@ -12,10 +12,14 @@ def parse_addr(addr_str):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python extract_asm_columns.py <input.xlsx>")
+        print("Usage: python extract_asm_columns.py <input.xlsx> [array_size]")
         sys.exit(1)
 
     input_file = sys.argv[1]
+    # Default 8192 matches the DME 8051's opcode/instr/ops/opsnums[0:8191]
+    # (vcd.v). The KLR side's i8048 core has a smaller 4096-entry address
+    # space (klr_vcd.v) — klr/run_klr_regression passes 4096 explicitly.
+    array_size_arg = int(sys.argv[2]) if len(sys.argv) > 2 else 8192
 
     if not os.path.exists(input_file):
         print(f"Error: {input_file} not found")
@@ -36,12 +40,12 @@ def main():
         WIDTH = 20
         # Iterate through every address up to ARRAY_SIZE-1 (not just
         # max_addr) so each output file always has exactly as many words as
-        # the Verilog array it feeds (opcode/instr/ops/opsnums[0:8191] in
-        # vcd.v) — otherwise $readmemh warns "Not enough words in the file
-        # for the requested range" for every address beyond max_addr.
-        # Addresses past max_addr just get the same blank filler as any
-        # other unlabeled address.
-        ARRAY_SIZE = 8192
+        # the Verilog array it feeds (opcode/instr/ops/opsnums[0:ARRAY_SIZE-1]
+        # in vcd.v/klr_vcd.v) — otherwise $readmemh warns "Not enough words
+        # in the file for the requested range" for every address beyond
+        # max_addr. Addresses past max_addr just get the same blank filler
+        # as any other unlabeled address.
+        ARRAY_SIZE = array_size_arg
         if max_addr >= ARRAY_SIZE:
             print(f"WARNING: max address 0x{max_addr:04x} exceeds the "
                   f"{ARRAY_SIZE}-word array size — output will be truncated, "

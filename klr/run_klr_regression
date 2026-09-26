@@ -7,9 +7,12 @@ rm -f ../../tmp/klr/i8048_regression_tb.vvp
 iverilog -o ../../tmp/klr/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
 vvp ../../tmp/klr/i8048_regression_tb.vvp +fst=../../tmp/klr/fst/i8048_regression_tb.fst
 source  ../8051_Debug/bin/activate
-python3 ../disassemble/xlsx2veriloghex.py ../bin_images/klr/87KLR951.xlsx ../bin_images/klr/test_sim.hex
+# 4096 = the KLR i8048 core's address space (klr_vcd.v's debug_msg/opcode/
+# instr/ops/opsnums[0:4095]) — smaller than the DME 8051's 8192-word space
+# these scripts default to, so it must be passed explicitly here.
+python3 ../disassemble/xlsx2veriloghex.py ../bin_images/klr/87KLR951.xlsx ../bin_images/klr/test_sim.hex 4096
 python3 ../disassemble/xlsxmembyte2veriloghex.py  ../bin_images/klr/87KLR951.xlsx ../bin_images/klr/memory_byte_map.hex
-python3 ../disassemble/xlsxinstr2veriloghex.py  ../bin_images/klr/87KLR951.xlsx
+python3 ../disassemble/xlsxinstr2veriloghex.py  ../bin_images/klr/87KLR951.xlsx 4096
 deactivate
 mv asm_instr.hex ../bin_images/klr
 mv asm_opcode_ins.hex ../bin_images/klr
