@@ -24,7 +24,11 @@ reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191];
 // ======================================
 `define FST "1"
 `ifndef VCD_FILE
-  `define VCD_FILE "sim.fst"
+  // Named .vcd because that's what this actually is: $dumpfile/$dumpvars
+  // always emit VCD-format data (no -m fst module is loaded), regardless
+  // of the filename. run_dashboard_tests.sh converts this to real FST
+  // with vcd2fst after the sim finishes.
+  `define VCD_FILE "sim.vcd"
 `endif
 reg [1023:0] fst_path;
 

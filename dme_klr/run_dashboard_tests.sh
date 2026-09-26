@@ -260,11 +260,12 @@ compile_and_run_klr() {
     # Move any stray VCD to the canonical location, then gzip.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
     # instead of honouring +vcd= if an older version is deployed.
-    # Convert to FST. vcd.v uses $dumpfile which always produces VCD format,
-    # regardless of the +fst= filename. The file is VCD data named .fst.
-    # Rename it to .vcd then convert to real FST binary format.
-    _raw="$hexdir/sim.fst"
-    [ ! -f "$_raw" ] && _raw="$hexdir/sim.vcd"
+    # vcd.v's $dumpfile always produces VCD-format data (no -m fst module
+    # is loaded), so it now correctly writes sim.vcd. Convert it to real
+    # FST binary format here. sim.fst is only checked as a fallback for
+    # builds from before VCD_FILE's default was renamed to sim.vcd.
+    _raw="$hexdir/sim.vcd"
+    [ ! -f "$_raw" ] && _raw="$hexdir/sim.fst"
     if [ -f "$_raw" ]; then
         vcd2fst "$_raw" "$fstfile" 2>/dev/null
         if [ "$VCD_ENABLE" = "1" ]; then
