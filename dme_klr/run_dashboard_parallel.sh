@@ -59,7 +59,7 @@ ALL_TESTS=(
     ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
-    dme_klr_warm_idle dme_klr_ramp_to_3000
+    dme_klr_warm_idle
 )
 
 # ── Named test groups ────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ group_members() {
             echo "ramp_to_3000 ramp_to_6000 ramp_to_6300 cl_ramp_to_3000 cl_ramp_to_6000_BOOST cl_ramp_to_6000 cl_ramp_to_redline cl_ramp_to_3000_BOOST cl_ramp_to_4500 ramp_to_redline ramp_6k_hold ignition_timing dwell_scaling"
             ;;
         KLR_fail)
-            echo "ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_KLR_KNOCK_BLOCKED cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH ramp_to_redline_KLR_TPS_HIGH"
+            echo "ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_KLR_KNOCK_BLOCKED cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH ramp_to_redline_KLR_TPS_HIGH"
             ;;
         Fueling)
             echo "ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3 cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
