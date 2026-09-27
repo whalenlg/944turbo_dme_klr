@@ -312,6 +312,13 @@ run_test warm_idle \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
+# warm_idle_5s: same idle target, but RPM_RAMP_PCT=25/SIM_TIME=5s to match
+# the sensor-fault idle tests below for direct dash.log comparison.
+run_test warm_idle_5s \
+    -DTEST_WARM_IDLE_5S \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
 # --- Closed-loop tests ---
 run_test cl_warm_idle \
     -DTEST_WARM_IDLE \
@@ -595,8 +602,8 @@ run_test ac_on_idle \
 # --- Fuel transient tests ---
 run_test overrun_cutoff \
     -DTEST_OVERRUN_CUTOFF \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+    -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h5F \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=50000000000
 
 run_test warmup_enrichment \
     -DTEST_WARMUP_ENRICHMENT \
@@ -862,6 +869,7 @@ if [ -n "$1" ]; then
     SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run_klr
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
+        warm_idle_5s)     run_test warm_idle_5s     $IARG -DTEST_WARM_IDLE_5S     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
@@ -906,7 +914,7 @@ if [ -n "$1" ]; then
         idle_high_alt)    run_test idle_high_alt    $IARG -DTEST_IDLE_HIGH_ALT    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         idle_poor_fuel)   run_test idle_poor_fuel   $IARG -DTEST_IDLE_POOR_FUEL   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         ac_on_idle)       run_test ac_on_idle       $IARG -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
-        overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
+        overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=50000000000   ;;
         warmup_enrichment) run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSIM_TIME=60000000000 ;;
         warmup_enrichment)run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25                       -DSIM_TIME=60000000000   ;;
         afm_open_circuit) run_test afm_open_circuit $IARG -DTEST_AFM_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
@@ -951,7 +959,7 @@ if [ -n "$1" ]; then
         *)
             echo "Unknown test: $1"
             echo "Available tests:"
-            echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
+            echo "  Idle:        warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
             echo "               ramp_to_3000 ramp_to_6000 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"

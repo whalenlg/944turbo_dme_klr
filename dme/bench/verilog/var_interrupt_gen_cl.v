@@ -534,17 +534,20 @@ module var_interrupt_generator_cl (
                 fuel_pulse_prev <= fuel_sample;
                 fuel_ms_x100    <= fuel_sample / 5;
 
-                // Gate: hold RPM at target before first engine sync, or
-                // during FuelOffCoast (iram[23h].5) to prevent stall.
-                if (!synced_once || (`CL_IRAM(8'h23) & 8'h20)) begin
-                    // Pre-sync or fuel cut — clamp to target, no dynamics
+                // Gate: hold RPM at target before first engine sync only.
+                // FuelOffCoast (iram[23h].5) used to clamp here too, but
+                // that just froze RPM during a real overrun fuel cut
+                // instead of letting it coast down. It now falls through
+                // to the normal branch below: fuel_sample already reads
+                // the real (near-zero, during a genuine cut) injector
+                // pulse width, so combustion nets negative against
+                // friction there and RPM decays on its own, floored by
+                // CL_RPM_MIN same as any other low-RPM condition.
+                if (!synced_once) begin
+                    // Pre-sync — clamp to target, no dynamics
 `ifdef CL_DEBUG
-                    // Diagnostic: report WHY the RPM was clamped to target.
-                    // EngineSync   = iram[21h].0   FuelOffCoast = iram[23h].5
-                    $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=%s  (synced_once=%0b iram21=%02h iram23=%02h)",
-                             ($time/1_000_000), crank_ramp_target($time),
-                             (!synced_once) ? "PRE-SYNC" : "FUEL-OFF-COAST",
-                             synced_once, `CL_IRAM(8'h21), `CL_IRAM(8'h23));
+                    $display("DME: [PHASE] t=%0d ms  CL_RPM CLAMPED to target=%0d  cause=PRE-SYNC  (iram21=%02h)",
+                             ($time/1_000_000), crank_ramp_target($time), `CL_IRAM(8'h21));
 `endif
                     rpm_fp         <= crank_ramp_target($time) * `CL_INERTIA;
                     period_current <= `RPMCONST / crank_ramp_target($time);

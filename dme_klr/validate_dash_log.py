@@ -28,13 +28,16 @@ import sys, re, os
 
 TESTS = {
     'warm_idle':         {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'warm_idle_5s':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'overrun_cutoff':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_late_fuelcut_after_ms':10000,
+                          'notes':'Real deceleration fuel cut-off: throttle opens to ~2100rpm (AFM_CL_TARGET=0x5F) at t=2s, holds to settle, then closes fully at t=32s while RPM is still well above the real ~1350-1600rpm cutoff-engage threshold. Firmware is expected to set FuelOffCoast (iram[23h].5) and cut injection; CL physics then lets RPM coast down under friction alone (see var_interrupt_gen_cl.v) until firmware clears FuelOffCoast near the real ~900-1200rpm reintroduction band and RPM restabilizes at idle. fuel_range omitted — no single steady-state applies across the open/cut/reintroduce trajectory (same reasoning as ramp_to_6000_knock).'},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True},
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
@@ -917,6 +920,22 @@ def validate(test_name, logpath, dme_file=None):
             m = re.search(r't=(\d+)', t_fc)
             if m:
                 infos.append(f"FuelCut→end={m.group(1)}ms")
+
+    # ── 5b. Late fuel cut (confirms a genuine mid-test overrun/coast event
+    # actually engaged, distinct from the SKIP_LAMBDA_WARMUP seed's own
+    # forced FuelOffCoast clear that every idle test already shows at boot)
+    late_after_ms = exp.get('require_late_fuelcut_after_ms')
+    if late_after_ms is not None:
+        late_cuts = []
+        for p in phases:
+            if 'FUEL CUT begin' in p:
+                m = re.search(r't=(\d+)', p)
+                if m and int(m.group(1)) >= late_after_ms:
+                    late_cuts.append(int(m.group(1)))
+        if not late_cuts:
+            fails.append(f"No FUEL CUT begin after t={late_after_ms}ms — overrun cutoff never engaged")
+        else:
+            infos.append(f"Overrun FuelCut@{late_cuts[0]}ms")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
     # fuel_range is optional — tests without a single, meaningful
