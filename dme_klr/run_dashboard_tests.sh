@@ -796,6 +796,16 @@ run_test ramp_to_redline \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
+# Same as ramp_to_redline, but with the KLR-side TPS-angle-legal-max clamp
+# (klr_tb.v, 0xDB) deliberately disabled via -DKLR_TPS_HIGH — the whole
+# point of this test is to let the natural WOT overshoot (~0xEE) through
+# and confirm the KLR correctly reports DTC 4-2 (TPS Angle Sensor:
+# Voltage Too High, ram[33]=0x42) rather than clamping it away.
+run_test ramp_to_redline_KLR_TPS_HIGH \
+    -DTEST_RAMP_TO_REDLINE \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 -DKLR_TPS_HIGH
+
 run_test ramp_6k_hold \
     -DTEST_RAMP_6K_HOLD \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 \
@@ -953,6 +963,7 @@ if [ -n "$1" ]; then
         ramp_to_6200)     run_test ramp_to_6200     $IARG -DTEST_RAMP_TO_6200   -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_6300)     run_test ramp_to_6300     $IARG -DTEST_RAMP_TO_6300    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
+        ramp_to_redline_KLR_TPS_HIGH) run_test ramp_to_redline_KLR_TPS_HIGH $IARG -DTEST_RAMP_TO_REDLINE -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 -DKLR_TPS_HIGH ;;
         ramp_6k_hold)     run_test ramp_6k_hold     $IARG -DTEST_RAMP_6K_HOLD     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
         ignition_timing)  run_test ignition_timing  $IARG -DTEST_IGNITION_TIMING  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
         dwell_scaling)    run_test dwell_scaling    $IARG -DTEST_DWELL_SCALING    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=80  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
@@ -967,7 +978,7 @@ if [ -n "$1" ]; then
             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_6k_hold"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "  Knock:       ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"

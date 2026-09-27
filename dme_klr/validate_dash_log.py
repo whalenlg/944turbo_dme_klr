@@ -119,6 +119,14 @@ TESTS = {
                           'notes':'FQS pos7: +6% fuel, non-CL, -2.77° timing retard expected, straight FQS0 baseline'},
 
     'ramp_to_redline':   {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':97},
+    # Same as ramp_to_redline, but -DKLR_TPS_HIGH (klr_tb.v) disables the
+    # TPS-angle-legal-max clamp so the natural WOT overshoot reaches the
+    # KLR uncapped — require_ram33_value FAILS the test if DTC 4-2 (0x42,
+    # TPS Angle Sensor: Voltage Too High) never fires, since triggering it
+    # is the entire point of this test.
+    'ramp_to_redline_KLR_TPS_HIGH': {'rpm_target': 6500, 'fuel_range':(10.0, 18.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'dwell_cap':97, 'require_ram33_value':0x42,
+                          'notes':'Same as ramp_to_redline, KLR TPS-angle-legal-max clamp disabled (-DKLR_TPS_HIGH) — KLR expected to detect this and set DTC 4-2 (0x42, TPS Angle Sensor: Voltage Too High)'},
     'ramp_6k_hold':      {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ignition_timing':   {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True},
     'dwell_scaling':     {'rpm_target': 6000, 'fuel_range':(7.0, 12.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},

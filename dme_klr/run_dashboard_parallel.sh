@@ -45,7 +45,7 @@ ALL_TESTS=(
     warm_idle cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle
     overrun_cutoff warmup_enrichment afm_open_circuit
     coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline tps_fail
-    ramp_to_redline ramp_6k_hold
+    ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
     dme_klr_warm_idle dme_klr_ramp_to_3000

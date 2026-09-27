@@ -590,7 +590,23 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [15:0] _tps_angle_full = (tps_wiper > 8'd40)
                                ? (16'd26 + ({8'd0, tps_wiper} - 16'd40) * 16'd213 / 16'd195)
                                : 16'd26;
-    wire [7:0] _tps_raw = _tps_angle_full[7:0];  // TPS wiper reading relative to full-scale reference
+    wire [7:0] _tps_raw_unclamped = _tps_angle_full[7:0];  // TPS wiper reading relative to full-scale reference
+
+    // 0xDB is the real hardware's legal max for the TPS wiper reading —
+    // the throttle potentiometer physically can't wind past its full-scale
+    // stop. This model's AFM->TPS mapping has no such ceiling, so at high
+    // RPM (~6037+ on the non-CL ramp curve, per var_interrupt_gen.v's afm
+    // calibration) it overshoots to 0xDC and beyond, incorrectly tripping
+    // the KLR's DTC 4-2 (TPS Angle Sensor: Voltage Too High) on ramp_to_
+    // 6100/6200/6300/ramp_to_redline even though those tests aren't meant
+    // to exercise that fault path. Clamped by default; ramp_to_redline_
+    // KLR_TPS_HIGH deliberately disables this via -DKLR_TPS_HIGH to
+    // exercise DTC 4-2 on purpose (that's the whole point of the test).
+`ifndef KLR_TPS_HIGH
+    wire [7:0] _tps_raw = (_tps_raw_unclamped > 8'hDB) ? 8'hDB : _tps_raw_unclamped;
+`else
+    wire [7:0] _tps_raw = _tps_raw_unclamped;
+`endif
 
     // TPS (ch7) IS ratiometric against ch3's supply (confirmed — scaling
     // applies to ch7 specifically, not other channels): scaled_tps =
