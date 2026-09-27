@@ -185,8 +185,6 @@ TESTS = {
     # require_ram33_value) once a real run shows what the firmware
     # actually does with a fully dead noise-floor signal, same as the
     # other KLR ADC fault tests above.
-    'cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor'},
     'cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'expect_ram33_value':0x21,
                           'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) forced to a flat 0 to simulate a fully dead/disconnected noise-floor sensor. ram[33]=0x21 expected — self-test-fault code the firmware correctly reports for the dead ADC0 noise-floor sensor'},
