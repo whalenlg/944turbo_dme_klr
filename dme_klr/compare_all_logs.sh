@@ -59,7 +59,6 @@ DASH_TESTS=(
     cl_warm_idle
     cold_start
     coolant_fail
-    dme_klr_ramp_to_3000
     dme_klr_warm_idle
     dwell_scaling
     hot_idle

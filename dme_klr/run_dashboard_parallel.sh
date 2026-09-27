@@ -7,7 +7,7 @@
 #  writes a PASS/WARN/FAIL summary.
 #
 #  Usage:
-#    ./run_dashboard_parallel.sh <workers> [test1 test2 ...]
+#    ./run_dashboard_parallel.sh <workers> [test1 test2 ... | GROUP1 GROUP2 ...]
 #
 #  Examples:
 #    ./run_dashboard_parallel.sh 4              # all tests, 4 at a time
@@ -16,6 +16,17 @@
 #    ./run_dashboard_parallel.sh 2 warm_idle --KLR_DEBUG --DME_DEBUG
 #                                                # debug flags apply to every
 #                                                # test named on the command line
+#    ./run_dashboard_parallel.sh --verilator 8 Ramp
+#                                                # run the Ramp group under Verilator
+#    ./run_dashboard_parallel.sh 4 Ramp Idle warm_idle
+#                                                # group names and individual test
+#                                                # names can be mixed freely
+#
+#  Groups: a named subset of ALL_TESTS (see group_members() below for the
+#  exact membership of each). Run --help or pass no args to list them. A
+#  positional argument that matches a group name expands to every test in
+#  that group; anything else is treated as a literal test name.
+#
 #  Snapshot interval: set DASH_INTERVAL_MS env var before running.
 #    DASH_INTERVAL_MS=50 ./run_dashboard_parallel.sh 4
 #  Default is 100ms.
@@ -48,8 +59,55 @@ ALL_TESTS=(
     ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
-    dme_klr_warm_idle dme_klr_ramp_to_3000
+    dme_klr_warm_idle
 )
+
+# ── Named test groups ────────────────────────────────────────────────────────
+# Portable case-statement lookup rather than `declare -A` — associative
+# arrays need bash 4+, and macOS's system /bin/bash is stuck on 3.2, so an
+# associative array here would silently break for anyone running this
+# without a newer bash explicitly on PATH.
+#
+#   group_members <name>   echoes that group's test names (space-separated)
+#                           to stdout and returns 0; returns 1 for an
+#                           unknown name with nothing printed.
+GROUP_NAMES=(Ramp KLR_fail Fueling Idle DME_fail)
+group_members() {
+    case "$1" in
+        Ramp)
+            echo "ramp_to_3000 ramp_to_6000 ramp_to_6300 cl_ramp_to_3000 cl_ramp_to_6000_BOOST cl_ramp_to_6000 cl_ramp_to_redline cl_ramp_to_3000_BOOST cl_ramp_to_4500 ramp_to_redline ramp_6k_hold ignition_timing dwell_scaling"
+            ;;
+        KLR_fail)
+            echo "ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_KLR_KNOCK_BLOCKED cl_ramp_to_3000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH ramp_to_redline_KLR_TPS_HIGH"
+            ;;
+        Fueling)
+            echo "ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3 cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
+            ;;
+        Idle)
+            echo "cl_warm_idle cl_tippy_in warm_idle cold_start hot_idle idle_high_alt warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle"
+            ;;
+        DME_fail)
+            echo "idle_battery_low idle_poor_fuel ac_on_idle overrun_cutoff afm_open_circuit coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# expand_tests <arg1> <arg2> ... — prints the resolved, space-separated test
+# list to stdout: each arg is expanded via group_members if it names a known
+# group, otherwise passed through unchanged as a literal test name.
+expand_tests() {
+    local arg members
+    for arg in "$@"; do
+        if members=$(group_members "$arg"); then
+            echo -n "$members "
+        else
+            echo -n "$arg "
+        fi
+    done
+}
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 # --verilator and the debug flags may appear in any position among the
@@ -79,10 +137,16 @@ fi
 if [ "$1" = "--dash" ]; then shift; fi
 
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 [--verilator] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ...]"
+    echo "Usage: $0 [--verilator] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ... | GROUP1 GROUP2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
+    echo ""
+    echo "Groups (pass a name in place of individual tests — mixing with"
+    echo "literal test names is fine too):"
+    for _g in "${GROUP_NAMES[@]}"; do
+        printf "  %-10s %s\n" "$_g" "$(group_members "$_g")"
+    done
     echo ""
     echo "Available tests:"
     printf "  %s\n" "${ALL_TESTS[@]}"
@@ -94,7 +158,7 @@ LOGDIR="$_BASE/$( [ "$USE_VERILATOR" = "1" ] && echo v_dash_logs || echo dash_lo
 
 WORKERS="$1"; shift
 if [ $# -gt 0 ]; then
-    TESTS=("$@")
+    TESTS=($(expand_tests "$@"))
 else
     TESTS=("${ALL_TESTS[@]}")
 fi

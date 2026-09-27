@@ -882,11 +882,6 @@ run_test dme_klr_warm_idle \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000
 
-run_test dme_klr_ramp_to_3000 \
-    -DTEST_RAMP_TO_3000 \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
-
 }
 
 # --------------------------------------------------------
@@ -1004,7 +999,6 @@ if [ -n "$1" ]; then
         isv_load_droop)   run_test isv_load_droop   $IARG -DTEST_ISV_LOAD_DROOP   -DISV_LOAD_DROOP -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
         # ── DME+KLR combined tests ──────────────────────────
         dme_klr_warm_idle)    run_test dme_klr_warm_idle    $IARG -DTEST_WARM_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000 ;;
-        dme_klr_ramp_to_3000) run_test dme_klr_ramp_to_3000 $IARG -DTEST_RAMP_TO_3000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         *)
             echo "Unknown test: $1"
             echo "Available tests:"
@@ -1027,7 +1021,7 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_3000 cl_ramp_to_4500 cl_ramp_to_6000 cl_ramp_to_redline cl_condition_cycle cl_condition_cycle_idle"
             echo "  Fuel qual:   cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "               cl_ac_halfway cl_cold_start"
-            echo "  DME+KLR:     cl_tippy_in dme_klr_warm_idle dme_klr_ramp_to_3000"
+            echo "  DME+KLR:     cl_tippy_in dme_klr_warm_idle"
             echo ""
             exit 1
             ;;

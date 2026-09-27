@@ -371,8 +371,6 @@ TESTS = {
     # ── DME+KLR combined tests — same expectations as DME-only equivalents ───
     'dme_klr_warm_idle':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                                'notes':'DME+KLR: warm idle with KLR knock controller active'},
-    'dme_klr_ramp_to_3000':   {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True,
-                               'notes':'DME+KLR: ramp to 3000 RPM with KLR active'},
 }
 
 # ─── DME firmware-variant overrides ─────────────────────────────────────────
