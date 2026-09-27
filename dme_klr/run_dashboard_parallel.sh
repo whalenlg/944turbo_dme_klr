@@ -84,10 +84,10 @@ group_members() {
             echo "ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3 cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
             ;;
         Idle)
-            echo "cl_warm_idle cl_tippy_in warm_idle cold_start hot_idle idle_high_alt warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle"
+            echo "cl_warm_idle cl_tippy_in warm_idle cold_start hot_idle idle_high_alt warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
             ;;
         DME_fail)
-            echo "idle_battery_low idle_poor_fuel ac_on_idle overrun_cutoff afm_open_circuit coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
+            echo "idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             ;;
         *)
             return 1
