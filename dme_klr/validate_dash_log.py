@@ -61,7 +61,13 @@ TESTS = {
     'knock_sensor_short_to_ground':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
                           'expect_no_knock_pulse':True,
                           'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 (short-to-ground fault, not pulsing) while fake_knock self-test continues normally — KLR ram[57] (boost-reduction level, not a counter) behavior from the still-active self-test path not yet characterized, so not asserted here'},
-    'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
+    # dwell_cap raised from 90 to 95 — dwell scales up with actual settled
+    # RPM (documented trend elsewhere: ~90@6000, ~96@6440, ~97@6524
+    # redline), and this test settles at ~6313rpm, above ramp_to_6200's old
+    # ~6226rpm. A real run observed 95½t at steady state — 90 was only
+    # ever calibrated for the low end of this RPM family, not this test's
+    # own actual settling point.
+    'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':95},
     # --- ramp_to_3000 FQS sweep (non-CL/open-loop; timing retard not yet
     #     calibrated against real data, left unset for now) ---
     'ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(2.45, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
