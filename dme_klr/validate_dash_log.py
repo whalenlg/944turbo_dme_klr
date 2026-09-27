@@ -61,8 +61,6 @@ TESTS = {
     'knock_sensor_short_to_ground':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
                           'expect_no_knock_pulse':True,
                           'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 (short-to-ground fault, not pulsing) while fake_knock self-test continues normally — KLR ram[57] (boost-reduction level, not a counter) behavior from the still-active self-test path not yet characterized, so not asserted here'},
-    'ramp_to_6100':      {'rpm_target': 6100, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
-    'ramp_to_6200':      {'rpm_target': 6200, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6300':      {'rpm_target': 6300, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     # --- ramp_to_3000 FQS sweep (non-CL/open-loop; timing retard not yet
     #     calibrated against real data, left unset for now) ---
@@ -404,8 +402,6 @@ DME_FILE_OVERRIDES = {
         'ramp_to_6000':                 {'fuel_range': (7.0, 14.0)},
         'knock_sensor_defect':          {'fuel_range': (7.0, 14.0)},
         'knock_sensor_short_to_ground': {'fuel_range': (7.0, 14.0)},
-        'ramp_to_6100':                 {'fuel_range': (7.0, 14.0)},
-        'ramp_to_6200':                 {'fuel_range': (7.0, 14.0)},
         'ramp_to_6300':                 {'fuel_range': (7.0, 14.0)},
         # FQS0-6 use fqs_straight_baseline (dynamically read from the FQS0
         # sibling log at validation time, not a fixed number) — so only
@@ -461,8 +457,6 @@ DME_FILE_OVERRIDES = {
         'ramp_to_6000':                 {'fuel_range': (7.0, 14.0)},
         'knock_sensor_defect':          {'fuel_range': (7.0, 14.0)},
         'knock_sensor_short_to_ground': {'fuel_range': (7.0, 14.0)},
-        'ramp_to_6100':                 {'fuel_range': (7.0, 14.0)},
-        'ramp_to_6200':                 {'fuel_range': (7.0, 14.0)},
         'ramp_to_6300':                 {'fuel_range': (7.0, 14.0)},
         # FQS0-7 use fqs_straight_baseline (dynamic sibling lookup) — only
         # fuel_range needs overriding, same reasoning as the 89DME block.

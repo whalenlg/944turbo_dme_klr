@@ -249,7 +249,7 @@ module var_interrupt_generator_cl (
     //      ~6818rpm — allowed to reach the higher afm_adc_hi (0xEB)
     //      ceiling; it's the one CL test that legitimately needs to
     //      push higher.
-    //  Non-CL tests (ramp_to_6100/6200/6300, plain ramp_to_redline,
+    //  Non-CL tests (ramp_to_6300, plain ramp_to_redline,
     //  etc.) do NOT go through this file — they use the separate
     //  non-CL interrupt generator — so this change doesn't affect
     //  them.

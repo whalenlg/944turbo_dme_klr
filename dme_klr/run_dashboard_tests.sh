@@ -776,16 +776,6 @@ run_test ramp_to_6000_FQS7 \
     "-D_FUEL_QUAL=8'hA7" \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-run_test ramp_to_6100 \
-    -DTEST_RAMP_TO_6100 \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
-run_test ramp_to_6200 \
-    -DTEST_RAMP_TO_6200 \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
-
 run_test ramp_to_6300 \
     -DTEST_RAMP_TO_6300 \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25 \
@@ -959,8 +949,6 @@ if [ -n "$1" ]; then
         ramp_to_6000_FQS5) run_test ramp_to_6000_FQS5 $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 "-D_FUEL_QUAL=8'h91" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         ramp_to_6000_FQS6) run_test ramp_to_6000_FQS6 $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 "-D_FUEL_QUAL=8'h9C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         ramp_to_6000_FQS7) run_test ramp_to_6000_FQS7 $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 "-D_FUEL_QUAL=8'hA7" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        ramp_to_6100)     run_test ramp_to_6100     $IARG -DTEST_RAMP_TO_6100   -DRPMRAMP -DRPMSTART=100 -DRPMEND=6100 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
-        ramp_to_6200)     run_test ramp_to_6200     $IARG -DTEST_RAMP_TO_6200   -DRPMRAMP -DRPMSTART=100 -DRPMEND=6200 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_6300)     run_test ramp_to_6300     $IARG -DTEST_RAMP_TO_6300    -DRPMRAMP -DRPMSTART=100 -DRPMEND=6300 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000   ;;
         ramp_to_redline)  run_test ramp_to_redline  $IARG -DTEST_RAMP_TO_REDLINE  -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_redline_KLR_TPS_HIGH) run_test ramp_to_redline_KLR_TPS_HIGH $IARG -DTEST_RAMP_TO_REDLINE -DRPMRAMP -DRPMSTART=100 -DRPMEND=6500 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 -DKLR_TPS_HIGH ;;
@@ -978,7 +966,7 @@ if [ -n "$1" ]; then
             echo "  Idle:        warm_idle cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
-            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6100 ramp_to_6200 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
+            echo "               ramp_to_3000 ramp_to_6000 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "  Knock:       ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"

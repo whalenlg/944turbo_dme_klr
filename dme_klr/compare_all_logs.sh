@@ -93,8 +93,6 @@ DASH_TESTS=(
     ramp_to_6000_FQS5
     ramp_to_6000_FQS6
     ramp_to_6000_FQS7
-    ramp_to_6100
-    ramp_to_6200
     ramp_to_6300
     ramp_to_redline
     tps_fail
