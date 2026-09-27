@@ -39,7 +39,16 @@ TESTS = {
                           'require_late_fuelcut_after_ms':10000,
                           'notes':'Real deceleration fuel cut-off: throttle opens to ~2100rpm (AFM_CL_TARGET=0x5F) at t=2s, holds to settle, then closes fully at t=32s while RPM is still well above the real ~1350-1600rpm cutoff-engage threshold. Firmware is expected to set FuelOffCoast (iram[23h].5) and cut injection; CL physics then lets RPM coast down under friction alone (see var_interrupt_gen_cl.v) until firmware clears FuelOffCoast near the real ~900-1200rpm reintroduction band and RPM restabilizes at idle. fuel_range omitted — no single steady-state applies across the open/cut/reintroduce trajectory (same reasoning as ramp_to_6000_knock).'},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
-    'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True},
+    'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True,
+                          'fuel_floor_after_ase':8.0,
+                          'notes':'AFM open circuit has no dedicated DTC in this firmware (unlike the KLR-side '
+                                  'self-test faults) — afm_raw pegs at 0xff and the firmware just massively '
+                                  'over-fuels as a result. A real scan tool would not read afm_raw directly '
+                                  'either, so the diagnostic here is the same one a real tech would use: '
+                                  'injector pulse width staying way above normal idle (~2-3ms) the whole time '
+                                  'the fault is present, confirmed via fuel_floor_after_ase requiring every '
+                                  'post-ASE snapshot to exceed 8ms (real run: consistently ~14ms), not just a '
+                                  'tail-window average that could pass on a transient blip.'},
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
     'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -936,6 +945,35 @@ def validate(test_name, logpath, dme_file=None):
             fails.append(f"No FUEL CUT begin after t={late_after_ms}ms — overrun cutoff never engaged")
         else:
             infos.append(f"Overrun FuelCut@{late_cuts[0]}ms")
+
+    # ── 6a. Persistent-fault fuel floor — for faults that a real scan
+    # tool can only diagnose indirectly (injector pulse width / fuel
+    # trim), since raw sensor voltage isn't always exposed. Unlike the
+    # steady-state check below (last 30% of snapshots only), this
+    # requires EVERY snapshot after AFTER-START ENRICH ends to already
+    # show the fault — proving it's a persistent, repeatable symptom
+    # rather than something that only happens to land in the tail
+    # window.
+    fuel_floor_after_ase = exp.get('fuel_floor_after_ase')
+    if fuel_floor_after_ase is not None:
+        t_end_ev = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_ase_end = re.search(r't=(\d+)', t_end_ev)
+        if not m_ase_end:
+            warns.append("fuel_floor_after_ase requested but AFTER-START ENRICH end never fired")
+        else:
+            ase_end_ms = int(m_ase_end.group(1))
+            post_ase = [r for r in rows if r['t'] >= ase_end_ms and r['fuel_actual'] > 0]
+            if not post_ase:
+                warns.append("No injected-fuel snapshots after ASE end to check fuel_floor_after_ase")
+            else:
+                low = [r for r in post_ase if r['fuel_actual'] < fuel_floor_after_ase]
+                if low:
+                    worst = min(r['fuel_actual'] for r in low)
+                    fails.append(f"Fuel dropped below diagnostic floor {fuel_floor_after_ase}ms after ASE end "
+                                 f"({len(low)}/{len(post_ase)} snapshots, worst {worst:.3f}ms) — "
+                                 f"fault not persistently detectable via fuel/injector pulse width")
+                else:
+                    infos.append(f"Fuel >{fuel_floor_after_ase}ms for all {len(post_ase)} post-ASE snapshots ✓")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
     # fuel_range is optional — tests without a single, meaningful
