@@ -1080,6 +1080,60 @@ def validate(test_name, logpath, dme_file=None):
         else:
             infos.append(f"IGN_OUT pulsing ✓ ({len(ign_times)} events, max gap {max(gaps)}ms)")
 
+    # ── 2d. DME TPS ADC reading (iram[0x16], ADC_TPS) vs RPM target —
+    # universal check. The DME's own TPS ADC mux (i8051_dashboard_tb.v,
+    # channel 3'b110) is bucketed into exactly 3 discrete values, never a
+    # continuous sweep: idle/closed=0x85, partial/off-idle=0xF2, WOT=0xCC.
+    # Confirmed from real data that these 3 values are the correct
+    # buckets. Skipped for any test that already asserts its own value at
+    # offset 0x16 (e.g. tps_fail, which deliberately forces ADC_TPS to a
+    # fixed fault value via -DTPS_FIXED — that override IS the point of
+    # that test, not a bug to flag here).
+    TPS_IDLE, TPS_PARTIAL, TPS_WOT = 0x85, 0xF2, 0xCC
+    _tps_offset_overridden = any(off == 0x16 for off, _, _ in exp.get('expect_iram_bytes', []))
+    if not _tps_offset_overridden:
+        sync_ev_tps = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
+        m_sync_tps = re.search(r't=(\d+)', sync_ev_tps)
+        tps_window = [r for r in rows if r['t'] >= int(m_sync_tps.group(1))] if m_sync_tps else rows
+        # Same single-sample reset/glitch artifact debounce_wot() filters
+        # for the KLR wot flag (iram[0x23] bit 1) — confirmed from real
+        # ramp_to_3000_FQS0-3 logs: an isolated single-sample 0xCC
+        # (surrounded by 0xF2 on both sides) shows up a few times per run
+        # during an otherwise steady partial-throttle hold. A genuine
+        # bucket transition persists for 2+ consecutive samples; drop any
+        # sample that differs from both neighbors before checking bucket
+        # membership.
+        _tps_seq = [r['iram_0x16'] for r in tps_window if r['iram_0x16'] is not None]
+        _n = len(_tps_seq)
+        tps_vals = {v for i, v in enumerate(_tps_seq)
+                    if v == (_tps_seq[i-1] if i > 0 else None) or v == (_tps_seq[i+1] if i < _n - 1 else None)}
+        rpm_target = exp.get('rpm_target')
+        if not tps_vals:
+            pass  # no valid iram[0x16] samples to check — item 2's sync check already covers the likely cause
+        elif rpm_target == 840:
+            bad = tps_vals - {TPS_IDLE}
+            if bad:
+                fails.append(f"idle test but iram[0x16] (TPS ADC) saw non-idle value(s) "
+                             f"{sorted(hex(v) for v in bad)} — expected only 0x85 (idle/closed)")
+            else:
+                infos.append("TPS ADC idle-only ✓ (iram[0x16]=0x85 throughout)")
+        elif rpm_target == 3000:
+            bad = tps_vals - {TPS_IDLE, TPS_PARTIAL}
+            if bad:
+                fails.append(f"3000-target test but iram[0x16] (TPS ADC) saw WOT/unexpected value(s) "
+                             f"{sorted(hex(v) for v in bad)} — expected only idle(0x85)/partial(0xF2)")
+            else:
+                infos.append(f"TPS ADC idle/partial only ✓ ({sorted(hex(v) for v in tps_vals)})")
+        elif rpm_target == 6000:
+            has_idle = TPS_IDLE in tps_vals
+            has_wot  = TPS_WOT in tps_vals
+            if not has_idle or not has_wot:
+                missing = [n for n, present in (('idle(0x85)', has_idle), ('WOT(0xCC)', has_wot)) if not present]
+                fails.append(f"6000-target test but iram[0x16] (TPS ADC) never showed {', '.join(missing)} "
+                             f"— observed values: {sorted(hex(v) for v in tps_vals)}")
+            else:
+                infos.append(f"TPS ADC reached idle+WOT ✓ ({sorted(hex(v) for v in tps_vals)})")
+
     # ── 3. INTERRUPT BLOCK cleared (engine ready)
     if not any('INTERRUPT BLOCK cleared' in p for p in phases):
         warns.append("INTERRUPT BLOCK never cleared")
