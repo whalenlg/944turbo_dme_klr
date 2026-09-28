@@ -119,6 +119,20 @@ TESTS = {
                                   'symptom), this mostly proves the harness override reached the firmware '
                                   'rather than an independent consequence of the fault; kept as a sanity check '
                                   'since no better downstream signature has been found yet for this one.'},
+    # KLR TPS wiper forced to full-scale (0xFF) at idle regardless of
+    # actual throttle position — the same "implausibly high TPS voltage"
+    # condition as ramp_to_redline_KLR_TPS_HIGH (which confirms DTC 4-2 /
+    # 0x42, TPS Angle Sensor: Voltage Too High fires for this fault
+    # family), just triggered via a direct open-circuit override instead
+    # of removing the high-RPM clamp. Expected value is inferred by
+    # analogy, not yet confirmed against a real log for THIS test.
+    'tps_open_circuit':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'require_ram33_value':0x42,
+                          'notes':'Same as warm_idle_5s, KLR TPS wiper forced to 0xFF (open circuit / pulled to '
+                                  '5V rail) regardless of throttle position — KLR expected to detect this and '
+                                  'set DTC 4-2 (0x42, TPS Angle Sensor: Voltage Too High), by analogy with '
+                                  'ramp_to_redline_KLR_TPS_HIGH. Not yet confirmed against a real run of this '
+                                  'specific test.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
@@ -245,6 +259,23 @@ TESTS = {
     'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x41,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) reduced to 0x18 (~9.4% of normal) to simulate a badly degraded/failing regulator — KLR expected to detect this and set DTC 4-1 (0x41, TPS Power Wires)'},
+
+    # TPS wiper shorted to ground (reads 0x00 the whole run) while
+    # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
+    # the KLR sees a TPS reading that stays pegged at closed-throttle
+    # even as the engine climbs to 3000rpm, an implausible combination.
+    # Unlike tps_open_circuit/ramp_to_redline_KLR_TPS_HIGH (voltage too
+    # HIGH -> DTC 4-2), this is a voltage-too-LOW condition; no
+    # confirmed DTC code for that direction yet, so no
+    # require_ram33_value assertion until a real log is checked.
+    'cl_ramp_to_3000_TPS0': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as cl_ramp_to_3000, KLR TPS wiper shorted to ground (reads 0x00 '
+                                  'throughout) while AFM/RPM ramp normally — checks the KLR\'s response to a '
+                                  'stuck-low TPS reading that never tracks the real throttle/RPM ramp. Expected '
+                                  'DTC not yet confirmed against a real run (no require_ram33_value asserted '
+                                  'yet) — most likely a "TPS Angle Sensor: Voltage Too Low" code if one exists, '
+                                  'analogous to DTC 4-2\'s "Too High", but this needs verifying against real '
+                                  'hardware/firmware behavior rather than assuming.'},
     # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
     # (already used by the non-CL knock_sensor_defect test) to prevent the
     # klr_system self-test path from ever pulsing fake_knock — so unlike

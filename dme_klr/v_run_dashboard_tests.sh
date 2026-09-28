@@ -374,6 +374,16 @@ run_test warm_idle_5s \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
+# tps_open_circuit: same idle target/duration as warm_idle_5s, but the
+# KLR's TPS wiper reads stuck at full-scale (0xFF) regardless of actual
+# throttle position — a broken wiper track pulled to the 5V rail.
+# Expect a KLR self-diagnostic DTC for an implausible/out-of-range TPS
+# reading.
+run_test tps_open_circuit \
+    -DTEST_WARM_IDLE_5S -DKLR_TPS_OPEN_CIRCUIT \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
 # --- Closed-loop tests ---
 run_test cl_warm_idle \
     -DTEST_WARM_IDLE \
@@ -399,6 +409,15 @@ run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW \
     -DTEST_CL_RAMP_TO_3000   \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TPS_SUPPLY_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000
+
+# cl_ramp_to_3000_TPS0: TPS wiper shorted to ground (reads 0x00 the whole
+# run) while AFM/RPM ramp normally through the same cl_ramp_to_3000
+# profile — checks the KLR's response to a stuck-low TPS reading that
+# never tracks the real throttle/RPM ramp happening around it.
+run_test cl_ramp_to_3000_TPS0 \
+    -DTEST_CL_RAMP_TO_3000   \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TPS_SHORT_TO_GROUND -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
 run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED \
     -DTEST_CL_RAMP_TO_3000   \
@@ -915,11 +934,13 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         warm_idle_5s)     run_test warm_idle_5s     $IARG -DTEST_WARM_IDLE_5S     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+        tps_open_circuit) run_test tps_open_circuit $IARG -DTEST_WARM_IDLE_5S -DKLR_TPS_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN   -DRPMRAMP  -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP  -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
+        cl_ramp_to_3000_TPS0) run_test cl_ramp_to_3000_TPS0 $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SHORT_TO_GROUND -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_LOW) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
@@ -1004,7 +1025,7 @@ if [ -n "$1" ]; then
         *)
             echo "Unknown test: $1"
             echo "Available tests:"
-            echo "  Idle:        warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt"
+            echo "  Idle:        warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt tps_open_circuit"
             echo "               idle_poor_fuel ac_on_idle"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
             echo "               ramp_to_3000 ramp_to_6000 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
@@ -1012,7 +1033,7 @@ if [ -n "$1" ]; then
             echo "  Knock:       ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"
             echo "               cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
-            echo "  KLR faults:  cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW"
+            echo "  KLR faults:  cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_TPS0"
             echo "  Boost:       cl_ramp_to_3000_BOOST cl_ramp_to_6000_BOOST"
             echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH"
             echo "  Ignition:    ignition_timing dwell_scaling"

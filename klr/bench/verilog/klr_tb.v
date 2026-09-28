@@ -616,7 +616,22 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // reduction. With -DKLR_TPS_SUPPLY_LOW (adc_ch3=0x18), this scales
     // the TPS reading down to ~9.4% too.
     wire [15:0] _tps_scaled_wide = adc_ch3 * _tps_raw;
+`ifdef KLR_TPS_OPEN_CIRCUIT
+    // TPS wiper open circuit: a broken wiper track pulls the signal to
+    // the 5V rail, reading full-scale regardless of actual throttle
+    // position — bypasses the normal AFM-derived ratiometric chain
+    // entirely (unlike KLR_TPS_HIGH, which just removes the 0xDB
+    // ceiling on an otherwise throttle-position-dependent reading).
+    wire [7:0] adc_ch7 = 8'hFF;   // conn 16 TPS angle wiper — stuck at max (open circuit)
+`elsif KLR_TPS_SHORT_TO_GROUND
+    // TPS wiper shorted to ground: reads zero regardless of actual
+    // throttle position, independent of AFM (used by
+    // cl_ramp_to_3000_TPS0 to check the KLR's response when TPS reads
+    // stuck-low while AFM/RPM behave normally through a ramp).
+    wire [7:0] adc_ch7 = 8'h00;   // conn 16 TPS angle wiper — stuck at zero (shorted to ground)
+`else
     wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_scaled_wide[15:8] : 8'd40;   // conn 16 TPS angle wiper — ratiometric per ch3
+`endif
 
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;
