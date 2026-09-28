@@ -60,6 +60,13 @@ TESTS = {
     # which all have a confirmed iram[0x7D] ISV-integral shift.
     'altitude_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x14, 0xFF, 'ADC_ALTITUDE(14)')],
+                          'weak_detection_warn':'WEAK DETECTION: only evidence is iram[0x14] reading back the '
+                                  '_ALTITUDE override value itself (0xFF) — proves the override reached the '
+                                  'firmware, not that the firmware responded to it. Byte-diff confirmed this '
+                                  'fault does NOT move the ISV integral term (unlike its idle_high_alt/'
+                                  'coolant_fail/etc. siblings), so there is no independent downstream signature '
+                                  'available at all — revisit to find one or accept this as the best available '
+                                  'check.',
                           'notes':'Same as idle_high_alt but _ALTITUDE=0xFF (open circuit) instead of 0x00 '
                                   '(plausible high-altitude reading) — checks the DME\'s response to an '
                                   'implausible altitude reading vs a merely extreme one. No DTC expected (no '
@@ -107,6 +114,14 @@ TESTS = {
     # fault-specific assertion yet; rpm_target/expect_ase/expect_fuelcut
     # only really apply to the pre-fault (first 3.5s) portion of the run.
     'ref_sensor_loss':   {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'weak_detection_warn':'WEAK DETECTION: this test currently PASSes on generic checks '
+                                  'alone because losing the reference signal is genuinely benign (confirmed) — '
+                                  'but there is no automated check that reference_sensor actually froze at the '
+                                  'pin. That was only verified manually via the raw ports field. If the fault '
+                                  'mechanism ever silently broke, this test would show the exact same clean '
+                                  'result with zero signal anything changed. Needs an expect_log_pattern-style '
+                                  'check (same fix tps_open_circuit got) confirming the P3.2 bit genuinely stuck '
+                                  'at 1 after t=3500ms.',
                           'notes':'Real run confirms the fault injection itself works — the raw ports field\'s '
                                   'P3.2 bit genuinely freezes at 1 starting exactly at t=3500ms (verified '
                                   'directly from the DS line ports field, not just inferred). But the DME\'s '
@@ -232,6 +247,11 @@ TESTS = {
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x16, 0x80, 'ADC_TPS(16)')],
+                          'weak_detection_warn':'WEAK DETECTION: only evidence is iram[0x16] reading back the '
+                                  'TPS_FIXED override value itself (0x80) — proves the override reached the '
+                                  'firmware, not that the firmware responded to it. No independent downstream '
+                                  'signature found yet (unlike coolant_fail/airtemp_fail\'s iram[0x7D] ISV shift) '
+                                  '— revisit to find a real one or accept this as the best available check.',
                           'notes':'The real fault signature (fuel_hb/load spiking right after ASE ends) is '
                                   'transient and already gone by the tail window fuel_range checks — TPS_FIXED '
                                   '=0x80 has faded back to a near-normal idle fuel_range by the last 30% of '
@@ -2245,6 +2265,20 @@ def validate(test_name, logpath, dme_file=None):
             infos.append(f"Fault injection confirmed ✓ (raw log matches /{log_pattern}/)")
         else:
             fails.append(f"fault injection not confirmed in raw log — may be broken (expected pattern: \"{log_pattern}\")")
+
+    # ── Weak-detection flag: tests that otherwise cleanly pass but whose
+    # only evidence is a direct raw-value readback (proves the override
+    # reached the firmware, not that the firmware did anything with it)
+    # or that have no check at all confirming the fault was genuinely
+    # injected (so a silently-broken fault mechanism would look
+    # identical to a correctly-confirmed benign result). Rather than let
+    # these report a clean, falsely-reassuring PASS, weak_detection_warn
+    # unconditionally adds a WARN explaining the specific gap — a
+    # standing marker to come back and either find a real signature or
+    # add an injection-sanity check, not a failure of anything today.
+    weak_note = exp.get('weak_detection_warn')
+    if weak_note:
+        warns.append(weak_note)
 
     # ── Verdict
     detail = ' | '.join(infos)
