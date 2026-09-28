@@ -32,11 +32,16 @@ TESTS = {
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35,
+                          'expect_iram_bytes':[(0x11, 0x8C, 'ADC_BATTERY(11)')],
                           'notes':'Confirmed via a real run: normal idle dwell is ~0x11-0x12 (17-18½t), '
                                   'idle_battery_low (_BATTERY=0x8C vs baseline\'s 0xD8) settles at ~0x29-0x2b '
                                   '(41-43½t) — the firmware genuinely lengthens coil charge time to compensate '
                                   'for lower voltage. dwell_min=35 sits with real margin on both sides, unlike '
-                                  'fuel_range which barely moves for the temperature/fuel-quality faults.'},
+                                  'fuel_range which barely moves for the temperature/fuel-quality faults. '
+                                  'iram[0x11] is DME\'s own ADC_BATTERY readback — confirmed 0xD8 nominal in '
+                                  'baseline/other-fault logs, 0x8C throughout this one, matching the _BATTERY '
+                                  'override exactly (same style of direct-override sanity check as tps_fail\'s '
+                                  'iram[0x16]).'},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x33, 'ISVIntegralLo(7D)')],
                           'notes':'High altitude (_ALTITUDE=0x00 vs baseline\'s 0xF8) barely moves idle fueling '
@@ -710,6 +715,8 @@ def parse_ds(line):
         'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
                                 # TPS_FIXED's value (0x85->0x80),
                                 # untouched by either thermal fault
+        'iram_0x11': b(0x11),  # ADC_BATTERY — nominal 0xD8, idle_battery_low
+                                # forces this to _BATTERY's value (0x8C)
     }
 
 
