@@ -37,6 +37,8 @@ TESTS = {
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
                           'require_late_fuelcut_after_ms':10000,
+                          'overrun_engage_rpm_min':1600,
+                          'overrun_reintro_rpm_range':(800, 1300),
                           'notes':'Real deceleration fuel cut-off: throttle opens to ~2100rpm (AFM_CL_TARGET=0x5F) at t=2s, holds to settle, then closes fully at t=32s while RPM is still well above the real ~1350-1600rpm cutoff-engage threshold. Firmware is expected to set FuelOffCoast (iram[23h].5) and cut injection; CL physics then lets RPM coast down under friction alone (see var_interrupt_gen_cl.v) until firmware clears FuelOffCoast near the real ~900-1200rpm reintroduction band and RPM restabilizes at idle. fuel_range omitted — no single steady-state applies across the open/cut/reintroduce trajectory (same reasoning as ramp_to_6000_knock).'},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True,
@@ -945,6 +947,51 @@ def validate(test_name, logpath, dme_file=None):
             fails.append(f"No FUEL CUT begin after t={late_after_ms}ms — overrun cutoff never engaged")
         else:
             infos.append(f"Overrun FuelCut@{late_cuts[0]}ms")
+
+            def rpm_near(ms):
+                candidates = [r for r in rows if r['rpm'] > 0]
+                if not candidates:
+                    return None
+                return min(candidates, key=lambda r: abs(r['t'] - ms))['rpm']
+
+            # Engage RPM: the real DME only cuts fuel above ~1350-1600rpm —
+            # confirms the cutoff didn't fire prematurely at a lower RPM.
+            engage_min = exp.get('overrun_engage_rpm_min')
+            if engage_min is not None:
+                rpm_engage = rpm_near(late_cuts[0])
+                if rpm_engage is None:
+                    warns.append("No RPM snapshot near overrun engage to check overrun_engage_rpm_min")
+                elif rpm_engage < engage_min:
+                    fails.append(f"Overrun cutoff engaged at {rpm_engage}rpm, below required minimum "
+                                 f"{engage_min}rpm — cutoff fired too low/premature")
+                else:
+                    infos.append(f"Engage RPM={rpm_engage} ✓ (>{engage_min})")
+
+            # Reintroduction RPM: the real DME turns injectors back on
+            # around ~900-1200rpm to prevent a stall — confirms fuel
+            # wasn't left cut too long (stall risk) or reintroduced too
+            # early (still coasting well above idle).
+            reintro_range = exp.get('overrun_reintro_rpm_range')
+            if reintro_range is not None:
+                end_ms = None
+                for p in phases:
+                    if 'FUEL CUT end' in p:
+                        m = re.search(r't=(\d+)', p)
+                        if m and int(m.group(1)) > late_cuts[0]:
+                            end_ms = int(m.group(1))
+                            break
+                if end_ms is None:
+                    warns.append("No FUEL CUT end after the overrun engage — can't check overrun_reintro_rpm_range")
+                else:
+                    rpm_reintro = rpm_near(end_ms)
+                    lo, hi = reintro_range
+                    if rpm_reintro is None:
+                        warns.append("No RPM snapshot near overrun reintroduction to check overrun_reintro_rpm_range")
+                    elif not (lo <= rpm_reintro <= hi):
+                        fails.append(f"Overrun cutoff reintroduced fuel at {rpm_reintro}rpm, "
+                                     f"outside expected {lo}-{hi}rpm band")
+                    else:
+                        infos.append(f"Reintro RPM={rpm_reintro} ✓ ({lo}-{hi})")
 
     # ── 6a. Persistent-fault fuel floor — for faults that a real scan
     # tool can only diagnose indirectly (injector pulse width / fuel
