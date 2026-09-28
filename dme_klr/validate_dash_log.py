@@ -506,7 +506,8 @@ TESTS = {
     # KLR CPU is held in permanent reset and can never run again,
     # regardless of RPM/AFM ramping normally on the DME side.
     'cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'expect_ext_trigger_stuck_high':True,
+                          'expect_ext_trigger_stuck_high':True, 'skip_tps_bucket_check':True,
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
                           'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s crank-ref pulse to '
                                   'the KLR (trigger_in) opens and reads stuck high from t=3000ms — this pin is '
                                   'wired directly to the KLR CPU\'s /RESET (res_n=~trigger_in), so a stuck-high '
@@ -514,14 +515,18 @@ TESTS = {
                                   'and can never run its knock-detection loop again, no matter what the DME '
                                   'does. expect_ext_trigger_stuck_high confirms the fault injection itself held '
                                   '(ext_trigger reads 1 in every KLR: [DS] snapshot from t=3000ms on) via the '
-                                  'new ext_trigger/ext_ign tail bits appended to that line. No DME-side '
-                                  'downstream check (DTC, full_load, etc.) is asserted here yet — the DME\'s own '
-                                  'IGN_OUT (A_5_KLR_ign_out, what actually drives this wire) is generated '
-                                  'independently of whether the KLR ever receives/processes it, so the existing '
-                                  'universal IGN_OUT liveness check is expected to keep passing untouched by '
-                                  'this fault. What a permanently-reset KLR looks like from the DME\'s side '
-                                  '(full_load presumably frozen low, no DTC since the CPU can\'t run diagnostic '
-                                  'code) is a reasoned prediction, not yet confirmed against a real run.'},
+                                  'ext_trigger/ext_ign tail bits appended to that line. Confirmed via a real run: '
+                                  'KLR ram[33] stayed 0 (no DTC, as predicted — a permanently-reset CPU can\'t '
+                                  'run diagnostic code), but the DME\'s own IGN_OUT (A_5_KLR_ign_out) stops '
+                                  'pulsing for ~16.9s starting at fault onset (t=2994ms) — NOT independent of '
+                                  'this fault as originally guessed; same "IGN_OUT stopped pulsing for" signature '
+                                  'cl_ramp_to_3000_KLR_BATT_LOW/_BATT_DISCONNECTED already use, so this looks '
+                                  'like a general "KLR not responding correctly" DME fail-safe rather than '
+                                  'anything battery-specific — expect_fail_markers confirms it the same way. Also '
+                                  'confirmed: full_load reads stuck asserted once the CPU can no longer update it '
+                                  '(DME iram[0x16] shows WOT/0xCC instead of idle/partial for the rest of the '
+                                  'run), so skip_tps_bucket_check exempts this test the same way '
+                                  'cl_ramp_to_3000_TPS0/KLR_TPS_SUPPLY_LOW do.'},
 
     # KLR_IGN_IN_STUCK_HIGH: the DME's tach/ign wire reaching the KLR
     # (ign_in, drives T1/pin 39 and can be used as an INT source per
@@ -533,6 +538,7 @@ TESTS = {
     # T1/INT-based reading of the DME ign signal is lost.
     'cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'expect_ext_ign_stuck_high':True,
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
                           'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s tach/ign signal to '
                                   'the KLR (ign_in) opens and reads stuck high from t=3000ms — this pin drives '
                                   'T1 (pin 39) and can be used as an INT source (klr_top.v header), unlike '
@@ -541,10 +547,17 @@ TESTS = {
                                   'firmware derives from the DME ign signal is lost. expect_ext_ign_stuck_high '
                                   'confirms the fault injection itself held (ext_ign reads 1 in every '
                                   'KLR: [DS] snapshot from t=3000ms on) via the ext_trigger/ext_ign tail bits. '
-                                  'No DME-side downstream check is asserted here yet — what a frozen T1/INT '
-                                  'looks like in the KLR\'s own diagnostic state (DTC, ram values) isn\'t known '
-                                  'without seeing what the firmware actually uses T1/INT for, pending a real '
-                                  'run.'},
+                                  'Confirmed via a real run: KLR ram[33] stayed 0 (no DTC) and iram[0x16] (TPS '
+                                  'ADC) correctly stayed idle/partial only — full_load is unaffected, as '
+                                  'expected since the CPU keeps running normally. But the DME\'s own IGN_OUT '
+                                  '(A_5_KLR_ign_out) still stops pulsing for ~16.9s starting almost exactly at '
+                                  'fault onset (t=3000ms), the same "IGN_OUT stopped pulsing for" signature seen '
+                                  'on cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH and on '
+                                  'cl_ramp_to_3000_KLR_BATT_LOW/_BATT_DISCONNECTED — since this fault doesn\'t '
+                                  'touch /RESET or full_load at all, it further confirms this is a general '
+                                  '"KLR not responding correctly" DME fail-safe, not anything specific to '
+                                  'battery voltage or CPU reset state. expect_fail_markers confirms it the same '
+                                  'way as the other three.'},
 
     # TPS wiper shorted to ground (reads 0x00 the whole run) while
     # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
@@ -1674,12 +1687,21 @@ def validate(test_name, logpath, dme_file=None):
     # took effect and held, directly from the ext_trigger/ext_ign bits
     # appended to the KLR: [DS] line's tail — independent of any
     # downstream KLR firmware consequence (permanent CPU reset for
-    # trigger, frozen T1/INT for ign), which isn't confirmed against
-    # real hardware yet for either fault.
+    # trigger, frozen T1/INT for ign).
+    #
+    # Window starts strictly AFTER onset, not >=: confirmed via a real
+    # run that the snapshot landing exactly ON the onset instant
+    # (DASH_INTERVAL_MS=100 divides evenly into the default 3000ms
+    # onset, so a DS snapshot lands on that exact boundary) reads 0 —
+    # a one-sample simulation-timing race between the override's `>=`
+    # comparison and the snapshot task, both evaluated at the same
+    # $time. Every sample from the next snapshot (t=3100ms) onward
+    # read 1 correctly in that run, confirming this is a boundary
+    # artifact and not a fault-injection failure.
     KLR_FAULT_ONSET_MS = 3000
     if exp.get('expect_ext_trigger_stuck_high') or exp.get('expect_ext_ign_stuck_high'):
         klr_ext_rows = [r for r in (parse_klr_ds_ext_bits(line) for line in lines) if r is not None]
-        post_fault = [r for r in klr_ext_rows if r[0] >= KLR_FAULT_ONSET_MS]
+        post_fault = [r for r in klr_ext_rows if r[0] > KLR_FAULT_ONSET_MS]
         if not post_fault:
             warns.append("No KLR: [DS] snapshots with the ext_trigger/ext_ign tail found after fault "
                          "onset — log may predate this field, can't confirm fault injection")
