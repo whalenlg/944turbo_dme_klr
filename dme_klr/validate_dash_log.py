@@ -51,8 +51,20 @@ TESTS = {
                                   'the fault is present, confirmed via fuel_floor_after_ase requiring every '
                                   'post-ASE snapshot to exceed 8ms (real run: consistently ~14ms), not just a '
                                   'tail-window average that could pass on a transient blip.'},
-    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x41, 'ThermalIdx(7D)')],
+                          'notes':'coolant_fail barely moves idle fueling (both baseline and this fault are '
+                                  'already past cold-start enrichment), so fuel_range alone cannot prove the '
+                                  'fault fired. iram[0x7D] is an undocumented but empirically stable register '
+                                  '(found by diffing full iram dumps against warm_idle_5s) that shifts from '
+                                  '0x3B (baseline) to 0x41 for this fault specifically, and is untouched by '
+                                  'tps_fail — real name/semantics unconfirmed, but reproducible every run.'},
+    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x72, 'ThermalIdx(7D)')],
+                          'notes':'Same reasoning as coolant_fail — fuel_range alone does not prove the fault. '
+                                  'The same iram[0x7D] register shifts from 0x3B (baseline) to 0x72 for this '
+                                  'fault (a much larger shift than coolant_fail\'s 0x41, consistent with this '
+                                  'firmware weighting intake-air-temp correction more heavily than coolant).'},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'lean_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -62,7 +74,16 @@ TESTS = {
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
-    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x16, 0x80, 'TPSFaultIdx(16)')],
+                          'notes':'The real fault signature (fuel_hb/load spiking right after ASE ends) is '
+                                  'transient and already gone by the tail window fuel_range checks — TPS_FIXED '
+                                  '=0x80 has faded back to a near-normal idle fuel_range by the last 30% of '
+                                  'this 5s test, so that check alone cannot prove the fault fired either. '
+                                  'iram[0x16] is a separate, empirically stable register (found the same way '
+                                  'as coolant_fail/airtemp_fail\'s iram[0x7D]) that shifts from 0x85 (baseline) '
+                                  'to 0x80 for this fault specifically, and is untouched by either thermal '
+                                  'fault — real name/semantics unconfirmed, but reproducible every run.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
@@ -564,6 +585,17 @@ def parse_ds(line):
         'load_idx': load_idx,
         'o2_val': o2_val,
         'o2_b26': o2_b26,
+        # Empirically-determined markers (not documented registers, found
+        # by diffing full iram dumps between fault runs and warm_idle_5s —
+        # see PR discussion). iram[0x4D] (injection event counter) and
+        # iram[0x6B] (stack memory — not a real register) were ruled out
+        # the same way: real but not fault-specific.
+        'iram_0x7d': b(0x7D),  # shared thermal-response index — shifts for
+                                # BOTH coolant_fail (0x3B->0x41) and
+                                # airtemp_fail (0x3B->0x72), untouched by
+                                # tps_fail
+        'iram_0x16': b(0x16),  # tps_fail-only marker (0x85->0x80),
+                                # untouched by either thermal fault
     }
 
 
@@ -1021,6 +1053,34 @@ def validate(test_name, logpath, dme_file=None):
                                  f"fault not persistently detectable via fuel/injector pulse width")
                 else:
                     infos.append(f"Fuel >{fuel_floor_after_ase}ms for all {len(post_ase)} post-ASE snapshots ✓")
+
+    # ── 6b. Fault-specific internal-state markers — for faults with no
+    # dedicated DTC and no strong steady-state fuel signature (coolant_fail
+    # / airtemp_fail barely move idle fueling), found by diffing full iram
+    # dumps against warm_idle_5s: iram[0x7D] and iram[0x16] each shift to
+    # a fixed, repeatable value for specific faults (see field comments in
+    # parse_ds). Each entry is (offset, expected_byte, label); requires
+    # every post-ASE snapshot to match exactly.
+    expect_iram_bytes = exp.get('expect_iram_bytes')
+    if expect_iram_bytes:
+        t_end_ev = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_ase_end = re.search(r't=(\d+)', t_end_ev)
+        if not m_ase_end:
+            warns.append("expect_iram_bytes requested but AFTER-START ENRICH end never fired")
+        else:
+            ase_end_ms = int(m_ase_end.group(1))
+            post_ase_rows = [r for r in rows if r['t'] >= ase_end_ms]
+            if not post_ase_rows:
+                warns.append("No post-ASE snapshots to check expect_iram_bytes")
+            else:
+                for offset, expected, label in expect_iram_bytes:
+                    field = f'iram_0x{offset:02x}'
+                    vals = sorted(set(r[field] for r in post_ase_rows))
+                    if vals == [expected]:
+                        infos.append(f"{label}=0x{expected:02x} ✓ (stable, {len(post_ase_rows)} snapshots)")
+                    else:
+                        fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
+                                     f"snapshots, saw {['0x%02x' % v for v in vals]}")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
     # fuel_range is optional — tests without a single, meaningful
