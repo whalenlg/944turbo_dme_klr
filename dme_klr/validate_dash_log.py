@@ -32,7 +32,15 @@ TESTS = {
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
-    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x33, 'ISVIntegralLo(7D)')],
+                          'notes':'High altitude (_ALTITUDE=0x00 vs baseline\'s 0xF8) barely moves idle fueling '
+                                  '(real run: avg 2.145ms vs warm_idle_5s\'s 2.286ms — real but well within '
+                                  'fuel_range noise), so that check alone cannot prove the fault fired. The '
+                                  'same ISV integral term (iram[0x7D]) used for coolant_fail/airtemp_fail/'
+                                  'idle_poor_fuel/ac_on_idle shifts from 0x3B (baseline) to 0x33 — the smallest '
+                                  'shift of the family so far, but real and rock-solid constant across every '
+                                  'post-ASE snapshot.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
