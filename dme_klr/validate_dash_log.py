@@ -622,6 +622,14 @@ def parse_ds(line):
         rpm = rpm_val if rpm_val <= 9000 else 0
     else:
         rpm = 0
+    # Main relay (P1.2 / A_2_dme_relay), from the ports field's P1 byte
+    # (first 2 hex chars of parts[2] — see emit_snapshot in
+    # i8051_dashboard_tb.v). Active-low: firmware pulls this low to
+    # energize the DME's self-latching power relay. None when the P1
+    # byte isn't clean hex (X/Z during pre-reset or a floating pin).
+    ports = parts[2] if len(parts) >= 3 else ''
+    p1_hex = ports[0:2]
+    relay = int(p1_hex, 16) >> 2 & 1 if re.match(r'^[0-9a-fA-F]{2}$', p1_hex) else None
     return {
         't': t,
         'fuelcut': fuelcut,
@@ -634,6 +642,7 @@ def parse_ds(line):
         'load_idx': load_idx,
         'o2_val': o2_val,
         'o2_b26': o2_b26,
+        'relay': relay,
         # Found by diffing full iram dumps between fault runs and
         # warm_idle_5s (see PR discussion) — iram[0x4D] (injection event
         # counter) and iram[0x6B] (stack memory) were ruled out the same
@@ -981,6 +990,33 @@ def validate(test_name, logpath, dme_file=None):
             sync_ev = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
             t_sync = sync_ev.split('t=')[1].split(' ')[0] if 't=' in sync_ev else '?'
             infos.append(f"sync={t_sync}ms")
+
+    # ── 2b. Main relay self-latch (P1.2 / A_2_dme_relay) — universal
+    # check, runs on every test regardless of expect_sync. Active-low:
+    # real hardware pulls this pin low to energize the DME's
+    # self-latching power relay. Confirmed from real data: starts high
+    # (pre-reset default), the firmware pulls it low right around
+    # ENGINE SYNC, and it stays low for the rest of every test observed
+    # so far. This is the closest available proxy for "key start" —
+    # there's no key/ignition-switch signal modeled in this simulator
+    # at all, so the relay latching low after sync is the only
+    # observable evidence the DME actually powered itself up and held
+    # power.
+    sync_ev_relay = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
+    m_sync_relay = re.search(r't=(\d+)', sync_ev_relay)
+    if m_sync_relay:
+        t_sync_ms = int(m_sync_relay.group(1))
+        post_sync_relay = [r for r in rows if r['t'] >= t_sync_ms and r['relay'] is not None]
+        if not post_sync_relay:
+            warns.append("No valid P1 relay-bit snapshots after sync to check")
+        else:
+            stuck_high = [r for r in post_sync_relay if r['relay'] != 0]
+            if stuck_high:
+                fails.append(f"A_2_dme_relay (P1.2) not held low after sync — "
+                             f"{len(stuck_high)}/{len(post_sync_relay)} snapshots high, "
+                             f"first at t={stuck_high[0]['t']}ms")
+            else:
+                infos.append(f"Relay latched low ✓ ({len(post_sync_relay)} post-sync snapshots)")
 
     # ── 3. INTERRUPT BLOCK cleared (engine ready)
     if not any('INTERRUPT BLOCK cleared' in p for p in phases):
