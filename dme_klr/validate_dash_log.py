@@ -273,12 +273,18 @@ TESTS = {
     # power/ground wiring fault to this diagnostic, not a distinct
     # "voltage too low" code as originally guessed.
     'cl_ramp_to_3000_TPS0': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x41,
+                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True,
                           'notes':'Same as cl_ramp_to_3000, KLR TPS wiper shorted to ground (reads 0x00 '
                                   'throughout) while AFM/RPM ramp normally — checks the KLR\'s response to a '
                                   'stuck-low TPS reading that never tracks the real throttle/RPM ramp. KLR '
                                   'expected to detect this and set DTC 4-1 (0x41, TPS Power Wires), same code '
-                                  'as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW.'},
+                                  'as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW. Confirmed from a real run: KLR '
+                                  'full_load gets stuck asserted almost immediately (t=2300ms, rpm=831, well '
+                                  'before the DTC itself latches at t=6310ms) and stays asserted the whole '
+                                  'test, so DME iram[0x16] reads WOT (0xCC) throughout instead of idle/partial '
+                                  '— a genuine, reproducible consequence of THIS fault (full_load fails stuck- '
+                                  'high on an implausible TPS reading), not noise, so skip_tps_bucket_check '
+                                  'exempts this test from the normal 3000-target idle/partial-only rule.'},
     # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
     # (already used by the non-CL knock_sensor_defect test) to prevent the
     # klr_system self-test path from ever pulsing fake_knock — so unlike
@@ -1091,9 +1097,14 @@ def validate(test_name, logpath, dme_file=None):
     # buckets. Skipped for any test that already asserts its own value at
     # offset 0x16 (e.g. tps_fail, which deliberately forces ADC_TPS to a
     # fixed fault value via -DTPS_FIXED — that override IS the point of
-    # that test, not a bug to flag here).
+    # that test, not a bug to flag here), or that sets
+    # skip_tps_bucket_check (e.g. cl_ramp_to_3000_TPS0, whose fault
+    # itself makes the KLR's full_load flag genuinely fail stuck-high —
+    # a confirmed real consequence of that specific fault, not an
+    # anomaly to flag).
     TPS_IDLE, TPS_PARTIAL, TPS_WOT = 0x85, 0xF2, 0xCC
-    _tps_offset_overridden = any(off == 0x16 for off, _, _ in exp.get('expect_iram_bytes', []))
+    _tps_offset_overridden = (any(off == 0x16 for off, _, _ in exp.get('expect_iram_bytes', [])) or
+                              exp.get('skip_tps_bucket_check', False))
     if not _tps_offset_overridden:
         sync_ev_tps = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
         m_sync_tps = re.search(r't=(\d+)', sync_ev_tps)
