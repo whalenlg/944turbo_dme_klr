@@ -124,15 +124,18 @@ TESTS = {
     # condition as ramp_to_redline_KLR_TPS_HIGH (which confirms DTC 4-2 /
     # 0x42, TPS Angle Sensor: Voltage Too High fires for this fault
     # family), just triggered via a direct open-circuit override instead
-    # of removing the high-RPM clamp. Expected value is inferred by
-    # analogy, not yet confirmed against a real log for THIS test.
+    # of removing the high-RPM clamp. A real 5s run never latched the
+    # DTC (ram[33] stayed 0 the whole test) — ramp_to_redline_KLR_TPS_HIGH
+    # is the only other test that trips this DTC and it runs 10s, so
+    # SIM_TIME was doubled to 10s here too; require_ram33_value kept
+    # pending confirmation against a real run at the new duration.
     'tps_open_circuit':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'require_ram33_value':0x42,
-                          'notes':'Same as warm_idle_5s, KLR TPS wiper forced to 0xFF (open circuit / pulled to '
-                                  '5V rail) regardless of throttle position — KLR expected to detect this and '
-                                  'set DTC 4-2 (0x42, TPS Angle Sensor: Voltage Too High), by analogy with '
-                                  'ramp_to_redline_KLR_TPS_HIGH. Not yet confirmed against a real run of this '
-                                  'specific test.'},
+                          'notes':'Same as warm_idle_5s but SIM_TIME=10s, KLR TPS wiper forced to 0xFF (open '
+                                  'circuit / pulled to 5V rail) regardless of throttle position — KLR expected '
+                                  'to detect this and set DTC 4-2 (0x42, TPS Angle Sensor: Voltage Too High), by '
+                                  'analogy with ramp_to_redline_KLR_TPS_HIGH. A 5s run did not trigger it; not '
+                                  'yet confirmed at 10s against a real run.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,

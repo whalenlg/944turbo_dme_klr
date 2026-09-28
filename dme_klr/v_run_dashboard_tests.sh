@@ -374,15 +374,18 @@ run_test warm_idle_5s \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
-# tps_open_circuit: same idle target/duration as warm_idle_5s, but the
-# KLR's TPS wiper reads stuck at full-scale (0xFF) regardless of actual
-# throttle position — a broken wiper track pulled to the 5V rail.
-# Expect a KLR self-diagnostic DTC for an implausible/out-of-range TPS
-# reading.
+# tps_open_circuit: same idle target as warm_idle_5s, but the KLR's TPS
+# wiper reads stuck at full-scale (0xFF) regardless of actual throttle
+# position — a broken wiper track pulled to the 5V rail. Expect a KLR
+# self-diagnostic DTC for an implausible/out-of-range TPS reading.
+# SIM_TIME=10s (double the other idle tests): a real run at 5s showed
+# ram[33] never went non-zero — ramp_to_redline_KLR_TPS_HIGH, the only
+# other test that trips this same DTC 4-2, runs 10s, so the KLR's
+# self-diagnostic evidently needs more than 5s to latch the fault.
 run_test tps_open_circuit \
     -DTEST_WARM_IDLE_5S -DKLR_TPS_OPEN_CIRCUIT \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
 # --- Closed-loop tests ---
 run_test cl_warm_idle \
@@ -934,7 +937,7 @@ if [ -n "$1" ]; then
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         warm_idle_5s)     run_test warm_idle_5s     $IARG -DTEST_WARM_IDLE_5S     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
-        tps_open_circuit) run_test tps_open_circuit $IARG -DTEST_WARM_IDLE_5S -DKLR_TPS_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        tps_open_circuit) run_test tps_open_circuit $IARG -DTEST_WARM_IDLE_5S -DKLR_TPS_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_warm_idle)     run_test cl_warm_idle     $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN   -DRPMRAMP  -DCL_MODE -DBOOST       -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP  -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
