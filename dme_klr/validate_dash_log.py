@@ -59,10 +59,18 @@ TESTS = {
     # pending one, unlike its idle_high_alt/coolant_fail/etc. siblings
     # which all have a confirmed iram[0x7D] ISV-integral shift.
     'altitude_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x14, 0xFF, 'ADC_ALTITUDE(14)')],
                           'notes':'Same as idle_high_alt but _ALTITUDE=0xFF (open circuit) instead of 0x00 '
                                   '(plausible high-altitude reading) — checks the DME\'s response to an '
                                   'implausible altitude reading vs a merely extreme one. No DTC expected (no '
-                                  'KLR-side altitude channel exists). Not yet confirmed against a real run.'},
+                                  'KLR-side altitude channel exists). A full byte-diff against warm_idle_5s at '
+                                  'matching post-ASE timestamps found only ONE stable, consistently-differing '
+                                  'byte: iram[0x14] itself (ADC_ALTITUDE raw readback, 0xFF vs baseline\'s '
+                                  '0xF8) — unlike coolant_fail/airtemp_fail/idle_poor_fuel/idle_high_alt, this '
+                                  'fault does NOT move the ISV integral term (iram[0x7D]) at all, so there is '
+                                  'no independent downstream signature here. Same honest caveat as tps_fail\'s '
+                                  'iram[0x16] check: this mostly proves the harness override reached the '
+                                  'firmware, not that the firmware responds to it in any detectable way.'},
     # FUEL_QUAL_DISCONNECTED: fuel quality ADC pegged at 0xFF (open
     # circuit / pulled to the 5V rail) — past the FQS7 ceiling (0xA7,
     # the worst real value the FQS0-7 sweep calibrates), distinct from
@@ -753,6 +761,8 @@ def parse_ds(line):
                                 # untouched by either thermal fault
         'iram_0x11': b(0x11),  # ADC_BATTERY — nominal 0xD8, idle_battery_low
                                 # forces this to _BATTERY's value (0x8C)
+        'iram_0x14': b(0x14),  # ADC_ALTITUDE — nominal 0xF8, altitude_disconnected
+                                # forces this to _ALTITUDE's value (0xFF)
     }
 
 
