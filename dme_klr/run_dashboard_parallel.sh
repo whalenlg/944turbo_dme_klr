@@ -71,7 +71,7 @@ ALL_TESTS=(
 #   group_members <name>   echoes that group's test names (space-separated)
 #                           to stdout and returns 0; returns 1 for an
 #                           unknown name with nothing printed.
-GROUP_NAMES=(Ramp KLR_fail Fueling Idle DME_fail)
+GROUP_NAMES=(Ramp KLR_fail Fuel Idle DME_fail)
 group_members() {
     case "$1" in
         Ramp)
@@ -80,7 +80,7 @@ group_members() {
         KLR_fail)
             echo "ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_KLR_KNOCK_BLOCKED cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH ramp_to_redline_KLR_TPS_HIGH"
             ;;
-        Fueling)
+        Fuel)
             echo "ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3 cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
             ;;
         Idle)
