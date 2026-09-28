@@ -126,10 +126,15 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  the firmware can run its conversion loop immediately.
     // -DKLR_BATT_LOW halves the normal battery reading (0xD8 -> 0x6C) to
     // simulate a low-battery/charging-system fault on ADC ch1.
-`ifndef KLR_BATT_LOW
-    reg [7:0] adc_ch1 = 8'hd8;  // battery
-`else
+    // -DKLR_BATT_DISCONNECTED pegs it at 0 — battery sense wire open/
+    // disconnected, reading no voltage at all rather than merely a low
+    // one.
+`ifdef KLR_BATT_DISCONNECTED
+    reg [7:0] adc_ch1 = 8'h00;  // battery — disconnected (KLR_BATT_DISCONNECTED test)
+`elsif KLR_BATT_LOW
     reg [7:0] adc_ch1 = 8'hd8 >> 1;  // battery — halved (KLR_BATT_LOW test)
+`else
+    reg [7:0] adc_ch1 = 8'hd8;  // battery
 `endif
     reg [7:0] adc_ch2 = 8'h00;  // ground
 `ifndef BOOST

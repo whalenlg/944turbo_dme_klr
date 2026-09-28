@@ -256,6 +256,22 @@ TESTS = {
     'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x12,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V)'},
+    # BATT_DISCONNECTED: battery sense wire open (reads 0x00, not just
+    # low) — the "input isn't happening at all" case vs KLR_BATT_LOW's
+    # "input reads low". Expected value inferred by analogy with
+    # cl_ramp_to_3000_TPS0 (whose own "shorted to ground" variant of an
+    # existing "degraded supply" fault mapped to the SAME DTC as that
+    # degraded-supply test, not a distinct code) — not yet confirmed
+    # against a real run of this specific test.
+    'cl_ramp_to_3000_KLR_BATT_DISCONNECTED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x12,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) pegged at 0x00 (sense wire '
+                                  'open/disconnected) instead of merely halved — KLR expected to detect this '
+                                  'and set DTC 1-2 (0x12, Voltage Under 10.2V), same code as '
+                                  'cl_ramp_to_3000_KLR_BATT_LOW, by analogy with cl_ramp_to_3000_TPS0 mapping '
+                                  'to the same code as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW. Not yet confirmed '
+                                  'against a real run — if the KLR full_load-stuck-high side effect seen in '
+                                  'TPS0 recurs here for some other flag, may need a similar skip/exemption.'},
     # TPS_SUPPLY_LOW: confirmed via a real run — reliably trips DTC 0x41
     # ("TPS Power Wires — power wire/ground contact dirty"), consistent
     # with a degraded TPS supply voltage.

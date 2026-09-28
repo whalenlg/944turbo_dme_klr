@@ -353,6 +353,14 @@ run_test cl_ramp_to_3000_KLR_BATT_LOW \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_BATT_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
+# KLR_BATT_DISCONNECTED: battery sense wire open (reads 0, not just low)
+# while AFM/RPM ramp normally — checks the KLR's response to a battery
+# reading that isn't happening at all vs merely low.
+run_test cl_ramp_to_3000_KLR_BATT_DISCONNECTED \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_BATT_DISCONNECTED -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+
 run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW \
     -DTEST_CL_RAMP_TO_3000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TPS_SUPPLY_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
@@ -897,6 +905,7 @@ if [ -n "$1" ]; then
         cl_tippy_in)      run_test cl_tippy_in      $IARG -DTEST_TIPPY_IN         -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000   ;;
         cl_ramp_to_3000) run_test cl_ramp_to_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_ramp_to_3000_KLR_BATT_DISCONNECTED) run_test cl_ramp_to_3000_KLR_BATT_DISCONNECTED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_DISCONNECTED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
         cl_ramp_to_3000_TPS0) run_test cl_ramp_to_3000_TPS0 $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SHORT_TO_GROUND -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
@@ -991,7 +1000,8 @@ if [ -n "$1" ]; then
             echo "  Knock:       ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"
             echo "               cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
-            echo "  KLR faults:  cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_TPS0"
+            echo "  KLR faults:  cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_BATT_DISCONNECTED"
+            echo "               cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_TPS0"
             echo "  Boost:       cl_ramp_to_3000_BOOST cl_ramp_to_6000_BOOST"
             echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH"
             echo "  Ignition:    ignition_timing dwell_scaling"
