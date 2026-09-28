@@ -257,26 +257,39 @@ TESTS = {
     # --- KLR ADC fault-injection tests (klr_tb.v), based on cl_ramp_to_3000 ---
     # BATT_LOW: confirmed via a real run — reliably trips DTC 0x12
     # ("Voltage Under 10.2V — check alternator/battery/regulator/relays/
-    # wiring"), exactly the fault this test simulates.
+    # wiring"), exactly the fault this test simulates. DME's own battery
+    # ADC (iram[0x11]) is driven independently by the DME testbench (see
+    # idle_battery_low) — this KLR-side fault only touches KLR's own
+    # adc_ch1, so DME's reading should stay nominal (0xD8); confirmed
+    # true for the DISCONNECTED sibling below, inferred here since both
+    # share the same (no KLR->DME feedback) mechanism.
     'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x12,
+                          'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V)'},
     # BATT_DISCONNECTED: battery sense wire open (reads 0x00, not just
     # low) — the "input isn't happening at all" case vs KLR_BATT_LOW's
-    # "input reads low". Expected value inferred by analogy with
-    # cl_ramp_to_3000_TPS0 (whose own "shorted to ground" variant of an
-    # existing "degraded supply" fault mapped to the SAME DTC as that
-    # degraded-supply test, not a distinct code) — not yet confirmed
-    # against a real run of this specific test.
+    # "input reads low". Confirmed via a real run: DTC 0x12 fires (same
+    # code as KLR_BATT_LOW, matching the cl_ramp_to_3000_TPS0 precedent
+    # of a "disconnected" variant mapping to the same code as its
+    # "degraded" sibling rather than a distinct one), and DME's own
+    # iram[0x11] stays nominal (0xD8) throughout — the fault is
+    # correctly isolated to the KLR side. That same real run also showed
+    # a genuine, reproducible IGN_OUT dropout (2 gaps, 1.6s and 1.0s,
+    # starting at t=7106ms/t=8732ms) that the KLR's own STATUS trace
+    # shows recovering with SP=0 (vs SP=2 normally) right after each gap
+    # — looks like the KLR periodically resets under this fault. Left
+    # failing the universal IGN_OUT liveness check deliberately (per
+    # user) rather than suppressed, since it's not yet established
+    # whether this is intended brownout-style protection or a
+    # testbench/RTL artifact specific to battery=0x00.
     'cl_ramp_to_3000_KLR_BATT_DISCONNECTED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x12,
+                          'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) pegged at 0x00 (sense wire '
-                                  'open/disconnected) instead of merely halved — KLR expected to detect this '
+                                  'open/disconnected) instead of merely halved — KLR confirmed to detect this '
                                   'and set DTC 1-2 (0x12, Voltage Under 10.2V), same code as '
-                                  'cl_ramp_to_3000_KLR_BATT_LOW, by analogy with cl_ramp_to_3000_TPS0 mapping '
-                                  'to the same code as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW. Not yet confirmed '
-                                  'against a real run — if the KLR full_load-stuck-high side effect seen in '
-                                  'TPS0 recurs here for some other flag, may need a similar skip/exemption.'},
+                                  'cl_ramp_to_3000_KLR_BATT_LOW. Known-failing: real run shows a genuine '
+                                  'IGN_OUT dropout (see above) that the universal liveness check correctly '
+                                  'flags — left as-is per user rather than exempted, pending root-cause.'},
     # TPS_SUPPLY_LOW: confirmed via a real run — reliably trips DTC 0x41
     # ("TPS Power Wires — power wire/ground contact dirty"), consistent
     # with a degraded TPS supply voltage.
