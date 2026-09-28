@@ -1184,6 +1184,30 @@ def validate(test_name, logpath, dme_file=None):
             else:
                 infos.append(f"TPS ADC reached idle+WOT ✓ ({sorted(hex(v) for v in tps_vals)})")
 
+    # ── 2f. DME battery ADC reading (iram[0x11], ADC_BATTERY) — universal
+    # check. Nominal is 0xD8; every test is expected to stay there unless
+    # it's explicitly exercising a battery fault (already asserts its own
+    # value at offset 0x11 via expect_iram_bytes — idle_battery_low,
+    # cl_ramp_to_3000_KLR_BATT_LOW, cl_ramp_to_3000_KLR_BATT_DISCONNECTED)
+    # or is one of the condition-cycle tests that deliberately dips it to
+    # 0xAD during a scripted BATTERY phase (identified via their own
+    # condition_phases list rather than a separate opt-out flag).
+    BATTERY_NOMINAL = 0xD8
+    _batt_offset_overridden = (any(off == 0x11 for off, _, _ in exp.get('expect_iram_bytes', [])) or
+                               any(p.get('name') == 'BATTERY' for p in exp.get('condition_phases', [])))
+    if not _batt_offset_overridden:
+        sync_ev_batt = next((p for p in phases if 'ENGINE SYNC' in p or 'INTERRUPT BLOCK cleared' in p), '')
+        m_sync_batt = re.search(r't=(\d+)', sync_ev_batt)
+        batt_window = [r for r in rows if r['t'] >= int(m_sync_batt.group(1))] if m_sync_batt else rows
+        batt_vals = {r['iram_0x11'] for r in batt_window if r['iram_0x11'] is not None}
+        bad = batt_vals - {BATTERY_NOMINAL}
+        if bad:
+            fails.append(f"iram[0x11] (ADC_BATTERY) saw non-nominal value(s) "
+                         f"{sorted(hex(v) for v in bad)} — expected 0xD8 throughout "
+                         f"(no battery fault expected in this test)")
+        elif batt_vals:
+            infos.append("ADC_BATTERY nominal ✓ (iram[0x11]=0xD8 throughout)")
+
     # ── 3. INTERRUPT BLOCK cleared (engine ready)
     if not any('INTERRUPT BLOCK cleared' in p for p in phases):
         warns.append("INTERRUPT BLOCK never cleared")
