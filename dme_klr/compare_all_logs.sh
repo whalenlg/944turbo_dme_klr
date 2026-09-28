@@ -96,6 +96,7 @@ DASH_TESTS=(
     ramp_to_redline
     tps_fail
     warm_idle
+    warm_idle_5s
     warmup_enrichment
 )
 

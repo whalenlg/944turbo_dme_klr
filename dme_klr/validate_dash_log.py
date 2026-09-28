@@ -28,17 +28,45 @@ import sys, re, os
 
 TESTS = {
     'warm_idle':         {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'warm_idle_5s':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'overrun_cutoff':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_late_fuelcut_after_ms':10000,
+                          'overrun_engage_rpm_min':1600,
+                          'overrun_reintro_rpm_range':(800, 1300),
+                          'notes':'Real deceleration fuel cut-off: throttle opens to ~2100rpm (AFM_CL_TARGET=0x5F) at t=2s, holds to settle, then closes fully at t=32s while RPM is still well above the real ~1350-1600rpm cutoff-engage threshold. Firmware is expected to set FuelOffCoast (iram[23h].5) and cut injection; CL physics then lets RPM coast down under friction alone (see var_interrupt_gen_cl.v) until firmware clears FuelOffCoast near the real ~900-1200rpm reintroduction band and RPM restabilizes at idle. fuel_range omitted — no single steady-state applies across the open/cut/reintroduce trajectory (same reasoning as ramp_to_6000_knock).'},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
-    'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True},
-    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True,
+                          'fuel_floor_after_ase':8.0,
+                          'notes':'AFM open circuit has no dedicated DTC in this firmware (unlike the KLR-side '
+                                  'self-test faults) — afm_raw pegs at 0xff and the firmware just massively '
+                                  'over-fuels as a result. A real scan tool would not read afm_raw directly '
+                                  'either, so the diagnostic here is the same one a real tech would use: '
+                                  'injector pulse width staying way above normal idle (~2-3ms) the whole time '
+                                  'the fault is present, confirmed via fuel_floor_after_ase requiring every '
+                                  'post-ASE snapshot to exceed 8ms (real run: consistently ~14ms), not just a '
+                                  'tail-window average that could pass on a transient blip.'},
+    'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x41, 'ISVIntegralLo(7D)')],
+                          'notes':'coolant_fail barely moves idle fueling (both baseline and this fault are '
+                                  'already past cold-start enrichment), so fuel_range alone cannot prove the '
+                                  'fault fired. iram[0x7D] is the ISV (idle speed valve) PID integral term, low '
+                                  'byte — a genuine downstream symptom, not raw sensor readback: the closed-loop '
+                                  'idle controller settles at a different integral value to hold 840rpm because '
+                                  'the false-hot coolant reading skews the enrichment/mixture target. Shifts '
+                                  'from 0x3B (baseline) to 0x41 for this fault, untouched by tps_fail.'},
+    'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x72, 'ISVIntegralLo(7D)')],
+                          'notes':'Same reasoning as coolant_fail — fuel_range alone does not prove the fault. '
+                                  'The same ISV integral term (iram[0x7D]) shifts from 0x3B (baseline) to 0x72 '
+                                  'for this fault (a much larger shift than coolant_fail\'s 0x41, consistent '
+                                  'with this firmware weighting intake-air-temp correction more heavily than '
+                                  'coolant in the idle mixture target).'},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'lean_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -48,7 +76,17 @@ TESTS = {
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
-    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
+    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x16, 0x80, 'ADC_TPS(16)')],
+                          'notes':'The real fault signature (fuel_hb/load spiking right after ASE ends) is '
+                                  'transient and already gone by the tail window fuel_range checks — TPS_FIXED '
+                                  '=0x80 has faded back to a near-normal idle fuel_range by the last 30% of '
+                                  'this 5s test, so that check alone cannot prove the fault fired either. '
+                                  'iram[0x16] is ADC_TPS itself, i.e. the raw sensor value TPS_FIXED forces — '
+                                  'unlike coolant_fail/airtemp_fail\'s iram[0x7D] (a downstream ISV-controller '
+                                  'symptom), this mostly proves the harness override reached the firmware '
+                                  'rather than an independent consequence of the fault; kept as a sanity check '
+                                  'since no better downstream signature has been found yet for this one.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
@@ -550,6 +588,17 @@ def parse_ds(line):
         'load_idx': load_idx,
         'o2_val': o2_val,
         'o2_b26': o2_b26,
+        # Found by diffing full iram dumps between fault runs and
+        # warm_idle_5s (see PR discussion) — iram[0x4D] (injection event
+        # counter) and iram[0x6B] (stack memory) were ruled out the same
+        # way: real but not fault-specific.
+        'iram_0x7d': b(0x7D),  # ISV (idle speed valve) PID integral term,
+                                # low byte — shifts for BOTH coolant_fail
+                                # (0x3B->0x41) and airtemp_fail
+                                # (0x3B->0x72), untouched by tps_fail
+        'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
+                                # TPS_FIXED's value (0x85->0x80),
+                                # untouched by either thermal fault
     }
 
 
@@ -917,6 +966,124 @@ def validate(test_name, logpath, dme_file=None):
             m = re.search(r't=(\d+)', t_fc)
             if m:
                 infos.append(f"FuelCut→end={m.group(1)}ms")
+
+    # ── 5b. Late fuel cut (confirms a genuine mid-test overrun/coast event
+    # actually engaged, distinct from the SKIP_LAMBDA_WARMUP seed's own
+    # forced FuelOffCoast clear that every idle test already shows at boot)
+    late_after_ms = exp.get('require_late_fuelcut_after_ms')
+    if late_after_ms is not None:
+        late_cuts = []
+        for p in phases:
+            if 'FUEL CUT begin' in p:
+                m = re.search(r't=(\d+)', p)
+                if m and int(m.group(1)) >= late_after_ms:
+                    late_cuts.append(int(m.group(1)))
+        if not late_cuts:
+            fails.append(f"No FUEL CUT begin after t={late_after_ms}ms — overrun cutoff never engaged")
+        else:
+            infos.append(f"Overrun FuelCut@{late_cuts[0]}ms")
+
+            def rpm_near(ms):
+                candidates = [r for r in rows if r['rpm'] > 0]
+                if not candidates:
+                    return None
+                return min(candidates, key=lambda r: abs(r['t'] - ms))['rpm']
+
+            # Engage RPM: the real DME only cuts fuel above ~1350-1600rpm —
+            # confirms the cutoff didn't fire prematurely at a lower RPM.
+            engage_min = exp.get('overrun_engage_rpm_min')
+            if engage_min is not None:
+                rpm_engage = rpm_near(late_cuts[0])
+                if rpm_engage is None:
+                    warns.append("No RPM snapshot near overrun engage to check overrun_engage_rpm_min")
+                elif rpm_engage < engage_min:
+                    fails.append(f"Overrun cutoff engaged at {rpm_engage}rpm, below required minimum "
+                                 f"{engage_min}rpm — cutoff fired too low/premature")
+                else:
+                    infos.append(f"Engage RPM={rpm_engage} ✓ (>{engage_min})")
+
+            # Reintroduction RPM: the real DME turns injectors back on
+            # around ~900-1200rpm to prevent a stall — confirms fuel
+            # wasn't left cut too long (stall risk) or reintroduced too
+            # early (still coasting well above idle).
+            reintro_range = exp.get('overrun_reintro_rpm_range')
+            if reintro_range is not None:
+                end_ms = None
+                for p in phases:
+                    if 'FUEL CUT end' in p:
+                        m = re.search(r't=(\d+)', p)
+                        if m and int(m.group(1)) > late_cuts[0]:
+                            end_ms = int(m.group(1))
+                            break
+                if end_ms is None:
+                    warns.append("No FUEL CUT end after the overrun engage — can't check overrun_reintro_rpm_range")
+                else:
+                    rpm_reintro = rpm_near(end_ms)
+                    lo, hi = reintro_range
+                    if rpm_reintro is None:
+                        warns.append("No RPM snapshot near overrun reintroduction to check overrun_reintro_rpm_range")
+                    elif not (lo <= rpm_reintro <= hi):
+                        fails.append(f"Overrun cutoff reintroduced fuel at {rpm_reintro}rpm, "
+                                     f"outside expected {lo}-{hi}rpm band")
+                    else:
+                        infos.append(f"Reintro RPM={rpm_reintro} ✓ ({lo}-{hi})")
+
+    # ── 6a. Persistent-fault fuel floor — for faults that a real scan
+    # tool can only diagnose indirectly (injector pulse width / fuel
+    # trim), since raw sensor voltage isn't always exposed. Unlike the
+    # steady-state check below (last 30% of snapshots only), this
+    # requires EVERY snapshot after AFTER-START ENRICH ends to already
+    # show the fault — proving it's a persistent, repeatable symptom
+    # rather than something that only happens to land in the tail
+    # window.
+    fuel_floor_after_ase = exp.get('fuel_floor_after_ase')
+    if fuel_floor_after_ase is not None:
+        t_end_ev = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_ase_end = re.search(r't=(\d+)', t_end_ev)
+        if not m_ase_end:
+            warns.append("fuel_floor_after_ase requested but AFTER-START ENRICH end never fired")
+        else:
+            ase_end_ms = int(m_ase_end.group(1))
+            post_ase = [r for r in rows if r['t'] >= ase_end_ms and r['fuel_actual'] > 0]
+            if not post_ase:
+                warns.append("No injected-fuel snapshots after ASE end to check fuel_floor_after_ase")
+            else:
+                low = [r for r in post_ase if r['fuel_actual'] < fuel_floor_after_ase]
+                if low:
+                    worst = min(r['fuel_actual'] for r in low)
+                    fails.append(f"Fuel dropped below diagnostic floor {fuel_floor_after_ase}ms after ASE end "
+                                 f"({len(low)}/{len(post_ase)} snapshots, worst {worst:.3f}ms) — "
+                                 f"fault not persistently detectable via fuel/injector pulse width")
+                else:
+                    infos.append(f"Fuel >{fuel_floor_after_ase}ms for all {len(post_ase)} post-ASE snapshots ✓")
+
+    # ── 6b. Fault-specific internal-state markers — for faults with no
+    # dedicated DTC and no strong steady-state fuel signature (coolant_fail
+    # / airtemp_fail barely move idle fueling), found by diffing full iram
+    # dumps against warm_idle_5s: iram[0x7D] and iram[0x16] each shift to
+    # a fixed, repeatable value for specific faults (see field comments in
+    # parse_ds). Each entry is (offset, expected_byte, label); requires
+    # every post-ASE snapshot to match exactly.
+    expect_iram_bytes = exp.get('expect_iram_bytes')
+    if expect_iram_bytes:
+        t_end_ev = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_ase_end = re.search(r't=(\d+)', t_end_ev)
+        if not m_ase_end:
+            warns.append("expect_iram_bytes requested but AFTER-START ENRICH end never fired")
+        else:
+            ase_end_ms = int(m_ase_end.group(1))
+            post_ase_rows = [r for r in rows if r['t'] >= ase_end_ms]
+            if not post_ase_rows:
+                warns.append("No post-ASE snapshots to check expect_iram_bytes")
+            else:
+                for offset, expected, label in expect_iram_bytes:
+                    field = f'iram_0x{offset:02x}'
+                    vals = sorted(set(r[field] for r in post_ase_rows))
+                    if vals == [expected]:
+                        infos.append(f"{label}=0x{expected:02x} ✓ (stable, {len(post_ase_rows)} snapshots)")
+                    else:
+                        fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
+                                     f"snapshots, saw {['0x%02x' % v for v in vals]}")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
     # fuel_range is optional — tests without a single, meaningful

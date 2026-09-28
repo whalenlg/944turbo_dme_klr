@@ -30,6 +30,7 @@
 
 // --- Idle tests ---
 //`define TEST_WARM_IDLE
+//`define TEST_WARM_IDLE_5S
 //`define TEST_COLD_START
 //`define TEST_HOT_IDLE
 //`define TEST_IDLE_BATTERY_LOW
@@ -102,6 +103,31 @@
   `define RPM_RAMP_PCT 10
   `ifndef SIM_TIME
   `define SIM_TIME  60000000000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
+// TEST_WARM_IDLE_5S: same idle target as TEST_WARM_IDLE, but with the
+// RPM_RAMP_PCT=25 / SIM_TIME=5s the sensor-fault idle tests (coolant_fail,
+// airtemp_fail, afm_open_circuit, tps_fail) all use — a plain -D override
+// of warm_idle's own RPM_RAMP_PCT doesn't work since that block sets it
+// unconditionally (not `ifndef`-guarded), so it needs its own macro to
+// give a directly comparable baseline log for those 4 tests.
+`ifdef TEST_WARM_IDLE_5S
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `undef  RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 25
+  `ifndef SIM_TIME
+  `define SIM_TIME  5000000000
   `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
@@ -530,15 +556,27 @@
   `endif
 `endif
 
+// TEST_OVERRUN_CUTOFF: real deceleration fuel cut-off. Driver holds the
+// throttle open long enough to settle near 2100rpm (AFM_CL_TARGET=0x5F,
+// same calibrated target as TEST_CL_RAMP_TO_2100 — comfortably above the
+// real DME's ~1350-1600rpm cutoff-engage threshold), then lifts off
+// completely at t=32s. That closes the idle switch while RPM is still
+// well above the cutoff band, so the firmware should set FuelOffCoast
+// (iram[23h].5) and cut injection; the CL physics model lets RPM coast
+// down under friction alone while that bit is set (see var_interrupt_
+// gen_cl.v), same as a real engine decelerating with no combustion
+// torque. The firmware is expected to clear FuelOffCoast again near the
+// real ~900-1200rpm reintroduction band and let RPM restabilize at idle.
 `ifdef TEST_OVERRUN_CUTOFF
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 10
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `define AFM_CL_TARGET  8'h5F      // ~2100 RPM — see header note above
   `ifndef SIM_TIME
-  `define SIM_TIME  30000000000
+  `define SIM_TIME  50000000000     // 2s idle + 30s ramp/hold open + throttle
+                                     // closes at t=32s + ~18s coast-down/
+                                     // fuel-reintroduction/re-settle at idle
   `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50
@@ -1282,6 +1320,12 @@ end
         tps_commanded = 8'h28;         // idle until engine settled
         #2_000_000_000;                // 2000ms — past fuel cut and ASE
         tps_commanded = `AFM_CL_TARGET;   // driver presses the gas
+`ifdef TEST_OVERRUN_CUTOFF
+        #30_000_000_000;               // hold open to t=32s — long enough to
+                                        // fully settle near the target (see
+                                        // TEST_CL_RAMP_TO_2100's own 30s figure)
+        tps_commanded = 8'h28;          // driver lifts off — coast begins
+`endif
     end
 
     // AFM commanded target -- triggers on TPS's OWN event, but an
@@ -1300,6 +1344,10 @@ end
         #2_000_000_000;
         #AFM_LAG_NS;
         afm_commanded = `AFM_CL_TARGET;
+`ifdef TEST_OVERRUN_CUTOFF
+        #30_000_000_000;
+        afm_commanded = 8'h28;
+`endif
     end
 
     // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
