@@ -119,45 +119,41 @@ TESTS = {
                                   'behavior, not an undetected fault. fuel_range left wide since nothing here '
                                   'constrains it meaningfully.'},
     # SPEED_SENSOR_LOSS: last piece of the ref/speed sensor comparison.
-    # Real run is dramatic — confirmed via the raw ports field, iram
-    # dump, and DME: [STATUS] lines, not just the generic checks:
-    #   - speed_sensor pin genuinely freezes at 1 at t=3500ms (fault
-    #     injection confirmed); reference_sensor keeps toggling normally
-    #     the whole time (correctly unaffected — separate signal).
-    #   - A_2_dme_relay (P1.2) drops from latched-low to high at
-    #     t=3600ms — 100ms after the fault — and never re-latches for
-    #     the rest of the test. The DME de-energizes its own
-    #     self-latching power relay.
-    #   - Full iram dump collapses from 97/128 nonzero bytes at
-    #     t=3400ms (normal running firmware) to 41/128 at t=3600ms,
-    #     mostly zeroed from offset ~16 onward — a textbook post-reset
-    #     signature — and stays in that same collapsed state through
-    #     t=7900ms (never recovers within the test).
-    #   - IGN_OUT and injection both stop entirely from ~t=3474ms
-    #     onward, consistent with the DME having crashed/reset rather
-    #     than continuing to run in some degraded mode.
-    # All of this: the DME appears to crash/reset within ~100ms of
-    # losing the speed/tooth signal and never recovers. The several
-    # existing universal-check FAILs (relay, IGN_OUT, TPS-idle-bucket,
-    # ADC_BATTERY-nominal) are the accurate, intended demonstration of
-    # this real consequence, not test bugs — left as-is rather than
-    # suppressed, same as cl_ramp_to_3000_KLR_BATT_DISCONNECTED's
-    # IGN_OUT FAIL and cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW's
-    # WOT-bucket FAIL.
+    # ROOT CAUSE CONFIRMED (not just symptoms): grepping the raw log for
+    # DME: [PHASE] "INTERRUPT BLOCK set (watchdog or power-on reset)"
+    # shows it firing 115 times between t=3527ms and t=7965ms, every
+    # 38-39ms with essentially zero variance — a continuous hardware
+    # watchdog-reset loop, not a one-time crash. The DME's main loop
+    # evidently blocks somewhere waiting for a speed_sensor edge; with
+    # that edge never coming, it starves its own watchdog kick, resets,
+    # immediately blocks on the same missing edge again, and repeats —
+    # forever, for as long as the signal stays lost. This fully explains
+    # every other symptom: prpm reads 0 (never gets far enough into a
+    # boot cycle to measure RPM), IGN_OUT/injection never resume (never
+    # reaches that code before the next reset), the relay keeps dropping
+    # (never reaches the latch code either), and the iram dump shows a
+    # collapsed-but-still-changing pattern (each reset cycle makes a
+    # little partial progress re-initializing a few bytes before the
+    # next reset wipes it again) rather than a single static crash
+    # state. Also closes the loop on ref_sensor_loss's benign result:
+    # the blocking wait is specifically on the speed_sensor edge, not
+    # the reference_sensor edge, so losing only the reference signal
+    # never triggers this starvation path.
     'speed_sensor_loss': {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
-                          'notes':'Real run: DME crashes/resets within ~100ms of losing the speed/tooth signal '
-                                  '(t=3500ms) and never recovers for the rest of the test — confirmed via the '
-                                  'raw ports field (relay drops at t=3600ms, never re-latches), a full iram '
-                                  'dump (collapses from 97/128 to 41/128 nonzero bytes right at the relay '
-                                  'drop, a post-reset signature), and IGN_OUT/injection both stopping entirely. '
-                                  'This is the real, dramatic consequence of losing continuous RPM measurement '
-                                  '— unlike ref_sensor_loss (reference-only loss is benign), the speed signal '
-                                  'appears essential to the firmware staying alive at all. The universal-check '
-                                  'FAILs this produces (relay, IGN_OUT, TPS-idle-bucket, ADC_BATTERY-nominal) '
-                                  'are the correct, informative signature of this crash — left failing '
-                                  'deliberately rather than suppressed. Reproduced identically under Verilator '
-                                  '(same relay-drop time, same IGN_OUT gap, same RAM-collapse signature) — not '
-                                  'an Icarus-specific artifact.'},
+                          'notes':'Real run, root cause confirmed: losing the speed/tooth signal puts the DME '
+                                  'into a continuous watchdog-reset loop — "INTERRUPT BLOCK set (watchdog or '
+                                  'power-on reset)" fires 115 times every 38-39ms from t=3527ms through the end '
+                                  'of the test, not a single crash-and-stay-crashed event. The DME\'s main loop '
+                                  'evidently blocks waiting for a speed_sensor edge that never arrives, starving '
+                                  'its own watchdog kick each cycle. This explains every other symptom: relay '
+                                  'never re-latches, IGN_OUT/injection never resume, prpm reads 0, and iram '
+                                  'shows a collapsed-but-still-changing pattern (partial re-init progress each '
+                                  'reset cycle before the next reset wipes it) rather than a static crash state. '
+                                  'The universal-check FAILs this produces (relay, IGN_OUT, TPS-idle-bucket, '
+                                  'ADC_BATTERY-nominal) are the correct, informative signature of this reset '
+                                  'loop — left failing deliberately rather than suppressed. Reproduced '
+                                  'identically under Verilator (same reset cadence) — not an Icarus-specific '
+                                  'artifact.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
