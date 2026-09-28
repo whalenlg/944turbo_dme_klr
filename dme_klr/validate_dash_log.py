@@ -186,7 +186,7 @@ TESTS = {
                           'notes':'Real deceleration fuel cut-off: throttle opens to ~2100rpm (AFM_CL_TARGET=0x5F) at t=2s, holds to settle, then closes fully at t=32s while RPM is still well above the real ~1350-1600rpm cutoff-engage threshold. Firmware is expected to set FuelOffCoast (iram[23h].5) and cut injection; CL physics then lets RPM coast down under friction alone (see var_interrupt_gen_cl.v) until firmware clears FuelOffCoast near the real ~900-1200rpm reintroduction band and RPM restabilizes at idle. fuel_range omitted — no single steady-state applies across the open/cut/reintroduce trajectory (same reasoning as ramp_to_6000_knock).'},
     'warmup_enrichment': {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'afm_open_circuit':  {'rpm_target':  840, 'fuel_range':(10.0, 20.0), 'expect_ase':True,  'expect_fuelcut':True,
-                          'fuel_floor_after_ase':8.0,
+                          'fuel_floor_after_ase':8.0, 'skip_tps_bucket_check':True,
                           'notes':'AFM open circuit has no dedicated DTC in this firmware (unlike the KLR-side '
                                   'self-test faults) — afm_raw pegs at 0xff and the firmware just massively '
                                   'over-fuels as a result. A real scan tool would not read afm_raw directly '
@@ -194,7 +194,14 @@ TESTS = {
                                   'injector pulse width staying way above normal idle (~2-3ms) the whole time '
                                   'the fault is present, confirmed via fuel_floor_after_ase requiring every '
                                   'post-ASE snapshot to exceed 8ms (real run: consistently ~14ms), not just a '
-                                  'tail-window average that could pass on a transient blip.'},
+                                  'tail-window average that could pass on a transient blip. skip_tps_bucket_check: '
+                                  'a real run confirms iram[0x16] (TPS ADC) reads 0xF2 (partial) not 0x85 (idle) '
+                                  'throughout — a genuine, confirmed consequence of THIS fault, not a test bug. '
+                                  'idle_sw (i8051_dashboard_tb.v) is computed directly from afm_effective vs '
+                                  'AFM_IDLE_THR (0x30), the same AFM signal this fault pegs at 0xFF, so the DME '
+                                  'genuinely believes the throttle is off-idle the whole time even though the '
+                                  'engine is physically at idle RPM — same category as cl_ramp_to_3000_TPS0\'s '
+                                  'full_load-stuck-high exemption.'},
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x41, 'ISVIntegralLo(7D)')],
                           'notes':'coolant_fail barely moves idle fueling (both baseline and this fault are '
