@@ -124,8 +124,17 @@ TESTS = {
                           'expect_no_knock_pulse':True, 'expect_ram33_value':0x23,
                           'notes':'Same as ramp_to_6000_knock, but fake_knock self-test path blocked (knock_gen.v TEST_KNOCK_FAKE_BLOCKED) and no knock_sensor pulses — neither path can ever trigger a knock detection. KLR ram[57] is a boost-reduction level/amount (not a per-event counter) — not asserted here pending its real semantics. ram[33]=0x23 expected — self-test-fault code the firmware correctly reports when fake_knock path is blocked'},
     'knock_sensor_short_to_ground':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'expect_no_knock_pulse':True,
-                          'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 (short-to-ground fault, not pulsing) while fake_knock self-test continues normally — KLR ram[57] (boost-reduction level, not a counter) behavior from the still-active self-test path not yet characterized, so not asserted here'},
+                          'expect_no_knock_pulse':True, 'expect_ram33_value':0x11,
+                          'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 '
+                                  '(short-to-ground fault, not pulsing) while fake_knock self-test continues '
+                                  'normally. Confirmed via a real run: ram[33]=0x11 fires at t~2710ms — the '
+                                  'SAME code ramp_to_6000_knock expects for genuine, legitimate knock '
+                                  'detection. A shorted-to-ground knock sensor is apparently indistinguishable '
+                                  'from real knock to this firmware\'s self-test logic via ram[33] alone — a '
+                                  'real (if unfortunate) automotive failure mode: a dead-shorted sensor can '
+                                  'cause spurious timing retard the same as actual knock would. KLR ram[57] '
+                                  '(boost-reduction level, not a counter) behavior from the still-active '
+                                  'self-test path not yet characterized, so not asserted here.'},
     # dwell_cap raised from 90 to 95 — dwell scales up with actual settled
     # RPM (documented trend elsewhere: ~90@6000, ~96@6440, ~97@6524
     # redline), and this test settles at ~6313rpm, above ramp_to_6200's old
