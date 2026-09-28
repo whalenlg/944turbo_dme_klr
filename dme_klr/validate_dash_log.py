@@ -155,7 +155,9 @@ TESTS = {
                                   'appears essential to the firmware staying alive at all. The universal-check '
                                   'FAILs this produces (relay, IGN_OUT, TPS-idle-bucket, ADC_BATTERY-nominal) '
                                   'are the correct, informative signature of this crash — left failing '
-                                  'deliberately rather than suppressed.'},
+                                  'deliberately rather than suppressed. Reproduced identically under Verilator '
+                                  '(same relay-drop time, same IGN_OUT gap, same RAM-collapse signature) — not '
+                                  'an Icarus-specific artifact.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
@@ -466,21 +468,23 @@ TESTS = {
     # actually reaching the DME (P1.5) is stuck low, e.g. a broken
     # connector between the two ECUs. No KLR self-diagnostic fires
     # (nothing is wrong from the KLR's own perspective), so no DTC
-    # expected. The universal "6000-target test must show WOT
-    # (iram[0x16]=0xCC)" check (item 2d) is EXPECTED to legitimately
-    # FAIL here — that IS the demonstration of the fault: the DME
-    # never correctly recognizes WOT even though the engine genuinely
-    # reaches it, because the only signal that would tell it so never
-    # arrives. Not a bug in the test or an unexpected gap.
+    # expected. Confirmed via a real run: RPM genuinely reaches 6198
+    # (real WOT range), but iram[0x16] (TPS ADC) only ever shows
+    # idle(0x85)/partial(0xF2), never WOT(0xCC) — the DME truly never
+    # recognizes full load once this wire fails. The universal
+    # 6000-target TPS-ADC-bucket check (item 2d) legitimately FAILs on
+    # this, which IS the demonstration of the fault, not a test bug.
     'cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, but the KLR full_load wire (P1.5) reaching the DME '
                                   'is stuck low the whole run regardless of real throttle position — the KLR '
-                                  'itself computes full_load correctly, it just never reaches the DME. Expected '
-                                  'to legitimately FAIL the universal 6000-target TPS-ADC-bucket check (never '
-                                  'sees WOT/0xCC) — that IS the intended demonstration that the DME can never '
-                                  'recognize WOT once this wire fails, not a test bug. No DTC expected since '
-                                  'nothing is wrong from the KLR\'s own diagnostic perspective.'},
+                                  'itself computes full_load correctly, it just never reaches the DME. Confirmed '
+                                  'via a real run: legitimately FAILs the universal 6000-target TPS-ADC-bucket '
+                                  'check (RPM reaches 6198, real WOT range, but iram[0x16] only ever shows '
+                                  '0x85/0xf2, never 0xCC) — that IS the intended demonstration that the DME can '
+                                  'never recognize WOT once this wire fails, not a test bug. No DTC expected '
+                                  'since nothing is wrong from the KLR\'s own diagnostic perspective — confirmed, '
+                                  'KLR ram[33] stayed 0.'},
 
     # cl_condition_cycle / cl_condition_cycle_idle: 6-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC, battery), each 1s nominal
