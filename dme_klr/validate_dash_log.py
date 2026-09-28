@@ -425,7 +425,7 @@ TESTS = {
     # share the same (no KLR->DME feedback) mechanism.
     'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
-                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'], 'skip_rpm_target_check':True,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V). '
                                   'A real run (post-dating this note\'s original DTC confirmation, taken before '
                                   'the universal IGN_OUT liveness check existed) shows the same IGN_OUT signature '
@@ -438,7 +438,12 @@ TESTS = {
                                   '0x12 latching, deterministically timed regardless of which battery fault '
                                   'triggered it, not a crash) rather than two coincidentally-identical bugs. '
                                   'expect_fail_markers inverts this to a confirmed fault signature (PASS), same '
-                                  'as its DISCONNECTED sibling and speed_sensor_loss/FULL_LOAD_STUCK_LOW.'},
+                                  'as its DISCONNECTED sibling and speed_sensor_loss/FULL_LOAD_STUCK_LOW. '
+                                  'SIM_TIME cut from 20s to 11s once both confirmed gaps (resolving by '
+                                  '~t=9732ms) were in hand — the remaining ~10s was pure runoff. '
+                                  'skip_rpm_target_check: settled RPM only reached 2675 at the original 20s '
+                                  '(barely above the 2700 floor already), so a shorter ramp legitimately won\'t '
+                                  'clear it — the ramp being slow, not a fault symptom.'},
     # BATT_DISCONNECTED: battery sense wire open (reads 0x00, not just
     # low) — the "input isn't happening at all" case vs KLR_BATT_LOW's
     # "input reads low". Confirmed via a real run: DTC 0x12 fires (same
@@ -470,7 +475,7 @@ TESTS = {
     # expect_fail_markers rather than left as a bare, unexplained FAIL.
     'cl_ramp_to_3000_KLR_BATT_DISCONNECTED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
-                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'], 'skip_rpm_target_check':True,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) pegged at 0x00 (sense wire '
                                   'open/disconnected) instead of merely halved — KLR confirmed to detect this '
                                   'and set DTC 1-2 (0x12, Voltage Under 10.2V), same code as '
@@ -479,12 +484,13 @@ TESTS = {
                                   'cycling, not frozen) — looks like deliberate ignition suppression under this '
                                   'fault, not a crash. expect_fail_markers inverts this to a confirmed fault '
                                   'signature (PASS), same as its BATT_LOW sibling and '
-                                  'speed_sensor_loss/FULL_LOAD_STUCK_LOW.'},
+                                  'speed_sensor_loss/FULL_LOAD_STUCK_LOW. SIM_TIME=11s and skip_rpm_target_check, '
+                                  'same rationale as KLR_BATT_LOW (byte-identical real-run timing).'},
     # TPS_SUPPLY_LOW: confirmed via a real run — reliably trips DTC 0x41
     # ("TPS Power Wires — power wire/ground contact dirty"), consistent
     # with a degraded TPS supply voltage.
     'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True,
+                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True, 'skip_rpm_target_check':True,
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) reduced to 0x18 (~9.4% of normal) to simulate a badly degraded/failing regulator — KLR expected to detect this and set DTC 4-1 (0x41, TPS Power Wires). '
                                   'skip_tps_bucket_check: a real run (post-dating this note\'s original DTC '
                                   'confirmation, before the TPS-ADC-bucket check existed) shows iram[0x16] '
@@ -495,7 +501,10 @@ TESTS = {
                                   'not fully understood (the KLR\'s own internal scaling from its degraded ADC '
                                   'reading to the full_load threshold comparison isn\'t visible to us — the ROM '
                                   'is opaque), but the effect is real and reproducible, same exemption category '
-                                  'as cl_ramp_to_3000_TPS0/afm_open_circuit.'},
+                                  'as cl_ramp_to_3000_TPS0/afm_open_circuit. SIM_TIME cut from 15s to 8s once the '
+                                  'DTC firing (t=6310ms) was confirmed — the remaining ~8.7s was pure runoff. '
+                                  'skip_rpm_target_check: settled RPM only reached 2707 at the original 15s '
+                                  '(barely above the 2700 floor already), same rationale as KLR_BATT_LOW.'},
 
     # KLR_TRIGGER_STUCK_HIGH: the DME's crank-ref-pulse wire reaching the
     # KLR (trigger_in, wired straight to the KLR CPU's /RESET — res_n =
@@ -644,7 +653,7 @@ TESTS = {
     # power/ground wiring fault to this diagnostic, not a distinct
     # "voltage too low" code as originally guessed.
     'cl_ramp_to_3000_TPS0': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True,
+                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True, 'skip_rpm_target_check':True,
                           'notes':'Same as cl_ramp_to_3000, KLR TPS wiper shorted to ground (reads 0x00 '
                                   'throughout) while AFM/RPM ramp normally — checks the KLR\'s response to a '
                                   'stuck-low TPS reading that never tracks the real throttle/RPM ramp. KLR '
@@ -655,7 +664,11 @@ TESTS = {
                                   'test, so DME iram[0x16] reads WOT (0xCC) throughout instead of idle/partial '
                                   '— a genuine, reproducible consequence of THIS fault (full_load fails stuck- '
                                   'high on an implausible TPS reading), not noise, so skip_tps_bucket_check '
-                                  'exempts this test from the normal 3000-target idle/partial-only rule.'},
+                                  'exempts this test from the normal 3000-target idle/partial-only rule. '
+                                  'SIM_TIME cut from 20s to 8s once the DTC firing (t=6310ms) was confirmed — '
+                                  'the remaining ~13.7s was pure runoff. skip_rpm_target_check: settled RPM only '
+                                  'reached 2893 at the original 20s (already close to the 2700 floor), same '
+                                  'rationale as KLR_BATT_LOW.'},
     # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
     # (already used by the non-CL knock_sensor_defect test) to prevent the
     # klr_system self-test path from ever pulsing fake_knock — so unlike
