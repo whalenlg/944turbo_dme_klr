@@ -381,10 +381,12 @@ TESTS = {
                                   'cl_ramp_to_3000_KLR_BATT_DISCONNECTED, with byte-identical timing (gap starts '
                                   't=7106ms, 1587ms, 2 such gaps) despite BATT_LOW only halving the voltage vs '
                                   'DISCONNECTED zeroing it — strongly suggests a shared, severity-independent '
-                                  'root cause (likely the same periodic KLR reset pattern once DTC 0x12 latches, '
-                                  'deterministically timed regardless of which battery fault triggered it) '
-                                  'rather than two coincidentally-identical bugs. Left failing deliberately, '
-                                  'same precedent as its DISCONNECTED sibling.'},
+                                  'root cause (per the closer STATUS-line inspection on the DISCONNECTED sibling: '
+                                  'ign_out held low continuously while the CPU keeps running normally — looks '
+                                  'like deliberate ignition suppression tied to DTC 0x12 latching, '
+                                  'deterministically timed regardless of which battery fault triggered it, not '
+                                  'a crash) rather than two coincidentally-identical bugs. Left failing '
+                                  'deliberately, same precedent as its DISCONNECTED sibling.'},
     # BATT_DISCONNECTED: battery sense wire open (reads 0x00, not just
     # low) — the "input isn't happening at all" case vs KLR_BATT_LOW's
     # "input reads low". Confirmed via a real run: DTC 0x12 fires (same
@@ -394,21 +396,36 @@ TESTS = {
     # iram[0x11] stays nominal (0xD8) throughout — the fault is
     # correctly isolated to the KLR side. That same real run also showed
     # a genuine, reproducible IGN_OUT dropout (2 gaps, 1.6s and 1.0s,
-    # starting at t=7106ms/t=8732ms) that the KLR's own STATUS trace
-    # shows recovering with SP=0 (vs SP=2 normally) right after each gap
-    # — looks like the KLR periodically resets under this fault. Left
-    # failing the universal IGN_OUT liveness check deliberately (per
-    # user) rather than suppressed, since it's not yet established
-    # whether this is intended brownout-style protection or a
-    # testbench/RTL artifact specific to battery=0x00.
+    # starting at t=7106ms/t=8732ms). REVISED characterization after
+    # closer inspection of the interleaved KLR: [STATUS] lines during
+    # the gap: pc cycles through many different values every ~100ms
+    # sample (0xa76, 0x036, 0x306, 0x812, 0x813, 0xd3c, ...) — the CPU
+    # is clearly still running normally, NOT frozen/crashed (the
+    # earlier "SP=0 looks like a reset" read was too hasty — SP=0/1/2
+    # all appear throughout, consistent with the KLR's own by-design
+    # per-ignition-cycle CPU reset (klr_top.v: trigger_in, driven by the
+    # DME's own ignition output, directly resets the CPU every cycle —
+    # see klr_top.v header) continuing on schedule. What's genuinely
+    # suppressed is specifically ign_out itself: klr_phase_monitor.v
+    # keeps re-logging "IGN_OUT deasserted pulse_width=Xms" with X
+    # growing every ~14ms for the full 1.6s span, meaning the pin is
+    # held low continuously while everything else keeps operating. This
+    # looks like the KLR deliberately suppressing ignition output for
+    # an extended span (possibly an intentional undervoltage/misfire
+    # protection response) rather than a crash — but the exact firmware
+    # decision isn't visible without ROM disassembly. Left failing the
+    # universal IGN_OUT liveness check deliberately (per user) rather
+    # than suppressed.
     'cl_ramp_to_3000_KLR_BATT_DISCONNECTED': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
                           'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) pegged at 0x00 (sense wire '
                                   'open/disconnected) instead of merely halved — KLR confirmed to detect this '
                                   'and set DTC 1-2 (0x12, Voltage Under 10.2V), same code as '
-                                  'cl_ramp_to_3000_KLR_BATT_LOW. Known-failing: real run shows a genuine '
-                                  'IGN_OUT dropout (see above) that the universal liveness check correctly '
-                                  'flags — left as-is per user rather than exempted, pending root-cause.'},
+                                  'cl_ramp_to_3000_KLR_BATT_LOW. Known-failing: real run shows ign_out held '
+                                  'low continuously for ~1.6s (see above) while the CPU keeps running normally '
+                                  '(pc actively cycling, not frozen) — looks like deliberate ignition '
+                                  'suppression under this fault, not a crash. Left as-is per user rather than '
+                                  'exempted, pending root-cause.'},
     # TPS_SUPPLY_LOW: confirmed via a real run — reliably trips DTC 0x41
     # ("TPS Power Wires — power wire/ground contact dirty"), consistent
     # with a degraded TPS supply voltage.
