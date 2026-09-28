@@ -370,19 +370,25 @@ run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW \
 # (trigger_in, wired straight to the KLR CPU's /RESET) opens and reads
 # stuck high 3s into the run — the KLR CPU is held in permanent reset
 # and never runs again, regardless of RPM/AFM ramping normally.
+# SIM_TIME=6s (down from an original 20s): a real run confirmed the
+# IGN_OUT-stopped-pulsing signature is already fully established well
+# under 1s after fault onset (t=3000ms) — 6s leaves ~3s of margin for
+# a solid multi-sample fault-injection confirmation without waiting
+# out RPM's slow, fault-unrelated climb toward the 3000 target.
 run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH \
     -DTEST_CL_RAMP_TO_3000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TRIGGER_STUCK_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000
 
 # KLR_IGN_IN_STUCK_HIGH: the DME's tach/ign wire to the KLR (ign_in,
 # drives T1/INT) opens and reads stuck high 3s into the run — the KLR
 # CPU keeps running (trigger_in still resets it each cycle) but the
-# T1/INT-based reading of the DME ign signal is lost.
+# T1/INT-based reading of the DME ign signal is lost. SIM_TIME=6s,
+# same rationale as KLR_TRIGGER_STUCK_HIGH above.
 run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH \
     -DTEST_CL_RAMP_TO_3000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_IGN_IN_STUCK_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000
 
 # cl_ramp_to_3000_TPS0: TPS wiper shorted to ground (reads 0x00 the whole
 # run) while AFM/RPM ramp normally through the same cl_ramp_to_3000
@@ -970,8 +976,8 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_KLR_BATT_LOW) run_test cl_ramp_to_3000_KLR_BATT_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_BATT_DISCONNECTED) run_test cl_ramp_to_3000_KLR_BATT_DISCONNECTED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_BATT_DISCONNECTED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
-        cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TRIGGER_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
-        cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_IGN_IN_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TRIGGER_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
+        cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_IGN_IN_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
         cl_ramp_to_3000_TPS0) run_test cl_ramp_to_3000_TPS0 $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SHORT_TO_GROUND -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
