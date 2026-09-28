@@ -239,18 +239,29 @@ TESTS = {
     # condition as ramp_to_redline_KLR_TPS_HIGH (which confirms DTC 4-2 /
     # 0x42, TPS Angle Sensor: Voltage Too High fires for this fault
     # family), just triggered via a direct open-circuit override instead
-    # of removing the high-RPM clamp. A real 5s run never latched the
-    # DTC (ram[33] stayed 0 the whole test) — ramp_to_redline_KLR_TPS_HIGH
-    # is the only other test that trips this DTC and it runs 10s, so
-    # SIM_TIME was doubled to 10s here too; require_ram33_value kept
-    # pending confirmation against a real run at the new duration.
+    # of removing the high-RPM clamp. Confirmed KNOWN-FAILING at 10s too
+    # (still never latches). Root cause narrowed further, not just
+    # re-confirmed: the KLR's own STATUS trace shows tps_raw reaching
+    # 0xff and full_load genuinely asserting (71/100 samples) — the
+    # override DOES reach the firmware and DOES correctly cross the
+    # KLR's basic full_load threshold comparison. It's specifically the
+    # DTC 4-2 self-test/plausibility diagnostic that never fires,
+    # despite the same underlying value tripping a different, simpler
+    # comparison. Since the only real difference between this test and
+    # ramp_to_redline_KLR_TPS_HIGH (which DOES trip DTC 4-2 quickly, at
+    # t=2610ms) is RPM level, this strengthens the RPM-gating hypothesis
+    # over "just needs more time" or "override not reaching firmware" —
+    # next real step to confirm would be forcing this same override
+    # during an actual RPM ramp instead of at idle.
     'tps_open_circuit':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'require_ram33_value':0x42,
                           'notes':'Same as warm_idle_5s but SIM_TIME=10s, KLR TPS wiper forced to 0xFF (open '
                                   'circuit / pulled to 5V rail) regardless of throttle position — KLR expected '
                                   'to detect this and set DTC 4-2 (0x42, TPS Angle Sensor: Voltage Too High), by '
-                                  'analogy with ramp_to_redline_KLR_TPS_HIGH. A 5s run did not trigger it; not '
-                                  'yet confirmed at 10s against a real run.'},
+                                  'analogy with ramp_to_redline_KLR_TPS_HIGH. Confirmed known-failing at 10s: '
+                                  'DTC never latches even though the KLR internally sees tps_raw=0xff and '
+                                  'correctly asserts full_load — see above for the RPM-gating hypothesis this '
+                                  'points at.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
