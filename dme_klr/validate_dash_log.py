@@ -31,7 +31,12 @@ TESTS = {
     'warm_idle_5s':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
+    'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35,
+                          'notes':'Confirmed via a real run: normal idle dwell is ~0x11-0x12 (17-18½t), '
+                                  'idle_battery_low (_BATTERY=0x8C vs baseline\'s 0xD8) settles at ~0x29-0x2b '
+                                  '(41-43½t) — the firmware genuinely lengthens coil charge time to compensate '
+                                  'for lower voltage. dwell_min=35 sits with real margin on both sides, unlike '
+                                  'fuel_range which barely moves for the temperature/fuel-quality faults.'},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x33, 'ISVIntegralLo(7D)')],
                           'notes':'High altitude (_ALTITUDE=0x00 vs baseline\'s 0xF8) barely moves idle fueling '
