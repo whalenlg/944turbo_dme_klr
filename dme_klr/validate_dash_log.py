@@ -75,13 +75,25 @@ TESTS = {
     # circuit / pulled to the 5V rail) — past the FQS7 ceiling (0xA7,
     # the worst real value the FQS0-7 sweep calibrates), distinct from
     # idle_poor_fuel's plausible-but-worst-case 0xA7. No KLR involvement
-    # (fuel quality is DME-only), so no DTC expected. Not yet confirmed
-    # against a real run.
+    # (fuel quality is DME-only), so no DTC expected. Confirmed via a
+    # real run: byte-diff against warm_idle_5s at matching post-ASE
+    # timestamps found iram[0x17] (ADC_FUELQUAL raw readback, 0xFF vs
+    # baseline's 0x00 — direct override) AND iram[0x7D] (ISV integral
+    # term, 0x4F vs baseline's 0x3B) — unlike altitude_disconnected,
+    # this fault DOES move the ISV integral term, and to the exact same
+    # value idle_poor_fuel's plausible 0xA7 already produces, suggesting
+    # the firmware's fuel-quality compensation saturates at the same
+    # worst-case correction regardless of how far out of range the
+    # reading is.
     'fuel_qual_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x17, 0xFF, 'ADC_FUELQUAL(17)'), (0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Same as idle_poor_fuel but _FUEL_QUAL=0xFF (open circuit) instead of 0xA7 '
                                   '(plausible worst-quality reading) — checks the DME\'s response to an '
                                   'implausible fuel-quality reading vs a merely worst-case one. No DTC expected '
-                                  '(no KLR-side fuel-quality channel exists). Not yet confirmed against a real run.'},
+                                  '(no KLR-side fuel-quality channel exists). iram[0x7D] shifts to the same '
+                                  '0x4F value idle_poor_fuel produces — a real, independent downstream '
+                                  'signature, same category as coolant_fail/airtemp_fail/idle_high_alt/'
+                                  'idle_poor_fuel.'},
     # REF_SENSOR_LOSS: reference (crank position) sensor wire breaks at
     # t=3500ms (well after ASE ends) — DME's P3.2/INT0 pin stops seeing
     # pulses for the rest of the test, while the underlying engine model
@@ -781,6 +793,8 @@ def parse_ds(line):
                                 # forces this to _BATTERY's value (0x8C)
         'iram_0x14': b(0x14),  # ADC_ALTITUDE — nominal 0xF8, altitude_disconnected
                                 # forces this to _ALTITUDE's value (0xFF)
+        'iram_0x17': b(0x17),  # ADC_FUELQUAL — nominal 0x00, fuel_qual_disconnected
+                                # forces this to _FUEL_QUAL's value (0xFF)
     }
 
 
