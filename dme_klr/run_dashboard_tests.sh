@@ -651,6 +651,14 @@ run_test ref_sensor_loss \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
 
+# speed_sensor_loss: same mechanism as ref_sensor_loss, but for the
+# speed/tooth sensor (P3.3/INT1) instead of the reference (crank
+# position) sensor.
+run_test speed_sensor_loss \
+    -DTEST_SPEED_SENSOR_LOSS \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
+
 run_test ac_on_idle \
     -DTEST_AC_ON_IDLE \
     -DAC_COMP_ON \
@@ -977,6 +985,7 @@ if [ -n "$1" ]; then
         idle_poor_fuel)   run_test idle_poor_fuel   $IARG -DTEST_IDLE_POOR_FUEL   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         fuel_qual_disconnected) run_test fuel_qual_disconnected $IARG -DTEST_FUEL_QUAL_DISCONNECTED -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
         ref_sensor_loss) run_test ref_sensor_loss $IARG -DTEST_REF_SENSOR_LOSS -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
+        speed_sensor_loss) run_test speed_sensor_loss $IARG -DTEST_SPEED_SENSOR_LOSS -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
         ac_on_idle)       run_test ac_on_idle       $IARG -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=50000000000   ;;
         warmup_enrichment) run_test warmup_enrichment $IARG -DTEST_WARMUP_ENRICHMENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSIM_TIME=60000000000 ;;
@@ -1025,7 +1034,7 @@ if [ -n "$1" ]; then
             echo "Available tests:"
             echo "  Idle:        warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt"
             echo "               idle_poor_fuel ac_on_idle tps_open_circuit altitude_disconnected"
-            echo "               fuel_qual_disconnected ref_sensor_loss"
+            echo "               fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
             echo "               ramp_to_3000 ramp_to_6000 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"

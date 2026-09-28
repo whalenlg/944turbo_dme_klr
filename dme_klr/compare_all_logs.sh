@@ -97,6 +97,7 @@ DASH_TESTS=(
     ramp_to_6300
     ramp_to_redline
     ref_sensor_loss
+    speed_sensor_loss
     tps_fail
     tps_open_circuit
     warm_idle

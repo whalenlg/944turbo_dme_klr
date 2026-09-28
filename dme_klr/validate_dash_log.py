@@ -112,6 +112,16 @@ TESTS = {
                                   'deliberately wide (0.0-5.0ms) to avoid a false FAIL on an unknown outcome; '
                                   'expect to tighten this and add fault-specific checks (RPM behavior, DTC if '
                                   'any, fuel/ignition response) once a log is available.'},
+    # SPEED_SENSOR_LOSS: same mechanism as ref_sensor_loss (see
+    # i8051_dashboard_tb.v), applied to the speed/tooth sensor (P3.3/
+    # INT1) instead of the reference (crank position) sensor. Same
+    # unknowns apply — exploratory until a real run.
+    'speed_sensor_loss': {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'notes':'Exploratory — first real run needed to see what the DME actually does once '
+                                  'the speed/tooth sensor pulses stop (t=3500ms onward). fuel_range is '
+                                  'deliberately wide (0.0-5.0ms) to avoid a false FAIL on an unknown outcome; '
+                                  'expect to tighten this and add fault-specific checks (dwell/ignition-timing '
+                                  'behavior, DTC if any, fuel response) once a log is available.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '

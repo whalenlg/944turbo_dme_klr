@@ -65,6 +65,7 @@
 //`define TEST_ALTITUDE_DISCONNECTED
 //`define TEST_FUEL_QUAL_DISCONNECTED
 //`define TEST_REF_SENSOR_LOSS
+//`define TEST_SPEED_SENSOR_LOSS
 
 // --- Ignition tests ---
 //`define TEST_IGNITION_TIMING
@@ -304,6 +305,27 @@
   `define _FUEL_QUAL    8'h00
   `endif
   `define REF_LOSS_T_MS 3500
+`endif
+
+// TEST_SPEED_SENSOR_LOSS: same idea as TEST_REF_SENSOR_LOSS, but for
+// the speed/tooth sensor (P3.3/INT1) instead — see the speed_sensor
+// override near the RPM/crank generator instantiation below.
+`ifdef TEST_SPEED_SENSOR_LOSS
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `ifndef SIM_TIME
+  `define SIM_TIME  8000000000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+  `define SPEED_LOSS_T_MS 3500
 `endif
 
 `ifdef TEST_AC_ON_IDLE
@@ -1047,6 +1069,10 @@ wire        reference_sensor_gen;   // generator's raw pulse output — see
                                      // TEST_REF_SENSOR_LOSS override below,
                                      // which feeds reference_sensor from this
                                      // instead of driving it directly.
+wire        speed_sensor_gen;       // generator's raw pulse output — see
+                                     // TEST_SPEED_SENSOR_LOSS override below,
+                                     // which feeds speed_sensor from this
+                                     // instead of driving it directly.
 wire        tdc_marker;   // drives the tdc output port
 assign      tdc = tdc_marker;
 // T0 (P3.4) and T1 (P3.5) are separate top-level ports on i8051_top —
@@ -1663,7 +1689,7 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk                    ),
     .rst       ( rst                    ),
     .int_0     ( reference_sensor_gen   ),
-    .int_1     ( speed_sensor           ),
+    .int_1     ( speed_sensor_gen       ),
     .tdc       ( tdc_marker             ),
     .afm_wiper ( afm_wiper_curve_unused )
 );
@@ -1672,7 +1698,7 @@ var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk                  ),
     .rst       ( rst                  ),
     .int_0     ( reference_sensor_gen ),
-    .int_1     ( speed_sensor         ),
+    .int_1     ( speed_sensor_gen     ),
     .tdc       ( tdc_marker           ),
     .afm_wiper ( afm_wiper            )
 );
@@ -1683,7 +1709,7 @@ var_interrupt_generator var_interrupt_generator_1 (
     .clk       ( clk                  ),
     .rst       ( rst                  ),
     .int_0     ( reference_sensor_gen ),
-    .int_1     ( speed_sensor         ),
+    .int_1     ( speed_sensor_gen     ),
     .tdc       ( tdc_marker           ),
     .afm_wiper ( afm_wiper            )
 );
@@ -1691,14 +1717,14 @@ var_interrupt_generator var_interrupt_generator_1 (
 `else
   `ifdef NOINT
     assign reference_sensor_gen = 1'b1;
-    assign speed_sensor         = 1'b1;
+    assign speed_sensor_gen     = 1'b1;
     assign tdc_marker           = 1'b0;   // no crank model in NOINT builds
   `else
 interrupt_generator interrupt_generator_1 (
     .clk   ( clk                  ),
     .rst   ( rst                  ),
     .int_0 ( reference_sensor_gen ),
-    .int_1 ( speed_sensor         )
+    .int_1 ( speed_sensor_gen     )
 );
     assign tdc_marker = 1'b0;   // plain interrupt_generator has no TDC concept
   `endif
@@ -1719,6 +1745,19 @@ interrupt_generator interrupt_generator_1 (
 assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b1 : reference_sensor_gen;
 `else
 assign reference_sensor = reference_sensor_gen;
+`endif
+
+// TEST_SPEED_SENSOR_LOSS: same mechanism as TEST_REF_SENSOR_LOSS above,
+// applied to the speed/tooth sensor (P3.3/INT1) instead — held high
+// (no tooth) from SPEED_LOSS_T_MS onward, matching the idle-high
+// convention documented above (`p3_in[3] — 1 = no tooth`).
+`ifdef TEST_SPEED_SENSOR_LOSS
+  `ifndef SPEED_LOSS_T_MS
+  `define SPEED_LOSS_T_MS 3000
+  `endif
+assign speed_sensor = (`DME_MS >= `SPEED_LOSS_T_MS) ? 1'b1 : speed_sensor_gen;
+`else
+assign speed_sensor = speed_sensor_gen;
 `endif
 
 // ─── External RAM ────────────────────────────────────────────
