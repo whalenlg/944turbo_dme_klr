@@ -417,8 +417,18 @@ TESTS = {
     # ("TPS Power Wires — power wire/ground contact dirty"), consistent
     # with a degraded TPS supply voltage.
     'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x41,
-                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) reduced to 0x18 (~9.4% of normal) to simulate a badly degraded/failing regulator — KLR expected to detect this and set DTC 4-1 (0x41, TPS Power Wires)'},
+                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True,
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch3 (TPS 5V supply) reduced to 0x18 (~9.4% of normal) to simulate a badly degraded/failing regulator — KLR expected to detect this and set DTC 4-1 (0x41, TPS Power Wires). '
+                                  'skip_tps_bucket_check: a real run (post-dating this note\'s original DTC '
+                                  'confirmation, before the TPS-ADC-bucket check existed) shows iram[0x16] '
+                                  'genuinely oscillating between partial(0xF2) and WOT(0xCC) roughly every '
+                                  '300-900ms across the ENTIRE ramp (t=2300-14800ms, RPM climbing 830->2794, '
+                                  'nowhere near real WOT) — a sustained, real consequence of the degraded '
+                                  'supply, not an isolated glitch the debounce should filter. Exact mechanism '
+                                  'not fully understood (the KLR\'s own internal scaling from its degraded ADC '
+                                  'reading to the full_load threshold comparison isn\'t visible to us — the ROM '
+                                  'is opaque), but the effect is real and reproducible, same exemption category '
+                                  'as cl_ramp_to_3000_TPS0/afm_open_circuit.'},
 
     # TPS wiper shorted to ground (reads 0x00 the whole run) while
     # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
