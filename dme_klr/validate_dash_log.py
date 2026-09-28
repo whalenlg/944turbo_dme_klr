@@ -51,6 +51,18 @@ TESTS = {
                                   'idle_poor_fuel/ac_on_idle shifts from 0x3B (baseline) to 0x33 — the smallest '
                                   'shift of the family so far, but real and rock-solid constant across every '
                                   'post-ASE snapshot.'},
+    # ALTITUDE_DISCONNECTED: altitude ADC pegged at 0xFF (open circuit /
+    # pulled to the 5V rail) — an implausible "below sea level" reading,
+    # distinct from idle_high_alt's plausible-but-extreme 0x00. No KLR
+    # involvement (altitude is DME-only), so no DTC expected. Not yet
+    # confirmed against a real run — expect_iram_bytes left unset
+    # pending one, unlike its idle_high_alt/coolant_fail/etc. siblings
+    # which all have a confirmed iram[0x7D] ISV-integral shift.
+    'altitude_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as idle_high_alt but _ALTITUDE=0xFF (open circuit) instead of 0x00 '
+                                  '(plausible high-altitude reading) — checks the DME\'s response to an '
+                                  'implausible altitude reading vs a merely extreme one. No DTC expected (no '
+                                  'KLR-side altitude channel exists). Not yet confirmed against a real run.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '

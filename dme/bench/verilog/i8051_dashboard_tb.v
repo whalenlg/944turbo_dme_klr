@@ -62,6 +62,7 @@
 //`define TEST_O2_RICH_STUCK
 //`define TEST_O2_LEAN_STUCK
 //`define TEST_TPS_FAIL
+//`define TEST_ALTITUDE_DISCONNECTED
 
 // --- Ignition tests ---
 //`define TEST_IGNITION_TIMING
@@ -200,6 +201,30 @@
   `define _AIRTEMP_RAW  8'h50
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'h00
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
+// TEST_ALTITUDE_DISCONNECTED: altitude sensor wire open/pulled to the
+// 5V rail (0xFF), rather than a plausible reading anywhere in the real
+// sensor's range (0x00=high altitude .. 0xF8=sea level nominal per
+// TEST_IDLE_HIGH_ALT/baseline above — 0xFF is past the sea-level end,
+// an implausible "below sea level" reading a real barometric sensor
+// could never produce). No KLR involvement — altitude is DME-only,
+// unlike TPS/battery, so no DTC is expected here.
+`ifdef TEST_ALTITUDE_DISCONNECTED
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `ifndef SIM_TIME
+  `define SIM_TIME  5000000000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hFF
   `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'h00
   `endif

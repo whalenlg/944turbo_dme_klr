@@ -32,6 +32,7 @@ DASH_TESTS=(
     ac_on_idle
     afm_open_circuit
     airtemp_fail
+    altitude_disconnected
     cl_ac_halfway
     cl_cold_start
     cl_ramp_to_3000

@@ -618,6 +618,15 @@ run_test idle_high_alt \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
+# altitude_disconnected: same idle target/duration as idle_high_alt, but
+# the altitude ADC reads pegged at 0xFF (open circuit / pulled to the
+# 5V rail) — an implausible "below sea level" reading, vs
+# idle_high_alt's plausible-but-extreme 0x00.
+run_test altitude_disconnected \
+    -DTEST_ALTITUDE_DISCONNECTED \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
 run_test idle_poor_fuel \
     -DTEST_IDLE_POOR_FUEL \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
@@ -945,6 +954,7 @@ if [ -n "$1" ]; then
         hot_idle)         run_test hot_idle         $IARG -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000   ;;
         idle_battery_low) run_test idle_battery_low $IARG -DTEST_IDLE_BATTERY_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         idle_high_alt)    run_test idle_high_alt    $IARG -DTEST_IDLE_HIGH_ALT    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+        altitude_disconnected) run_test altitude_disconnected $IARG -DTEST_ALTITUDE_DISCONNECTED -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
         idle_poor_fuel)   run_test idle_poor_fuel   $IARG -DTEST_IDLE_POOR_FUEL   -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
         ac_on_idle)       run_test ac_on_idle       $IARG -DTEST_AC_ON_IDLE       -DAC_COMP_ON -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         overrun_cutoff)   run_test overrun_cutoff   $IARG -DTEST_OVERRUN_CUTOFF   -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=50000000000   ;;
@@ -993,7 +1003,7 @@ if [ -n "$1" ]; then
             echo "Unknown test: $1"
             echo "Available tests:"
             echo "  Idle:        warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt"
-            echo "               idle_poor_fuel ac_on_idle tps_open_circuit"
+            echo "               idle_poor_fuel ac_on_idle tps_open_circuit altitude_disconnected"
             echo "  Accel/Ramp:  overrun_cutoff warmup_enrichment"
             echo "               ramp_to_3000 ramp_to_6000 ramp_to_6300 ramp_to_redline ramp_to_redline_KLR_TPS_HIGH ramp_6k_hold"
             echo "               ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
