@@ -585,11 +585,10 @@ TESTS = {
     # runs continuously and never gets reset again, so it free-runs
     # forever without ever re-syncing to TDC — the CPU looks "alive"
     # (unlike STUCK_HIGH's dead CPU) but has silently lost crank
-    # synchronization. Not yet confirmed against real hardware — no
-    # downstream check (DTC, full_load, IGN_OUT) asserted yet beyond
-    # confirming the fault injection itself held.
+    # synchronization.
     'cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'expect_ext_trigger_stuck_low':True, 'skip_rpm_target_check':True,
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
                           'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s crank-ref pulse to '
                                   'the KLR (trigger_in) opens and reads stuck LOW (its normal idle level between '
                                   'pulses) from t=3000ms — the opposite of KLR_TRIGGER_STUCK_HIGH. res_n=~trigger_in '
@@ -598,14 +597,17 @@ TESTS = {
                                   'klr_top.v header: each trigger_in pulse briefly resets the CPU so it can '
                                   're-execute its knock loop synced to that cylinder\'s TDC — losing the pulses '
                                   'entirely means that sync never happens again, though the CPU itself keeps '
-                                  'running). expect_ext_trigger_stuck_low confirms only the fault injection itself '
-                                  '(ext_trigger reads 0 in every KLR: [DS] snapshot from t=3000ms on). Unlike its '
-                                  'STUCK_HIGH sibling, no downstream consequence (DTC, full_load, IGN_OUT) is '
-                                  'asserted yet — a free-running desynced CPU could plausibly keep producing "normal '
-                                  '-looking" output while quietly wrong, which is exactly the kind of case worth '
-                                  'testing but not yet safe to assert a specific signature for without seeing a '
-                                  'real run. SIM_TIME=6s and skip_rpm_target_check, same rationale as '
-                                  'TRIGGER_STUCK_HIGH.'},
+                                  'running). expect_ext_trigger_stuck_low confirms the fault injection itself held '
+                                  '(ext_trigger reads 0 in every KLR: [DS] snapshot from t=3000ms on). Confirmed '
+                                  'via a real 6s run: KLR ram[33] stayed 0 (no DTC — a free-running-but-unsynced '
+                                  'CPU apparently doesn\'t trip its own diagnostics), TPS-ADC-bucket stayed '
+                                  'idle/partial only (full_load unaffected, unlike its STUCK_HIGH sibling — makes '
+                                  'sense, the CPU keeps running and presumably keeps computing full_load, just '
+                                  'off whatever unsynced state it\'s in). But the DME\'s own IGN_OUT still stops '
+                                  'pulsing almost immediately at fault onset (gap starts t=3022ms) — the same '
+                                  'general "KLR not responding correctly" DME fail-safe now confirmed across all '
+                                  '4 trigger/ign_in directions plus both battery faults. expect_fail_markers '
+                                  'confirms it the same way as the others.'},
 
     # KLR_IGN_IN_STUCK_LOW: the opposite failure mode from
     # KLR_IGN_IN_STUCK_HIGH above — ign_in stuck at its normal idle
@@ -614,19 +616,23 @@ TESTS = {
     # suite gets (TPS open-circuit vs short-to-ground, ADC0 noise high
     # vs low, boost high vs low/zero) — we don't actually know the two
     # frozen levels are equivalent to the firmware without testing
-    # both. Not yet confirmed against real hardware.
+    # both.
     'cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'expect_ext_ign_stuck_low':True, 'skip_rpm_target_check':True,
+                          'expect_fail_markers':['IGN_OUT stopped pulsing for'],
                           'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s tach/ign signal to '
                                   'the KLR (ign_in) opens and reads stuck LOW (its normal idle level) from '
                                   't=3000ms — the opposite of KLR_IGN_IN_STUCK_HIGH. Unlike trigger_in, ign_in is '
                                   'NOT wired to /RESET, so the KLR CPU keeps running normally regardless (trigger_in '
                                   'still resets it each cycle); only the T1/INT-based reading of the DME ign signal '
                                   'is lost, same as the STUCK_HIGH sibling but frozen at the opposite level. '
-                                  'expect_ext_ign_stuck_low confirms only the fault injection itself (ext_ign reads '
-                                  '0 in every KLR: [DS] snapshot from t=3000ms on) — no downstream consequence is '
-                                  'asserted yet pending a real run. SIM_TIME=6s and skip_rpm_target_check, same '
-                                  'rationale as IGN_IN_STUCK_HIGH.'},
+                                  'Confirmed via a real 6s run: KLR ram[33] stayed 0 (no DTC) and TPS-ADC-bucket '
+                                  'stayed idle/partial only (full_load unaffected, as expected — matches its '
+                                  'STUCK_HIGH sibling). The DME\'s own IGN_OUT still stops pulsing almost '
+                                  'immediately at fault onset (gap starts t=2994ms), the same general "KLR not '
+                                  'responding correctly" DME fail-safe now confirmed across all 4 trigger/ign_in '
+                                  'directions plus both battery faults. expect_fail_markers confirms it the same '
+                                  'way as the others.'},
 
     # TPS wiper shorted to ground (reads 0x00 the whole run) while
     # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
