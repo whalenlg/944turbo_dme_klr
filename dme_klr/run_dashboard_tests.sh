@@ -1105,11 +1105,11 @@ if [ -n "$1" ]; then
             echo "  Fuel:        ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "               cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "  Idle:        cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt"
-            echo "               altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
             echo "               warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle"
             echo "               cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
             echo "  DME_fail:    idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail"
             echo "               airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
+            echo "               altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
             echo ""
             exit 1
             ;;
