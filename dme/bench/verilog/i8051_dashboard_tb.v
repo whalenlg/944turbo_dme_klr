@@ -205,6 +205,13 @@
   `endif
 `endif
 
+// TEST_IDLE_POOR_FUEL previously had no distinguishing config at all —
+// identical to TEST_WARM_IDLE's baseline, so the test could never fail
+// regardless of whether any fuel-quality handling actually worked.
+// _FUEL_QUAL now defaults to 0xA7, the same worst-quality value already
+// calibrated and validated by the ramp_to_*_FQS7 / cl_ramp_to_*_FQS7
+// family (see run_dashboard_tests.sh) — reusing a real, exercised value
+// rather than guessing a new one.
 `ifdef TEST_IDLE_POOR_FUEL
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
@@ -218,7 +225,7 @@
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
+  `define _FUEL_QUAL    8'hA7
   `endif
 `endif
 
