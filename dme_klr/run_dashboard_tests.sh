@@ -390,6 +390,23 @@ run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_IGN_IN_STUCK_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000
 
+# KLR_TRIGGER_STUCK_LOW: opposite of KLR_TRIGGER_STUCK_HIGH — trigger_in
+# stuck at its normal idle level (0) instead of stuck high, so res_n is
+# stuck HIGH: the CPU keeps running but never gets reset again, free-
+# running forever without re-syncing to TDC. Not yet confirmed against
+# real hardware.
+run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_TRIGGER_STUCK_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000
+
+# KLR_IGN_IN_STUCK_LOW: opposite of KLR_IGN_IN_STUCK_HIGH — ign_in stuck
+# at its normal idle level (0). Not yet confirmed against real hardware.
+run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW \
+    -DTEST_CL_RAMP_TO_3000 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DKLR_IGN_IN_STUCK_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000
+
 # cl_ramp_to_3000_TPS0: TPS wiper shorted to ground (reads 0x00 the whole
 # run) while AFM/RPM ramp normally through the same cl_ramp_to_3000
 # profile — checks the KLR's response to a stuck-low TPS reading that
@@ -978,6 +995,8 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
         cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TRIGGER_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
         cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_IGN_IN_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
+        cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW) run_test cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TRIGGER_STUCK_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
+        cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW) run_test cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_IGN_IN_STUCK_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=6000000000 ;;
         cl_ramp_to_3000_TPS0) run_test cl_ramp_to_3000_TPS0 $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SHORT_TO_GROUND -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
@@ -1075,7 +1094,8 @@ if [ -n "$1" ]; then
             echo "  KLR_fail:    ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground"
             echo "               cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_BATT_DISCONNECTED"
             echo "               cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_TPS0"
-            echo "               cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH"
+            echo "               cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW"
+            echo "               cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW"
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"
             echo "               cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
             echo "               cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW"

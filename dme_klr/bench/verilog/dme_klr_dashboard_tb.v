@@ -92,14 +92,26 @@ module dme_klr_dashboard_tb;
     // fault-injection point of their own, so — same pattern as
     // KLR_FULL_LOAD_STUCK_LOW below — the generator-driven signal is
     // renamed to _gen and a fault-gated override sits between it and
-    // the KLR port. Broken/open wiring is modeled as stuck HIGH,
-    // matching reference_sensor_loss/speed_sensor_loss's convention:
+    // the KLR port.
     //   KLR_TRIGGER_STUCK_HIGH → trigger_in stuck 1 → res_n stuck 0 →
-    //     KLR CPU held in permanent reset (never runs again).
+    //     KLR CPU held in permanent reset (never runs again). Real-run
+    //     confirmed: no DTC (CPU can't run diagnostic code), but the
+    //     DME's own IGN_OUT stops pulsing (a general "KLR not
+    //     responding" fail-safe — see cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH
+    //     in validate_dash_log.py) and full_load reads stuck asserted.
+    //   KLR_TRIGGER_STUCK_LOW  → trigger_in stuck 0 (its normal idle
+    //     level between pulses) → res_n stuck 1 → the OPPOSITE failure
+    //     mode from STUCK_HIGH: the CPU runs continuously and NEVER
+    //     gets reset again, so it free-runs forever without ever
+    //     re-syncing to TDC — unconfirmed against real hardware yet.
     //   KLR_IGN_IN_STUCK_HIGH  → ign_in stuck 1 → T1/INT frozen high;
     //     the CPU keeps running (trigger_in still resets it each
     //     cycle) but any T1/INT-based timing on the DME ign signal is
-    //     lost.
+    //     lost. Real-run confirmed: full_load/TPS-bucket unaffected,
+    //     but the same DME IGN_OUT fail-safe as TRIGGER_STUCK_HIGH
+    //     still trips.
+    //   KLR_IGN_IN_STUCK_LOW   → ign_in stuck 0 (its normal idle level)
+    //     instead — unconfirmed against real hardware yet.
     wire ext_trigger_gen = ~ign_out_dme_to_klr;  // DME A_5_KLR_ign_out → KLR trigger (inverted)
     wire ext_ign_gen     = ~tach_dme_to_klr;     // DME tach → KLR ign (inverted)
 
@@ -108,6 +120,11 @@ module dme_klr_dashboard_tb;
   `define TRIGGER_LOSS_T_MS 3000
   `endif
     wire ext_trigger = (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ? 1'b1 : ext_trigger_gen;
+`elsif KLR_TRIGGER_STUCK_LOW
+  `ifndef TRIGGER_LOSS_T_MS
+  `define TRIGGER_LOSS_T_MS 3000
+  `endif
+    wire ext_trigger = (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ? 1'b0 : ext_trigger_gen;
 `else
     wire ext_trigger = ext_trigger_gen;
 `endif
@@ -117,6 +134,11 @@ module dme_klr_dashboard_tb;
   `define IGN_IN_LOSS_T_MS 3000
   `endif
     wire ext_ign = (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ? 1'b1 : ext_ign_gen;
+`elsif KLR_IGN_IN_STUCK_LOW
+  `ifndef IGN_IN_LOSS_T_MS
+  `define IGN_IN_LOSS_T_MS 3000
+  `endif
+    wire ext_ign = (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ? 1'b0 : ext_ign_gen;
 `else
     wire ext_ign = ext_ign_gen;
 `endif

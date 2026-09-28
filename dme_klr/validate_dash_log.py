@@ -578,6 +578,56 @@ TESTS = {
                                   'rpm_target stays 3000 so the TPS-ADC-bucket idle/partial-only check (NOT '
                                   'skipped here, unlike TRIGGER_STUCK_HIGH) still classifies this correctly.'},
 
+    # KLR_TRIGGER_STUCK_LOW: the opposite failure mode from
+    # KLR_TRIGGER_STUCK_HIGH above — trigger_in stuck at its normal
+    # IDLE level (0, between pulses) instead of stuck high. Since
+    # res_n=~trigger_in, this means res_n is stuck HIGH: the KLR CPU
+    # runs continuously and never gets reset again, so it free-runs
+    # forever without ever re-syncing to TDC — the CPU looks "alive"
+    # (unlike STUCK_HIGH's dead CPU) but has silently lost crank
+    # synchronization. Not yet confirmed against real hardware — no
+    # downstream check (DTC, full_load, IGN_OUT) asserted yet beyond
+    # confirming the fault injection itself held.
+    'cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_ext_trigger_stuck_low':True, 'skip_rpm_target_check':True,
+                          'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s crank-ref pulse to '
+                                  'the KLR (trigger_in) opens and reads stuck LOW (its normal idle level between '
+                                  'pulses) from t=3000ms — the opposite of KLR_TRIGGER_STUCK_HIGH. res_n=~trigger_in '
+                                  'means res_n is stuck HIGH: the KLR CPU keeps running continuously but never gets '
+                                  'reset again, so it free-runs forever without ever re-syncing to TDC (see '
+                                  'klr_top.v header: each trigger_in pulse briefly resets the CPU so it can '
+                                  're-execute its knock loop synced to that cylinder\'s TDC — losing the pulses '
+                                  'entirely means that sync never happens again, though the CPU itself keeps '
+                                  'running). expect_ext_trigger_stuck_low confirms only the fault injection itself '
+                                  '(ext_trigger reads 0 in every KLR: [DS] snapshot from t=3000ms on). Unlike its '
+                                  'STUCK_HIGH sibling, no downstream consequence (DTC, full_load, IGN_OUT) is '
+                                  'asserted yet — a free-running desynced CPU could plausibly keep producing "normal '
+                                  '-looking" output while quietly wrong, which is exactly the kind of case worth '
+                                  'testing but not yet safe to assert a specific signature for without seeing a '
+                                  'real run. SIM_TIME=6s and skip_rpm_target_check, same rationale as '
+                                  'TRIGGER_STUCK_HIGH.'},
+
+    # KLR_IGN_IN_STUCK_LOW: the opposite failure mode from
+    # KLR_IGN_IN_STUCK_HIGH above — ign_in stuck at its normal idle
+    # level (0) instead of stuck high. Added for the same "cover both
+    # directions" reason every other fault-injectable wire in this
+    # suite gets (TPS open-circuit vs short-to-ground, ADC0 noise high
+    # vs low, boost high vs low/zero) — we don't actually know the two
+    # frozen levels are equivalent to the firmware without testing
+    # both. Not yet confirmed against real hardware.
+    'cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_ext_ign_stuck_low':True, 'skip_rpm_target_check':True,
+                          'notes':'Same as cl_ramp_to_3000, but the wire carrying the DME\'s tach/ign signal to '
+                                  'the KLR (ign_in) opens and reads stuck LOW (its normal idle level) from '
+                                  't=3000ms — the opposite of KLR_IGN_IN_STUCK_HIGH. Unlike trigger_in, ign_in is '
+                                  'NOT wired to /RESET, so the KLR CPU keeps running normally regardless (trigger_in '
+                                  'still resets it each cycle); only the T1/INT-based reading of the DME ign signal '
+                                  'is lost, same as the STUCK_HIGH sibling but frozen at the opposite level. '
+                                  'expect_ext_ign_stuck_low confirms only the fault injection itself (ext_ign reads '
+                                  '0 in every KLR: [DS] snapshot from t=3000ms on) — no downstream consequence is '
+                                  'asserted yet pending a real run. SIM_TIME=6s and skip_rpm_target_check, same '
+                                  'rationale as IGN_IN_STUCK_HIGH.'},
+
     # TPS wiper shorted to ground (reads 0x00 the whole run) while
     # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
     # the KLR sees a TPS reading that stays pegged at closed-throttle
@@ -1698,49 +1748,51 @@ def validate(test_name, logpath, dme_file=None):
                         fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
                                      f"snapshots, saw {['0x%02x' % v for v in vals]}")
 
-    # ── 5b. expect_ext_trigger_stuck_high / expect_ext_ign_stuck_high
-    # KLR_TRIGGER_STUCK_HIGH / KLR_IGN_IN_STUCK_HIGH override the actual
-    # wire reaching the KLR's trigger_in/ign_in ports to stuck-1
-    # starting at TRIGGER_LOSS_T_MS/IGN_IN_LOSS_T_MS (default 3000ms —
-    # see dme_klr_dashboard_tb.v). This confirms the override itself
-    # took effect and held, directly from the ext_trigger/ext_ign bits
-    # appended to the KLR: [DS] line's tail — independent of any
+    # ── 5b. expect_ext_trigger_stuck_high/low, expect_ext_ign_stuck_high/low
+    # KLR_TRIGGER_STUCK_HIGH/LOW / KLR_IGN_IN_STUCK_HIGH/LOW override the
+    # actual wire reaching the KLR's trigger_in/ign_in ports to a fixed
+    # level starting at TRIGGER_LOSS_T_MS/IGN_IN_LOSS_T_MS (default
+    # 3000ms — see dme_klr_dashboard_tb.v). This confirms the override
+    # itself took effect and held, directly from the ext_trigger/ext_ign
+    # bits appended to the KLR: [DS] line's tail — independent of any
     # downstream KLR firmware consequence (permanent CPU reset for
-    # trigger, frozen T1/INT for ign).
+    # trigger stuck high, free-running unsynced CPU for trigger stuck
+    # low, frozen T1/INT either way for ign).
     #
     # Window starts strictly AFTER onset, not >=: confirmed via a real
     # run that the snapshot landing exactly ON the onset instant
     # (DASH_INTERVAL_MS=100 divides evenly into the default 3000ms
-    # onset, so a DS snapshot lands on that exact boundary) reads 0 —
-    # a one-sample simulation-timing race between the override's `>=`
-    # comparison and the snapshot task, both evaluated at the same
-    # $time. Every sample from the next snapshot (t=3100ms) onward
-    # read 1 correctly in that run, confirming this is a boundary
+    # onset, so a DS snapshot lands on that exact boundary) reads the
+    # pre-fault value — a one-sample simulation-timing race between the
+    # override's `>=` comparison and the snapshot task, both evaluated
+    # at the same $time. Every sample from the next snapshot (t=3100ms)
+    # onward read correctly in that run, confirming this is a boundary
     # artifact and not a fault-injection failure.
     KLR_FAULT_ONSET_MS = 3000
-    if exp.get('expect_ext_trigger_stuck_high') or exp.get('expect_ext_ign_stuck_high'):
+    _ext_checks = [
+        ('expect_ext_trigger_stuck_high', 0, 1, 'ext_trigger', 'KLR_TRIGGER_STUCK_HIGH'),
+        ('expect_ext_trigger_stuck_low',  0, 0, 'ext_trigger', 'KLR_TRIGGER_STUCK_LOW'),
+        ('expect_ext_ign_stuck_high',     1, 1, 'ext_ign',     'KLR_IGN_IN_STUCK_HIGH'),
+        ('expect_ext_ign_stuck_low',      1, 0, 'ext_ign',     'KLR_IGN_IN_STUCK_LOW'),
+    ]
+    if any(exp.get(flag) for flag, *_ in _ext_checks):
         klr_ext_rows = [r for r in (parse_klr_ds_ext_bits(line) for line in lines) if r is not None]
         post_fault = [r for r in klr_ext_rows if r[0] > KLR_FAULT_ONSET_MS]
         if not post_fault:
             warns.append("No KLR: [DS] snapshots with the ext_trigger/ext_ign tail found after fault "
                          "onset — log may predate this field, can't confirm fault injection")
         else:
-            if exp.get('expect_ext_trigger_stuck_high'):
-                bad = [t for t, trig, ign in post_fault if trig != 1]
+            for flag, idx, want, label, fault_name in _ext_checks:
+                if not exp.get(flag):
+                    continue
+                bad = [t for t, *bits in post_fault if bits[idx] != want]
                 if bad:
-                    fails.append(f"KLR_TRIGGER_STUCK_HIGH fault injection not confirmed — ext_trigger "
-                                 f"read 0 at t={bad[:5]}ms (expected stuck 1 from t={KLR_FAULT_ONSET_MS}ms on)")
+                    fails.append(f"{fault_name} fault injection not confirmed — {label} "
+                                 f"read {1 - want} at t={bad[:5]}ms (expected stuck {want} from "
+                                 f"t={KLR_FAULT_ONSET_MS}ms on)")
                 else:
-                    infos.append(f"ext_trigger stuck high ✓ ({len(post_fault)} snapshots from "
-                                 f"t={KLR_FAULT_ONSET_MS}ms)")
-            if exp.get('expect_ext_ign_stuck_high'):
-                bad = [t for t, trig, ign in post_fault if ign != 1]
-                if bad:
-                    fails.append(f"KLR_IGN_IN_STUCK_HIGH fault injection not confirmed — ext_ign "
-                                 f"read 0 at t={bad[:5]}ms (expected stuck 1 from t={KLR_FAULT_ONSET_MS}ms on)")
-                else:
-                    infos.append(f"ext_ign stuck high ✓ ({len(post_fault)} snapshots from "
-                                 f"t={KLR_FAULT_ONSET_MS}ms)")
+                    infos.append(f"{label} stuck {'high' if want else 'low'} ✓ ({len(post_fault)} "
+                                 f"snapshots from t={KLR_FAULT_ONSET_MS}ms)")
 
     # ── 6. Steady-state fuel (last 30% of snapshots, injection only)
     # fuel_range is optional — tests without a single, meaningful
