@@ -52,19 +52,21 @@ TESTS = {
                                   'post-ASE snapshot to exceed 8ms (real run: consistently ~14ms), not just a '
                                   'tail-window average that could pass on a transient blip.'},
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x41, 'ThermalIdx(7D)')],
+                          'expect_iram_bytes':[(0x7D, 0x41, 'ISVIntegralLo(7D)')],
                           'notes':'coolant_fail barely moves idle fueling (both baseline and this fault are '
                                   'already past cold-start enrichment), so fuel_range alone cannot prove the '
-                                  'fault fired. iram[0x7D] is an undocumented but empirically stable register '
-                                  '(found by diffing full iram dumps against warm_idle_5s) that shifts from '
-                                  '0x3B (baseline) to 0x41 for this fault specifically, and is untouched by '
-                                  'tps_fail — real name/semantics unconfirmed, but reproducible every run.'},
+                                  'fault fired. iram[0x7D] is the ISV (idle speed valve) PID integral term, low '
+                                  'byte — a genuine downstream symptom, not raw sensor readback: the closed-loop '
+                                  'idle controller settles at a different integral value to hold 840rpm because '
+                                  'the false-hot coolant reading skews the enrichment/mixture target. Shifts '
+                                  'from 0x3B (baseline) to 0x41 for this fault, untouched by tps_fail.'},
     'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x72, 'ThermalIdx(7D)')],
+                          'expect_iram_bytes':[(0x7D, 0x72, 'ISVIntegralLo(7D)')],
                           'notes':'Same reasoning as coolant_fail — fuel_range alone does not prove the fault. '
-                                  'The same iram[0x7D] register shifts from 0x3B (baseline) to 0x72 for this '
-                                  'fault (a much larger shift than coolant_fail\'s 0x41, consistent with this '
-                                  'firmware weighting intake-air-temp correction more heavily than coolant).'},
+                                  'The same ISV integral term (iram[0x7D]) shifts from 0x3B (baseline) to 0x72 '
+                                  'for this fault (a much larger shift than coolant_fail\'s 0x41, consistent '
+                                  'with this firmware weighting intake-air-temp correction more heavily than '
+                                  'coolant in the idle mixture target).'},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'lean_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -75,15 +77,16 @@ TESTS = {
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
     'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x16, 0x80, 'TPSFaultIdx(16)')],
+                          'expect_iram_bytes':[(0x16, 0x80, 'ADC_TPS(16)')],
                           'notes':'The real fault signature (fuel_hb/load spiking right after ASE ends) is '
                                   'transient and already gone by the tail window fuel_range checks — TPS_FIXED '
                                   '=0x80 has faded back to a near-normal idle fuel_range by the last 30% of '
                                   'this 5s test, so that check alone cannot prove the fault fired either. '
-                                  'iram[0x16] is a separate, empirically stable register (found the same way '
-                                  'as coolant_fail/airtemp_fail\'s iram[0x7D]) that shifts from 0x85 (baseline) '
-                                  'to 0x80 for this fault specifically, and is untouched by either thermal '
-                                  'fault — real name/semantics unconfirmed, but reproducible every run.'},
+                                  'iram[0x16] is ADC_TPS itself, i.e. the raw sensor value TPS_FIXED forces — '
+                                  'unlike coolant_fail/airtemp_fail\'s iram[0x7D] (a downstream ISV-controller '
+                                  'symptom), this mostly proves the harness override reached the firmware '
+                                  'rather than an independent consequence of the fault; kept as a sanity check '
+                                  'since no better downstream signature has been found yet for this one.'},
     'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
@@ -585,16 +588,16 @@ def parse_ds(line):
         'load_idx': load_idx,
         'o2_val': o2_val,
         'o2_b26': o2_b26,
-        # Empirically-determined markers (not documented registers, found
-        # by diffing full iram dumps between fault runs and warm_idle_5s —
-        # see PR discussion). iram[0x4D] (injection event counter) and
-        # iram[0x6B] (stack memory — not a real register) were ruled out
-        # the same way: real but not fault-specific.
-        'iram_0x7d': b(0x7D),  # shared thermal-response index — shifts for
-                                # BOTH coolant_fail (0x3B->0x41) and
-                                # airtemp_fail (0x3B->0x72), untouched by
-                                # tps_fail
-        'iram_0x16': b(0x16),  # tps_fail-only marker (0x85->0x80),
+        # Found by diffing full iram dumps between fault runs and
+        # warm_idle_5s (see PR discussion) — iram[0x4D] (injection event
+        # counter) and iram[0x6B] (stack memory) were ruled out the same
+        # way: real but not fault-specific.
+        'iram_0x7d': b(0x7D),  # ISV (idle speed valve) PID integral term,
+                                # low byte — shifts for BOTH coolant_fail
+                                # (0x3B->0x41) and airtemp_fail
+                                # (0x3B->0x72), untouched by tps_fail
+        'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
+                                # TPS_FIXED's value (0x85->0x80),
                                 # untouched by either thermal fault
     }
 
