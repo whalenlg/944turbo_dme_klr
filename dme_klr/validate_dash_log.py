@@ -379,7 +379,16 @@ TESTS = {
     # share the same (no KLR->DME feedback) mechanism.
     'cl_ramp_to_3000_KLR_BATT_LOW': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x12, 'expect_iram_bytes':[(0x11, 0xD8, 'ADC_BATTERY(11)')],
-                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V)'},
+                          'notes':'Same as cl_ramp_to_3000, KLR ADC ch1 (battery) halved (0xD8->0x6C) to simulate a low-battery/charging-system fault — KLR expected to detect this and set DTC 1-2 (0x12, Voltage Under 10.2V). '
+                                  'A real run (post-dating this note\'s original DTC confirmation, taken before '
+                                  'the universal IGN_OUT liveness check existed) shows the same IGN_OUT FAIL as '
+                                  'cl_ramp_to_3000_KLR_BATT_DISCONNECTED, with byte-identical timing (gap starts '
+                                  't=7106ms, 1587ms, 2 such gaps) despite BATT_LOW only halving the voltage vs '
+                                  'DISCONNECTED zeroing it — strongly suggests a shared, severity-independent '
+                                  'root cause (likely the same periodic KLR reset pattern once DTC 0x12 latches, '
+                                  'deterministically timed regardless of which battery fault triggered it) '
+                                  'rather than two coincidentally-identical bugs. Left failing deliberately, '
+                                  'same precedent as its DISCONNECTED sibling.'},
     # BATT_DISCONNECTED: battery sense wire open (reads 0x00, not just
     # low) — the "input isn't happening at all" case vs KLR_BATT_LOW's
     # "input reads low". Confirmed via a real run: DTC 0x12 fires (same
