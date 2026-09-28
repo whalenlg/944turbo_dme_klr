@@ -68,6 +68,8 @@ module dme_klr_dashboard_tb;
         $dumpvars(1, full_load);
         $dumpvars(1, tdc);
         $dumpvars(1, tps_wiper_sig);
+        $dumpvars(1, ext_trigger);
+        $dumpvars(1, ext_ign);
     end
 
     // ── DME sub-TB ───────────────────────────────────────────
@@ -83,12 +85,48 @@ module dme_klr_dashboard_tb;
 
     wire dme_clk = u_dme.clk;
 
+    // ── ext_trigger / ext_ign wire loss faults ────────────────
+    // trigger_in is wired directly to the KLR's CPU /RESET (res_n =
+    // ~trigger_in — see klr_top.v header) and ign_in drives T1/INT.
+    // Both wires are driven straight through from the DME with no
+    // fault-injection point of their own, so — same pattern as
+    // KLR_FULL_LOAD_STUCK_LOW below — the generator-driven signal is
+    // renamed to _gen and a fault-gated override sits between it and
+    // the KLR port. Broken/open wiring is modeled as stuck HIGH,
+    // matching reference_sensor_loss/speed_sensor_loss's convention:
+    //   KLR_TRIGGER_STUCK_HIGH → trigger_in stuck 1 → res_n stuck 0 →
+    //     KLR CPU held in permanent reset (never runs again).
+    //   KLR_IGN_IN_STUCK_HIGH  → ign_in stuck 1 → T1/INT frozen high;
+    //     the CPU keeps running (trigger_in still resets it each
+    //     cycle) but any T1/INT-based timing on the DME ign signal is
+    //     lost.
+    wire ext_trigger_gen = ~ign_out_dme_to_klr;  // DME A_5_KLR_ign_out → KLR trigger (inverted)
+    wire ext_ign_gen     = ~tach_dme_to_klr;     // DME tach → KLR ign (inverted)
+
+`ifdef KLR_TRIGGER_STUCK_HIGH
+  `ifndef TRIGGER_LOSS_T_MS
+  `define TRIGGER_LOSS_T_MS 3000
+  `endif
+    wire ext_trigger = (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ? 1'b1 : ext_trigger_gen;
+`else
+    wire ext_trigger = ext_trigger_gen;
+`endif
+
+`ifdef KLR_IGN_IN_STUCK_HIGH
+  `ifndef IGN_IN_LOSS_T_MS
+  `define IGN_IN_LOSS_T_MS 3000
+  `endif
+    wire ext_ign = (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ? 1'b1 : ext_ign_gen;
+`else
+    wire ext_ign = ext_ign_gen;
+`endif
+
     // ── KLR sub-TB ───────────────────────────────────────────
     // EXT_STIM=1: external trigger/ign signals (not internal generator)
     // Signals are inverted: DME active-high → KLR active-low inputs
     klr_tb #(.EXT_STIM(1)) u_klr (
-        .ext_trigger     ( ~ign_out_dme_to_klr ),  // DME A_5_KLR_ign_out → KLR trigger (inverted)
-        .ext_ign         ( ~tach_dme_to_klr    ),  // DME tach → KLR ign (inverted)
+        .ext_trigger     ( ext_trigger         ),  // DME A_5_KLR_ign_out → KLR trigger (inverted)
+        .ext_ign         ( ext_ign             ),  // DME tach → KLR ign (inverted)
         .ign_out         ( klr_ign_out         ),  // KLR spark output → DME ign
         .full_load       ( full_load_klr       ),  // KLR WOT flag → DME
         .tps_wiper   ( tps_wiper_sig       ),  // AFM → KLR TPS angle ch7
@@ -144,10 +182,19 @@ module dme_klr_dashboard_tb;
                 $write("%02h", u_klr.top.i8048_core_1.ram[i[6:0]]);
             // TODO: confirm KLR port hierarchy for p1/p2
             $write(",%02h%02h", u_klr.top.p1, u_klr.top.p2);
-            $write(",%0b%0b%0b\n",
+            // Trailing bit tail — appended, not reordered, so any
+            // existing positional readers of the first 3 bits are
+            // unaffected. ext_trigger/ext_ign are the actual signals
+            // reaching the KLR ports (post fault-injection override,
+            // if any — see KLR_TRIGGER_STUCK_HIGH/KLR_IGN_IN_STUCK_HIGH
+            // above), unlike tach_dme_to_klr which is the raw DME
+            // signal before invert and before any override.
+            $write(",%0b%0b%0b%0b%0b\n",
                 tach_dme_to_klr,    // ign input to KLR (before invert)
                 klr_ign_out,        // KLR ign output
-                full_load);         // full load / WOT flag
+                full_load,          // full load / WOT flag
+                ext_trigger,        // KLR trigger_in, post fault-injection override
+                ext_ign);           // KLR ign_in, post fault-injection override
 
             snapshot_busy = 1'b0;
         end
