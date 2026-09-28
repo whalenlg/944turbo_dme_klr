@@ -267,18 +267,18 @@ TESTS = {
     # AFM/RPM ramp normally through the same cl_ramp_to_3000 profile —
     # the KLR sees a TPS reading that stays pegged at closed-throttle
     # even as the engine climbs to 3000rpm, an implausible combination.
-    # Unlike tps_open_circuit/ramp_to_redline_KLR_TPS_HIGH (voltage too
-    # HIGH -> DTC 4-2), this is a voltage-too-LOW condition; no
-    # confirmed DTC code for that direction yet, so no
-    # require_ram33_value assertion until a real log is checked.
+    # Confirmed from a real run: KLR sets DTC 4-1 (0x41, TPS Power
+    # Wires) at t=6310ms — the same code cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW
+    # uses. Makes sense: a wiper shorted to ground looks like a TPS
+    # power/ground wiring fault to this diagnostic, not a distinct
+    # "voltage too low" code as originally guessed.
     'cl_ramp_to_3000_TPS0': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x41,
                           'notes':'Same as cl_ramp_to_3000, KLR TPS wiper shorted to ground (reads 0x00 '
                                   'throughout) while AFM/RPM ramp normally — checks the KLR\'s response to a '
-                                  'stuck-low TPS reading that never tracks the real throttle/RPM ramp. Expected '
-                                  'DTC not yet confirmed against a real run (no require_ram33_value asserted '
-                                  'yet) — most likely a "TPS Angle Sensor: Voltage Too Low" code if one exists, '
-                                  'analogous to DTC 4-2\'s "Too High", but this needs verifying against real '
-                                  'hardware/firmware behavior rather than assuming.'},
+                                  'stuck-low TPS reading that never tracks the real throttle/RPM ramp. KLR '
+                                  'expected to detect this and set DTC 4-1 (0x41, TPS Power Wires), same code '
+                                  'as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW.'},
     # KNOCK_BLOCKED: reuses the existing -DTEST_KNOCK_FAKE_BLOCKED flag
     # (already used by the non-CL knock_sensor_defect test) to prevent the
     # klr_system self-test path from ever pulsing fake_knock — so unlike
