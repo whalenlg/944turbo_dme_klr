@@ -42,7 +42,18 @@ TESTS = {
                                   'airtemp_fail shifts from 0x3B (baseline) to 0x4F here — confirms poor fuel '
                                   'quality skews the idle mixture target too, detected via the same downstream '
                                   'ISV-controller symptom rather than raw sensor readback.'},
-    'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x84, 'ISVIntegralLo(7D)')],
+                          'notes':'This test is open-loop (no CL_MODE), so the ~50rpm droop physics '
+                                  '(CL_AC_TORQUE in var_interrupt_gen_cl.v) never applies here — RPM is just '
+                                  'scripted to 840 regardless of AC load, so an RPM-droop check would not work. '
+                                  'The firmware reacts to the T1 (AC compressor) input directly though: the same '
+                                  'ISV integral term (iram[0x7D]) used for coolant_fail/airtemp_fail/'
+                                  'idle_poor_fuel shifts from 0x3B (baseline) to 0x84 — the largest shift seen '
+                                  'yet, consistent with AC being a real, significant added idle load. Notably '
+                                  'the coarse ISV step register (iram[0x7F], already tracked as "isv") stays '
+                                  'flat at 0x14 the whole time — only the finer integral accumulator moves, '
+                                  'which is exactly why no prior check caught this.'},
     'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
                           'require_late_fuelcut_after_ms':10000,
                           'overrun_engage_rpm_min':1600,
