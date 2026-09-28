@@ -63,6 +63,7 @@
 //`define TEST_O2_LEAN_STUCK
 //`define TEST_TPS_FAIL
 //`define TEST_ALTITUDE_DISCONNECTED
+//`define TEST_FUEL_QUAL_DISCONNECTED
 
 // --- Ignition tests ---
 //`define TEST_IGNITION_TIMING
@@ -251,6 +252,29 @@
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'hA7
+  `endif
+`endif
+
+// TEST_FUEL_QUAL_DISCONNECTED: fuel quality ADC pegged at 0xFF (open
+// circuit / pulled to the 5V rail) — past the FQS7 ceiling (0xA7, the
+// worst real fuel-quality value the FQS0-7 sweep calibrates), a
+// reading no real fuel-quality sensor could produce. Distinct from
+// idle_poor_fuel's plausible-but-worst-case 0xA7. No KLR involvement
+// (fuel quality is DME-only), so no DTC is expected here.
+`ifdef TEST_FUEL_QUAL_DISCONNECTED
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `ifndef SIM_TIME
+  `define SIM_TIME  5000000000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'hFF
   `endif
 `endif
 

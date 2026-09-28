@@ -63,6 +63,17 @@ TESTS = {
                                   '(plausible high-altitude reading) — checks the DME\'s response to an '
                                   'implausible altitude reading vs a merely extreme one. No DTC expected (no '
                                   'KLR-side altitude channel exists). Not yet confirmed against a real run.'},
+    # FUEL_QUAL_DISCONNECTED: fuel quality ADC pegged at 0xFF (open
+    # circuit / pulled to the 5V rail) — past the FQS7 ceiling (0xA7,
+    # the worst real value the FQS0-7 sweep calibrates), distinct from
+    # idle_poor_fuel's plausible-but-worst-case 0xA7. No KLR involvement
+    # (fuel quality is DME-only), so no DTC expected. Not yet confirmed
+    # against a real run.
+    'fuel_qual_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'notes':'Same as idle_poor_fuel but _FUEL_QUAL=0xFF (open circuit) instead of 0xA7 '
+                                  '(plausible worst-quality reading) — checks the DME\'s response to an '
+                                  'implausible fuel-quality reading vs a merely worst-case one. No DTC expected '
+                                  '(no KLR-side fuel-quality channel exists). Not yet confirmed against a real run.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '

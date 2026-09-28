@@ -62,6 +62,7 @@ DASH_TESTS=(
     coolant_fail
     dme_klr_warm_idle
     dwell_scaling
+    fuel_qual_disconnected
     hot_idle
     idle_battery_low
     idle_high_alt
