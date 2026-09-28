@@ -33,7 +33,15 @@ TESTS = {
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
-    'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
+                          'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
+                                  'barely moves idle fueling (real run: avg 2.432ms vs warm_idle_5s\'s 2.286ms — '
+                                  'real but well within fuel_range noise), so that check alone cannot prove the '
+                                  'fault fired. The same ISV integral term (iram[0x7D]) used for coolant_fail/'
+                                  'airtemp_fail shifts from 0x3B (baseline) to 0x4F here — confirms poor fuel '
+                                  'quality skews the idle mixture target too, detected via the same downstream '
+                                  'ISV-controller symptom rather than raw sensor readback.'},
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
                           'require_late_fuelcut_after_ms':10000,
