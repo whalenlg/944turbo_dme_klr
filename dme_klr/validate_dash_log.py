@@ -1018,6 +1018,37 @@ def validate(test_name, logpath, dme_file=None):
             else:
                 infos.append(f"Relay latched low ✓ ({len(post_sync_relay)} post-sync snapshots)")
 
+    # ── 2c. KLR ignition pulses (IGN_OUT asserted) — universal check.
+    # A real loss-of-spark (ign_out/ign_out_n stuck, not pulsing) was
+    # previously invisible: klr_phase_monitor.v only logs individual
+    # edges with no stall/watchdog detection, and this file never
+    # parsed IGN_OUT lines at all. Confirmed from real data
+    # (warm_idle_5s at 840rpm, overrun_cutoff spanning 840-2100rpm plus
+    # its fuel-cut coast) that consecutive ignition pulses never gap
+    # more than ~90ms, even at idle, during cranking, or while fuel is
+    # cut (spark keeps firing independent of fuel) — 500ms gives large
+    # margin while still catching a genuine dropout fast.
+    IGN_GAP_MAX_MS = 500
+    ign_times = []
+    for line in lines:
+        if 'IGN_OUT asserted' in line:
+            m = re.search(r't=(\d+)', line)
+            if m:
+                ign_times.append(int(m.group(1)))
+    if not ign_times:
+        if any(r['rpm'] > 0 for r in rows):
+            fails.append("No IGN_OUT asserted events detected at all, despite RPM > 0 — ignition never fired")
+    else:
+        checkpoints = ign_times + ([rows[-1]['t']] if rows else [])
+        gaps = [checkpoints[i+1] - checkpoints[i] for i in range(len(checkpoints) - 1)]
+        big_gaps = [(checkpoints[i], gaps[i]) for i in range(len(gaps)) if gaps[i] > IGN_GAP_MAX_MS]
+        if big_gaps:
+            t0, g0 = big_gaps[0]
+            fails.append(f"IGN_OUT stopped pulsing for {g0}ms starting at t={t0}ms "
+                         f"(max allowed {IGN_GAP_MAX_MS}ms) — {len(big_gaps)} such gap(s)")
+        else:
+            infos.append(f"IGN_OUT pulsing ✓ ({len(ign_times)} events, max gap {max(gaps)}ms)")
+
     # ── 3. INTERRUPT BLOCK cleared (engine ready)
     if not any('INTERRUPT BLOCK cleared' in p for p in phases):
         warns.append("INTERRUPT BLOCK never cleared")
