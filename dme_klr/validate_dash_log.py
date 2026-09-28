@@ -140,6 +140,10 @@ TESTS = {
     # the reference_sensor edge, so losing only the reference signal
     # never triggers this starvation path.
     'speed_sensor_loss': {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_fail_markers':['A_2_dme_relay (P1.2) not held low',
+                                                  'IGN_OUT stopped pulsing for',
+                                                  'TPS ADC) saw non-idle value',
+                                                  'ADC_BATTERY) saw non-nominal value'],
                           'notes':'Real run, root cause confirmed: losing the speed/tooth signal puts the DME '
                                   'into a continuous watchdog-reset loop — "INTERRUPT BLOCK set (watchdog or '
                                   'power-on reset)" fires 115 times every 38-39ms from t=3527ms through the end '
@@ -149,11 +153,13 @@ TESTS = {
                                   'never re-latches, IGN_OUT/injection never resume, prpm reads 0, and iram '
                                   'shows a collapsed-but-still-changing pattern (partial re-init progress each '
                                   'reset cycle before the next reset wipes it) rather than a static crash state. '
-                                  'The universal-check FAILs this produces (relay, IGN_OUT, TPS-idle-bucket, '
-                                  'ADC_BATTERY-nominal) are the correct, informative signature of this reset '
-                                  'loop — left failing deliberately rather than suppressed. Reproduced '
-                                  'identically under Verilator (same reset cadence) — not an Icarus-specific '
-                                  'artifact.'},
+                                  'expect_fail_markers inverts this test\'s verdict on all four downstream '
+                                  'symptoms: it reports PASS when relay/IGN_OUT/TPS-idle-bucket/ADC_BATTERY-nominal '
+                                  'all correctly show the crash (the fault\'s real, confirmed consequence), and '
+                                  'FAILs if any of them unexpectedly come back clean instead — meaning the '
+                                  'speed_sensor freeze itself silently stopped applying, a real regression this '
+                                  'test exists to catch rather than a fluke. Reproduced identically under '
+                                  'Verilator (same reset cadence) — not an Icarus-specific artifact.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
@@ -370,7 +376,15 @@ TESTS = {
                           'rpm_tolerance_pct':35,  # tip-in event leaves RPM settled elevated
                                                     # (observed ~1019 post-spike, not back at 840)
                                                     # by end of sim — see notes below
-                          'notes':'CL: RPM should rise above 840 during AFM spike (2s), return to ~840 after',
+                          'skip_tps_bucket_check':True,
+                          'notes':'CL: RPM should rise above 840 during AFM spike (2s), return to ~840 after. '
+                                  'skip_tps_bucket_check: this is a deliberate throttle tip-in transient (a brief '
+                                  'stab of throttle from idle), not a steady-idle test — a real run confirms RPM '
+                                  'genuinely spikes to 1407 mid-test, and iram[0x16] correctly leaves the idle '
+                                  'bucket (0x85) for partial (0xf2) during that spike. That\'s the intended, '
+                                  'correct behavior this test exists to produce, not a fault — the universal '
+                                  '"idle test must stay at 0x85" rule doesn\'t apply here despite rpm_target=840 '
+                                  '(the settled end-state, not the whole test).',
                           },  # iram[4Ch] not written in CL mode by firmware design
     'cl_ramp_to_3000':   {'rpm_target': 3000, 'fuel_range':(1.5, 10.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 3000RPM target at t=2s; RPM should reach ~3000 in 30s'},
@@ -525,7 +539,7 @@ TESTS = {
     # 6000-target TPS-ADC-bucket check (item 2d) legitimately FAILs on
     # this, which IS the demonstration of the fault, not a test bug.
     'cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96,
+                          'dwell_cap':96, 'expect_fail_markers':['never showed WOT'],
                           'notes':'Same as cl_ramp_to_6000, but the KLR full_load wire (P1.5) reaching the DME '
                                   'is stuck low the whole run regardless of real throttle position — the KLR '
                                   'itself computes full_load correctly, it just never reaches the DME. Confirmed '
@@ -534,7 +548,11 @@ TESTS = {
                                   '0x85/0xf2, never 0xCC) — that IS the intended demonstration that the DME can '
                                   'never recognize WOT once this wire fails, not a test bug. No DTC expected '
                                   'since nothing is wrong from the KLR\'s own diagnostic perspective — confirmed, '
-                                  'KLR ram[33] stayed 0.'},
+                                  'KLR ram[33] stayed 0. expect_fail_markers inverts this test\'s verdict: it now '
+                                  'reports PASS when the WOT-bucket check correctly fails (the fault\'s real '
+                                  'consequence, confirmed) and FAILs if that check unexpectedly passes instead '
+                                  '(meaning the full_load-stuck override silently stopped applying — a real '
+                                  'regression this test exists to catch, not a fluke).'},
 
     # cl_condition_cycle / cl_condition_cycle_idle: 6-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC, battery), each 1s nominal
@@ -2168,6 +2186,31 @@ def validate(test_name, logpath, dme_file=None):
         if kc_nonzero is not None:
             t, val = kc_nonzero
             warns.append(f"KLR knock_count went non-zero unexpectedly: {val} at t={t}ms (expected 0 — no knock events expected in this test)")
+
+    # ── Expected-fail markers: for tests whose whole point is that a
+    # fault produces NO detectable reaction through the normal checks
+    # (e.g. cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW: the DME should
+    # never see WOT once that wire breaks), a clean PASS from the
+    # underlying check doesn't mean "the DME handled it fine" — it
+    # means the fault injection itself silently stopped happening
+    # (a macro removed, a wire re-connected, a refactor undone the
+    # override). Left unguarded, that regression would show up as an
+    # ordinary PASS with no signal anything is wrong. expect_fail_markers
+    # is a list of substrings that must appear somewhere in `fails` for
+    # this test to be considered correctly exercising its fault: if a
+    # marker IS found, it's moved from fails into infos (the fault's
+    # real, expected consequence, confirmed); if a marker is NOT found,
+    # a new fail is raised instead (the fault's signature never showed
+    # up, meaning the injection itself may be broken) — inverting the
+    # normal fail/pass logic specifically for the fault's own signature,
+    # not for anything else this test still legitimately checks.
+    for marker in exp.get('expect_fail_markers', []):
+        matched = next((f for f in fails if marker in f), None)
+        if matched is not None:
+            fails.remove(matched)
+            infos.append(f"Fault signature confirmed ✓ ({matched})")
+        else:
+            fails.append(f"expected fault signature not found — fault injection may be broken (looked for: \"{marker}\")")
 
     # ── Verdict
     detail = ' | '.join(infos)
