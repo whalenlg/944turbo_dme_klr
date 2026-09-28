@@ -32,9 +32,36 @@ TESTS = {
     'cold_start':        {'rpm_target':  840, 'fuel_range':(1.0, 4.0),   'expect_ase':False, 'expect_fuelcut':False},
     'hot_idle':          {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
     'idle_battery_low':  {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,  'dwell_min':35},
-    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True},
-    'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
-    'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True},
+    'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x33, 'ISVIntegralLo(7D)')],
+                          'notes':'High altitude (_ALTITUDE=0x00 vs baseline\'s 0xF8) barely moves idle fueling '
+                                  '(real run: avg 2.145ms vs warm_idle_5s\'s 2.286ms — real but well within '
+                                  'fuel_range noise), so that check alone cannot prove the fault fired. The '
+                                  'same ISV integral term (iram[0x7D]) used for coolant_fail/airtemp_fail/'
+                                  'idle_poor_fuel/ac_on_idle shifts from 0x3B (baseline) to 0x33 — the smallest '
+                                  'shift of the family so far, but real and rock-solid constant across every '
+                                  'post-ASE snapshot.'},
+    'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
+                          'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
+                                  'barely moves idle fueling (real run: avg 2.432ms vs warm_idle_5s\'s 2.286ms — '
+                                  'real but well within fuel_range noise), so that check alone cannot prove the '
+                                  'fault fired. The same ISV integral term (iram[0x7D]) used for coolant_fail/'
+                                  'airtemp_fail shifts from 0x3B (baseline) to 0x4F here — confirms poor fuel '
+                                  'quality skews the idle mixture target too, detected via the same downstream '
+                                  'ISV-controller symptom rather than raw sensor readback.'},
+    'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x7D, 0x84, 'ISVIntegralLo(7D)')],
+                          'notes':'This test is open-loop (no CL_MODE), so the ~50rpm droop physics '
+                                  '(CL_AC_TORQUE in var_interrupt_gen_cl.v) never applies here — RPM is just '
+                                  'scripted to 840 regardless of AC load, so an RPM-droop check would not work. '
+                                  'The firmware reacts to the T1 (AC compressor) input directly though: the same '
+                                  'ISV integral term (iram[0x7D]) used for coolant_fail/airtemp_fail/'
+                                  'idle_poor_fuel shifts from 0x3B (baseline) to 0x84 — the largest shift seen '
+                                  'yet, consistent with AC being a real, significant added idle load. Notably '
+                                  'the coarse ISV step register (iram[0x7F], already tracked as "isv") stays '
+                                  'flat at 0x14 the whole time — only the finer integral accumulator moves, '
+                                  'which is exactly why no prior check caught this.'},
     'overrun_cutoff':    {'rpm_target': 2100, 'rpm_final_target': 840, 'expect_ase':True, 'expect_fuelcut':True,
                           'require_late_fuelcut_after_ms':10000,
                           'overrun_engage_rpm_min':1600,
@@ -97,8 +124,17 @@ TESTS = {
                           'expect_no_knock_pulse':True, 'expect_ram33_value':0x23,
                           'notes':'Same as ramp_to_6000_knock, but fake_knock self-test path blocked (knock_gen.v TEST_KNOCK_FAKE_BLOCKED) and no knock_sensor pulses — neither path can ever trigger a knock detection. KLR ram[57] is a boost-reduction level/amount (not a per-event counter) — not asserted here pending its real semantics. ram[33]=0x23 expected — self-test-fault code the firmware correctly reports when fake_knock path is blocked'},
     'knock_sensor_short_to_ground':{'rpm_target': 6000, 'fuel_range':(8.0, 14.0), 'expect_ase':True, 'expect_fuelcut':True, 'dwell_cap':90,
-                          'expect_no_knock_pulse':True,
-                          'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 (short-to-ground fault, not pulsing) while fake_knock self-test continues normally — KLR ram[57] (boost-reduction level, not a counter) behavior from the still-active self-test path not yet characterized, so not asserted here'},
+                          'expect_no_knock_pulse':True, 'expect_ram33_value':0x11,
+                          'notes':'Same as ramp_to_6000_knock, but knock_sensor held at a constant 0 '
+                                  '(short-to-ground fault, not pulsing) while fake_knock self-test continues '
+                                  'normally. Confirmed via a real run: ram[33]=0x11 fires at t~2710ms — the '
+                                  'SAME code ramp_to_6000_knock expects for genuine, legitimate knock '
+                                  'detection. A shorted-to-ground knock sensor is apparently indistinguishable '
+                                  'from real knock to this firmware\'s self-test logic via ram[33] alone — a '
+                                  'real (if unfortunate) automotive failure mode: a dead-shorted sensor can '
+                                  'cause spurious timing retard the same as actual knock would. KLR ram[57] '
+                                  '(boost-reduction level, not a counter) behavior from the still-active '
+                                  'self-test path not yet characterized, so not asserted here.'},
     # dwell_cap raised from 90 to 95 — dwell scales up with actual settled
     # RPM (documented trend elsewhere: ~90@6000, ~96@6440, ~97@6524
     # redline), and this test settles at ~6313rpm, above ramp_to_6200's old
