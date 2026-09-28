@@ -64,6 +64,7 @@
 //`define TEST_TPS_FAIL
 //`define TEST_ALTITUDE_DISCONNECTED
 //`define TEST_FUEL_QUAL_DISCONNECTED
+//`define TEST_REF_SENSOR_LOSS
 
 // --- Ignition tests ---
 //`define TEST_IGNITION_TIMING
@@ -276,6 +277,33 @@
   `ifndef _FUEL_QUAL
   `define _FUEL_QUAL    8'hFF
   `endif
+`endif
+
+// TEST_REF_SENSOR_LOSS: reference (crank position) sensor wire breaks
+// partway through the test — see the reference_sensor override near
+// the RPM/crank generator instantiation below for the actual
+// mechanism (P3.2/INT0 stops seeing pulses from REF_LOSS_T_MS onward,
+// while the underlying engine model keeps running normally). Longer
+// SIM_TIME than the other idle sensor-fault tests (8s vs 5s) to leave
+// a real post-fault observation window after the loss kicks in at
+// REF_LOSS_T_MS=3500 (well after ASE end, ~1.5-2.7s in the sibling
+// tests).
+`ifdef TEST_REF_SENSOR_LOSS
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `undef  RPMEND
+  `define RPMEND    840
+  `ifndef SIM_TIME
+  `define SIM_TIME  8000000000
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+  `define REF_LOSS_T_MS 3500
 `endif
 
 `ifdef TEST_AC_ON_IDLE
@@ -1015,6 +1043,10 @@ wire [15:0] ext_addr;
 wire        write, write_uart;
 wire        rxd, int_uart, bit_out;
 wire        reference_sensor, speed_sensor;
+wire        reference_sensor_gen;   // generator's raw pulse output — see
+                                     // TEST_REF_SENSOR_LOSS override below,
+                                     // which feeds reference_sensor from this
+                                     // instead of driving it directly.
 wire        tdc_marker;   // drives the tdc output port
 assign      tdc = tdc_marker;
 // T0 (P3.4) and T1 (P3.5) are separate top-level ports on i8051_top —
@@ -1630,46 +1662,63 @@ wire [7:0] afm_wiper_curve_unused;
 var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk                    ),
     .rst       ( rst                    ),
-    .int_0     ( reference_sensor       ),
+    .int_0     ( reference_sensor_gen   ),
     .int_1     ( speed_sensor           ),
     .tdc       ( tdc_marker             ),
     .afm_wiper ( afm_wiper_curve_unused )
 );
 `else
 var_interrupt_generator_cl var_interrupt_generator_1 (
-    .clk       ( clk              ),
-    .rst       ( rst              ),
-    .int_0     ( reference_sensor ),
-    .int_1     ( speed_sensor     ),
-    .tdc       ( tdc_marker       ),
-    .afm_wiper ( afm_wiper        )
+    .clk       ( clk                  ),
+    .rst       ( rst                  ),
+    .int_0     ( reference_sensor_gen ),
+    .int_1     ( speed_sensor         ),
+    .tdc       ( tdc_marker           ),
+    .afm_wiper ( afm_wiper            )
 );
 `endif
 `else
 // Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
 var_interrupt_generator var_interrupt_generator_1 (
-    .clk       ( clk              ),
-    .rst       ( rst              ),
-    .int_0     ( reference_sensor ),
-    .int_1     ( speed_sensor     ),
-    .tdc       ( tdc_marker       ),
-    .afm_wiper ( afm_wiper        )
+    .clk       ( clk                  ),
+    .rst       ( rst                  ),
+    .int_0     ( reference_sensor_gen ),
+    .int_1     ( speed_sensor         ),
+    .tdc       ( tdc_marker           ),
+    .afm_wiper ( afm_wiper            )
 );
 `endif
 `else
   `ifdef NOINT
-    assign reference_sensor = 1'b1;
-    assign speed_sensor     = 1'b1;
-    assign tdc_marker       = 1'b0;   // no crank model in NOINT builds
+    assign reference_sensor_gen = 1'b1;
+    assign speed_sensor         = 1'b1;
+    assign tdc_marker           = 1'b0;   // no crank model in NOINT builds
   `else
 interrupt_generator interrupt_generator_1 (
-    .clk   ( clk              ),
-    .rst   ( rst              ),
-    .int_0 ( reference_sensor ),
-    .int_1 ( speed_sensor     )
+    .clk   ( clk                  ),
+    .rst   ( rst                  ),
+    .int_0 ( reference_sensor_gen ),
+    .int_1 ( speed_sensor         )
 );
     assign tdc_marker = 1'b0;   // plain interrupt_generator has no TDC concept
   `endif
+`endif
+
+// TEST_REF_SENSOR_LOSS: the reference (crank position) sensor wire
+// breaks/opens partway through the test — the generator underneath
+// keeps computing real RPM physics (so the engine model stays
+// internally consistent), but the DME's actual input pin (P3.2/INT0)
+// stops seeing any pulses from REF_LOSS_T_MS onward, same as a broken
+// wire or connector between the sensor and the ECU. Held high (no
+// pulse) rather than low, matching the open-collector idle-high
+// convention documented above (`p3_in[2] — 1 = no ref pulse`).
+`ifdef TEST_REF_SENSOR_LOSS
+  `ifndef REF_LOSS_T_MS
+  `define REF_LOSS_T_MS 3000
+  `endif
+assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b1 : reference_sensor_gen;
+`else
+assign reference_sensor = reference_sensor_gen;
 `endif
 
 // ─── External RAM ────────────────────────────────────────────
