@@ -113,22 +113,49 @@ TESTS = {
                                   'own firmware-computed RPM (prpm/iram[0x37], read from DME: [STATUS] lines) '
                                   'keeps reading ~840rpm (same jitter as before the fault) all the way to '
                                   't=7871ms — 4.4s post-fault — and fuel/ignition/sync/DTC are all unaffected. '
-                                  'Working theory: the DME likely uses the separate speed/tooth signal '
-                                  '(speed_sensor, int_1) for continuous RPM measurement and reserves the '
-                                  'reference pulse for cylinder/TDC sync only, so losing JUST the reference '
-                                  'signal may be genuinely benign within this window rather than undetected — '
-                                  'comparing against a real speed_sensor_loss run should confirm or kill this. '
-                                  'fuel_range left wide since nothing here constrains it meaningfully yet.'},
-    # SPEED_SENSOR_LOSS: same mechanism as ref_sensor_loss (see
-    # i8051_dashboard_tb.v), applied to the speed/tooth sensor (P3.3/
-    # INT1) instead of the reference (crank position) sensor. Same
-    # unknowns apply — exploratory until a real run.
+                                  'CONFIRMED by the speed_sensor_loss real run below: losing the reference '
+                                  'signal alone is genuinely benign (the speed/tooth signal is what actually '
+                                  'drives RPM measurement and firmware liveness) — this is real, correct '
+                                  'behavior, not an undetected fault. fuel_range left wide since nothing here '
+                                  'constrains it meaningfully.'},
+    # SPEED_SENSOR_LOSS: last piece of the ref/speed sensor comparison.
+    # Real run is dramatic — confirmed via the raw ports field, iram
+    # dump, and DME: [STATUS] lines, not just the generic checks:
+    #   - speed_sensor pin genuinely freezes at 1 at t=3500ms (fault
+    #     injection confirmed); reference_sensor keeps toggling normally
+    #     the whole time (correctly unaffected — separate signal).
+    #   - A_2_dme_relay (P1.2) drops from latched-low to high at
+    #     t=3600ms — 100ms after the fault — and never re-latches for
+    #     the rest of the test. The DME de-energizes its own
+    #     self-latching power relay.
+    #   - Full iram dump collapses from 97/128 nonzero bytes at
+    #     t=3400ms (normal running firmware) to 41/128 at t=3600ms,
+    #     mostly zeroed from offset ~16 onward — a textbook post-reset
+    #     signature — and stays in that same collapsed state through
+    #     t=7900ms (never recovers within the test).
+    #   - IGN_OUT and injection both stop entirely from ~t=3474ms
+    #     onward, consistent with the DME having crashed/reset rather
+    #     than continuing to run in some degraded mode.
+    # All of this: the DME appears to crash/reset within ~100ms of
+    # losing the speed/tooth signal and never recovers. The several
+    # existing universal-check FAILs (relay, IGN_OUT, TPS-idle-bucket,
+    # ADC_BATTERY-nominal) are the accurate, intended demonstration of
+    # this real consequence, not test bugs — left as-is rather than
+    # suppressed, same as cl_ramp_to_3000_KLR_BATT_DISCONNECTED's
+    # IGN_OUT FAIL and cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW's
+    # WOT-bucket FAIL.
     'speed_sensor_loss': {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
-                          'notes':'Exploratory — first real run needed to see what the DME actually does once '
-                                  'the speed/tooth sensor pulses stop (t=3500ms onward). fuel_range is '
-                                  'deliberately wide (0.0-5.0ms) to avoid a false FAIL on an unknown outcome; '
-                                  'expect to tighten this and add fault-specific checks (dwell/ignition-timing '
-                                  'behavior, DTC if any, fuel response) once a log is available.'},
+                          'notes':'Real run: DME crashes/resets within ~100ms of losing the speed/tooth signal '
+                                  '(t=3500ms) and never recovers for the rest of the test — confirmed via the '
+                                  'raw ports field (relay drops at t=3600ms, never re-latches), a full iram '
+                                  'dump (collapses from 97/128 to 41/128 nonzero bytes right at the relay '
+                                  'drop, a post-reset signature), and IGN_OUT/injection both stopping entirely. '
+                                  'This is the real, dramatic consequence of losing continuous RPM measurement '
+                                  '— unlike ref_sensor_loss (reference-only loss is benign), the speed signal '
+                                  'appears essential to the firmware staying alive at all. The universal-check '
+                                  'FAILs this produces (relay, IGN_OUT, TPS-idle-bucket, ADC_BATTERY-nominal) '
+                                  'are the correct, informative signature of this crash — left failing '
+                                  'deliberately rather than suppressed.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
