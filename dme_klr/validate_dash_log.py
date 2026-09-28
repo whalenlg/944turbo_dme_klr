@@ -143,7 +143,8 @@ TESTS = {
                           'expect_fail_markers':['A_2_dme_relay (P1.2) not held low',
                                                   'IGN_OUT stopped pulsing for',
                                                   'TPS ADC) saw non-idle value',
-                                                  'ADC_BATTERY) saw non-nominal value'],
+                                                  'ADC_BATTERY) saw non-nominal value',
+                                                  'No injected fuel snapshots in steady state'],
                           'notes':'Real run, root cause confirmed: losing the speed/tooth signal puts the DME '
                                   'into a continuous watchdog-reset loop — "INTERRUPT BLOCK set (watchdog or '
                                   'power-on reset)" fires 115 times every 38-39ms from t=3527ms through the end '
@@ -153,10 +154,10 @@ TESTS = {
                                   'never re-latches, IGN_OUT/injection never resume, prpm reads 0, and iram '
                                   'shows a collapsed-but-still-changing pattern (partial re-init progress each '
                                   'reset cycle before the next reset wipes it) rather than a static crash state. '
-                                  'expect_fail_markers inverts this test\'s verdict on all four downstream '
-                                  'symptoms: it reports PASS when relay/IGN_OUT/TPS-idle-bucket/ADC_BATTERY-nominal '
-                                  'all correctly show the crash (the fault\'s real, confirmed consequence), and '
-                                  'FAILs if any of them unexpectedly come back clean instead — meaning the '
+                                  'expect_fail_markers inverts this test\'s verdict on all five downstream '
+                                  'symptoms: it reports PASS when relay/IGN_OUT/TPS-idle-bucket/ADC_BATTERY-nominal/'
+                                  'no-fuel-injected all correctly show the crash (the fault\'s real, confirmed '
+                                  'consequence), and FAILs if any of them unexpectedly come back clean instead — meaning the '
                                   'speed_sensor freeze itself silently stopped applying, a real regression this '
                                   'test exists to catch rather than a fluke. Reproduced identically under '
                                   'Verilator (same reset cadence) — not an Icarus-specific artifact.'},
@@ -2196,18 +2197,27 @@ def validate(test_name, logpath, dme_file=None):
     # (a macro removed, a wire re-connected, a refactor undone the
     # override). Left unguarded, that regression would show up as an
     # ordinary PASS with no signal anything is wrong. expect_fail_markers
-    # is a list of substrings that must appear somewhere in `fails` for
-    # this test to be considered correctly exercising its fault: if a
-    # marker IS found, it's moved from fails into infos (the fault's
-    # real, expected consequence, confirmed); if a marker is NOT found,
-    # a new fail is raised instead (the fault's signature never showed
-    # up, meaning the injection itself may be broken) — inverting the
+    # is a list of substrings that must appear somewhere in `fails` OR
+    # `warns` for this test to be considered correctly exercising its
+    # fault (checked in both — a downstream symptom of a well-understood
+    # fault can legitimately be logged as either, e.g. "no fuel
+    # injected" is a WARN, not a FAIL, elsewhere in this file, but it's
+    # just as much a confirmed consequence of a real crash as the
+    # relay/IGN_OUT FAILs are): if a marker IS found, it's moved out of
+    # whichever list it was in and into infos (the fault's real,
+    # expected consequence, confirmed); if a marker is NOT found, a new
+    # fail is raised instead (the fault's signature never showed up,
+    # meaning the injection itself may be broken) — inverting the
     # normal fail/pass logic specifically for the fault's own signature,
     # not for anything else this test still legitimately checks.
     for marker in exp.get('expect_fail_markers', []):
         matched = next((f for f in fails if marker in f), None)
+        source = fails
+        if matched is None:
+            matched = next((w for w in warns if marker in w), None)
+            source = warns
         if matched is not None:
-            fails.remove(matched)
+            source.remove(matched)
             infos.append(f"Fault signature confirmed ✓ ({matched})")
         else:
             fails.append(f"expected fault signature not found — fault injection may be broken (looked for: \"{marker}\")")
