@@ -107,11 +107,18 @@ TESTS = {
     # fault-specific assertion yet; rpm_target/expect_ase/expect_fuelcut
     # only really apply to the pre-fault (first 3.5s) portion of the run.
     'ref_sensor_loss':   {'rpm_target':  840, 'fuel_range':(0.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True,
-                          'notes':'Exploratory — first real run needed to see what the DME actually does once '
-                                  'the reference sensor pulses stop (t=3500ms onward). fuel_range is '
-                                  'deliberately wide (0.0-5.0ms) to avoid a false FAIL on an unknown outcome; '
-                                  'expect to tighten this and add fault-specific checks (RPM behavior, DTC if '
-                                  'any, fuel/ignition response) once a log is available.'},
+                          'notes':'Real run confirms the fault injection itself works — the raw ports field\'s '
+                                  'P3.2 bit genuinely freezes at 1 starting exactly at t=3500ms (verified '
+                                  'directly from the DS line ports field, not just inferred). But the DME\'s '
+                                  'own firmware-computed RPM (prpm/iram[0x37], read from DME: [STATUS] lines) '
+                                  'keeps reading ~840rpm (same jitter as before the fault) all the way to '
+                                  't=7871ms — 4.4s post-fault — and fuel/ignition/sync/DTC are all unaffected. '
+                                  'Working theory: the DME likely uses the separate speed/tooth signal '
+                                  '(speed_sensor, int_1) for continuous RPM measurement and reserves the '
+                                  'reference pulse for cylinder/TDC sync only, so losing JUST the reference '
+                                  'signal may be genuinely benign within this window rather than undetected — '
+                                  'comparing against a real speed_sensor_loss run should confirm or kill this. '
+                                  'fuel_range left wide since nothing here constrains it meaningfully yet.'},
     # SPEED_SENSOR_LOSS: same mechanism as ref_sensor_loss (see
     # i8051_dashboard_tb.v), applied to the speed/tooth sensor (P3.3/
     # INT1) instead of the reference (crank position) sensor. Same
