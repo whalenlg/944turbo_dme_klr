@@ -31,6 +31,11 @@ module dme_klr_dashboard_tb;
     wire tach_dme_to_klr;     // DME A_1_tach_pulse  (active-high)
     wire ign_out_dme_to_klr;  // DME A_5_KLR_ign_out (active-high)
     wire klr_ign_out;         // KLR spark output (NOT connected to DME ign)
+    wire full_load_klr;        // KLR's own computed full_load output — see
+                                // TEST_KLR_FULL_LOAD_STUCK_LOW override below,
+                                // which feeds full_load (what the DME
+                                // actually sees) from this instead of
+                                // connecting it directly.
     wire full_load;            // KLR full_load → DME TPS ch6
     wire tdc;                  // DME crank-model TDC marker (see
                                 // var_interrupt_generator/_cl) — not
@@ -85,13 +90,30 @@ module dme_klr_dashboard_tb;
         .ext_trigger     ( ~ign_out_dme_to_klr ),  // DME A_5_KLR_ign_out → KLR trigger (inverted)
         .ext_ign         ( ~tach_dme_to_klr    ),  // DME tach → KLR ign (inverted)
         .ign_out         ( klr_ign_out         ),  // KLR spark output → DME ign
-        .full_load       ( full_load           ),  // KLR WOT flag → DME
+        .full_load       ( full_load_klr       ),  // KLR WOT flag → DME
         .tps_wiper   ( tps_wiper_sig       ),  // AFM → KLR TPS angle ch7
         .rpm_in          ( u_dme.ref_rpm       ),  // DME tick-measured RPM (reg [31:0]) → KLR -DBOOST map (unused if -DBOOST undefined)
         .dme_clk         ( dme_clk             ),  // → KLR's knock_signal_generator (crank-synced knock_sensor waveform)
         .tdc             ( tdc                 ),  // → KLR's knock_signal_generator
         .speed_sensor    ( u_dme.speed_sensor  )   // → KLR's knock_signal_generator
     );
+
+    // KLR_FULL_LOAD_STUCK_LOW: the KLR's own full_load computation
+    // stays correct internally (its own ram[0x3A]/DTC logic sees
+    // whatever real throttle position exists), but the wire actually
+    // reaching the DME is stuck low — the WOT indication itself "isn't
+    // happening" regardless of real throttle, e.g. a broken P1.5 wire
+    // or connector between the two ECUs. Distinct from the KLR-side TPS
+    // faults (which make the KLR itself misread throttle position) —
+    // here the KLR computes full_load correctly, it just never reaches
+    // the DME. No TEST_ prefix, matching the KLR_BATT_LOW/
+    // KLR_TPS_SUPPLY_LOW/etc. naming convention for KLR-side fault
+    // macros elsewhere in this test suite.
+`ifdef KLR_FULL_LOAD_STUCK_LOW
+    assign full_load = 1'b0;
+`else
+    assign full_load = full_load_klr;
+`endif
 
     // ── Snapshot-busy flag ───────────────────────────────────
     reg snapshot_busy;

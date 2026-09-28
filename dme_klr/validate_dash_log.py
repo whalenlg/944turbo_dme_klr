@@ -432,6 +432,28 @@ TESTS = {
     'cl_ramp_to_6000_KLR_ADC0_NOISE_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'expect_ram33_value':0x22,
                           'notes':'Same as cl_ramp_to_6000, KLR ADC ch0 (knock noise-level) stuck at a flat 0x80 for the whole simulation to simulate a mid-scale stuck-at sensor fault. ram[33]=0x22 expected — self-test-fault code the firmware correctly reports for the stuck-at ADC0 noise-floor sensor'},
+    # FULL_LOAD_STUCK_LOW: last item on the "input isn't happening"
+    # audit list. Unlike the KLR-side TPS faults (which make the KLR
+    # itself misread throttle position), the KLR here computes
+    # full_load correctly from a genuine WOT reading — only the wire
+    # actually reaching the DME (P1.5) is stuck low, e.g. a broken
+    # connector between the two ECUs. No KLR self-diagnostic fires
+    # (nothing is wrong from the KLR's own perspective), so no DTC
+    # expected. The universal "6000-target test must show WOT
+    # (iram[0x16]=0xCC)" check (item 2d) is EXPECTED to legitimately
+    # FAIL here — that IS the demonstration of the fault: the DME
+    # never correctly recognizes WOT even though the engine genuinely
+    # reaches it, because the only signal that would tell it so never
+    # arrives. Not a bug in the test or an unexpected gap.
+    'cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'dwell_cap':96,
+                          'notes':'Same as cl_ramp_to_6000, but the KLR full_load wire (P1.5) reaching the DME '
+                                  'is stuck low the whole run regardless of real throttle position — the KLR '
+                                  'itself computes full_load correctly, it just never reaches the DME. Expected '
+                                  'to legitimately FAIL the universal 6000-target TPS-ADC-bucket check (never '
+                                  'sees WOT/0xCC) — that IS the intended demonstration that the DME can never '
+                                  'recognize WOT once this wire fails, not a test bug. No DTC expected since '
+                                  'nothing is wrong from the KLR\'s own diagnostic perspective.'},
 
     # cl_condition_cycle / cl_condition_cycle_idle: 6-phase condition sweep
     # (air temp, coolant temp, altitude, cat, AC, battery), each 1s nominal
