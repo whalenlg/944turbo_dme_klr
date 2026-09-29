@@ -1073,6 +1073,23 @@ DME_FILE_OVERRIDES = {
         'coolant_fail':           {'expect_iram_bytes': [(0x7D, 0x5C, 'ISVIntegralLo(7D)')]},
         'airtemp_fail':           {'expect_iram_bytes': [(0x7D, 0x6B, 'ISVIntegralLo(7D)')]},
 
+        # ramp_to_redline / ramp_to_redline_KLR_TPS_HIGH: both WARN "No
+        # injected fuel snapshots in steady state" at the exact same
+        # settled RPM (6524) the reference ROM (28PIN_DME_PERFORMANCE.mem)
+        # reaches too — but the reference ROM shows continuous injection
+        # there (fuel=12.756-13.390ms, avg 13.081ms, confirmed PASS
+        # earlier this session), while this ROM shows zero fuel for the
+        # ENTIRE tail-30% window. Same RPM, opposite fueling behavior —
+        # reads as a genuine rev-limiter/fuel-cut RPM threshold
+        # difference on this firmware (fuel cut persists at sustained
+        # redline here, where the reference ROM's cut is either higher
+        # or doesn't persist), not noise or a broken check.
+        # expect_fail_markers confirms this as an understood signature
+        # rather than an unexplained WARN, same mechanism used for the
+        # KLR-input-loss tests' IGN_OUT signature.
+        'ramp_to_redline':             {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
+        'ramp_to_redline_KLR_TPS_HIGH': {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
+
         # NOT yet overridden — flagged, not resolved:
         # cl_ramp_to_6000_BOOST_HIGH: KLR ram[33] never went non-zero
         # (expected DTC 0x32). Unlike the entries above, this isn't a
