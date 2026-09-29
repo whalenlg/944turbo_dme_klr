@@ -149,6 +149,21 @@ module var_interrupt_generator (
         end else begin
             // Count master clocks for RPM step timing
             master_clk_count <= master_clk_count + 1;
+`ifdef LIVE
+            // Live debugger (dme_klr/live/): once per ms, slew RPM toward
+            // the target the web UI sets in dme_klr_dashboard_tb.live_rpm,
+            // by at most live_rpm_slew RPM. Replaces the timed ramp below.
+            if (master_clk_count >= `DME_FREQ) begin : live_rpm_slew
+                reg [31:0] tgt, slew;
+                master_clk_count <= 0;
+                tgt  = (dme_klr_dashboard_tb.live_rpm < 16'd30) ? 32'd30 : {16'd0, dme_klr_dashboard_tb.live_rpm};
+                slew = {16'd0, dme_klr_dashboard_tb.live_rpm_slew};
+                if (current_rpm + slew < tgt)       current_rpm = current_rpm + slew;
+                else if (current_rpm > tgt + slew)  current_rpm = current_rpm - slew;
+                else                                current_rpm = tgt;
+                period_current <= `RPMCONST / current_rpm;
+            end
+`else
             if (master_clk_count >= step_clocks) begin
                 master_clk_count <= 0;
                 if (!ramp_up_done && current_rpm < `RPMEND) begin
@@ -160,6 +175,7 @@ module var_interrupt_generator (
                     period_current <= `RPMCONST / current_rpm;
                 end
             end
+`endif
 
 `ifdef DASHBOARD_TB
   `define CYCLE_COUNT i8051_dashboard_tb.i8051_top.u_cpu.cycle_count

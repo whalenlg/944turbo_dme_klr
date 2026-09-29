@@ -1531,7 +1531,12 @@ wire [7:0] afm_wiper;
 // AFM event it's supposed to follow (e.g. tippy_in/cl_tippy_in: AFM
 // steps via afm_tippy while afm_wiper — and hence TPS — moves on its
 // own unrelated timeline).
-`ifdef AFM_FAULT
+`ifdef LIVE
+// Live debugger: AFM follows the RPM model unless the web UI pins it
+// (live_afm = 16'hFFFF means "follow the model").
+wire [7:0] afm_effective = (dme_klr_dashboard_tb.live_afm == 16'hFFFF)
+                           ? afm_wiper : dme_klr_dashboard_tb.live_afm[7:0];
+`elsif AFM_FAULT
 wire [7:0] afm_effective = 8'hFF;
 `elsif AFM_CL_RAMP
 wire [7:0] afm_effective = afm_cl;
@@ -1550,6 +1555,24 @@ reg  [7:0] adc_mux;
 // signal that idle_sw transitively depends on unless each one is added
 // here too. `always @(*)` re-evaluates on any input change and avoids
 // re-introducing the same class of staleness bug this file just had.
+`ifdef LIVE
+// Live debugger: every ADC channel reads the value the web UI last set
+// in dme_klr_dashboard_tb (see dme_klr/live/). TPS (ch6) keeps the
+// normal idle-switch / KLR full_load logic below.
+always @(*) begin
+    case (p2[2:0])
+        3'b000: adc_mux = afm_effective;
+        3'b001: adc_mux = dme_klr_dashboard_tb.live_battery;
+        3'b010: adc_mux = dme_klr_dashboard_tb.live_airtemp;
+        3'b011: adc_mux = dme_klr_dashboard_tb.live_coolant;
+        3'b100: adc_mux = dme_klr_dashboard_tb.live_altitude;
+        3'b101: adc_mux = 8'hFF;
+        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
+        3'b111: adc_mux = dme_klr_dashboard_tb.live_fuel_qual;
+        default: adc_mux = 8'hF0;
+    endcase
+end
+`else
 always @(*) begin
     case (p2[2:0])
 `ifdef AFM_FAULT
@@ -1609,6 +1632,7 @@ always @(*) begin
         default: adc_mux = 8'hF0;
     endcase
 end
+`endif // LIVE
 
 assign adc_data      = adc_mux;
 assign xadc_data_out = adc_data_out;
@@ -1966,7 +1990,9 @@ reg [63:0] ph_status_next_snap;
 // one sample, then the correctly-processed value the next). This is
 // the testbench's own known-good, monotonic source signal, not a
 // read-back of anything the firmware computes.
-`ifdef TEST_AIRTEMP_FAIL
+`ifdef LIVE
+wire [7:0] airtemp_adc_in = dme_klr_dashboard_tb.live_airtemp;
+`elsif TEST_AIRTEMP_FAIL
 wire [7:0] airtemp_adc_in = 8'h00;
 `elsif CL_CONDITION_CYCLE_ACTIVE
 wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
@@ -1974,7 +2000,9 @@ wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
 wire [7:0] airtemp_adc_in = `_AIRTEMP_RAW;
 `endif
 
-`ifdef TEST_ISV_COLD_IDLE
+`ifdef LIVE
+wire [7:0] coolant_adc_in = dme_klr_dashboard_tb.live_coolant;
+`elsif TEST_ISV_COLD_IDLE
 wire [7:0] coolant_adc_in = coolant_dynamic;
 `elsif TEST_COLD_START
 wire [7:0] coolant_adc_in = coolant_dynamic;

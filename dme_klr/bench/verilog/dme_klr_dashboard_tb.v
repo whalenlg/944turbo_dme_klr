@@ -44,7 +44,52 @@ module dme_klr_dashboard_tb;
     // TPS angle: DME AFM wiper → KLR TPS angle ch7
     // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
     wire [7:0] tps_wiper_sig;
+`ifdef LIVE
+    // ── Live-debugger inputs ──────────────────────────────────
+    // Written between evals by dme_klr/live/sim_main.cpp when the web UI
+    // changes a control; read by the DME/KLR sub-testbenches under LIVE.
+    // 16'hFFFF on live_afm/live_tps means "follow the RPM model".
+    reg [15:0] live_rpm       /*verilator public_flat_rw*/ = 16'd840;
+    reg [15:0] live_rpm_slew  /*verilator public_flat_rw*/ = 16'd1;     // RPM per ms
+    reg [15:0] live_afm       /*verilator public_flat_rw*/ = 16'hFFFF;
+    reg [15:0] live_tps       /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle input
+    reg [7:0]  live_coolant   /*verilator public_flat_rw*/ = `_COOLANT_RAW;
+    reg [7:0]  live_airtemp   /*verilator public_flat_rw*/ = `_AIRTEMP_RAW;
+    reg [7:0]  live_battery   /*verilator public_flat_rw*/ = `_BATTERY;
+    reg [7:0]  live_altitude  /*verilator public_flat_rw*/ = `_ALTITUDE;
+    reg [7:0]  live_fuel_qual /*verilator public_flat_rw*/ = `_FUEL_QUAL;
+    reg [7:0]  live_boost     /*verilator public_flat_rw*/ = 8'h85;     // KLR MAP (ch4)
+    // Snapshot on demand: sim_main bumps req, the scheduler below emits
+    // one DS pair and copies req to ack.
+    reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
+    reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
+    assign tps_wiper_sig = (live_tps == 16'hFFFF) ? u_dme.afm_wiper : live_tps[7:0];
+
+    // Instruction-start trackers for breakpoints, stepping and the PC
+    // trace. *_ipc is the address of the opcode most recently fetched and
+    // *_icount bumps once per instruction; sim_main watches the count.
+    // DME: opcode latch happens at S3P2 (osc_cnt==5) outside cycle 2 and
+    // outside interrupt entry — the same condition i8051_core uses.
+    // KLR: state 1 of a first machine cycle drives the opcode address.
+    reg [15:0] live_dme_ipc    /*verilator public_flat_rd*/ = 16'd0;
+    reg [31:0] live_dme_icount /*verilator public_flat_rd*/ = 32'd0;
+    reg [15:0] live_klr_ipc    /*verilator public_flat_rd*/ = 16'd0;
+    reg [31:0] live_klr_icount /*verilator public_flat_rd*/ = 32'd0;
+    always @(posedge u_dme.i8051_top.u_cpu.clk)
+        if (u_dme.i8051_top.u_cpu.res_n && u_dme.i8051_top.u_cpu.osc_cnt == 4'd5 &&
+            !u_dme.i8051_top.u_cpu.cycle_2 && !u_dme.i8051_top.u_cpu.irq_pending) begin
+            live_dme_ipc    <= u_dme.i8051_top.u_cpu.pc;
+            live_dme_icount <= live_dme_icount + 32'd1;
+        end
+    always @(posedge u_klr.top.i8048_core_1.clk)
+        if (u_klr.top.i8048_core_1.res_n && u_klr.top.i8048_core_1.state_clk_en &&
+            u_klr.top.i8048_core_1.state == 3'd1 && !u_klr.top.i8048_core_1.cycle_2) begin
+            live_klr_ipc    <= {4'd0, u_klr.top.i8048_core_1.pc};
+            live_klr_icount <= live_klr_icount + 32'd1;
+        end
+`else
     assign tps_wiper_sig = u_dme.afm_wiper;
+`endif
 
     // ── Always-on FST visibility for the interconnect above ──────────
     // klr_vcd_combined.v (compiled into this build, in files/files_cl)
@@ -231,6 +276,11 @@ module dme_klr_dashboard_tb;
             emit_combined_snapshot;
             next_snap_ns <= next_snap_ns + (`DASH_INTERVAL_MS * 64'd1_000_000);
         end
+`ifdef LIVE
+        else if (live_snap_req != live_snap_ack)
+            emit_combined_snapshot;
+        live_snap_ack <= live_snap_req;
+`endif
     end
 
     // Hard simulation boundary — terminates at exactly SIM_TIME.

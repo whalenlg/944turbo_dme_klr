@@ -137,7 +137,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg [7:0] adc_ch1 = 8'hd8;  // battery
 `endif
     reg [7:0] adc_ch2 = 8'h00;  // ground
-`ifndef BOOST
+`ifdef LIVE
+    // Live debugger: MAP/boost reading set from the web UI (dme_klr/live/)
+    wire [7:0] adc_ch4 = dme_klr_dashboard_tb.live_boost;
+`elsif BOOST
+`else
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
 `endif
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
