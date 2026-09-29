@@ -6,7 +6,8 @@ step instructions, PC breakpoints, and live inputs.
 
 ```sh
 ./build_live.sh          # Verilator >= 5.03x; builds obj/dme_klr_live
-node bridge.mjs          # starts the sim, serves http://127.0.0.1:8951
+node bridge.mjs          # starts the sim, serves http://127.0.0.1:8951 (this Mac only;
+                         # pages from whalenlg.github.io and localhost only)
 ```
 
 Then open the dashboard and press **LIVE**.

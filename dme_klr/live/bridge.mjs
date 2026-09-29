@@ -14,8 +14,12 @@
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
 //
+//  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
+//  localhost or 127.0.0.1 may use it (see ALLOWED below).
+//
 //  Usage:  node bridge.mjs [--port 8951] [--sim obj/dme_klr_live]
 //                          [--dme-asm <dir>] [--klr-asm <dir>]
+//                          [--allow-origin <https://other.origin>]
 // ============================================================
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -109,16 +113,36 @@ const ASM = {
 };
 
 // ── HTTP ─────────────────────────────────────────────────────
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
+// Only these page origins may use the bridge: the published dashboard
+// and a dev server on this machine (--allow-origin adds more). Requests
+// from any other page are refused with 403 *before* doing anything,
+// since a plain-text POST from another site would otherwise still run
+// its command even though the browser hides the response. Requests
+// without an Origin header (curl, a terminal) are allowed.
+const ALLOWED = [
+  /^https:\/\/whalenlg\.github\.io$/,
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+  ...process.argv.flatMap((a, i) => a === '--allow-origin' && process.argv[i + 1] ? [process.argv[i + 1]] : []),
+];
+const originOk = o => !o || ALLOWED.some(a => typeof a === 'string' ? a === o : a.test(o));
+const cors = o => o ? {
+  'Access-Control-Allow-Origin': o,
+  'Vary': 'Origin',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
-  // Lets an https page (e.g. the gh-pages dashboard) reach this local server in Chrome
+  // Lets the https gh-pages dashboard reach this local server in Chrome
   'Access-Control-Allow-Private-Network': 'true',
-};
+} : {};
 
 createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  const origin = req.headers.origin;
+  if (!originOk(origin)) {
+    console.log(`bridge: refused ${req.method} ${url.pathname} from ${origin}`);
+    res.writeHead(403);
+    return res.end('origin not allowed');
+  }
+  const CORS = cors(origin);
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
 
   if (req.method === 'GET' && url.pathname === '/events') {
