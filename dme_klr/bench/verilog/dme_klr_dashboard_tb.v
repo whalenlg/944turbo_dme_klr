@@ -91,6 +91,20 @@ module dme_klr_dashboard_tb;
             live_klr_ipc    <= {4'd0, u_klr.top.i8048_core_1.pc};
             live_klr_icount <= live_klr_icount + 32'd1;
         end
+
+    // Ignition pulse widths for the web UI's engine row and charts:
+    // DME A_5 ign out (active-high) and the KLR spark output. Pulses
+    // under 100 us are the KLR's wait_ign_2 re-assertion artifacts
+    // (see klr_phase_monitor.v) and are skipped.
+    time live_dme_ign_rise = 0, live_klr_ign_rise = 0;
+    always @(posedge ign_out_dme_to_klr) live_dme_ign_rise = $time;
+    always @(negedge ign_out_dme_to_klr)
+        if ($time - live_dme_ign_rise >= 100_000)
+            $display("SIM: [IGN] dme t_ns=%0d width_ns=%0d", $time, $time - live_dme_ign_rise);
+    always @(posedge klr_ign_out) live_klr_ign_rise = $time;
+    always @(negedge klr_ign_out)
+        if ($time - live_klr_ign_rise >= 100_000)
+            $display("SIM: [IGN] klr t_ns=%0d width_ns=%0d", $time, $time - live_klr_ign_rise);
 `else
     assign tps_wiper_sig = u_dme.afm_wiper;
 `endif

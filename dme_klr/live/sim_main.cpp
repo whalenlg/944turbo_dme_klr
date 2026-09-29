@@ -30,6 +30,7 @@
 //    SIM: [BP]     dme=<hex,...> klr=<hex,...>
 //    SIM: [TRACE]  dme|klr <hex,...>                      (oldest first)
 //    SIM: [ERROR]  <message>
+//    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
 // ============================================================
 
 #include "Vdme_klr_dashboard_tb.h"
