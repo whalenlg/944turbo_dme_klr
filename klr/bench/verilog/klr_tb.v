@@ -137,10 +137,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg [7:0] adc_ch1 = 8'hd8;  // battery
 `endif
     reg [7:0] adc_ch2 = 8'h00;  // ground
-`ifdef LIVE
-    // Live debugger: MAP/boost reading set from the web UI (dme_klr/live/)
-    wire [7:0] adc_ch4 = dme_klr_dashboard_tb.live_boost;
-`elsif BOOST
+`ifdef BOOST
+    // adc_ch4 is the MAP-table model below
+`elsif LIVE
+    // Live debugger without -DBOOST: the web UI sets the MAP reading
+    wire [7:0] adc_ch4 = dme_klr_dashboard_tb.live_boost[7:0];
 `else
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
 `endif
@@ -400,7 +401,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // overflow condition.
     wire [7:0] boost_adc4_capped = (boost_adc4_final > 8'hF0) ? 8'hF0 : boost_adc4_final;
 
+`ifdef LIVE
+    // Live debugger: the web UI can pin the MAP reading (16'hFFFF = model)
+    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? dme_klr_dashboard_tb.live_boost[7:0] :
+                         (EXT_STIM) ? boost_adc4_capped : 8'h85;
+`else
     wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_capped : 8'h85;
+`endif
 `endif
 
     // Always-declared export of the real internal MAP-table target (in the

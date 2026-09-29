@@ -48,22 +48,26 @@ module dme_klr_dashboard_tb;
     // ── Live-debugger inputs ──────────────────────────────────
     // Written between evals by dme_klr/live/sim_main.cpp when the web UI
     // changes a control; read by the DME/KLR sub-testbenches under LIVE.
-    // 16'hFFFF on live_afm/live_tps means "follow the RPM model".
-    reg [15:0] live_rpm       /*verilator public_flat_rw*/ = 16'd840;
-    reg [15:0] live_rpm_slew  /*verilator public_flat_rw*/ = 16'd1;     // RPM per ms
+    // The engine runs on the closed-loop model (CL_MODE + AFM_CL_RAMP):
+    // live_tps is the driver's throttle; AFM follows it ~250 ms later,
+    // the firmware fuels for that airflow and RPM comes out of the
+    // torque balance in var_interrupt_gen_cl.v. 16'hFFFF on live_rpm /
+    // live_afm / live_boost means "use the model"; any other value pins
+    // that signal.
+    reg [15:0] live_rpm       /*verilator public_flat_rw*/ = 16'hFFFF;
     reg [15:0] live_afm       /*verilator public_flat_rw*/ = 16'hFFFF;
-    reg [15:0] live_tps       /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle input
+    reg [7:0]  live_tps       /*verilator public_flat_rw*/ = 8'h28;     // idle throttle
     reg [7:0]  live_coolant   /*verilator public_flat_rw*/ = `_COOLANT_RAW;
     reg [7:0]  live_airtemp   /*verilator public_flat_rw*/ = `_AIRTEMP_RAW;
     reg [7:0]  live_battery   /*verilator public_flat_rw*/ = `_BATTERY;
     reg [7:0]  live_altitude  /*verilator public_flat_rw*/ = `_ALTITUDE;
     reg [7:0]  live_fuel_qual /*verilator public_flat_rw*/ = `_FUEL_QUAL;
-    reg [7:0]  live_boost     /*verilator public_flat_rw*/ = 8'h85;     // KLR MAP (ch4)
+    reg [15:0] live_boost     /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR MAP (ch4)
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
-    assign tps_wiper_sig = (live_tps == 16'hFFFF) ? u_dme.afm_wiper : live_tps[7:0];
+    assign tps_wiper_sig = u_dme.afm_wiper;   // throttle after its slew (see i8051_dashboard_tb)
 
     // Instruction-start trackers for breakpoints, stepping and the PC
     // trace. *_ipc is the address of the opcode most recently fetched and

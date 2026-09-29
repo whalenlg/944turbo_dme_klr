@@ -13,13 +13,23 @@ Then open the dashboard and press **LIVE**.
 
 ## Inputs (`set <name> <value>`)
 
+The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,
+filelist `files_cl`). The throttle is the input: it slews at the same rate
+as the `cl_ramp_*` tests, AFM follows it about 250 ms later, the firmware
+fuels for that airflow, and RPM comes out of the torque balance in
+`var_interrupt_gen_cl.v`. Boost comes from the KLR MAP-table model.
+
 | name | drives | default |
 |---|---|---|
-| `rpm`, `rpm_slew` | crank generator target RPM, and RPM change per ms | 840, 1 |
-| `afm` | DME ADC ch0 (`auto` = follow the RPM model) | auto |
-| `tps` | KLR TPS angle input (`auto` = follow AFM, as in the test runs) | auto |
-| `coolant`, `airtemp`, `battery`, `altitude`, `fuel_qual` | DME ADC ch3, ch2, ch1, ch4, ch7 raw bytes | warm-idle values |
-| `boost` | KLR MAP ADC ch4 raw byte | 0x85 |
+| `tps` | throttle command (0x28 = idle; the cl tests use 0x72 for ~3000 rpm, 0xD8 for ~6400) | 0x28 |
+| `rpm` | pin engine RPM instead of the torque balance (`auto` = model) | auto |
+| `afm` | pin DME ADC ch0 instead of following the throttle (`auto` = model) | auto |
+| `boost` | pin KLR MAP ADC ch4 instead of the MAP-table model (`auto` = model) | auto |
+| `fuel_qual` | DME ADC ch7 (FQS); also sets the model's fuel energy like the `*_FQS0..7` tests | 0x00 |
+| `coolant`, `airtemp`, `battery`, `altitude` | DME ADC ch3, ch2, ch1, ch4 raw bytes | warm-idle values |
+
+RPM is held at 840 until the firmware first reports EngineSync, as in the
+closed-loop tests.
 
 ## Commands
 

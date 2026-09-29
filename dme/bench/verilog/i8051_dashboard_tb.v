@@ -1429,6 +1429,15 @@ end
     // the genuinely implausible "high boost, closed throttle" combination
     // instead of accidentally recreating "high boost, WOT" — plausible,
     // not anomalous — by having TPS open during that same window.)
+`ifdef LIVE
+    // Live debugger: the web UI's throttle (live_tps) is the command,
+    // and AFM gets the same command AFM_LAG_NS later, just as the
+    // scripted t=2000ms event below does.
+    wire [7:0] tps_commanded = dme_klr_dashboard_tb.live_tps;
+    reg  [7:0] afm_commanded = 8'h28;
+    always @(tps_commanded)
+        afm_commanded <= #AFM_LAG_NS tps_commanded;
+`else
     reg [7:0] tps_commanded;
     initial begin
         tps_commanded = 8'h28;         // idle until engine settled
@@ -1463,6 +1472,8 @@ end
         afm_commanded = 8'h28;
 `endif
     end
+
+`endif
 
     // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
     // This IS the afm_wiper used everywhere else in the file/hierarchy
@@ -1532,10 +1543,10 @@ wire [7:0] afm_wiper;
 // steps via afm_tippy while afm_wiper — and hence TPS — moves on its
 // own unrelated timeline).
 `ifdef LIVE
-// Live debugger: AFM follows the RPM model unless the web UI pins it
-// (live_afm = 16'hFFFF means "follow the model").
+// Live debugger: AFM follows the throttle model (afm_cl, built with
+// AFM_CL_RAMP) unless the web UI pins it (16'hFFFF = follow the model).
 wire [7:0] afm_effective = (dme_klr_dashboard_tb.live_afm == 16'hFFFF)
-                           ? afm_wiper : dme_klr_dashboard_tb.live_afm[7:0];
+                           ? afm_cl : dme_klr_dashboard_tb.live_afm[7:0];
 `elsif AFM_FAULT
 wire [7:0] afm_effective = 8'hFF;
 `elsif AFM_CL_RAMP

@@ -13,7 +13,8 @@
 //    step dme|klr [N]          run N instructions of that CPU (default 1)
 //    until <ms>                run until simulated time <ms>, then pause
 //    set <input> <value>       change an input; value is dec, 0x-hex or
-//                              "auto" (afm/tps follow the RPM model)
+//                              "auto" (rpm/afm/boost follow the closed-loop
+//                              engine model, which tps drives)
 //    bp add|del dme|klr <hex>  set / clear a PC breakpoint
 //    bp clear                  clear all breakpoints
 //    snap                      emit a DS snapshot now (while paused too)
@@ -74,16 +75,15 @@ public:
         // ctx time is in units of the model's time precision (10 ps here)
         ns_per_tick_ = std::pow(10.0, ctx_->timeprecision() + 9);
         inputs_ = {
-            {"rpm",       &TB(live_rpm),       16, false},
-            {"rpm_slew",  &TB(live_rpm_slew),  16, false},
+            {"tps",       &TB(live_tps),        8, false},
+            {"rpm",       &TB(live_rpm),       16, true},
             {"afm",       &TB(live_afm),       16, true},
-            {"tps",       &TB(live_tps),       16, true},
+            {"boost",     &TB(live_boost),     16, true},
             {"coolant",   &TB(live_coolant),    8, false},
             {"airtemp",   &TB(live_airtemp),    8, false},
             {"battery",   &TB(live_battery),    8, false},
             {"altitude",  &TB(live_altitude),   8, false},
             {"fuel_qual", &TB(live_fuel_qual),  8, false},
-            {"boost",     &TB(live_boost),      8, false},
         };
     }
 

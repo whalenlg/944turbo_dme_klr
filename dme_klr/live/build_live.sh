@@ -5,7 +5,9 @@
 #  Produces dme_klr/live/obj/dme_klr_live, a Verilator build of
 #  dme_klr_dashboard_tb with -DLIVE: inputs come from sim_main.cpp
 #  (driven by the web dashboard through bridge.mjs) instead of the
-#  compile-time TEST_* scenarios.
+#  compile-time TEST_* scenarios. The engine uses the closed-loop
+#  model (CL_MODE + AFM_CL_RAMP + BOOST): throttle is the input, and
+#  AFM, RPM and boost are computed.
 #
 #  Usage:  ./build_live.sh [extra verilator -D flags]
 #  Env:    DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
@@ -30,10 +32,10 @@ verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
     -CFLAGS -O2 \
     --Mdir "$LIVE_DIR/obj" -o dme_klr_live \
-    -f files \
+    -f files_cl \
     --top-module dme_klr_dashboard_tb \
     -DVLT_SIM -DDASHBOARD_TB -DDME_KLR_COMBINED -DLIVE \
-    -DRPMRAMP -DRPMSTART=100 -DRPMEND=7000 -DSTEP_CLOCKS=6000 \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h28 -DBOOST \
     -DSKIP_LAMBDA_WARMUP \
     -DSIM_TIME=3600000000000 \
     -DDASH_INTERVAL_MS="$DASH_INTERVAL_MS" \
