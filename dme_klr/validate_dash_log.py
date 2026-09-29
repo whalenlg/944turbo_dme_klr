@@ -1089,6 +1089,10 @@ DME_FILE_OVERRIDES = {
         # KLR-input-loss tests' IGN_OUT signature.
         'ramp_to_redline':             {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
         'ramp_to_redline_KLR_TPS_HIGH': {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
+        # cl_ramp_to_redline: same signature (RPM settled=6684, above the
+        # non-CL siblings' 6524 even) — same persistent-redline-fuel-cut
+        # explanation applies.
+        'cl_ramp_to_redline':           {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
 
         # NOT yet overridden — flagged, not resolved:
         # cl_ramp_to_6000_BOOST_HIGH: KLR ram[33] never went non-zero
