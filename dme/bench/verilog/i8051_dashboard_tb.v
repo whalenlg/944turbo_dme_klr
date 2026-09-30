@@ -1429,6 +1429,15 @@ end
     // the genuinely implausible "high boost, closed throttle" combination
     // instead of accidentally recreating "high boost, WOT" — plausible,
     // not anomalous — by having TPS open during that same window.)
+`ifdef LIVE
+    // Live debugger: the web UI's throttle (live_tps) is the command,
+    // and AFM gets the same command AFM_LAG_NS later, just as the
+    // scripted t=2000ms event below does.
+    wire [7:0] tps_commanded = dme_klr_dashboard_tb.live_tps;
+    reg  [7:0] afm_commanded = 8'h28;
+    always @(tps_commanded)
+        afm_commanded <= #AFM_LAG_NS tps_commanded;
+`else
     reg [7:0] tps_commanded;
     initial begin
         tps_commanded = 8'h28;         // idle until engine settled
@@ -1463,6 +1472,8 @@ end
         afm_commanded = 8'h28;
 `endif
     end
+
+`endif
 
     // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
     // This IS the afm_wiper used everywhere else in the file/hierarchy
@@ -1531,7 +1542,12 @@ wire [7:0] afm_wiper;
 // AFM event it's supposed to follow (e.g. tippy_in/cl_tippy_in: AFM
 // steps via afm_tippy while afm_wiper — and hence TPS — moves on its
 // own unrelated timeline).
-`ifdef AFM_FAULT
+`ifdef LIVE
+// Live debugger: AFM follows the throttle model (afm_cl, built with
+// AFM_CL_RAMP) unless the web UI pins it (16'hFFFF = follow the model).
+wire [7:0] afm_effective = (dme_klr_dashboard_tb.live_afm == 16'hFFFF)
+                           ? afm_cl : dme_klr_dashboard_tb.live_afm[7:0];
+`elsif AFM_FAULT
 wire [7:0] afm_effective = 8'hFF;
 `elsif AFM_CL_RAMP
 wire [7:0] afm_effective = afm_cl;
@@ -1550,6 +1566,24 @@ reg  [7:0] adc_mux;
 // signal that idle_sw transitively depends on unless each one is added
 // here too. `always @(*)` re-evaluates on any input change and avoids
 // re-introducing the same class of staleness bug this file just had.
+`ifdef LIVE
+// Live debugger: every ADC channel reads the value the web UI last set
+// in dme_klr_dashboard_tb (see dme_klr/live/). TPS (ch6) keeps the
+// normal idle-switch / KLR full_load logic below.
+always @(*) begin
+    case (p2[2:0])
+        3'b000: adc_mux = afm_effective;
+        3'b001: adc_mux = dme_klr_dashboard_tb.live_battery;
+        3'b010: adc_mux = dme_klr_dashboard_tb.live_airtemp;
+        3'b011: adc_mux = dme_klr_dashboard_tb.live_coolant;
+        3'b100: adc_mux = dme_klr_dashboard_tb.live_altitude;
+        3'b101: adc_mux = 8'hFF;
+        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
+        3'b111: adc_mux = dme_klr_dashboard_tb.live_fuel_qual;
+        default: adc_mux = 8'hF0;
+    endcase
+end
+`else
 always @(*) begin
     case (p2[2:0])
 `ifdef AFM_FAULT
@@ -1609,6 +1643,7 @@ always @(*) begin
         default: adc_mux = 8'hF0;
     endcase
 end
+`endif // LIVE
 
 assign adc_data      = adc_mux;
 assign xadc_data_out = adc_data_out;
@@ -1966,7 +2001,9 @@ reg [63:0] ph_status_next_snap;
 // one sample, then the correctly-processed value the next). This is
 // the testbench's own known-good, monotonic source signal, not a
 // read-back of anything the firmware computes.
-`ifdef TEST_AIRTEMP_FAIL
+`ifdef LIVE
+wire [7:0] airtemp_adc_in = dme_klr_dashboard_tb.live_airtemp;
+`elsif TEST_AIRTEMP_FAIL
 wire [7:0] airtemp_adc_in = 8'h00;
 `elsif CL_CONDITION_CYCLE_ACTIVE
 wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
@@ -1974,7 +2011,9 @@ wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
 wire [7:0] airtemp_adc_in = `_AIRTEMP_RAW;
 `endif
 
-`ifdef TEST_ISV_COLD_IDLE
+`ifdef LIVE
+wire [7:0] coolant_adc_in = dme_klr_dashboard_tb.live_coolant;
+`elsif TEST_ISV_COLD_IDLE
 wire [7:0] coolant_adc_in = coolant_dynamic;
 `elsif TEST_COLD_START
 wire [7:0] coolant_adc_in = coolant_dynamic;
@@ -2284,5 +2323,41 @@ initial begin
     $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
 end
 `endif // CL_CONDITION_CYCLE_ACTIVE
+
+
+// ─── Injector pulse width vs crank revolution ───────────────
+// fire_inj fires the injectors once per crank rev, loading Timer 0 with
+// FUEL_PULSE (4A:4B) + 5 x INJ_DEADTIME (54h) counts at 2 us each. A
+// command longer than one rev can't be delivered (fire_inj just extends
+// T0 and the injector stays open), so warn. Checked once per rev on the
+// reference-sensor edge, skipped during fuel cut; logs when the condition
+// starts and again when it clears, not every rev.
+time    injchk_prev_ref = 0;
+reg     injchk_over     = 1'b0;
+integer injchk_revs     = 0;
+real    injchk_max_ms   = 0.0;
+always @(negedge reference_sensor_gen) begin : inj_pw_check
+    real rev_ms, pw_ms;
+    if (injchk_prev_ref != 0 && !`IRAM(23)[5]) begin
+        rev_ms = ($time - injchk_prev_ref) / 1.0e6;
+        pw_ms  = ({`IRAM(4B), `IRAM(4A)} + 5 * `IRAM(54)) * 0.002;
+        if (pw_ms > rev_ms) begin
+            if (!injchk_over)
+                $display("DME: [WARN] t=%0d ms  INJ PW %0.3f ms > one rev %0.3f ms (%0d rpm)  4A:4B=0x%02X%02X dead(54h)=0x%02X",
+                         `DME_MS, pw_ms, rev_ms, $rtoi(60000.0 / rev_ms),
+                         `IRAM(4B), `IRAM(4A), `IRAM(54));
+            injchk_over   = 1'b1;
+            injchk_revs   = injchk_revs + 1;
+            if (pw_ms > injchk_max_ms) injchk_max_ms = pw_ms;
+        end else if (injchk_over) begin
+            $display("DME: [WARN] t=%0d ms  INJ PW back within one rev  (over for %0d revs, max %0.3f ms)",
+                     `DME_MS, injchk_revs, injchk_max_ms);
+            injchk_over   = 1'b0;
+            injchk_revs   = 0;
+            injchk_max_ms = 0.0;
+        end
+    end
+    injchk_prev_ref = $time;
+end
 
 endmodule

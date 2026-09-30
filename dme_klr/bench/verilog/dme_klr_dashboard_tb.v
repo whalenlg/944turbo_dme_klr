@@ -44,7 +44,77 @@ module dme_klr_dashboard_tb;
     // TPS angle: DME AFM wiper → KLR TPS angle ch7
     // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
     wire [7:0] tps_wiper_sig;
+`ifdef LIVE
+    // ── Live-debugger inputs ──────────────────────────────────
+    // Written between evals by dme_klr/live/sim_main.cpp when the web UI
+    // changes a control; read by the DME/KLR sub-testbenches under LIVE.
+    // The engine runs on the closed-loop model (CL_MODE + AFM_CL_RAMP):
+    // live_tps is the driver's throttle; AFM follows it ~250 ms later,
+    // the firmware fuels for that airflow and RPM comes out of the
+    // torque balance in var_interrupt_gen_cl.v. 16'hFFFF on live_rpm /
+    // live_afm / live_boost means "use the model"; any other value pins
+    // that signal.
+    reg [15:0] live_rpm       /*verilator public_flat_rw*/ = 16'hFFFF;
+    reg [15:0] live_afm       /*verilator public_flat_rw*/ = 16'hFFFF;
+    reg [7:0]  live_tps       /*verilator public_flat_rw*/ = 8'h28;     // idle throttle
+    reg [7:0]  live_coolant   /*verilator public_flat_rw*/ = `_COOLANT_RAW;
+    reg [7:0]  live_airtemp   /*verilator public_flat_rw*/ = `_AIRTEMP_RAW;
+    reg [7:0]  live_battery   /*verilator public_flat_rw*/ = `_BATTERY;
+    reg [7:0]  live_altitude  /*verilator public_flat_rw*/ = `_ALTITUDE;
+    reg [7:0]  live_fuel_qual /*verilator public_flat_rw*/ = `_FUEL_QUAL;
+    reg [15:0] live_boost     /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR MAP (ch4)
+    // Snapshot on demand: sim_main bumps req, the scheduler below emits
+    // one DS pair and copies req to ack.
+    reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
+    reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
+    assign tps_wiper_sig = u_dme.afm_wiper;   // throttle after its slew (see i8051_dashboard_tb)
+
+    // Instruction-start trackers for breakpoints, stepping and the PC
+    // trace. *_ipc is the address of the opcode most recently fetched and
+    // *_icount bumps once per instruction; sim_main watches the count.
+    // DME: opcode latch happens at S3P2 (osc_cnt==5) outside cycle 2 and
+    // outside interrupt entry — the same condition i8051_core uses.
+    // KLR: state 1 of a first machine cycle drives the opcode address.
+    reg [15:0] live_dme_ipc    /*verilator public_flat_rd*/ = 16'd0;
+    reg [31:0] live_dme_icount /*verilator public_flat_rd*/ = 32'd0;
+    reg [15:0] live_klr_ipc    /*verilator public_flat_rd*/ = 16'd0;
+    reg [31:0] live_klr_icount /*verilator public_flat_rd*/ = 32'd0;
+    always @(posedge u_dme.i8051_top.u_cpu.clk)
+        if (u_dme.i8051_top.u_cpu.res_n && u_dme.i8051_top.u_cpu.osc_cnt == 4'd5 &&
+            !u_dme.i8051_top.u_cpu.cycle_2 && !u_dme.i8051_top.u_cpu.irq_pending) begin
+            live_dme_ipc    <= u_dme.i8051_top.u_cpu.pc;
+            live_dme_icount <= live_dme_icount + 32'd1;
+        end
+    always @(posedge u_klr.top.i8048_core_1.clk)
+        if (u_klr.top.i8048_core_1.res_n && u_klr.top.i8048_core_1.state_clk_en &&
+            u_klr.top.i8048_core_1.state == 3'd1 && !u_klr.top.i8048_core_1.cycle_2) begin
+            live_klr_ipc    <= {4'd0, u_klr.top.i8048_core_1.pc};
+            live_klr_icount <= live_klr_icount + 32'd1;
+        end
+
+    // Ignition pulse widths for the web UI's engine row and charts:
+    // DME A_5 ign out (active-high) and the KLR spark output. Pulses
+    // under 100 us are the KLR's wait_ign_2 re-assertion artifacts
+    // (see klr_phase_monitor.v) and are skipped.
+    time live_dme_ign_rise = 0, live_klr_ign_rise = 0;
+    always @(posedge ign_out_dme_to_klr) live_dme_ign_rise = $time;
+    always @(negedge ign_out_dme_to_klr)
+        if ($time - live_dme_ign_rise >= 100_000)
+            $display("SIM: [IGN] dme t_ns=%0d width_ns=%0d", $time, $time - live_dme_ign_rise);
+    // Injector: fire_inj drives P1.0 (A_0_inj_driver) low and the T0
+    // overflow ISR sets it high again, so the low time is the real pulse.
+    time live_inj_fall = 0;
+    always @(negedge u_dme.A_0_inj_driver) live_inj_fall = $time;
+    always @(posedge u_dme.A_0_inj_driver)
+        if (live_inj_fall != 0)
+            $display("SIM: [INJ] t_ns=%0d width_ns=%0d", $time, $time - live_inj_fall);
+    always @(posedge klr_ign_out) live_klr_ign_rise = $time;
+    always @(negedge klr_ign_out)
+        if ($time - live_klr_ign_rise >= 100_000)
+            $display("SIM: [IGN] klr t_ns=%0d width_ns=%0d", $time, $time - live_klr_ign_rise);
+`else
     assign tps_wiper_sig = u_dme.afm_wiper;
+`endif
 
     // ── Always-on FST visibility for the interconnect above ──────────
     // klr_vcd_combined.v (compiled into this build, in files/files_cl)
@@ -218,6 +288,23 @@ module dme_klr_dashboard_tb;
                 ext_trigger,        // KLR trigger_in, post fault-injection override
                 ext_ign);           // KLR ign_in, post fault-injection override
 
+`ifdef LIVE
+            // CPU registers for the debugger's operand-value column
+            $display("SIM: [REGS] dme t_ms=%0d acc=%02h b=%02h psw=%02h sp=%02h dptr=%02h%02h ie=%02h ip=%02h tcon=%02h tmod=%02h tl0=%02h th0=%02h tl1=%02h th1=%02h scon=%02h sbuf=%02h pcon=%02h p0=%02h p1=%02h p2=%02h p3=%02h",
+                `DME_KLR_MS, u_dme.i8051_top.u_cpu.acc, u_dme.i8051_top.u_cpu.b_reg, u_dme.i8051_top.u_cpu.psw,
+                u_dme.i8051_top.u_cpu.sp, u_dme.i8051_top.u_cpu.dph, u_dme.i8051_top.u_cpu.dpl,
+                u_dme.i8051_top.u_cpu.ie, u_dme.i8051_top.u_cpu.ip, u_dme.i8051_top.u_cpu.tcon,
+                u_dme.i8051_top.u_cpu.tmod, u_dme.i8051_top.u_cpu.tl0, u_dme.i8051_top.u_cpu.th0,
+                u_dme.i8051_top.u_cpu.tl1, u_dme.i8051_top.u_cpu.th1, u_dme.i8051_top.u_cpu.scon,
+                u_dme.i8051_top.u_cpu.sbuf_rx, u_dme.i8051_top.u_cpu.pcon,
+                u_dme.i8051_top.u_cpu.p0, u_dme.i8051_top.u_cpu.p1, u_dme.i8051_top.u_cpu.p2,
+                u_dme.i8051_top.u_cpu.p3);
+            $display("SIM: [REGS] klr t_ms=%0d acc=%02h psw=%02h p1=%02h p2=%02h t=%02h f0=%0d f1=%0d",
+                `DME_KLR_MS, u_klr.top.i8048_core_1.acc, u_klr.top.i8048_core_1.psw,
+                u_klr.top.i8048_core_1.p1, u_klr.top.i8048_core_1.p2,
+                u_klr.top.i8048_core_1.timer_val,
+                u_klr.top.i8048_core_1.f0, u_klr.top.i8048_core_1.f1);
+`endif
             snapshot_busy = 1'b0;
         end
     endtask
@@ -231,6 +318,11 @@ module dme_klr_dashboard_tb;
             emit_combined_snapshot;
             next_snap_ns <= next_snap_ns + (`DASH_INTERVAL_MS * 64'd1_000_000);
         end
+`ifdef LIVE
+        else if (live_snap_req != live_snap_ack)
+            emit_combined_snapshot;
+        live_snap_ack <= live_snap_req;
+`endif
     end
 
     // Hard simulation boundary — terminates at exactly SIM_TIME.

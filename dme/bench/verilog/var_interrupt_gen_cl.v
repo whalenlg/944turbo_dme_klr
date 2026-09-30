@@ -326,6 +326,26 @@ module var_interrupt_generator_cl (
     localparam real afm_log_a = -587.0600807457506;
     localparam real afm_log_b = 93.12678655137326;
 
+`ifdef LIVE
+    // Live debugger: CL_FUEL_ENERGY_PCT follows the FQS input the web UI
+    // sets, using the same position -> pct pairs as the cl_ramp_*_FQS0..7
+    // tests in v_run_dashboard_tests.sh (00/3B/5A/75/81/91/9C/A7 ->
+    // 0/3/-3/6/0/3/-3/6). Values between positions take the lower one.
+    function integer fuel_energy_pct;
+        input [7:0] fqs;
+        begin
+            if      (fqs >= 8'hA7) fuel_energy_pct = 6;
+            else if (fqs >= 8'h9C) fuel_energy_pct = -3;
+            else if (fqs >= 8'h91) fuel_energy_pct = 3;
+            else if (fqs >= 8'h81) fuel_energy_pct = 0;
+            else if (fqs >= 8'h75) fuel_energy_pct = 6;
+            else if (fqs >= 8'h5A) fuel_energy_pct = -3;
+            else if (fqs >= 8'h3B) fuel_energy_pct = 3;
+            else                   fuel_energy_pct = 0;
+        end
+    endfunction
+`endif
+
     // ── State ────────────────────────────────────────────────────
     integer period_current;
     integer tick_counter;
@@ -563,7 +583,12 @@ module var_interrupt_generator_cl (
                     // (potent fuel, -pct) roughly cancel, leaving combustion
                     // close to the FQS0/normal-fuel baseline. Deliberately
                     // imperfect — real compensation isn't exact either.
+`ifdef LIVE
+                    combustion = (fuel_sample / 5 * `CL_FUEL_SCALE * 100)
+                                 / (100 + fuel_energy_pct(dme_klr_dashboard_tb.live_fuel_qual)) / 100;
+`else
                     combustion = (fuel_sample / 5 * `CL_FUEL_SCALE * 100) / (100 + `CL_FUEL_ENERGY_PCT) / 100;
+`endif
 
                     friction = `CL_FRICTION;
                     if (`CL_TB.t1 == 1'b1)
@@ -587,6 +612,12 @@ module var_interrupt_generator_cl (
                     new_rpm_fp = rpm_fp + net;
                     if      (new_rpm_fp > rpm_fp_max) new_rpm_fp = rpm_fp_max;
                     else if (new_rpm_fp < rpm_fp_min) new_rpm_fp = rpm_fp_min;
+`ifdef LIVE
+                    // Live debugger: a pinned RPM (live_rpm != 16'hFFFF)
+                    // overrides the torque balance; auto lets it run.
+                    if (dme_klr_dashboard_tb.live_rpm != 16'hFFFF)
+                        new_rpm_fp = dme_klr_dashboard_tb.live_rpm * `CL_INERTIA;
+`endif
 
 `ifdef CL_DEBUG
                     // Trajectory diagnostic: real (rpm, fuel, combustion,
