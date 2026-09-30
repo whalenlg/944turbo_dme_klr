@@ -2324,4 +2324,40 @@ initial begin
 end
 `endif // CL_CONDITION_CYCLE_ACTIVE
 
+
+// ─── Injector pulse width vs crank revolution ───────────────
+// fire_inj fires the injectors once per crank rev, loading Timer 0 with
+// FUEL_PULSE (4A:4B) + 5 x INJ_DEADTIME (54h) counts at 2 us each. A
+// command longer than one rev can't be delivered (fire_inj just extends
+// T0 and the injector stays open), so warn. Checked once per rev on the
+// reference-sensor edge, skipped during fuel cut; logs when the condition
+// starts and again when it clears, not every rev.
+time    injchk_prev_ref = 0;
+reg     injchk_over     = 1'b0;
+integer injchk_revs     = 0;
+real    injchk_max_ms   = 0.0;
+always @(negedge reference_sensor_gen) begin : inj_pw_check
+    real rev_ms, pw_ms;
+    if (injchk_prev_ref != 0 && !`IRAM(23)[5]) begin
+        rev_ms = ($time - injchk_prev_ref) / 1.0e6;
+        pw_ms  = ({`IRAM(4B), `IRAM(4A)} + 5 * `IRAM(54)) * 0.002;
+        if (pw_ms > rev_ms) begin
+            if (!injchk_over)
+                $display("DME: [WARN] t=%0d ms  INJ PW %0.3f ms > one rev %0.3f ms (%0d rpm)  4A:4B=0x%02X%02X dead(54h)=0x%02X",
+                         `DME_MS, pw_ms, rev_ms, $rtoi(60000.0 / rev_ms),
+                         `IRAM(4B), `IRAM(4A), `IRAM(54));
+            injchk_over   = 1'b1;
+            injchk_revs   = injchk_revs + 1;
+            if (pw_ms > injchk_max_ms) injchk_max_ms = pw_ms;
+        end else if (injchk_over) begin
+            $display("DME: [WARN] t=%0d ms  INJ PW back within one rev  (over for %0d revs, max %0.3f ms)",
+                     `DME_MS, injchk_revs, injchk_max_ms);
+            injchk_over   = 1'b0;
+            injchk_revs   = 0;
+            injchk_max_ms = 0.0;
+        end
+    end
+    injchk_prev_ref = $time;
+end
+
 endmodule
