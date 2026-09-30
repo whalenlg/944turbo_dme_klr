@@ -31,6 +31,7 @@
 //    SIM: [TRACE]  dme|klr <hex,...>                      (oldest first)
 //    SIM: [ERROR]  <message>
 //    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
+//    SIM: [INJ]    t_ns=<n> width_ns=<n>           (injector low time on DME P1.0)
 // ============================================================
 
 #include "Vdme_klr_dashboard_tb.h"

@@ -101,6 +101,13 @@ module dme_klr_dashboard_tb;
     always @(negedge ign_out_dme_to_klr)
         if ($time - live_dme_ign_rise >= 100_000)
             $display("SIM: [IGN] dme t_ns=%0d width_ns=%0d", $time, $time - live_dme_ign_rise);
+    // Injector: fire_inj drives P1.0 (A_0_inj_driver) low and the T0
+    // overflow ISR sets it high again, so the low time is the real pulse.
+    time live_inj_fall = 0;
+    always @(negedge u_dme.A_0_inj_driver) live_inj_fall = $time;
+    always @(posedge u_dme.A_0_inj_driver)
+        if (live_inj_fall != 0)
+            $display("SIM: [INJ] t_ns=%0d width_ns=%0d", $time, $time - live_inj_fall);
     always @(posedge klr_ign_out) live_klr_ign_rise = $time;
     always @(negedge klr_ign_out)
         if ($time - live_klr_ign_rise >= 100_000)
