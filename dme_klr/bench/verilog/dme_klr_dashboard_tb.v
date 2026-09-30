@@ -288,6 +288,23 @@ module dme_klr_dashboard_tb;
                 ext_trigger,        // KLR trigger_in, post fault-injection override
                 ext_ign);           // KLR ign_in, post fault-injection override
 
+`ifdef LIVE
+            // CPU registers for the debugger's operand-value column
+            $display("SIM: [REGS] dme acc=%02h b=%02h psw=%02h sp=%02h dptr=%02h%02h ie=%02h ip=%02h tcon=%02h tmod=%02h tl0=%02h th0=%02h tl1=%02h th1=%02h scon=%02h sbuf=%02h pcon=%02h p0=%02h p1=%02h p2=%02h p3=%02h",
+                u_dme.i8051_top.u_cpu.acc, u_dme.i8051_top.u_cpu.b_reg, u_dme.i8051_top.u_cpu.psw,
+                u_dme.i8051_top.u_cpu.sp, u_dme.i8051_top.u_cpu.dph, u_dme.i8051_top.u_cpu.dpl,
+                u_dme.i8051_top.u_cpu.ie, u_dme.i8051_top.u_cpu.ip, u_dme.i8051_top.u_cpu.tcon,
+                u_dme.i8051_top.u_cpu.tmod, u_dme.i8051_top.u_cpu.tl0, u_dme.i8051_top.u_cpu.th0,
+                u_dme.i8051_top.u_cpu.tl1, u_dme.i8051_top.u_cpu.th1, u_dme.i8051_top.u_cpu.scon,
+                u_dme.i8051_top.u_cpu.sbuf_rx, u_dme.i8051_top.u_cpu.pcon,
+                u_dme.i8051_top.u_cpu.p0, u_dme.i8051_top.u_cpu.p1, u_dme.i8051_top.u_cpu.p2,
+                u_dme.i8051_top.u_cpu.p3);
+            $display("SIM: [REGS] klr acc=%02h psw=%02h p1=%02h p2=%02h t=%02h f0=%0d f1=%0d",
+                u_klr.top.i8048_core_1.acc, u_klr.top.i8048_core_1.psw,
+                u_klr.top.i8048_core_1.p1, u_klr.top.i8048_core_1.p2,
+                u_klr.top.i8048_core_1.timer_val,
+                u_klr.top.i8048_core_1.f0, u_klr.top.i8048_core_1.f1);
+`endif
             snapshot_busy = 1'b0;
         end
     endtask

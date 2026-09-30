@@ -13,6 +13,7 @@
 //    POST /restart    kill the sim and start a fresh one at t=0
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
+//                     (dme rows also carry num: operands as raw addresses)
 //
 //  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
@@ -97,18 +98,21 @@ function hexStrings(file) {
     return s.trim();
   });
 }
-function listing(dir, opsFile) {
+function listing(dir, opsFile, numFile) {
   const label = hexStrings(join(dir, 'test_sim.hex'));
   const instr = hexStrings(join(dir, 'asm_instr.hex'));
   const ops   = hexStrings(join(dir, opsFile));
   const bytes = hexStrings(join(dir, 'asm_opcode_ins.hex'));
+  // DME operands with symbols replaced by raw addresses (0x35, 0x23.2)
+  const num   = numFile ? hexStrings(join(dir, numFile)) : [];
   const out = [];
   for (let a = 0; a < instr.length; a++)
-    if (instr[a]) out.push({ a, label: label[a] || '', instr: instr[a], ops: ops[a] || '', bytes: bytes[a] || '' });
+    if (instr[a]) out.push({ a, label: label[a] || '', instr: instr[a], ops: ops[a] || '', bytes: bytes[a] || '',
+                                ...(numFile ? { num: num[a] || '' } : {}) });
   return out;
 }
 const ASM = {
-  dme: listing(DME_ASM, 'asm_operand_mapped.hex'),
+  dme: listing(DME_ASM, 'asm_operand_mapped.hex', 'asm_operands_numeric.hex'),
   klr: listing(KLR_ASM, 'asm_operands.hex'),
 };
 
