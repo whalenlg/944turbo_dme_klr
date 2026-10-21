@@ -46,3 +46,13 @@ unchanged, so `v_run_dashboard_tests.sh` behaves as before.
 
 Speed: about 20 simulated ms per wall-clock second (~50x slower than real
 time) on a 4-core cloud container.
+
+## Full-length operands
+
+The asm_*.hex tables cut labels and operands at 20 characters. `asm_full.json`
+holds them in full (plus the spreadsheets' descriptions, shown as row tooltips)
+and the bridge uses it where it agrees with the hex tables. After editing
+`disassemble/disassemble3.xlsx` or `bin_images/klr/87KLR951.xlsx`, regenerate it
+(needs pandas and openpyxl):
+
+    python3 dme_klr/live/asm_full.py

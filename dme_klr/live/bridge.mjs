@@ -13,7 +13,8 @@
 //    POST /restart    kill the sim and start a fresh one at t=0
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
-//                     (dme rows also carry num: operands as raw addresses)
+//                     (dme rows also carry num: operands as raw addresses;
+//                     rows may carry desc from asm_full.json)
 //
 //  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
@@ -115,6 +116,22 @@ const ASM = {
   dme: listing(DME_ASM, 'asm_operand_mapped.hex', 'asm_operands_numeric.hex'),
   klr: listing(KLR_ASM, 'asm_operands.hex'),
 };
+// The hex tables cut labels and operands at 20 characters; asm_full.json (written by
+// asm_full.py from the same spreadsheets) has them in full, plus the
+// spreadsheet's descriptions. Used only where it agrees with the hex table.
+const FULL = join(HERE, 'asm_full.json');
+if (existsSync(FULL)) {
+  const full = JSON.parse(readFileSync(FULL, 'utf8'));
+  for (const cpu of ['dme', 'klr'])
+    for (const r of ASM[cpu]) {
+      const e = full[cpu]?.[r.a];
+      if (!e || e.ops.slice(0, 20).trim() !== r.ops) continue;
+      r.ops = e.ops;
+      if (e.label && e.label.slice(0, 20).trim() === r.label) r.label = e.label;
+      if (e.num != null && 'num' in r) r.num = e.num;
+      if (e.desc) r.desc = e.desc;
+    }
+}
 
 // ── HTTP ─────────────────────────────────────────────────────
 // Only these page origins may use the bridge: the published dashboard
