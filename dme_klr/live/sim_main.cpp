@@ -28,7 +28,8 @@
 //    SIM: [TIME]   t_ns=<n> rate=<sim ms per wall s>     (while running, ~1/s)
 //    SIM: [INPUTS] name=val,...
 //    SIM: [BP]     dme=<hex,...> klr=<hex,...>
-//    SIM: [TRACE]  dme|klr <hex,...>                      (oldest first)
+//    SIM: [TRACE]  dme|klr <pc>/<ctx0>/<ctx1>/<ctx2>,...  (oldest first; ctx =
+//                  registers as each instruction was fetched, see the tb)
 //    SIM: [ERROR]  <message>
 //    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
 //    SIM: [INJ]    t_ns=<n> width_ns=<n>           (injector low time on DME P1.0)
@@ -133,7 +134,10 @@ private:
     double until_ns_ = -1;
 
     uint32_t last_dme_ic_ = 0, last_klr_ic_ = 0;
-    std::deque<uint16_t> trace_dme_, trace_klr_;
+    // One traced instruction: its address and the register context the
+    // testbench captured as it was fetched (see live_*_ctx* in the tb)
+    struct Step { uint16_t pc; uint64_t c0, c1; uint32_t c2; };
+    std::deque<Step> trace_dme_, trace_klr_;
     static constexpr size_t kTrace = 512;
 
     std::chrono::steady_clock::time_point last_tick_ = std::chrono::steady_clock::now();
@@ -155,14 +159,14 @@ private:
         if (TB(live_dme_icount) != last_dme_ic_) {
             last_dme_ic_ = TB(live_dme_icount);
             uint16_t pc = TB(live_dme_ipc);
-            push(trace_dme_, pc);
+            push(trace_dme_, {pc, TB(live_dme_ctx0), TB(live_dme_ctx1), TB(live_dme_ctx2)});
             if (bp_dme_.count(pc)) return stop("bp dme " + hex(pc));
             if (step_dme_ > 0 && --step_dme_ == 0) return stop("step dme");
         }
         if (TB(live_klr_icount) != last_klr_ic_) {
             last_klr_ic_ = TB(live_klr_icount);
             uint16_t pc = TB(live_klr_ipc);
-            push(trace_klr_, pc);
+            push(trace_klr_, {pc, TB(live_klr_ctx0), TB(live_klr_ctx1), 0});
             if (bp_klr_.count(pc)) return stop("bp klr " + hex(pc));
             if (step_klr_ > 0 && --step_klr_ == 0) return stop("step klr");
         }
@@ -172,8 +176,8 @@ private:
         }
     }
 
-    void push(std::deque<uint16_t>& q, uint16_t pc) {
-        q.push_back(pc);
+    void push(std::deque<Step>& q, const Step& st) {
+        q.push_back(st);
         if (q.size() > kTrace) q.pop_front();
     }
 
@@ -241,8 +245,13 @@ private:
             in >> cpu >> n;
             auto& q = cpu == "klr" ? trace_klr_ : trace_dme_;
             std::string out;
-            for (size_t i = q.size() > n ? q.size() - n : 0; i < q.size(); ++i)
-                out += (out.empty() ? "" : ",") + hex(q[i]);
+            for (size_t i = q.size() > n ? q.size() - n : 0; i < q.size(); ++i) {
+                char ctx[64];
+                snprintf(ctx, sizeof ctx, "/%016llx/%016llx/%08x",
+                         static_cast<unsigned long long>(q[i].c0),
+                         static_cast<unsigned long long>(q[i].c1), q[i].c2);
+                out += (out.empty() ? "" : ",") + hex(q[i].pc) + ctx;
+            }
             printf("SIM: [TRACE] %s %s\n", cpu == "klr" ? "klr" : "dme", out.c_str());
         } else if (cmd == "status") {
             state(paused_ ? "paused" : "running", "status");

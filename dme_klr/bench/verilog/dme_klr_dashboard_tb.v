@@ -75,6 +75,21 @@ module dme_klr_dashboard_tb;
     // DME: opcode latch happens at S3P2 (osc_cnt==5) outside cycle 2 and
     // outside interrupt entry — the same condition i8051_core uses.
     // KLR: state 1 of a first machine cycle drives the opcode address.
+    // Register context captured with each traced instruction, before it runs:
+    // ctx0 = A B PSW SP DPH DPL [operand byte 1] [operand byte 2] (iram at
+    // the addresses in the instruction's 2nd/3rd bytes), ctx1 = R0..R7 of the
+    // active bank, ctx2 = @R0 @R1 code[A+DPTR] code[A+PC+1].
+    `define LCPU  u_dme.i8051_top.u_cpu
+    `define LROM  u_dme.i8051_top.u_eprom.mem
+    `define LBANK(n) `LCPU.iram[{3'b000, `LCPU.psw[4:3], 3'd n}]
+    reg [63:0] live_dme_ctx0   /*verilator public_flat_rd*/ = 64'd0;
+    reg [63:0] live_dme_ctx1   /*verilator public_flat_rd*/ = 64'd0;
+    reg [31:0] live_dme_ctx2   /*verilator public_flat_rd*/ = 32'd0;
+    // KLR: ctx0 = A PSW T P1 P2 {F0,F1} @R0 @R1, ctx1 = R0..R7 of the active bank
+    `define KCPU  u_klr.top.i8048_core_1
+    `define KBANK(n) `KCPU.ram[(`KCPU.psw[4] ? 7'h18 : 7'h00) + 7'd n]
+    reg [63:0] live_klr_ctx0   /*verilator public_flat_rd*/ = 64'd0;
+    reg [63:0] live_klr_ctx1   /*verilator public_flat_rd*/ = 64'd0;
     reg [15:0] live_dme_ipc    /*verilator public_flat_rd*/ = 16'd0;
     reg [31:0] live_dme_icount /*verilator public_flat_rd*/ = 32'd0;
     reg [15:0] live_klr_ipc    /*verilator public_flat_rd*/ = 16'd0;
@@ -84,6 +99,14 @@ module dme_klr_dashboard_tb;
             !u_dme.i8051_top.u_cpu.cycle_2 && !u_dme.i8051_top.u_cpu.irq_pending) begin
             live_dme_ipc    <= u_dme.i8051_top.u_cpu.pc;
             live_dme_icount <= live_dme_icount + 32'd1;
+            live_dme_ctx0   <= {`LCPU.acc, `LCPU.b_reg, `LCPU.psw, `LCPU.sp, `LCPU.dph, `LCPU.dpl,
+                                `LCPU.iram[`LROM[(`LCPU.pc + 16'd1) & 16'h1FFF] & 8'h7F],
+                                `LCPU.iram[`LROM[(`LCPU.pc + 16'd2) & 16'h1FFF] & 8'h7F]};
+            live_dme_ctx1   <= {`LBANK(0), `LBANK(1), `LBANK(2), `LBANK(3),
+                                `LBANK(4), `LBANK(5), `LBANK(6), `LBANK(7)};
+            live_dme_ctx2   <= {`LCPU.iram[`LBANK(0) & 8'h7F], `LCPU.iram[`LBANK(1) & 8'h7F],
+                                `LROM[({`LCPU.dph, `LCPU.dpl} + {8'd0, `LCPU.acc}) & 16'h1FFF],
+                                `LROM[(`LCPU.pc + 16'd1 + {8'd0, `LCPU.acc}) & 16'h1FFF]};
         end
     // DME stack tagging for the debugger's stack dump: what wrote each stack
     // byte. SP +2 with PC on an interrupt vector = interrupt entry ('i' low,
@@ -117,6 +140,11 @@ module dme_klr_dashboard_tb;
             u_klr.top.i8048_core_1.state == 3'd1 && !u_klr.top.i8048_core_1.cycle_2) begin
             live_klr_ipc    <= {4'd0, u_klr.top.i8048_core_1.pc};
             live_klr_icount <= live_klr_icount + 32'd1;
+            live_klr_ctx0   <= {`KCPU.acc, `KCPU.psw, `KCPU.timer_val, `KCPU.p1, `KCPU.p2,
+                                6'd0, `KCPU.f0, `KCPU.f1,
+                                `KCPU.ram[`KBANK(0) & 8'h7F], `KCPU.ram[`KBANK(1) & 8'h7F]};
+            live_klr_ctx1   <= {`KBANK(0), `KBANK(1), `KBANK(2), `KBANK(3),
+                                `KBANK(4), `KBANK(5), `KBANK(6), `KBANK(7)};
         end
 
     // Ignition pulse widths for the web UI's engine row and charts:
