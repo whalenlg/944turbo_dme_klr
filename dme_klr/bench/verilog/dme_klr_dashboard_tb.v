@@ -299,8 +299,8 @@ module dme_klr_dashboard_tb;
                 u_dme.i8051_top.u_cpu.sbuf_rx, u_dme.i8051_top.u_cpu.pcon,
                 u_dme.i8051_top.u_cpu.p0, u_dme.i8051_top.u_cpu.p1, u_dme.i8051_top.u_cpu.p2,
                 u_dme.i8051_top.u_cpu.p3);
-            $display("SIM: [REGS] klr t_ms=%0d acc=%02h psw=%02h p1=%02h p2=%02h t=%02h f0=%0d f1=%0d",
-                `DME_KLR_MS, u_klr.top.i8048_core_1.acc, u_klr.top.i8048_core_1.psw,
+            $display("SIM: [REGS] klr t_ms=%0d sp=%0d acc=%02h psw=%02h p1=%02h p2=%02h t=%02h f0=%0d f1=%0d",
+                `DME_KLR_MS, u_klr.top.i8048_core_1.sp, u_klr.top.i8048_core_1.acc, u_klr.top.i8048_core_1.psw,
                 u_klr.top.i8048_core_1.p1, u_klr.top.i8048_core_1.p2,
                 u_klr.top.i8048_core_1.timer_val,
                 u_klr.top.i8048_core_1.f0, u_klr.top.i8048_core_1.f1);
