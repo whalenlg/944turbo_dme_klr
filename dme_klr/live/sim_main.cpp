@@ -33,6 +33,8 @@
 //    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
 //    SIM: [INJ]    t_ns=<n> width_ns=<n>           (injector low time on DME P1.0)
 //    SIM: [REGS]   dme|klr t_ms=<n> name=hex ...   (CPU registers, with each snapshot)
+//    SIM: [REGS]   dmestk t_ms=<n> stk=<tag>.<tag>...  (what wrote DME stack 64h..79h:
+//                  c/C call lo/hi, i/I interrupt lo/hi, pXXXX PUSH at XXXX, - unknown)
 // ============================================================
 
 #include "Vdme_klr_dashboard_tb.h"

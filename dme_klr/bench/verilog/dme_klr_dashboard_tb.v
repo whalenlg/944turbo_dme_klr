@@ -85,6 +85,33 @@ module dme_klr_dashboard_tb;
             live_dme_ipc    <= u_dme.i8051_top.u_cpu.pc;
             live_dme_icount <= live_dme_icount + 32'd1;
         end
+    // DME stack tagging for the debugger's stack dump: what wrote each stack
+    // byte. SP +2 with PC on an interrupt vector = interrupt entry ('i' low,
+    // 'I' high byte), other SP +2 = call ('c'/'C'), SP +1 = PUSH ('p', with
+    // the PUSH instruction's address). SP and PC update on the same edge, so
+    // compare against the previous clock's SP.
+    reg [7:0]  live_stk_tag [0:127];
+    reg [15:0] live_stk_src [0:127];
+    reg [7:0]  live_prev_sp = 8'h07;
+    integer    live_stk_i;
+    initial for (live_stk_i = 0; live_stk_i < 128; live_stk_i = live_stk_i + 1) live_stk_tag[live_stk_i] = "-";
+    always @(posedge u_dme.i8051_top.u_cpu.clk) begin
+        if (u_dme.i8051_top.u_cpu.sp == live_prev_sp + 8'd2) begin
+            if (u_dme.i8051_top.u_cpu.pc == 16'h0003 || u_dme.i8051_top.u_cpu.pc == 16'h000B ||
+                u_dme.i8051_top.u_cpu.pc == 16'h0013 || u_dme.i8051_top.u_cpu.pc == 16'h001B ||
+                u_dme.i8051_top.u_cpu.pc == 16'h0023) begin
+                live_stk_tag[(live_prev_sp + 8'd1) & 8'h7F] <= "i";
+                live_stk_tag[(live_prev_sp + 8'd2) & 8'h7F] <= "I";
+            end else begin
+                live_stk_tag[(live_prev_sp + 8'd1) & 8'h7F] <= "c";
+                live_stk_tag[(live_prev_sp + 8'd2) & 8'h7F] <= "C";
+            end
+        end else if (u_dme.i8051_top.u_cpu.sp == live_prev_sp + 8'd1) begin
+            live_stk_tag[(live_prev_sp + 8'd1) & 8'h7F] <= "p";
+            live_stk_src[(live_prev_sp + 8'd1) & 8'h7F] <= live_dme_ipc;
+        end
+        live_prev_sp <= u_dme.i8051_top.u_cpu.sp;
+    end
     always @(posedge u_klr.top.i8048_core_1.clk)
         if (u_klr.top.i8048_core_1.res_n && u_klr.top.i8048_core_1.state_clk_en &&
             u_klr.top.i8048_core_1.state == 3'd1 && !u_klr.top.i8048_core_1.cycle_2) begin
@@ -299,6 +326,14 @@ module dme_klr_dashboard_tb;
                 u_dme.i8051_top.u_cpu.sbuf_rx, u_dme.i8051_top.u_cpu.pcon,
                 u_dme.i8051_top.u_cpu.p0, u_dme.i8051_top.u_cpu.p1, u_dme.i8051_top.u_cpu.p2,
                 u_dme.i8051_top.u_cpu.p3);
+            // stk=<tag per byte 64h..79h>, '.'-separated; p carries the PUSH address
+            $write("SIM: [REGS] dmestk t_ms=%0d stk=", `DME_KLR_MS);
+            for (i = 'h64; i <= 'h79; i = i + 1) begin
+                if (live_stk_tag[i] == "p") $write("p%04h", live_stk_src[i]);
+                else                        $write("%s", live_stk_tag[i]);
+                if (i != 'h79) $write(".");
+            end
+            $write("\n");
             $display("SIM: [REGS] klr t_ms=%0d sp=%0d acc=%02h psw=%02h p1=%02h p2=%02h t=%02h f0=%0d f1=%0d",
                 `DME_KLR_MS, u_klr.top.i8048_core_1.sp, u_klr.top.i8048_core_1.acc, u_klr.top.i8048_core_1.psw,
                 u_klr.top.i8048_core_1.p1, u_klr.top.i8048_core_1.p2,
