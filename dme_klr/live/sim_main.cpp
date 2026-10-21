@@ -136,7 +136,7 @@ private:
     uint32_t last_dme_ic_ = 0, last_klr_ic_ = 0;
     // One traced instruction: its address and the register context the
     // testbench captured as it was fetched (see live_*_ctx* in the tb)
-    struct Step { uint16_t pc; uint64_t c0, c1; uint32_t c2; };
+    struct Step { uint16_t pc; uint64_t c0, c1, c2; };
     std::deque<Step> trace_dme_, trace_klr_;
     static constexpr size_t kTrace = 512;
 
@@ -247,9 +247,10 @@ private:
             std::string out;
             for (size_t i = q.size() > n ? q.size() - n : 0; i < q.size(); ++i) {
                 char ctx[64];
-                snprintf(ctx, sizeof ctx, "/%016llx/%016llx/%08x",
+                snprintf(ctx, sizeof ctx, "/%016llx/%016llx/%016llx",
                          static_cast<unsigned long long>(q[i].c0),
-                         static_cast<unsigned long long>(q[i].c1), q[i].c2);
+                         static_cast<unsigned long long>(q[i].c1),
+                         static_cast<unsigned long long>(q[i].c2));
                 out += (out.empty() ? "" : ",") + hex(q[i].pc) + ctx;
             }
             printf("SIM: [TRACE] %s %s\n", cpu == "klr" ? "klr" : "dme", out.c_str());

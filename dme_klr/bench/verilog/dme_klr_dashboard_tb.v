@@ -78,13 +78,14 @@ module dme_klr_dashboard_tb;
     // Register context captured with each traced instruction, before it runs:
     // ctx0 = A B PSW SP DPH DPL [operand byte 1] [operand byte 2] (iram at
     // the addresses in the instruction's 2nd/3rd bytes), ctx1 = R0..R7 of the
-    // active bank, ctx2 = @R0 @R1 code[A+DPTR] code[A+PC+1].
+    // active bank, ctx2 = @R0 @R1 code[A+DPTR] code[A+PC+1] [bit byte: iram
+    // 20h + (operand byte 1 >> 3), the byte holding a bit operand] 0 0 0.
     `define LCPU  u_dme.i8051_top.u_cpu
     `define LROM  u_dme.i8051_top.u_eprom.mem
     `define LBANK(n) `LCPU.iram[{3'b000, `LCPU.psw[4:3], 3'd n}]
     reg [63:0] live_dme_ctx0   /*verilator public_flat_rd*/ = 64'd0;
     reg [63:0] live_dme_ctx1   /*verilator public_flat_rd*/ = 64'd0;
-    reg [31:0] live_dme_ctx2   /*verilator public_flat_rd*/ = 32'd0;
+    reg [63:0] live_dme_ctx2   /*verilator public_flat_rd*/ = 64'd0;
     // KLR: ctx0 = A PSW T P1 P2 {F0,F1} @R0 @R1, ctx1 = R0..R7 of the active bank
     `define KCPU  u_klr.top.i8048_core_1
     `define KBANK(n) `KCPU.ram[(`KCPU.psw[4] ? 7'h18 : 7'h00) + 7'd n]
@@ -106,7 +107,9 @@ module dme_klr_dashboard_tb;
                                 `LBANK(4), `LBANK(5), `LBANK(6), `LBANK(7)};
             live_dme_ctx2   <= {`LCPU.iram[`LBANK(0) & 8'h7F], `LCPU.iram[`LBANK(1) & 8'h7F],
                                 `LROM[({`LCPU.dph, `LCPU.dpl} + {8'd0, `LCPU.acc}) & 16'h1FFF],
-                                `LROM[(`LCPU.pc + 16'd1 + {8'd0, `LCPU.acc}) & 16'h1FFF]};
+                                `LROM[(`LCPU.pc + 16'd1 + {8'd0, `LCPU.acc}) & 16'h1FFF],
+                                `LCPU.iram[{3'b010, `LROM[(`LCPU.pc + 16'd1) & 16'h1FFF][6:3]}],
+                                24'd0};
         end
     // DME stack tagging for the debugger's stack dump: what wrote each stack
     // byte. SP +2 with PC on an interrupt vector = interrupt entry ('i' low,
