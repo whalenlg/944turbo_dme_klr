@@ -1569,7 +1569,8 @@ reg  [7:0] adc_mux;
 `ifdef LIVE
 // Live debugger: every ADC channel reads the value the web UI last set
 // in dme_klr_dashboard_tb (see dme_klr/live/). TPS (ch6) keeps the
-// normal idle-switch / KLR full_load logic below.
+// normal idle-switch / KLR full_load logic below unless live_dme_tps
+// pins it (16'hFFFF = follow that logic), as the log replay does.
 always @(*) begin
     case (p2[2:0])
         3'b000: adc_mux = afm_effective;
@@ -1578,7 +1579,8 @@ always @(*) begin
         3'b011: adc_mux = dme_klr_dashboard_tb.live_coolant;
         3'b100: adc_mux = dme_klr_dashboard_tb.live_altitude;
         3'b101: adc_mux = 8'hFF;
-        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
+        3'b110: adc_mux = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
+                        : idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
         3'b111: adc_mux = dme_klr_dashboard_tb.live_fuel_qual;
         default: adc_mux = 8'hF0;
     endcase
@@ -1682,8 +1684,15 @@ adc_delay_8 adc_delay_8_1 (
         .o2_top    ( _o2_7 ),
         .o2_bottom ( _o2_6 )
     );
+`ifdef LIVE
+    // Live debugger / log replay: live_o2 = {o2_7, o2_6} pins the
+    // comparator outputs (0 lean, 1 crossover, 3 rich); 16'hFFFF = generator.
+    assign o2_6 = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_6 : dme_klr_dashboard_tb.live_o2[0];
+    assign o2_7 = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_7 : dme_klr_dashboard_tb.live_o2[1];
+`else
     assign o2_6 = _o2_6;
     assign o2_7 = _o2_7;
+`endif
 `endif
 
 // ─── P1 / P3 input assignments ──────────────────────────────

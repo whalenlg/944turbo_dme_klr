@@ -33,6 +33,7 @@
 //    SIM: [ERROR]  <message>
 //    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
 //    SIM: [INJ]    t_ns=<n> width_ns=<n>           (injector low time on DME P1.0)
+//    SIM: [TACH]   t_ns=<n> width_ns=<n>           (DME tach A_1 high time: its spark command to the KLR)
 //    SIM: [REGS]   dme|klr t_ms=<n> name=hex ...   (CPU registers, with each snapshot)
 //    SIM: [REGS]   dmestk t_ms=<n> stk=<tag>.<tag>...  (what wrote DME stack 64h..79h:
 //                  c/C call lo/hi, i/I interrupt lo/hi, pXXXX PUSH at XXXX, - unknown)
@@ -90,6 +91,10 @@ public:
             {"battery",   &TB(live_battery),    8, false},
             {"altitude",  &TB(live_altitude),   8, false},
             {"fuel_qual", &TB(live_fuel_qual),  8, false},
+            {"dme_tps",   &TB(live_dme_tps),   16, true},
+            {"klr_tps",   &TB(live_klr_tps),   16, true},
+            {"o2",        &TB(live_o2),        16, true},
+            {"knock",     &TB(live_knock),     16, true},
         };
     }
 
