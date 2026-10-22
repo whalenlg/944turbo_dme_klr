@@ -78,7 +78,7 @@ replay; the live debugger can `set` them too).
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |
-| `knock` | KLR Knocking | 1 while it reads "No" (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth) on every 4th TDC, in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
+| `knock` | KLR Knocking | 1 while it reads "No" (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
 
 ## Compared outputs
 

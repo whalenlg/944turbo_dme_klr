@@ -42,8 +42,10 @@
 //
 //  Default (neither defined): flat nominal 8'd110, except in a -DLIVE
 //  build (live debugger / log replay), where the top's live_knock = 1
-//  injects the TEST_KNOCK_PULSE drop (32 teeth after TDC, held 107
-//  teeth, on every 4th TDC) for as long as it stays set.
+//  injects the TEST_KNOCK_PULSE drop (32 teeth after TDC, held up to
+//  107 teeth) on every TDC for as long as it stays set. tdc is once per
+//  crank revolution, so TEST_KNOCK_PULSE's every-4th-TDC spacing would
+//  be 4 revolutions apart, longer than most of a log's knock bursts.
 // ============================================================
 
 `include "timescale.v"
@@ -137,31 +139,28 @@ module klr_knock_gen (
 `elsif TEST_KNOCK_SHORT_TO_GROUND
     assign knock_sensor = 8'd0;
 `elsif LIVE
-    // live_knock (dme_klr_dashboard_tb) = 1: the TEST_KNOCK_PULSE drop,
-    // repeated on every 4th TDC while it stays set; any other value
-    // (16'hFFFF = model) leaves the sensor at nominal 110. A drop that
-    // has started runs its full hold even if live_knock clears.
-    localparam KNOCK_CYLINDERS    = 4;
+    // live_knock (dme_klr_dashboard_tb) = 1: the TEST_KNOCK_PULSE drop
+    // on every TDC (once per revolution) while it stays set; any other
+    // value (16'hFFFF = model) leaves the sensor at nominal 110. A drop
+    // runs until its 107 teeth are up or the next TDC, whichever is
+    // first, even if live_knock clears.
     localparam KNOCK_DELAY_PULSES = 32;
     localparam KNOCK_HOLD_PULSES  = 107;
 
     wire       knock_req = (dme_klr_dashboard_tb.live_knock == 16'd1);
     reg [7:0]  knock_sensor_sig = 8'd110;
     reg        tdc_prev = 1'b0, speed_sensor_prev = 1'b0;
-    reg [31:0] tdc_count = 32'd0, pulse_count = 32'd0;
+    reg [31:0] pulse_count = 32'd0;
     reg [1:0]  knock_state = 2'd0;   // 0 idle, 1 counting to drop, 2 counting to restore
 
     always @(posedge clk) begin
         tdc_prev          <= tdc;
         speed_sensor_prev <= speed_sensor;
         if (tdc_prev && !tdc) begin
-            tdc_count <= tdc_count + 32'd1;
-            if (knock_req && knock_state == 2'd0 && (tdc_count % KNOCK_CYLINDERS) == 0) begin
-                pulse_count <= 32'd0;
-                knock_state <= 2'd1;
-            end
-        end
-        if (!speed_sensor_prev && speed_sensor) begin
+            knock_sensor_sig <= 8'd110;
+            pulse_count      <= 32'd0;
+            knock_state      <= knock_req ? 2'd1 : 2'd0;
+        end else if (!speed_sensor_prev && speed_sensor) begin
             case (knock_state)
                 2'd1: if (pulse_count + 32'd1 >= KNOCK_DELAY_PULSES) begin
                           knock_sensor_sig <= 8'd0;

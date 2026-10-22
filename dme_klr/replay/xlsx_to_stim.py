@@ -57,8 +57,8 @@ Input conversions (log value -> raw ADC byte the model reads)
   knock     'KLR Knocking'             1 while it reads 'No' (the KLR's
                                        knock line is active low): the
                                        KLR knock_sensor gets the
-                                       TEST_KNOCK_PULSE drop on every 4th
-                                       TDC (klr_knock_gen.v), else 0
+                                       TEST_KNOCK_PULSE drop once per
+                                       revolution (klr_knock_gen.v), else 0
 
 Expected outputs (compared by check_replay.py)
 ----------------------------------------------
