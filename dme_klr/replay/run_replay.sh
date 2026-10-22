@@ -32,7 +32,9 @@
 #        (same defaults as live/build_live.sh)
 #        REBUILD=1 forces a rebuild
 #
-#  Output: ../../tmp/dme_klr/replay/ (relative to dme_klr/, beside dash_logs)
+#  Output: ../../tmp/dme_klr/replay/dash_logs/ (iverilog) or
+#          ../../tmp/dme_klr/replay/v_dash_logs/ (Verilator), relative to
+#          dme_klr/, so the two can run in parallel:
 #          <name>.{stim,expect}.csv
 #          <name>.log        (full sim output)
 #          <name>.dash.log   (DS lines, loadable in the dashboard)
@@ -84,7 +86,11 @@ done
 [ ${#WINDOW[@]} -eq 0 ] && WINDOW=(--end-s 14)   # first WOT pull
 NAME="${NAME:-$(basename "$XLSX" .xlsx)}"
 
-OUT_DIR="$(cd "$REPO_DIR/.." && pwd)/tmp/dme_klr/replay"   # beside dash_logs, as run_dashboard_tests.sh does
+# iverilog and Verilator results go to separate folders, as with
+# run_dashboard_tests.sh (dash_logs) and v_run_dashboard_tests.sh
+# (v_dash_logs), so both can run at once
+REPLAY_OUT="$(cd "$REPO_DIR/.." && pwd)/tmp/dme_klr/replay"
+if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/$NAME"
 

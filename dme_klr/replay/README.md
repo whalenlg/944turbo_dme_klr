@@ -36,8 +36,10 @@ wall-clock second, iverilog at about 4.
 | `check_replay.py` | pairs each snapshot with its log row, applies tolerances, prints pass rates per channel and per segment, writes every miss to `<name>.mismatches.csv`; exits 1 if a channel passes on fewer than `--min-pass` (90 %) of rows |
 | `run_replay.sh` | build if stale, convert, run, check |
 
-Outputs land in `../../tmp/dme_klr/replay/` (beside `dash_logs/`); the
-`.dash.log` loads into the dashboard like any other run.
+Outputs land in `../../tmp/dme_klr/replay/dash_logs/` for iverilog runs and
+`../../tmp/dme_klr/replay/v_dash_logs/` for Verilator runs (the same split as
+`run_dashboard_tests.sh` / `v_run_dashboard_tests.sh`), so the two can run at
+the same time. Each run's `.dash.log` loads into the dashboard like any other.
 
 `--iverilog` runs also write `fst/<name>.fst`, made the same way as
 `run_dashboard_tests.sh`'s: `vcd.v` / `klr_vcd.v` dump their chosen signals to
