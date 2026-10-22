@@ -65,6 +65,9 @@ TOLERANCES = {           # absolute, in the channel's own units
     'knock_pin': 0.0,
 }
 CHANNELS = list(TOLERANCES)
+# Channels that only mean something when the event happens: with no knock
+# on either side the row-by-row match is trivially 100%, so they report n/a.
+EVENT_CHANNELS = {'knock_pin'}
 EXPECT_COL = {'knock_pin': 'knocking'}     # channel -> expect.csv column, where they differ
 KNOCK_RE = re.compile(r'^KLR: \[PHASE\] t=(\d+) ms\s+KNOCK_OUT cleared')
 
@@ -186,7 +189,8 @@ def write_mismatch_xlsx(path, mism, stats, tol, min_pass):
         ws.append([c, tol[c], n, st['pass'], st['pass'] / n if n else None, n - st['pass'],
                    sum(st['err']) / n if n else None,
                    max((abs(x) for x in st['err']), default=None),
-                   'PASS' if n and st['pass'] / n >= min_pass else 'FAIL'])
+                   'N/A' if c in EVENT_CHANNELS and not st['events']
+                   else 'PASS' if n and st['pass'] / n >= min_pass else 'FAIL'])
     for row in ws.iter_rows(min_row=2, min_col=5, max_col=5):
         row[0].number_format = '0%'
     cols = ['row', 't (s)', 'segment', 'rpm', 'tps_status', 'log', 'model', 'error', 'tolerance']
@@ -231,7 +235,7 @@ def main():
     if not rows:
         sys.exit(f"no SIM: [ROW] lines in {a.sim_log} — did the replay run?")
 
-    stats = {c: {'n': 0, 'pass': 0, 'na': 0, 'err': [], 'worst': None} for c in CHANNELS}
+    stats = {c: {'n': 0, 'pass': 0, 'na': 0, 'err': [], 'worst': None, 'events': 0} for c in CHANNELS}
     seg_stats = {}
     mism = []
     for i, exp in enumerate(expect):
@@ -250,6 +254,7 @@ def main():
             err = mv[c] - e
             ok = abs(err) <= tol[c] + 1e-9
             st['n'] += 1
+            st['events'] += bool(e or mv[c])
             st['pass'] += ok
             st['err'].append(err)
             if st['worst'] is None or abs(err) > abs(st['worst'][0]):
@@ -289,6 +294,10 @@ def main():
             worst = f"t={float(t_ms) / 1000:.2f}s log={e:g} model={m:.2f}"
         else:
             worst = '-'
+        if c in EVENT_CHANNELS and not st['events']:
+            print(f"{c:<11} {tol[c]:>6g} {'n/a':>13} {st['na']:>4}  (no knock in the log or the model "
+                  f"over these {n} rows)")
+            continue
         flag = '' if n and rate >= a.min_pass else '  <-- FAIL'
         if flag:
             failed.append(c)
@@ -297,7 +306,8 @@ def main():
     print()
     print("Pass rate by log segment (fill colour marks the gear pulls):")
     for seg, cs in seg_stats.items():
-        cells = '  '.join(f"{c}={p / n:.0%}" for c, (n, p) in cs.items())
+        cells = '  '.join(f"{c}={p / n:.0%}" for c, (n, p) in cs.items()
+                          if c not in EVENT_CHANNELS or stats[c]['events'])
         print(f"  segment {seg}: {cells}")
 
     if a.mismatches:

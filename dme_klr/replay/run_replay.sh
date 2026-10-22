@@ -15,6 +15,8 @@
 #    ./run_replay.sh --start-s 120 --end-s 136
 #    ./run_replay.sh --all                   # whole log (~152 s of engine time; slow)
 #    ./run_replay.sh --list-segments
+#    ./run_replay.sh --out-dir DIR ...       # results here instead (the dashboard
+#                                            # suites use their own dash_logs)
 #    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 0)
 #    ./run_replay.sh --iverilog --KLR_DEBUG ...  # debug build (also --DME_DEBUG,
 #                                            # --DME_DEEP_DEBUG): more waveform, and
@@ -65,6 +67,7 @@ WINDOW=()
 CHECK_ARGS=()
 STIM_ARGS=()
 EXTRA_DEFS=()
+OUT_DIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --xlsx)          XLSX="$2"; shift 2 ;;
@@ -77,6 +80,7 @@ while [ $# -gt 0 ]; do
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
         --map-offset)    STIM_ARGS+=(--map-offset "$2"); shift 2 ;;
+        --out-dir)       OUT_DIR="$2"; shift 2 ;;
         --KLR_DEBUG|--DME_DEBUG|--DME_DEEP_DEBUG) EXTRA_DEFS+=("-D${1#--}"); shift ;;
         --list-segments) python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" --list-segments; exit 0 ;;
         --)              shift; CHECK_ARGS=("$@"); break ;;
@@ -90,8 +94,10 @@ NAME="${NAME:-$(basename "$XLSX" .xlsx)}"
 # run_dashboard_tests.sh (dash_logs) and v_run_dashboard_tests.sh
 # (v_dash_logs), so both can run at once
 REPLAY_OUT="$(cd "$REPO_DIR/.." && pwd)/tmp/dme_klr/replay"
-if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
-mkdir -p "$OUT_DIR"
+if [ -z "$OUT_DIR" ]; then
+    if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
+fi
+mkdir -p "$OUT_DIR"; OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 OUT="$OUT_DIR/$NAME"
 
 # ── Build: dme_klr_dashboard_tb with -DLIVE like the live debugger, driven

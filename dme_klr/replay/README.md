@@ -26,6 +26,24 @@ own driver in `obj/`: `replay_main.cpp` for Verilator, or the
 and print the same output. Verilator runs at about 20 simulated ms per
 wall-clock second, iverilog at about 4.
 
+## In the dashboard test suites
+
+`replay_wot_60s` replays the first 60 s of the log (both 2nd/3rd-gear pulls
+and the coast-down into the first knock events) as an ordinary suite test:
+
+```sh
+./run_dashboard_tests.sh replay_wot_60s          # iverilog, → dash_logs/ (+ fst/)
+./v_run_dashboard_tests.sh replay_wot_60s        # Verilator, → v_dash_logs/
+./run_dashboard_parallel.sh 2 Replay             # group name; --verilator for Verilator
+```
+
+Results land in the suite's own `dash_logs/` or `v_dash_logs/` beside the
+other tests (`run_replay.sh --out-dir`). It takes no debug flags. The
+parallel runner's validation reads `<name>.report.txt`: PASS when every channel
+meets its pass rate, WARN naming the channels that don't (currently ign_adv,
+klr_adv, klr_retard and inj_ms), FAIL only if the replay didn't finish. Expect
+about an hour under Verilator and several hours under iverilog.
+
 ## Pieces
 
 | file | does |

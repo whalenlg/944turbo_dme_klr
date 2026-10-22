@@ -132,6 +132,29 @@ mkdir -p "$VVP_DIR" "$IVDIR" "$LOGDIR" "$VCDDIR" "$FSTDIR" "$HEXDIR"
 
 # Mode alias used by run_all and case block
 run_test()  { compile_and_run_klr "$@"; }
+
+# run_replay_test <name> [run_replay.sh window args...]
+#   Open-loop replay of the recorded WOT log (replay/README.md): every input
+#   comes from bench/verilog/10_9_evening_WOT_Run.xlsx and the model's outputs
+#   are compared with the logged ones. Results go to this suite's LOGDIR like
+#   any other test (<name>.log, .dash.log, .report.txt, .mismatches.xlsx, fst/<name>.fst).
+#   The comparison's own pass rates are in the report; the summary line notes
+#   which channels missed, and only a run that didn't finish counts as failed.
+run_replay_test() {
+    local name="$1"; shift
+    echo "=== $name (log replay, iverilog) ==="
+    rm -f "$LOGDIR/${name}.report.txt"
+    bash "$SCRIPT_DIR/replay/run_replay.sh" --iverilog --out-dir "$LOGDIR" --name "$name" "$@"
+    if ! grep -q "^Replay check:" "$LOGDIR/${name}.report.txt" 2>/dev/null; then
+        echo "  SIM FAILED: $name (replay did not finish; see $LOGDIR/${name}.log)" | tee -a "$LOGDIR/summary.log"
+        return 1
+    fi
+    local verdict
+    verdict=$(grep -E "^FAIL:" "$LOGDIR/${name}.report.txt" || echo "all channels within tolerance")
+    echo "  DONE: $name — $(grep '^Replay check:' "$LOGDIR/${name}.report.txt" | cut -d, -f1 | sed 's/^Replay check: //') — ${verdict}" \
+        | tee -a "$LOGDIR/summary.log"
+    open_in_dashboard "$LOGDIR/${name}.dash.log"
+}
 ACTIVE_LOG="$LOGDIR/summary.log"
 echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
 
@@ -1098,6 +1121,8 @@ if [ -n "$1" ]; then
         isv_cold_idle)    run_test isv_cold_idle    $IARG -DTEST_ISV_COLD_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=60000000000   ;;
         isv_load_droop)   run_test isv_load_droop   $IARG -DTEST_ISV_LOAD_DROOP   -DISV_LOAD_DROOP -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
         # ── DME+KLR combined tests ──────────────────────────
+        # ── Log replay (replay/README.md); no debug flags ───
+        replay_wot_60s)       run_replay_test replay_wot_60s --start-s 0 --end-s 60 ;;
         dme_klr_warm_idle)    run_test dme_klr_warm_idle    $IARG -DTEST_WARM_IDLE    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000 ;;
         *)
             echo "Unknown test: $1"
@@ -1125,6 +1150,7 @@ if [ -n "$1" ]; then
             echo "  DME_fail:    idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail"
             echo "               airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             echo "               altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
+            echo "  Replay:      replay_wot_60s (first 60 s of the recorded WOT log, open loop)"
             echo ""
             exit 1
             ;;

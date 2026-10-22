@@ -60,6 +60,7 @@ ALL_TESTS=(
     ignition_timing dwell_scaling
     isv_cold_idle isv_load_droop
     dme_klr_warm_idle
+    replay_wot_60s
 )
 
 # ── Named test groups ────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ ALL_TESTS=(
 #   group_members <name>   echoes that group's test names (space-separated)
 #                           to stdout and returns 0; returns 1 for an
 #                           unknown name with nothing printed.
-GROUP_NAMES=(Ramp KLR_fail Fuel Idle DME_fail)
+GROUP_NAMES=(Ramp KLR_fail Fuel Idle DME_fail Replay)
 group_members() {
     case "$1" in
         Ramp)
@@ -88,6 +89,9 @@ group_members() {
             ;;
         DME_fail)
             echo "idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
+            ;;
+        Replay)
+            echo "replay_wot_60s"
             ;;
         *)
             return 1

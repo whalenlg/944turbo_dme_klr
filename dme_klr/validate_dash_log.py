@@ -1496,7 +1496,33 @@ def parse_klr_knock_count(line):
     return (t, int(m.group(1)))
 
 
+def validate_replay(test_name, logpath):
+    """Log-replay tests (replay/run_replay.sh): check_replay.py already
+    compared every row with the recorded log and wrote <name>.report.txt
+    beside the dash.log. PASS when every channel met its pass rate, WARN
+    naming the channels that didn't, FAIL when the replay didn't finish."""
+    report = logpath.replace('.dash.log', '.report.txt')
+    try:
+        lines = open(report).read().splitlines()
+    except FileNotFoundError:
+        print(f"FAIL\t{test_name}\tNo replay report ({report}) — the replay did not finish")
+        return 1
+    check = next((l for l in lines if l.startswith('Replay check:')), None)
+    if check is None:
+        print(f"FAIL\t{test_name}\tReplay report has no result — the replay did not finish")
+        return 1
+    rows = check.split(',')[0].replace('Replay check: ', '')
+    missed = next((l for l in lines if l.startswith('FAIL:')), None)
+    if missed:
+        print(f"WARN\t{test_name}\t{rows}; {missed[len('FAIL: '):]} (see {os.path.basename(report)})")
+        return 0
+    print(f"PASS\t{test_name}\t{rows}; every channel within tolerance")
+    return 0
+
+
 def validate(test_name, logpath, dme_file=None):
+    if test_name.startswith('replay_'):
+        return validate_replay(test_name, logpath)
     exp = TESTS.get(test_name)
     if exp is None:
         print(f"WARN\t{test_name}\tNo expectations defined — skipping checks")
