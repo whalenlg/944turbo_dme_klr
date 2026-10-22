@@ -70,6 +70,14 @@ replay; the live debugger can `set` them too).
 | `icv_pct` | ICV (%) | ISV P1.4-high share of the timer-1 reloads {41h,40h} / {45h,44h} | ±5 % |
 | `rpm` | RPM | iram[37h] × 40 (sanity check that the pin took) | ±80 |
 | `full_load` | Throttle Switch (Status) = Full Load | KLR full_load output | exact |
+| `knock_pin` | KLR Knocking (Yes = 1) | KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte) | exact |
 
-The log's knock flag and knock count are carried into `expect.csv` but not
-compared: the model's knock sensor is synthetic.
+Knock is a KLR output. The logger's "KLR Knocking" column is the level of the
+KLR's P1.6 knock line ("Yes" while it sits high), and each high→low pulse is
+one count of "KLR Knock Cnt.". The report compares the pin level row by row and
+prints knock-event counts for the window: the log's count increments against
+the model's KNOCK_OUT pulses (`KLR: [PHASE] ... KNOCK_OUT cleared`, also in
+the `.dash.log`). The log has no knock-sensor waveform to replay, so the
+model's knock sensor stays at its flat nominal input. The first WOT pull has
+no knock events in the log; they're all between 55 s and 113 s
+(`--start-s 55 --end-s 113`).

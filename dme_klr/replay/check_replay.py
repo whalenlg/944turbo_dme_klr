@@ -27,6 +27,14 @@ Model-side value of each channel
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
   rpm         DME iram[37h] * 40 (sanity check that the pinned RPM took)
   full_load   KLR full_load output (DS tail bit)
+  knock_pin   KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte). The
+              logger's "KLR Knocking" column is this pin's level: "Yes"
+              while it sits high, and each high->low pulse is one count
+              of "KLR Knock Cnt.", so Yes = 1
+
+The summary also counts knock events over the compared rows: the log's
+knock-count increments against the model's KNOCK_OUT pulses
+(KLR: [PHASE] ... KNOCK_OUT cleared).
 
 Each channel passes on a row when |model - log| <= its tolerance; the
 run fails when any channel's pass rate is under --min-pass. Rows whose
@@ -50,8 +58,11 @@ TOLERANCES = {           # absolute, in the channel's own units
     'icv_pct': 5.0,
     'rpm': 80.0,         # iram[37h] has 40 rpm resolution
     'full_load': 0.0,
+    'knock_pin': 0.0,
 }
 CHANNELS = list(TOLERANCES)
+EXPECT_COL = {'knock_pin': 'knocking'}     # channel -> expect.csv column, where they differ
+KNOCK_RE = re.compile(r'^KLR: \[PHASE\] t=(\d+) ms\s+KNOCK_OUT cleared')
 
 ROW_RE = re.compile(r'^SIM: \[ROW\] idx=(\d+) log_ms=([\d.]+) t_ns=(\d+)')
 IGN_RE = re.compile(r'^SIM: \[(IGN\] dme|IGN\] klr|TACH\]) t_ns=(\d+) width_ns=(\d+)')
@@ -69,10 +80,14 @@ def hexbytes(h):
 
 def parse_sim(path):
     rows = {}            # idx -> dict(t_ns, dme, klr, klr_bits)
-    ign = {'dme': [], 'klr': [], 'tach': []}
+    ign = {'dme': [], 'klr': [], 'tach': [], 'knock_ms': []}
     cur = None
     with open(path, errors='replace') as f:
         for line in f:
+            m = KNOCK_RE.match(line)
+            if m:
+                ign['knock_ms'].append(int(m.group(1)))
+                continue
             m = ROW_RE.match(line)
             if m:
                 cur = int(m.group(1))
@@ -95,6 +110,9 @@ def parse_sim(path):
                 parts = line[9:].strip().split(',')
                 if len(parts) >= 4:
                     rows[cur]['klr_bits'] = parts[3].strip()
+                    p1 = parts[2].strip()[:2]
+                    if re.fullmatch(r'[0-9a-fA-F]{2}', p1):
+                        rows[cur]['klr_p1'] = int(p1, 16)
     for k in ign:
         ign[k].sort()
     return rows, ign
@@ -138,6 +156,8 @@ def model_values(row, ign, rpm_log):
     bits = row.get('klr_bits', '')
     if len(bits) >= 3 and bits[2] in '01':
         v['full_load'] = float(bits[2])
+    if row.get('klr_p1') is not None:
+        v['knock_pin'] = float((row['klr_p1'] >> 6) & 1)
     return v
 
 
@@ -179,7 +199,7 @@ def main():
             if mv[c] is None:
                 st['na'] += 1
                 continue
-            e = float(exp[c])
+            e = float(exp[EXPECT_COL.get(c, c)])
             err = mv[c] - e
             ok = abs(err) <= tol[c] + 1e-9
             st['n'] += 1
@@ -197,8 +217,18 @@ def main():
                              'tps_status': exp['tps_status']})
 
     played = sum(1 for i in range(len(expect)) if i + a.lag_rows in rows)
+    # Knock events over the compared window
+    cmp_idx = [i for i in range(len(expect)) if i + a.lag_rows in rows]
+    log_knocks = model_knocks = 0
+    if cmp_idx:
+        log_knocks = int(float(expect[cmp_idx[-1]]['knock_cnt']) - float(expect[cmp_idx[0]]['knock_cnt']))
+        t0 = rows[cmp_idx[0] + a.lag_rows]['t_ns'] / 1e6
+        t1 = rows[cmp_idx[-1] + a.lag_rows]['t_ns'] / 1e6
+        model_knocks = sum(1 for t in ign['knock_ms'] if t0 <= t <= t1)
     print(f"Replay check: {played}/{len(expect)} log rows compared "
           f"(lag {a.lag_rows} rows), {len(ign['tach'])} DME spark commands, {len(ign['klr'])} KLR sparks")
+    print(f"Knock events in the compared window: log {log_knocks} (KLR Knock Cnt. increments), "
+          f"model {model_knocks} (KNOCK_OUT pulses)")
     print()
     print(f"{'channel':<11} {'tol':>6} {'pass':>13} {'n/a':>5} {'mean err':>9} {'max |err|':>10}  worst at")
     failed = []
