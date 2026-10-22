@@ -63,11 +63,17 @@ module dme_klr_dashboard_tb;
     reg [7:0]  live_altitude  /*verilator public_flat_rw*/ = `_ALTITUDE;
     reg [7:0]  live_fuel_qual /*verilator public_flat_rw*/ = `_FUEL_QUAL;
     reg [15:0] live_boost     /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR MAP (ch4)
+    // Pins used by the open-loop log replay (dme_klr/replay/); same
+    // 16'hFFFF / 8'hFF = "use the model" convention as above.
+    reg [15:0] live_dme_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // DME ADC ch6 (throttle switch)
+    reg [15:0] live_klr_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle, in afm_wiper units
+    reg [15:0] live_o2        /*verilator public_flat_rw*/ = 16'hFFFF;  // {o2_7, o2_6}: 0 lean, 1 cross, 3 rich
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
-    assign tps_wiper_sig = u_dme.afm_wiper;   // throttle after its slew (see i8051_dashboard_tb)
+    assign tps_wiper_sig = (live_klr_tps == 16'hFFFF) ? u_dme.afm_wiper   // throttle after its slew (see i8051_dashboard_tb)
+                                                      : live_klr_tps[7:0];
 
     // Instruction-start trackers for breakpoints, stepping and the PC
     // trace. *_ipc is the address of the opcode most recently fetched and
@@ -166,6 +172,14 @@ module dme_klr_dashboard_tb;
     always @(posedge u_dme.A_0_inj_driver)
         if (live_inj_fall != 0)
             $display("SIM: [INJ] t_ns=%0d width_ns=%0d", $time, $time - live_inj_fall);
+    // DME tach (A_1, feeds the KLR's ign_in): the DME's own spark command,
+    // which the KLR copies to its coil output after any knock retard.
+    // The log replay measures that retard against it.
+    time live_tach_rise = 0;
+    always @(posedge tach_dme_to_klr) live_tach_rise = $time;
+    always @(negedge tach_dme_to_klr)
+        if (live_tach_rise != 0)
+            $display("SIM: [TACH] t_ns=%0d width_ns=%0d", $time, $time - live_tach_rise);
     always @(posedge klr_ign_out) live_klr_ign_rise = $time;
     always @(negedge klr_ign_out)
         if ($time - live_klr_ign_rise >= 100_000)
