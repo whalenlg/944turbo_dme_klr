@@ -38,6 +38,13 @@ wall-clock second, iverilog at about 4.
 Outputs land in `../../tmp/dme_klr/replay/` (beside `dash_logs/`); the
 `.dash.log` loads into the dashboard like any other run.
 
+`--iverilog` runs also write `fst/<name>.fst`, made the same way as
+`run_dashboard_tests.sh`'s: `vcd.v` / `klr_vcd.v` dump their chosen signals to
+`sim.vcd` and `vcd2fst` (from GTKWave) converts it. `--no-fst` skips it and
+`--vcd` keeps the VCD too. The VCD runs about 80 MB per simulated second
+before conversion. Verilator runs make no waveform, because Verilator's
+tracing ignores the `$dumpvars` scopes and would dump the whole design.
+
 ## Inputs
 
 The replay pins these through the `live_*` registers in

@@ -17,6 +17,8 @@
 #    ./run_replay.sh --list-segments
 #    ./run_replay.sh --xlsx other.xlsx --name mylog ...
 #    ./run_replay.sh --iverilog ...          # Icarus instead of Verilator (~5x slower)
+#    ./run_replay.sh --iverilog --no-fst ... # skip the waveform (faster)
+#    ./run_replay.sh --iverilog --vcd ...    # also keep the raw .vcd
 #  Anything after -- goes to check_replay.py, e.g.
 #    ./run_replay.sh -- --lag-rows 2 --tol ign_adv=2.8
 #
@@ -31,6 +33,12 @@
 #          <name>.log        (full sim output)
 #          <name>.dash.log   (DS lines, loadable in the dashboard)
 #          <name>.report.txt / <name>.mismatches.csv
+#          fst/<name>.fst    (--iverilog runs: waveform made the same way as
+#                             run_dashboard_tests.sh's, with the signals
+#                             vcd.v / klr_vcd.v choose)
+#          vcd/<name>.vcd    (only with --vcd)
+#  Verilator runs make no waveform: its tracing ignores $dumpvars scopes
+#  and would dump the whole design for the whole run.
 #
 #  Speed: about 20 simulated ms per wall-clock second with Verilator on
 #  a 4-core container (the default 14 s window takes roughly 15 minutes),
@@ -45,6 +53,8 @@ REPO_DIR="$(cd "$DMEKLR_DIR/.." && pwd)"
 XLSX="$DMEKLR_DIR/bench/verilog/10_9_evening_WOT_Run.xlsx"
 NAME=""
 SIM=verilator
+FST=1
+KEEP_VCD=0
 WINDOW=()
 CHECK_ARGS=()
 while [ $# -gt 0 ]; do
@@ -53,6 +63,8 @@ while [ $# -gt 0 ]; do
         --name)          NAME="$2"; shift 2 ;;
         --iverilog)      SIM=iverilog; shift ;;
         --verilator)     SIM=verilator; shift ;;
+        --no-fst)        FST=0; shift ;;
+        --vcd)           KEEP_VCD=1; shift ;;
         --segment)       WINDOW=(--segment "$2"); NAME="${NAME:-seg$2}"; shift 2 ;;
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
@@ -88,6 +100,7 @@ if [ "$SIM" = "iverilog" ]; then
     DRIVER="$REPLAY_DIR/replay_driver.v"
 else
     BIN="$REPLAY_DIR/obj/dme_klr_replay"
+    FST=0; KEEP_VCD=0     # see the Output note above
     DRIVER="$REPLAY_DIR/replay_main.cpp"
 fi
 # The ROM choice is baked in, so a different one forces a rebuild too
@@ -124,12 +137,36 @@ fi
 python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}"
 
 # ── Run (from a scratch dir: the tb drops its hex/vcd dumps in cwd) ──
-mkdir -p "$OUT_DIR/run_$NAME"
+RUN_DIR="$OUT_DIR/run_$NAME"
+rm -rf "$RUN_DIR"; mkdir -p "$RUN_DIR"
+WAVE=/dev/null
+if [ "$FST" = "1" ] || [ "$KEEP_VCD" = "1" ]; then WAVE="$RUN_DIR/sim.vcd"; fi
 echo "  Running → $OUT.log"
 if [ "$SIM" = "iverilog" ]; then
-    ( cd "$OUT_DIR/run_$NAME" && vvp -n "$BIN" "+stim=$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" +vcd=/dev/null ) > "$OUT.log"
+    ( cd "$RUN_DIR" && vvp -n "$BIN" "+stim=$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" "+fst=$WAVE" ) > "$OUT.log"
 else
-    ( cd "$OUT_DIR/run_$NAME" && "$BIN" "$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" +vcd=/dev/null ) > "$OUT.log"
+    ( cd "$RUN_DIR" && "$BIN" "$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" "+fst=$WAVE" ) > "$OUT.log"
+fi
+
+# ── Waveform: the testbench dumps VCD; convert to FST as run_dashboard_tests.sh does ──
+if [ -f "$RUN_DIR/sim.vcd" ]; then
+    if [ "$FST" = "1" ]; then
+        mkdir -p "$OUT_DIR/fst"
+        if command -v vcd2fst >/dev/null; then
+            vcd2fst "$RUN_DIR/sim.vcd" "$OUT_DIR/fst/$NAME.fst" >/dev/null 2>&1 \
+                && echo "  FST     → $OUT_DIR/fst/$NAME.fst" \
+                || echo "  vcd2fst failed; VCD left at $RUN_DIR/sim.vcd"
+        else
+            echo "  vcd2fst not found (it ships with GTKWave); VCD left at $RUN_DIR/sim.vcd"
+            KEEP_VCD=2
+        fi
+    fi
+    if [ "$KEEP_VCD" = "1" ]; then
+        mkdir -p "$OUT_DIR/vcd"
+        mv "$RUN_DIR/sim.vcd" "$OUT_DIR/vcd/$NAME.vcd" && echo "  VCD     → $OUT_DIR/vcd/$NAME.vcd"
+    elif [ "$KEEP_VCD" = "0" ]; then
+        rm -f "$RUN_DIR/sim.vcd"
+    fi
 fi
 grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]" \
     "$OUT.log" > "$OUT.dash.log" || true

@@ -8,7 +8,7 @@
 //  are pinned through the same live_* registers the live debugger
 //  uses, row by row at the row's timestamp.
 //
-//  Usage:  dme_klr_replay <stim.csv> [+warmup_ms=<ms>] [+vcd=<file>]
+//  Usage:  dme_klr_replay <stim.csv> [+warmup_ms=<ms>] [+fst=/dev/null]
 //
 //  The CSV's first column is t_ms (log time, ms); every other column
 //  names an input from the table below and holds its raw value
@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
         else if (a[0] != '+' && stim.empty()) stim = a;
     }
     if (stim.empty()) {
-        fprintf(stderr, "usage: %s <stim.csv> [+warmup_ms=<ms>] [+vcd=<file>]\n", argv[0]);
+        fprintf(stderr, "usage: %s <stim.csv> [+warmup_ms=<ms>] [+fst=/dev/null]\n", argv[0]);
         return 2;
     }
     Replay r(argc, argv);
