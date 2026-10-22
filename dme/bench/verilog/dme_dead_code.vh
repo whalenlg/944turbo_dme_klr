@@ -14,6 +14,5 @@
 `DEAD_CODE(16'h0AAC, 16'h0AFA, "lambda (live copy at 1CB7)")
 `DEAD_CODE(16'h0B8A, 16'h0BA4, "P1.5 output fragment")
 `DEAD_CODE(16'h0BB0, 16'h0BCC, "P1.5 output fragment")
-`DEAD_CODE(16'h1DFC, 16'h1E0F, "data-output entry at 1E00 (live in some versions)")
 `DEAD_CODE(16'h1F21, 16'h1F39, "unreferenced fragment")
 `DEAD_CODE(16'h0CCB, 16'h0FFE, "old main loop + disabled features (live main loop at 1F3A), trap at 0FF5")
