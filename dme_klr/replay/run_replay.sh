@@ -15,6 +15,7 @@
 #    ./run_replay.sh --start-s 120 --end-s 136
 #    ./run_replay.sh --all                   # whole log (~152 s of engine time; slow)
 #    ./run_replay.sh --list-segments
+#    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 10)
 #    ./run_replay.sh --xlsx other.xlsx --name mylog ...
 #    ./run_replay.sh --iverilog ...          # Icarus instead of Verilator (~5x slower)
 #    ./run_replay.sh --iverilog --no-fst ... # skip the waveform (faster)
@@ -57,6 +58,7 @@ FST=1
 KEEP_VCD=0
 WINDOW=()
 CHECK_ARGS=()
+STIM_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --xlsx)          XLSX="$2"; shift 2 ;;
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
         --segment)       WINDOW=(--segment "$2"); NAME="${NAME:-seg$2}"; shift 2 ;;
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
+        --map-offset)    STIM_ARGS+=(--map-offset "$2"); shift 2 ;;
         --list-segments) python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" --list-segments; exit 0 ;;
         --)              shift; CHECK_ARGS=("$@"); break ;;
         *)               echo "unknown option: $1"; exit 2 ;;
@@ -134,7 +137,7 @@ if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
 fi
 
 # ── Stimulus + expected outputs from the log ──
-python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}"
+python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}" "${STIM_ARGS[@]}"
 
 # ── Run (from a scratch dir: the tb drops its hex/vcd dumps in cwd) ──
 RUN_DIR="$OUT_DIR/run_$NAME"
