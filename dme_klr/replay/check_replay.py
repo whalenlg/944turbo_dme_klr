@@ -6,6 +6,9 @@ expected outputs.
     check_replay.py <sim.log> <expect.csv> [--lag-rows N] [--min-pass F]
                     [--mismatches out.csv] [--tol name=value ...]
 
+--mismatches also writes out.xlsx beside the CSV: a Summary tab, then one
+tab per channel listing that channel's out-of-tolerance rows.
+
 <sim.log> is replay_main's stdout; <expect.csv> comes from
 xlsx_to_stim.py. Each "SIM: [ROW] idx=i" line is followed by the
 DME:/KLR: [DS] snapshot taken at that row's time, which is paired with
@@ -44,6 +47,7 @@ model value is unavailable (no spark seen yet, etc.) are counted as
 import argparse
 import bisect
 import csv
+import os
 import re
 import sys
 
@@ -161,6 +165,49 @@ def model_values(row, ign, rpm_log):
     return v
 
 
+
+def write_mismatch_xlsx(path, mism, stats, tol, min_pass):
+    """The mismatches as a workbook: a Summary tab, then one tab per
+    channel with that channel's out-of-tolerance rows in log order."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+    except ImportError:
+        print(f"openpyxl not installed; skipping {path}")
+        return
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Summary'
+    ws.append(['channel', 'tolerance', 'compared', 'passed', 'pass rate', 'mismatches',
+               'mean error', 'max |error|', 'result'])
+    for c in CHANNELS:
+        st = stats[c]
+        n = st['n']
+        ws.append([c, tol[c], n, st['pass'], st['pass'] / n if n else None, n - st['pass'],
+                   sum(st['err']) / n if n else None,
+                   max((abs(x) for x in st['err']), default=None),
+                   'PASS' if n and st['pass'] / n >= min_pass else 'FAIL'])
+    for row in ws.iter_rows(min_row=2, min_col=5, max_col=5):
+        row[0].number_format = '0%'
+    cols = ['row', 't (s)', 'segment', 'rpm', 'tps_status', 'log', 'model', 'error', 'tolerance']
+    for c in CHANNELS:
+        t = wb.create_sheet(c[:31])
+        t.append(cols)
+        for m in mism:
+            if m['channel'] == c:
+                t.append([m['row'], round(float(m['t_ms']) / 1000, 3), int(m['segment']),
+                          float(m['rpm']), m['tps_status'], m['log'], m['model'], m['error'],
+                          m['tolerance']])
+    for t in wb.worksheets:
+        for cell in t[1]:
+            cell.font = Font(bold=True)
+        t.freeze_panes = 'A2'
+        if t.max_row > 1:
+            t.auto_filter.ref = t.dimensions
+        for col in t.columns:
+            t.column_dimensions[col[0].column_letter].width = max(10, len(str(col[0].value)) + 3)
+    wb.save(path)
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('sim_log')
@@ -259,7 +306,9 @@ def main():
                                               'error', 'tolerance', 'rpm', 'tps_status'])
             w.writeheader()
             w.writerows(mism)
-        print(f"\n{len(mism)} out-of-tolerance samples -> {a.mismatches}")
+        xlsx = os.path.splitext(a.mismatches)[0] + '.xlsx'
+        write_mismatch_xlsx(xlsx, mism, stats, tol, a.min_pass)
+        print(f"\n{len(mism)} out-of-tolerance samples -> {a.mismatches}, {xlsx} (one tab per channel)")
 
     if failed:
         print(f"\nFAIL: pass rate under {a.min_pass:.0%} on {', '.join(failed)}")
