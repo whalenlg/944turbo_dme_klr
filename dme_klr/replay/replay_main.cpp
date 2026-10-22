@@ -77,6 +77,7 @@ public:
             {"dme_tps",   &TB(live_dme_tps),   16, true},
             {"klr_tps",   &TB(live_klr_tps),   16, true},
             {"o2",        &TB(live_o2),        16, true},
+            {"knock",     &TB(live_knock),     16, true},
         };
     }
 

@@ -27,10 +27,10 @@ Model-side value of each channel
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
   rpm         DME iram[37h] * 40 (sanity check that the pinned RPM took)
   full_load   KLR full_load output (DS tail bit)
-  knock_pin   KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte). The
-              logger's "KLR Knocking" column is this pin's level: "Yes"
-              while it sits high, and each high->low pulse is one count
-              of "KLR Knock Cnt.", so Yes = 1
+  knock_pin   KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte),
+              active low. The logger's "KLR Knocking" column is this
+              pin's level: "No" while it is low (knocking), and each
+              release is one count of "KLR Knock Cnt.", so No = 1
 
 The summary also counts knock events over the compared rows: the log's
 knock-count increments against the model's KNOCK_OUT pulses
@@ -157,7 +157,7 @@ def model_values(row, ign, rpm_log):
     if len(bits) >= 3 and bits[2] in '01':
         v['full_load'] = float(bits[2])
     if row.get('klr_p1') is not None:
-        v['knock_pin'] = float((row['klr_p1'] >> 6) & 1)
+        v['knock_pin'] = float(1 - ((row['klr_p1'] >> 6) & 1))   # P1.6 low = knock
     return v
 
 

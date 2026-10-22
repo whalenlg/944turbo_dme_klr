@@ -28,13 +28,13 @@
 
 module replay_driver;
 
-    localparam HEADER = "t_ms,rpm,afm,boost,coolant,airtemp,battery,altitude,fuel_qual,dme_tps,klr_tps,o2";
+    localparam HEADER = "t_ms,rpm,afm,boost,coolant,airtemp,battery,altitude,fuel_qual,dme_tps,klr_tps,o2,knock";
     localparam TRACE_HEADER = {"t_ms,segment,rpm,afm_v,map_psi,ect_f,iat_v,batt_v,alt_v,tps_v,nbo2_v,",
                                "tps_status,fqs,ign_adv,klr_adv,klr_retard,inj_ms,dwell_ms,icv_pct,knocking,knock_cnt"};
 
     integer   fd, n, idx, warmup_ms;
     real      t_ms, t0_ms, offset_ns, target_ns;
-    integer   rpm, afm, boost, coolant, airtemp, battery, altitude, fuel_qual, dme_tps, klr_tps, o2;
+    integer   rpm, afm, boost, coolant, airtemp, battery, altitude, fuel_qual, dme_tps, klr_tps, o2, knock;
     reg [8*256-1:0] stim_file;
     reg [8*256-1:0] line;
     reg [8*256-1:0] trace_file;
@@ -49,6 +49,7 @@ module replay_driver;
     reg [7:0] pin_afm, pin_boost, pin_coolant, pin_airtemp, pin_battery, pin_altitude,
               pin_fuel_qual, pin_dme_tps, pin_klr_tps;
     reg [1:0] pin_o2;
+    reg       pin_knock;
     real      log_rpm, log_afm_v, log_map_psi, log_ect_f, log_iat_v, log_batt_v, log_alt_v,
               log_tps_v, log_nbo2_v, log_fqs;
     integer   log_tps_status;
@@ -65,7 +66,7 @@ module replay_driver;
         #0;   // after vcd.v / klr_vcd.v open the dump file, also at t=0
         $dumpvars(1, row_idx, log_t_ms, log_segment);
         $dumpvars(1, pin_rpm, pin_afm, pin_boost, pin_coolant, pin_airtemp, pin_battery,
-                  pin_altitude, pin_fuel_qual, pin_dme_tps, pin_klr_tps, pin_o2);
+                  pin_altitude, pin_fuel_qual, pin_dme_tps, pin_klr_tps, pin_o2, pin_knock);
         $dumpvars(1, log_rpm, log_afm_v, log_map_psi, log_ect_f, log_iat_v, log_batt_v,
                   log_alt_v, log_tps_v, log_nbo2_v, log_tps_status, log_fqs);
         $dumpvars(1, exp_ign_adv, exp_klr_adv, exp_klr_retard, exp_inj_ms, exp_dwell_ms,
@@ -124,19 +125,20 @@ module replay_driver;
             dme_klr_dashboard_tb.live_dme_tps   = dme_tps;
             dme_klr_dashboard_tb.live_klr_tps   = klr_tps;
             dme_klr_dashboard_tb.live_o2        = o2;
+            dme_klr_dashboard_tb.live_knock     = knock;
             pin_rpm = rpm;  pin_afm = afm;  pin_boost = boost;  pin_coolant = coolant;
             pin_airtemp = airtemp;  pin_battery = battery;  pin_altitude = altitude;
             pin_fuel_qual = fuel_qual;  pin_dme_tps = dme_tps;  pin_klr_tps = klr_tps;
-            pin_o2 = o2;
+            pin_o2 = o2;  pin_knock = knock;
         end
     endtask
 
     function integer read_row;
         input integer f;
         begin
-            read_row = $fscanf(f, "%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+            read_row = $fscanf(f, "%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
                                t_ms, rpm, afm, boost, coolant, airtemp, battery,
-                               altitude, fuel_qual, dme_tps, klr_tps, o2);
+                               altitude, fuel_qual, dme_tps, klr_tps, o2, knock);
         end
     endfunction
 
@@ -177,7 +179,7 @@ module replay_driver;
         end
         if (tfd == 0) $display("replay: no trace file; the waveform gets pin_* only");
 
-        if (read_row(fd) != 12) begin
+        if (read_row(fd) != 13) begin
             $display("replay: no stimulus rows");
             $finish;
         end
@@ -197,7 +199,7 @@ module replay_driver;
             show_row;
             idx = idx + 1;
             if (idx % 100 == 0) $fflush;
-            if (read_row(fd) != 12) begin
+            if (read_row(fd) != 13) begin
                 wait (dme_klr_dashboard_tb.live_snap_ack == dme_klr_dashboard_tb.live_snap_req);
                 #1000;
                 $display("SIM: [REPLAY] done t_ns=%0d rows_played=%0d", $time, idx);

@@ -54,6 +54,11 @@ Input conversions (log value -> raw ADC byte the model reads)
                                        Full Load 0xD8 (the cl_ramp tests'
                                        WOT command)
   fuel_qual ' FQS'                     DME ch7, position 0 -> 0x00
+  knock     'KLR Knocking'             1 while it reads 'No' (the KLR's
+                                       knock line is active low): the
+                                       KLR knock_sensor gets the
+                                       TEST_KNOCK_PULSE drop on every 4th
+                                       TDC (klr_knock_gen.v), else 0
 
 Expected outputs (compared by check_replay.py)
 ----------------------------------------------
@@ -65,7 +70,8 @@ Expected outputs (compared by check_replay.py)
   icv_pct     ' ICV (%)'
   rpm         ' RPM'               (readback sanity check)
   full_load   'Throttle Switch (Status)' == 'Full Load'
-  knocking    'KLR Knocking'       (reported only)
+  knocking    'KLR Knocking' == 'No' (the KLR's P1.6 knock line is
+              active low; each 'No' run ends with one Knock Cnt.)
 """
 import argparse
 import csv
@@ -99,7 +105,7 @@ COL = {
 }
 
 STIM_COLS = ['rpm', 'afm', 'boost', 'coolant', 'airtemp', 'battery', 'altitude',
-             'fuel_qual', 'dme_tps', 'klr_tps', 'o2']
+             'fuel_qual', 'dme_tps', 'klr_tps', 'o2', 'knock']
 EXPECT_COLS = ['ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
                'rpm', 'full_load', 'knocking', 'knock_cnt', 'map_psi', 'tps_status']
 
@@ -289,7 +295,8 @@ def main():
                         0 if not r['fqs'] else clamp8(r['fqs']),
                         volts(r['tps_v']),
                         KLR_TPS_BY_STATUS.get(r['tps_status'], 0x60),
-                        o2_code(r['nbo2_v'])])
+                        o2_code(r['nbo2_v']),
+                        int(r['knocking'] == 'No')])
     with open(a.out_prefix + '.expect.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_ms', 'segment', 'fill'] + EXPECT_COLS)
@@ -297,14 +304,14 @@ def main():
             w.writerow([f"{r['t_s'] * 1000:.3f}", seg_of[i], r['fill'] or ''] +
                        [r['ign_adv'], r['klr_adv'], r['klr_retard'], r['inj_ms'], r['dwell_ms'],
                         r['icv_pct'], r['rpm'], int(r['tps_status'] == 'Full Load'),
-                        int(r['knocking'] == 'Yes'), r['knock_cnt'], r['map_psi'], r['tps_status']])
+                        int(r['knocking'] == 'No'), r['knock_cnt'], r['map_psi'], r['tps_status']])
     with open(a.out_prefix + '.trace.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_ms'] + TRACE_COLS)
         for i, r in sel:
             vals = {'segment': seg_of[i],
                     'tps_status': TPS_STATUS_CODE.get(r['tps_status'], 3),
-                    'knocking': int(r['knocking'] == 'Yes')}
+                    'knocking': int(r['knocking'] == 'No')}
             w.writerow([f"{r['t_s'] * 1000:.3f}"] +
                        [vals[c] if c in vals else (r[c] or 0) for c in TRACE_COLS])
     print(f"{len(sel)} rows, t={sel[0][1]['t_s']:.2f}-{sel[-1][1]['t_s']:.2f}s -> "
