@@ -16,6 +16,9 @@
 #    ./run_replay.sh --all                   # whole log (~152 s of engine time; slow)
 #    ./run_replay.sh --list-segments
 #    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 10)
+#    ./run_replay.sh --iverilog --KLR_DEBUG ...  # debug build (also --DME_DEBUG,
+#                                            # --DME_DEEP_DEBUG): more waveform, and
+#                                            # a per-instruction trace in <name>.log
 #    ./run_replay.sh --xlsx other.xlsx --name mylog ...
 #    ./run_replay.sh --iverilog ...          # Icarus instead of Verilator (~5x slower)
 #    ./run_replay.sh --iverilog --no-fst ... # skip the waveform (faster)
@@ -59,6 +62,7 @@ KEEP_VCD=0
 WINDOW=()
 CHECK_ARGS=()
 STIM_ARGS=()
+EXTRA_DEFS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --xlsx)          XLSX="$2"; shift 2 ;;
@@ -71,6 +75,7 @@ while [ $# -gt 0 ]; do
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
         --map-offset)    STIM_ARGS+=(--map-offset "$2"); shift 2 ;;
+        --KLR_DEBUG|--DME_DEBUG|--DME_DEEP_DEBUG) EXTRA_DEFS+=("-D${1#--}"); shift ;;
         --list-segments) python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" --list-segments; exit 0 ;;
         --)              shift; CHECK_ARGS=("$@"); break ;;
         *)               echo "unknown option: $1"; exit 2 ;;
@@ -97,11 +102,14 @@ DEFINES=(-DDASHBOARD_TB -DDME_KLR_COMBINED -DLIVE
          -DSIM_TIME=3600000000000
          -DDASH_INTERVAL_MS=100000000
          -DDME_ROM_DIR="\"$DME_ROM_DIR\"" -DDME_ROM_FILE="\"$DME_ROM_FILE\""
-         -DKLR_ROM_DIR="\"$KLR_ROM_DIR\"" -DKLR_ROM_FILE="\"$KLR_ROM_FILE\"")
+         -DKLR_ROM_DIR="\"$KLR_ROM_DIR\"" -DKLR_ROM_FILE="\"$KLR_ROM_FILE\""
+         "${EXTRA_DEFS[@]}")
+DBG_TAG=$(printf '%s' "${EXTRA_DEFS[@]}" | sed 's/-D/_/g; s/^_//' | tr 'A-Z' 'a-z')
 if [ "$SIM" = "iverilog" ]; then
-    BIN="$REPLAY_DIR/obj/dme_klr_replay.vvp"
+    BIN="$REPLAY_DIR/obj/dme_klr_replay${DBG_TAG:+_$DBG_TAG}.vvp"
     DRIVER="$REPLAY_DIR/replay_driver.v"
 else
+    [ ${#EXTRA_DEFS[@]} -gt 0 ] && { echo "  ${EXTRA_DEFS[*]} needs --iverilog (as in v_run_dashboard_tests.sh)"; exit 2; }
     BIN="$REPLAY_DIR/obj/dme_klr_replay"
     FST=0; KEEP_VCD=0     # see the Output note above
     DRIVER="$REPLAY_DIR/replay_main.cpp"
