@@ -43,7 +43,20 @@ Outputs land in `../../tmp/dme_klr/replay/` (beside `dash_logs/`); the
 `run_dashboard_tests.sh`'s: `vcd.v` / `klr_vcd.v` dump their chosen signals to
 `sim.vcd` and `vcd2fst` (from GTKWave) converts it. `--no-fst` skips it and
 `--vcd` keeps the VCD too. The VCD runs about 80 MB per simulated second
-before conversion. Verilator runs make no waveform, because Verilator's
+before conversion. The waveform also carries the log itself, as signals in the
+`replay_driver` top, all stepping at each row's time:
+
+| signals | are |
+|---|---|
+| `row_idx`, `log_t_ms`, `log_segment` | the log row playing (time in log ms) and its fill-colour segment |
+| `pin_*` | the raw bytes driven into the model (`<name>.stim.csv`) |
+| `log_rpm`, `log_afm_v`, `log_map_psi`, `log_ect_f`, `log_iat_v`, `log_batt_v`, `log_alt_v`, `log_tps_v`, `log_nbo2_v`, `log_fqs`, `log_tps_status` | the log's input columns in its own units (`log_tps_status` 0 Idle, 1 Off Idle, 2 Full Load) |
+| `exp_ign_adv`, `exp_klr_adv`, `exp_klr_retard`, `exp_inj_ms`, `exp_dwell_ms`, `exp_icv_pct`, `exp_full_load`, `exp_knocking`, `exp_knock_cnt` | the log's outputs: what the model should produce |
+
+The `log_*`/`exp_*` values are real-valued, so set GTKWave's data format
+to Analog or Real for them. `xlsx_to_stim.py` writes them to
+`<name>.trace.csv`, which the driver finds next to the stim file (or
+`+trace=`). Verilator runs make no waveform, because Verilator's
 tracing ignores the `$dumpvars` scopes and would dump the whole design.
 
 ## Inputs

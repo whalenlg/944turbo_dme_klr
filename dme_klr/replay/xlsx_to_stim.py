@@ -103,6 +103,17 @@ STIM_COLS = ['rpm', 'afm', 'boost', 'coolant', 'airtemp', 'battery', 'altitude',
 EXPECT_COLS = ['ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
                'rpm', 'full_load', 'knocking', 'knock_cnt', 'map_psi', 'tps_status']
 
+# <name>.trace.csv: the log's own values for every row, all numeric, which
+# replay_driver.v shows as log_* (inputs, in log units) and exp_* (expected
+# outputs) signals in the waveform. Order matters: replay_driver.v reads
+# them positionally and checks this header.
+TRACE_COLS = ['segment',
+              'rpm', 'afm_v', 'map_psi', 'ect_f', 'iat_v', 'batt_v', 'alt_v', 'tps_v',
+              'nbo2_v', 'tps_status', 'fqs',
+              'ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
+              'knocking', 'knock_cnt']
+TPS_STATUS_CODE = {'Idle': 0, 'Off Idle': 1, 'Full Load': 2}
+
 KLR_TPS_BY_STATUS = {'Idle': 0x28, 'Off Idle': 0x60, 'Full Load': 0xD8}
 
 DEFAULT_ROM = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -287,8 +298,17 @@ def main():
                        [r['ign_adv'], r['klr_adv'], r['klr_retard'], r['inj_ms'], r['dwell_ms'],
                         r['icv_pct'], r['rpm'], int(r['tps_status'] == 'Full Load'),
                         int(r['knocking'] == 'Yes'), r['knock_cnt'], r['map_psi'], r['tps_status']])
+    with open(a.out_prefix + '.trace.csv', 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['t_ms'] + TRACE_COLS)
+        for i, r in sel:
+            vals = {'segment': seg_of[i],
+                    'tps_status': TPS_STATUS_CODE.get(r['tps_status'], 3),
+                    'knocking': int(r['knocking'] == 'Yes')}
+            w.writerow([f"{r['t_s'] * 1000:.3f}"] +
+                       [vals[c] if c in vals else (r[c] or 0) for c in TRACE_COLS])
     print(f"{len(sel)} rows, t={sel[0][1]['t_s']:.2f}-{sel[-1][1]['t_s']:.2f}s -> "
-          f"{a.out_prefix}.stim.csv, {a.out_prefix}.expect.csv")
+          f"{a.out_prefix}.stim.csv, .expect.csv, .trace.csv")
 
 
 if __name__ == '__main__':
