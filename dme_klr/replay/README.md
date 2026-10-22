@@ -11,21 +11,27 @@ KLR actually did.
 ./run_replay.sh --segment 5        # second 3rd-gear pull
 ./run_replay.sh --all              # whole log, ~152 s of engine time (about 2 hours)
 ./run_replay.sh -- --lag-rows 2 --tol ign_adv=2.8   # options after -- go to check_replay.py
+./run_replay.sh --iverilog --segment 1              # Icarus instead of Verilator
 ```
 
 Needs Verilator ≥ 5.038 (5.036 rejects the 8051 core's mixed blocking /
-non-blocking assignments) and Python 3 with openpyxl. `xlsx_to_stim.py` reads the DME ROM image
+non-blocking assignments), or Icarus Verilog 12 with `--iverilog`, and
+Python 3 with openpyxl. `xlsx_to_stim.py` reads the DME ROM image
 (`--dme-rom`, default `28PIN_DME_PERFORMANCE.mem`) for the NTC maps. The build is
 `dme_klr_dashboard_tb` with `-DLIVE`, like the live debugger, but with its
-own driver (`replay_main.cpp`) in `obj/`. Runs at about 20 simulated ms per
-wall-clock second.
+own driver in `obj/`: `replay_main.cpp` for Verilator, or the
+`replay_driver.v` top module for iverilog (elaborated with
+`-s dme_klr_dashboard_tb -s replay_driver`). Both read the same stimulus file
+and print the same output. Verilator runs at about 20 simulated ms per
+wall-clock second, iverilog at about 4.
 
 ## Pieces
 
 | file | does |
 |---|---|
 | `xlsx_to_stim.py` | log → `<name>.stim.csv` (raw input bytes per row) and `<name>.expect.csv` (logged outputs) |
-| `replay_main.cpp` | holds the first row for `WARMUP_MS` (3000) so the firmware syncs, then applies each row at its timestamp and takes a DS snapshot there |
+| `replay_driver.v` | the same driver as a second Verilog top, for iverilog |
+| `replay_main.cpp` | Verilator driver: holds the first row for `WARMUP_MS` (3000) so the firmware syncs, then applies each row at its timestamp and takes a DS snapshot there |
 | `check_replay.py` | pairs each snapshot with its log row, applies tolerances, prints pass rates per channel and per segment, writes every miss to `<name>.mismatches.csv`; exits 1 if a channel passes on fewer than `--min-pass` (90 %) of rows |
 | `run_replay.sh` | build if stale, convert, run, check |
 

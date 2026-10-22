@@ -16,6 +16,7 @@
 #    ./run_replay.sh --all                   # whole log (~152 s of engine time; slow)
 #    ./run_replay.sh --list-segments
 #    ./run_replay.sh --xlsx other.xlsx --name mylog ...
+#    ./run_replay.sh --iverilog ...          # Icarus instead of Verilator (~5x slower)
 #  Anything after -- goes to check_replay.py, e.g.
 #    ./run_replay.sh -- --lag-rows 2 --tol ign_adv=2.8
 #
@@ -23,7 +24,7 @@
 #        firmware syncs and settles before the log plays
 #        DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
 #        (same defaults as live/build_live.sh)
-#        REBUILD=1 forces a Verilator rebuild
+#        REBUILD=1 forces a rebuild
 #
 #  Output: ../../tmp/dme_klr/replay/ (relative to dme_klr/, beside dash_logs)
 #          <name>.{stim,expect}.csv
@@ -31,8 +32,9 @@
 #          <name>.dash.log   (DS lines, loadable in the dashboard)
 #          <name>.report.txt / <name>.mismatches.csv
 #
-#  Speed: about 20 simulated ms per wall-clock second on a 4-core
-#  container, so the default 14 s window takes roughly 15 minutes.
+#  Speed: about 20 simulated ms per wall-clock second with Verilator on
+#  a 4-core container (the default 14 s window takes roughly 15 minutes),
+#  about 4 with iverilog (roughly 75 minutes).
 # ============================================================
 set -e
 
@@ -42,12 +44,15 @@ REPO_DIR="$(cd "$DMEKLR_DIR/.." && pwd)"
 
 XLSX="$DMEKLR_DIR/bench/verilog/10_9_evening_WOT_Run.xlsx"
 NAME=""
+SIM=verilator
 WINDOW=()
 CHECK_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --xlsx)          XLSX="$2"; shift 2 ;;
         --name)          NAME="$2"; shift 2 ;;
+        --iverilog)      SIM=iverilog; shift ;;
+        --verilator)     SIM=verilator; shift ;;
         --segment)       WINDOW=(--segment "$2"); NAME="${NAME:-seg$2}"; shift 2 ;;
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
@@ -63,36 +68,56 @@ OUT_DIR="$(cd "$REPO_DIR/.." && pwd)/tmp/dme_klr/replay"   # beside dash_logs, a
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/$NAME"
 
-# ── Build (Verilator, -DLIVE like the live debugger, own main) ──
+# ── Build: dme_klr_dashboard_tb with -DLIVE like the live debugger, driven
+#    by replay_main.cpp (Verilator) or the replay_driver.v top (iverilog) ──
 DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
 DME_ROM_FILE="${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
 KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
-BIN="$REPLAY_DIR/obj/dme_klr_replay"
-if [ "${REBUILD:-0}" = "1" ] || [ ! -x "$BIN" ] || \
-   [ -n "$(find "$REPLAY_DIR/replay_main.cpp" "$DMEKLR_DIR/bench" "$REPO_DIR/dme/bench" "$REPO_DIR/dme/rtl" \
+# DASH_INTERVAL_MS is effectively never: the only snapshots are the
+# per-row ones the replay driver requests.
+DEFINES=(-DDASHBOARD_TB -DDME_KLR_COMBINED -DLIVE
+         -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h28 -DBOOST
+         -DSKIP_LAMBDA_WARMUP
+         -DSIM_TIME=3600000000000
+         -DDASH_INTERVAL_MS=100000000
+         -DDME_ROM_DIR="\"$DME_ROM_DIR\"" -DDME_ROM_FILE="\"$DME_ROM_FILE\""
+         -DKLR_ROM_DIR="\"$KLR_ROM_DIR\"" -DKLR_ROM_FILE="\"$KLR_ROM_FILE\"")
+if [ "$SIM" = "iverilog" ]; then
+    BIN="$REPLAY_DIR/obj/dme_klr_replay.vvp"
+    DRIVER="$REPLAY_DIR/replay_driver.v"
+else
+    BIN="$REPLAY_DIR/obj/dme_klr_replay"
+    DRIVER="$REPLAY_DIR/replay_main.cpp"
+fi
+# The ROM choice is baked in, so a different one forces a rebuild too
+ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE"
+if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
+   [ "$(cat "$BIN.rom" 2>/dev/null)" != "$ROM_STAMP" ] || \
+   [ -n "$(find "$DRIVER" "$DMEKLR_DIR/bench" "$REPO_DIR/dme/bench" "$REPO_DIR/dme/rtl" \
             "$REPO_DIR/klr/bench" "$REPO_DIR/klr/rtl" -newer "$BIN" -name '*.[vc]*' 2>/dev/null | head -1)" ]; then
-    echo "  Building $BIN"
+    echo "  Building $BIN ($SIM)"
+    mkdir -p "$REPLAY_DIR/obj"
     cd "$DMEKLR_DIR"
-    # DASH_INTERVAL_MS is effectively never: the only snapshots are the
-    # per-row ones replay_main requests.
+    if [ "$SIM" = "iverilog" ]; then
+        iverilog -g2012 -o "$BIN" -f files_cl \
+            -s dme_klr_dashboard_tb -s replay_driver \
+            "${DEFINES[@]}" "$DRIVER" > "$OUT_DIR/build.log" 2>&1 \
+            || { tail -30 "$OUT_DIR/build.log"; echo "  BUILD FAILED (see $OUT_DIR/build.log)"; exit 1; }
+    else
     verilator --cc --exe --build --timing -j 0 \
         -O3 --x-assign fast --x-initial fast --noassert \
         -CFLAGS -O2 \
         --Mdir "$REPLAY_DIR/obj" -o dme_klr_replay \
         -f files_cl \
         --top-module dme_klr_dashboard_tb \
-        -DVLT_SIM -DDASHBOARD_TB -DDME_KLR_COMBINED -DLIVE \
-        -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h28 -DBOOST \
-        -DSKIP_LAMBDA_WARMUP \
-        -DSIM_TIME=3600000000000 \
-        -DDASH_INTERVAL_MS=100000000 \
-        -DDME_ROM_DIR="\"$DME_ROM_DIR\"" -DDME_ROM_FILE="\"$DME_ROM_FILE\"" \
-        -DKLR_ROM_DIR="\"$KLR_ROM_DIR\"" -DKLR_ROM_FILE="\"$KLR_ROM_FILE\"" \
+        -DVLT_SIM "${DEFINES[@]}" \
         -Wno-fatal -Wno-PINMISSING -Wno-IMPLICIT -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND \
         -Wno-REDEFMACRO -Wno-DEFOVERRIDE -Wno-CASEINCOMPLETE -Wno-LATCH -Wno-MULTIDRIVEN \
-        "$REPLAY_DIR/replay_main.cpp" > "$OUT_DIR/build.log" 2>&1 \
+        "$DRIVER" > "$OUT_DIR/build.log" 2>&1 \
         || { tail -30 "$OUT_DIR/build.log"; echo "  BUILD FAILED (see $OUT_DIR/build.log)"; exit 1; }
+    fi
+    echo "$ROM_STAMP" > "$BIN.rom"
 fi
 
 # ── Stimulus + expected outputs from the log ──
@@ -101,7 +126,11 @@ python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}"
 # ── Run (from a scratch dir: the tb drops its hex/vcd dumps in cwd) ──
 mkdir -p "$OUT_DIR/run_$NAME"
 echo "  Running → $OUT.log"
-( cd "$OUT_DIR/run_$NAME" && "$BIN" "$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" +vcd=/dev/null ) > "$OUT.log"
+if [ "$SIM" = "iverilog" ]; then
+    ( cd "$OUT_DIR/run_$NAME" && vvp -n "$BIN" "+stim=$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" +vcd=/dev/null ) > "$OUT.log"
+else
+    ( cd "$OUT_DIR/run_$NAME" && "$BIN" "$OUT.stim.csv" "+warmup_ms=${WARMUP_MS:-3000}" +vcd=/dev/null ) > "$OUT.log"
+fi
 grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]" \
     "$OUT.log" > "$OUT.dash.log" || true
 
