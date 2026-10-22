@@ -40,7 +40,8 @@ Input conversions (log value -> raw ADC byte the model reads)
   boost     'MAP Absolute (PSI)'       KLR ch4, Bosch 200 kPa sensor
                                        (4.55*kPa/180 - 0.256) V, x0.945
                                        divider, * 255/5 (see the KLR
-                                       memory map's Units Notes)
+                                       memory map's Units Notes), capped
+                                       at 0xF0 so ram[52h] can't wrap
   o2        ' NBO2 (V)'                DME P1.7:6 comparators: >= 0.6 V
                                        rich (3), <= 0.3 V lean (0), else
                                        crossover (1)
@@ -151,8 +152,13 @@ def lin_for_f(temp_f):
 
 
 def map_raw(psi):
+    """KLR ch4 byte for an absolute MAP. Capped at 0xF0, as klr_tb.v caps
+    its own model: the firmware adds 10 before storing ram[52h], so a raw
+    byte above 0xF5 wraps to near 0 ("no boost"). The stock 200 kPa
+    sensor reaches the cap at about 31 psi absolute, below this log's
+    ~33 psi peaks."""
     kpa = psi * 6.894757
-    return clamp8(((4.55 * kpa / 180.0) - 0.256) * 0.945 * 255.0 / 5.0)
+    return min(0xF0, clamp8(((4.55 * kpa / 180.0) - 0.256) * 0.945 * 255.0 / 5.0))
 
 
 def o2_code(v):

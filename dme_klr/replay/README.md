@@ -60,7 +60,7 @@ replay; the live debugger can `set` them too).
 | `altitude` | Altimeter (Volts) | DME ch4, V × 51 |
 | `battery` | DME Voltage (V) | DME ch1, **assumed** 0xD8 = 13.8 V, linear |
 | `coolant` | ECT (F) | DME ch3: °C → linearised value by the testbench's `ntc_celsius()` scale (which also fits the log's IAT pair), then the ROM's NTC map inverted; ≈0x1C at 190 °F |
-| `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes) |
+| `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes), capped at 0xF0 (≈31 psi abs) so the firmware's +10 into ram[52h] can't wrap; this log peaks at ~33 psi |
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |
