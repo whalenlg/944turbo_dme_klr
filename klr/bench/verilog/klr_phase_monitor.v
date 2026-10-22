@@ -38,7 +38,9 @@ reg        ph_klr_mb_prev;
 reg        ph_klr_mb1_reached;   // latched once — MB1 first entry
 reg [11:0] ph_klr_pc_prev;       // previous PC for knock-entry edge detect
 reg        ph_klr_ign_in_prev;  // ign_in edge tracker (trigger reference)
-reg [63:0] ph_klr_ign_in_time;  // $time(ns) of last ign_in falling edge
+reg [63:0] ph_klr_ign_in_time;  // $time(ns) of last ign_in rising edge
+reg [63:0] ph_klr_ign_in_fall;  // $time(ns) of last ign_in falling edge
+reg        ph_klr_ign_rst_hi;   // ign_out went high while the KLR was in reset
 reg [63:0] ph_klr_ign_out_time; // $time(ns) of last ign_out assert
 reg [63:0] ph_klr_next_snap;
 reg        ph_klr_res_n_prev;   // reset-release edge detector
@@ -54,6 +56,8 @@ initial begin
     ph_klr_pc_prev        = 12'h000;
     ph_klr_ign_in_prev    = 1'b0;
     ph_klr_ign_in_time    = 64'd0;
+    ph_klr_ign_in_fall    = 64'd0;
+    ph_klr_ign_rst_hi     = 1'b0;
     ph_klr_ign_out_time   = 64'd0;
     ph_klr_next_snap      = 64'd10_000_000;  // first snapshot at 10ms ($time ns)
     ph_klr_res_n_prev     = 1'b0;
@@ -73,7 +77,10 @@ always @(posedge clk) begin  // klr_phase_monitor
     ph_klr_res_n_prev <= top.res_n;
 
     if (top.res_n === 1'b0) begin
-        // Hold prevs during reset
+        // Hold prevs during reset. The DME trigger drives the KLR's /RESET
+        // every cycle and the ports float high, so ign_out can rise here
+        // without an "asserted" line; its later fall is not a spark.
+        if (ign_out && !ph_klr_ign_prev) ph_klr_ign_rst_hi <= 1'b1;
         ph_klr_ign_prev      <= ign_out;
         ph_klr_knock_prev    <= knock_out;
         ph_klr_fullload_prev <= full_load;
@@ -85,6 +92,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         // Reset just released — sample actual signal values to prevent
         // false edges. vlt inits all regs to 0 so signals may already
         // be non-zero before the firmware runs.
+        if (ign_out && !ph_klr_ign_prev) ph_klr_ign_rst_hi <= 1'b1;
         ph_klr_ign_prev      <= ign_out;
         ph_klr_knock_prev    <= knock_out;
         ph_klr_fullload_prev <= full_load;
@@ -97,6 +105,8 @@ always @(posedge clk) begin  // klr_phase_monitor
         // ── ign_in: track edge (trigger reference for spark-delay calc) ──
         if (ign_in_mux && !ph_klr_ign_in_prev)
             ph_klr_ign_in_time <= $time;
+        if (!ign_in_mux && ph_klr_ign_in_prev)
+            ph_klr_ign_in_fall <= $time;
         ph_klr_ign_in_prev <= ign_in_mux;
 
         // ── ign_out: spark timing with dwell validation ───
@@ -105,21 +115,33 @@ always @(posedge clk) begin  // klr_phase_monitor
         // coil — flagged as spurious, not counted as real sparks.
         if (ign_out && !ph_klr_ign_prev) begin
             ph_klr_ign_out_time <= $time;
+            ph_klr_ign_rst_hi   <= 1'b0;
             $display("KLR: [PHASE] t=%0d ms  IGN_OUT asserted   delay_from_ign_in=%0d.%03d us",
                      `KLR_MS(0),
                      ($time - ph_klr_ign_in_time) / 1000,
                      ($time - ph_klr_ign_in_time) % 1000);
         end
         if (!ign_out && ph_klr_ign_prev) begin
-            if (($time - ph_klr_ign_out_time) >= 64'd1_000_000)
+            if (ph_klr_ign_rst_hi)
+                // High since the KLR reset (port float), not a dwell
                 $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms",
                          `KLR_MS(0),
                          ($time - ph_klr_ign_out_time) / 1_000_000,
                          (($time - ph_klr_ign_out_time) % 1_000_000) / 1000);
+            else if (($time - ph_klr_ign_out_time) >= 64'd1_000_000)
+                // spark_delay: ign_in falling edge to ign_out falling edge
+                // (the spark), i.e. the KLR's spark retard vs the DME
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms  spark_delay=%0d.%03d us",
+                         `KLR_MS(0),
+                         ($time - ph_klr_ign_out_time) / 1_000_000,
+                         (($time - ph_klr_ign_out_time) % 1_000_000) / 1000,
+                         ($time - ph_klr_ign_in_fall) / 1000,
+                         ($time - ph_klr_ign_in_fall) % 1000);
             else
                 $display("KLR: [PHASE] t=%0d ms  IGN_OUT spurious pulse filtered  (width=%0d ns — wait_ign_2 artifact)",
                          `KLR_MS(0),
                          ($time - ph_klr_ign_out_time));
+            ph_klr_ign_rst_hi <= 1'b0;
         end
         ph_klr_ign_prev <= ign_out;
 
