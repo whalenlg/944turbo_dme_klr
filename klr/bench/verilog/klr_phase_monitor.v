@@ -123,11 +123,11 @@ always @(posedge clk) begin  // klr_phase_monitor
         end
         if (!ign_out && ph_klr_ign_prev) begin
             if (ph_klr_ign_rst_hi)
-                // High since the KLR reset (port float), not a dwell
-                $display("KLR: [PHASE] t=%0d ms  IGN_OUT deasserted pulse_width=%0d.%03d ms",
-                         `KLR_MS(0),
-                         ($time - ph_klr_ign_out_time) / 1_000_000,
-                         (($time - ph_klr_ign_out_time) % 1_000_000) / 1000);
+                // High since the KLR reset (port float), not a dwell or a
+                // spark: logged without "deasserted"/"pulse_width" so pulse
+                // and dwell tools don't count it
+                $display("KLR: [PHASE] t=%0d ms  IGN_OUT low after KLR reset (port floated high during reset)",
+                         `KLR_MS(0));
             else if (($time - ph_klr_ign_out_time) >= 64'd1_000_000)
                 // spark_delay: ign_in falling edge to ign_out falling edge
                 // (the spark), i.e. the KLR's spark retard vs the DME
