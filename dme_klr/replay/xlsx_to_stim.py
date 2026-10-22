@@ -40,11 +40,13 @@ Input conversions (log value -> raw ADC byte the model reads)
   boost     'MAP Absolute (PSI)'       KLR ch4, Bosch 200 kPa sensor
                                        (4.55*kPa/180 - 0.256) V, x0.945
                                        divider, * 255/5 (see the KLR
-                                       memory map's Units Notes), minus
-                                       --map-offset (10: the logged MAP
-                                       is taken to be ram[52h], which has
-                                       the firmware's +10 in it), capped
-                                       at 0xF0 so ram[52h] can't wrap
+                                       memory map's Units Notes), less
+                                       --map-offset (default 0), capped
+                                       at 0xF0 so ram[52h] can't wrap.
+                                       The log is from an f9tech DME with
+                                       its own 3-bar sensor, so its psi
+                                       is real pressure, past what the
+                                       KLR's 200 kPa sensor can read
   o2        ' NBO2 (V)'                DME P1.7:6 comparators: >= 0.6 V
                                        rich (3), <= 0.3 V lean (0), else
                                        crossover (1)
@@ -171,14 +173,14 @@ def lin_for_f(temp_f):
     return 143 + (c - 10.0) * 79.0 / 70.0
 
 
-def map_raw(psi, offset=10):
+def map_raw(psi, offset=0):
     """KLR ch4 byte for a logged absolute MAP: the Bosch 200 kPa sensor
     curve, minus offset, capped at 0xF0 as klr_tb.v caps its own model
     (the firmware's +10 into ram[52h] wraps above 0xF5).
 
-    The offset defaults to 10 because the logger probably reads the KLR's
-    ram[52h], which already holds the ADC byte + 10 (KLR 049Bh), so the
-    pin gets the byte the ADC must have read."""
+    The logged MAP comes from the f9tech DME's own 3-bar sensor, so it is
+    real absolute pressure and needs no offset; the option is there for
+    logs that dump the KLR's ram[52h] (ADC byte + 10, KLR 049Bh)."""
     kpa = psi * 6.894757
     v = ((4.55 * kpa / 180.0) - 0.256) * 0.945 * 255.0 / 5.0 - offset
     return min(0xF0, clamp8(v))
@@ -247,9 +249,9 @@ def main():
     ap.add_argument('--segment', type=int, action='append',
                     help='fill-colour segment number (repeatable; spans first..last)')
     ap.add_argument('--list-segments', action='store_true')
-    ap.add_argument('--map-offset', type=float, default=10,
-                    help='raw counts taken off the MAP byte (default 10: the '
-                         "log's MAP is the KLR's ram[52h], ADC + 10); 0 drives the sensor curve as is")
+    ap.add_argument('--map-offset', type=float, default=0,
+                    help='raw counts taken off the MAP byte (default 0; 10 for a '
+                         "log of the KLR's ram[52h], which is ADC + 10)")
     ap.add_argument('--dme-rom', default=os.environ.get('DME_ROM') or DEFAULT_ROM,
                     help='DME ROM .mem for the NTC maps (default: 28PIN_DME_PERFORMANCE.mem)')
     a = ap.parse_args()

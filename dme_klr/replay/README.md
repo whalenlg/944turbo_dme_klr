@@ -9,7 +9,7 @@ KLR actually did.
 ./run_replay.sh                    # first WOT pull of 10_9_evening_WOT_Run.xlsx (t=0-14 s)
 ./run_replay.sh --list-segments    # the log's fill-colour segments (green = 2nd, yellow = 3rd gear)
 ./run_replay.sh --segment 5        # second 3rd-gear pull
-./run_replay.sh --map-offset 16    # take 16 off the MAP byte instead of 10
+./run_replay.sh --map-offset 10    # take 10 off the MAP byte (default 0)
 ./run_replay.sh --all              # whole log, ~152 s of engine time (about 2 hours)
 ./run_replay.sh -- --lag-rows 2 --tol ign_adv=2.8   # options after -- go to check_replay.py
 ./run_replay.sh --iverilog --segment 1              # Icarus instead of Verilator
@@ -76,7 +76,7 @@ replay; the live debugger can `set` them too).
 | `altitude` | Altimeter (Volts) | DME ch4, V × 51 |
 | `battery` | DME Voltage (V) | DME ch1, **assumed** 0xD8 = 13.8 V, linear |
 | `coolant` | ECT (F) | DME ch3: °C → linearised value by the testbench's `ntc_celsius()` scale (which also fits the log's IAT pair), then the ROM's NTC map inverted; ≈0x1C at 190 °F |
-| `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes), **minus 10** (the logger is taken to read ram[52h], which already has the firmware's +10; `--map-offset N` on `run_replay.sh` or `xlsx_to_stim.py` changes it, 0 turns it off), capped at 0xF0 (≈32 psi abs) so ram[52h] can't wrap; this log peaks at 33.5 psi, which the curve puts at 269 counts (more than a byte holds, so the logger's psi scale is probably different) |
+| `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes), capped at 0xF0 (≈31 psi abs) so the firmware's +10 into ram[52h] can't wrap. The log comes from an f9tech DME with its own 3-bar MAP sensor, so its psi is real pressure: the 33.5 psi peaks (231 kPa) are past what the KLR's stock 200 kPa sensor reads, and sit at the cap. `--map-offset N` (on `run_replay.sh` or `xlsx_to_stim.py`, default 0) takes N counts off, for a log that dumps ram[52h] instead |
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |

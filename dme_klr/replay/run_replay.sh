@@ -15,7 +15,7 @@
 #    ./run_replay.sh --start-s 120 --end-s 136
 #    ./run_replay.sh --all                   # whole log (~152 s of engine time; slow)
 #    ./run_replay.sh --list-segments
-#    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 10)
+#    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 0)
 #    ./run_replay.sh --iverilog --KLR_DEBUG ...  # debug build (also --DME_DEBUG,
 #                                            # --DME_DEEP_DEBUG): more waveform, and
 #                                            # a per-instruction trace in <name>.log
