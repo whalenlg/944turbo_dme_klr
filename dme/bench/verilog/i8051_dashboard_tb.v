@@ -2325,6 +2325,45 @@ end
 `endif // CL_CONDITION_CYCLE_ACTIVE
 
 
+// ─── Dead-code entry ────────────────────────────────────────
+// Warns when the DME PC enters one of the dead-code ranges listed in
+// dme_dead_code.vh (edit that file to change them). Checked at each
+// instruction fetch; logs on entry (PC was outside that range on the
+// previous instruction), naming the instruction it came from. After
+// DEADCHK_MAX entries of one range, further entries there are not logged
+// (the last logged one says so).
+`define DEADCHK_MAX 5
+reg  [15:0] deadchk_prev_pc  = 16'hFFFF;
+integer     deadchk_prev_idx = 0;
+integer     deadchk_n [0:63];
+initial begin : deadchk_init
+    integer i;
+    for (i = 0; i < 64; i = i + 1) deadchk_n[i] = 0;
+end
+always @(posedge i8051_top.u_cpu.clk) begin : dead_code_check
+    reg [15:0] pc;
+    integer    idx, n;
+    reg [15:0] lo, hi;
+    reg [8*96-1:0] desc;
+    if (i8051_top.u_cpu.res_n && i8051_top.u_cpu.osc_cnt == 4'd5 &&
+        !i8051_top.u_cpu.cycle_2 && !i8051_top.u_cpu.irq_pending) begin
+        pc = i8051_top.u_cpu.pc;
+        idx = 0; n = 0; lo = 0; hi = 0; desc = "";
+`define DEAD_CODE(l, h, d) n = n + 1; if (idx == 0 && pc >= l && pc <= h) begin idx = n; lo = l; hi = h; desc = d; end
+`include "dme_dead_code.vh"
+`undef DEAD_CODE
+        if (idx != 0 && idx != deadchk_prev_idx) begin
+            deadchk_n[idx] = deadchk_n[idx] + 1;
+            if (deadchk_n[idx] <= `DEADCHK_MAX)
+                $display("DME: [WARN] t=%0d ms  dme dead code entry at %04X (%04X-%04X %0s) from %04X%0s",
+                         `DME_MS, pc, lo, hi, desc, deadchk_prev_pc,
+                         deadchk_n[idx] == `DEADCHK_MAX ? "  [further entries to this range not logged]" : "");
+        end
+        deadchk_prev_idx = idx;
+        deadchk_prev_pc  = pc;
+    end
+end
+
 // ─── Injector pulse width vs crank revolution ───────────────
 // fire_inj fires the injectors once per crank rev, loading Timer 0 with
 // FUEL_PULSE (4A:4B) + 5 x INJ_DEADTIME (54h) counts at 2 us each. A
