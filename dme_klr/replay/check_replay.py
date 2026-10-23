@@ -31,9 +31,8 @@ Model-side value of each channel
   rpm         DME iram[37h] * 40 (sanity check that the pinned RPM took)
   full_load   KLR full_load output (DS tail bit)
   knock_pin   KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte),
-              active low. The logger's "KLR Knocking" column is this
-              pin's level: "No" while it is low (knocking), and each
-              release is one count of "KLR Knock Cnt.", so No = 1
+              active low (the firmware clears P1.6 when it flags knock).
+              Expected: "KLR Knocking" = "Yes" (= 1)
 
 The summary also counts knock events over the compared rows: the log's
 knock-count increments against the model's KNOCK_OUT pulses

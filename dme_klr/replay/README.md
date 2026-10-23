@@ -98,7 +98,7 @@ replay; the live debugger can `set` them too).
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |
-| `knock` | KLR Knocking | 1 while it reads "No" (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
+| `knock` | KLR Knocking | 1 while it reads "Yes" (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
 
 ## Compared outputs
 
@@ -112,11 +112,13 @@ replay; the live debugger can `set` them too).
 | `icv_pct` | ICV (%) | ISV P1.4-high share of the timer-1 reloads {41h,40h} / {45h,44h} | ±5 % |
 | `rpm` | RPM | iram[37h] × 40 (sanity check that the pin took) | ±80 |
 | `full_load` | Throttle Switch (Status) = Full Load | KLR full_load output | exact |
-| `knock_pin` | KLR Knocking (No = 1) | KLR knock output P1.6 low (bit 6 of the KLR [DS] P1 byte; active low) | exact |
+| `knock_pin` | KLR Knocking (Yes = 1) | KLR knock output P1.6 low (bit 6 of the KLR [DS] P1 byte; active low) | exact |
 
-Knock is a KLR output. The logger's "KLR Knocking" column is the level of the
-KLR's active-low P1.6 knock line: "No" while it is low (knocking), and each of
-the log's 38 "No" runs ends with one count of "KLR Knock Cnt." The report compares the pin level row by row and
+Knock is a KLR output. The replay takes the logger's "KLR Knocking" column as
+"Yes" = knocking (about 73 % of this log's rows), compared against the KLR's
+active-low P1.6 knock line. (The log's 38 "No" runs each end with one count of
+"KLR Knock Cnt.", which suggested the opposite reading; it was inverted on
+request, and the alternative is a one-line change in `xlsx_to_stim.py`.) The report compares the pin level row by row and
 prints knock-event counts for the window: the log's count increments against
 the model's KNOCK_OUT pulses (`KLR: [PHASE] ... KNOCK_OUT cleared`, also in
 the `.dash.log`). The log has no knock-sensor waveform, only the KLR's decision, so
