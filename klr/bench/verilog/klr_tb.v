@@ -300,6 +300,33 @@ module klr_tb #(parameter EXT_STIM = 0) (
         boost_map_value = v0 + (v1 - v0) * thr_frac;
     end
 
+    // ── Manifold vacuum below boost onset ────────────────────────────
+    // The table above is the KLR's boost TARGET (the firmware's own
+    // ram[51h] map), not a manifold pressure, and its lowest row (57%)
+    // already sits at ~137-141 software units (~115 kPa, about +2 psi).
+    // Feeding it straight in made the sensor read +2 psi at idle. Below
+    // boost onset the MAP now follows airflow instead: warm-idle vacuum
+    // at closed throttle, rising linearly to ambient at the AFM reading
+    // where ram[43h] leaves 0 (TPS 3Ch ~112 -> 3Ah 52, the table's first
+    // row), and the table takes over from there. The firmware only
+    // checks MAP for a sensor fault (DTC 33, ram[52h] <= 64) with
+    // ram[43h] > 23, i.e. well above onset, so idle vacuum doesn't trip it.
+    // Scale: sw = (4.55*kPa/180 - 0.256) * 0.945 * 255/5 + 10 (Bosch
+    // 200 kPa sensor, 0.945 divider, the ADC routine's +10).
+    localparam real MAP_IDLE_SW   = 44.0;   // ~38 kPa abs (about -9 psi): warm-idle vacuum
+    localparam real MAP_ATM_SW    = 119.5;  // ~100 kPa abs (0 psi)
+    localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
+    localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
+    real map_load_frac, map_target;
+    always @(*) begin
+        map_load_frac = (tps_wiper - MAP_AFM_IDLE) / (MAP_AFM_ONSET - MAP_AFM_IDLE);
+        if (map_load_frac < 0.0) map_load_frac = 0.0;
+        if (map_load_frac > 1.0) map_load_frac = 1.0;
+        map_target = (tps_wiper >= MAP_AFM_ONSET)
+                   ? boost_map_value
+                   : MAP_IDLE_SW + (MAP_ATM_SW - MAP_IDLE_SW) * map_load_frac;
+    end
+
     // ── First-order lag filter on the boost target ───────────────────
     // boost_map_value (the bilinear RPM+throttle lookup above) is the
     // correct steady-state target for the CURRENT operating point, but
@@ -322,7 +349,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     initial boost_map_filtered = 0.0;
     always @(posedge clk) begin
         boost_map_filtered <= boost_map_filtered
-            + (boost_map_value - boost_map_filtered) * ((2.0 * DELAY) / BOOST_LAG_TAU_NS);
+            + (map_target - boost_map_filtered) * ((2.0 * DELAY) / BOOST_LAG_TAU_NS);
     end
 
     // Reverse the ADC-read routine's +10 offset (see header comment) —
