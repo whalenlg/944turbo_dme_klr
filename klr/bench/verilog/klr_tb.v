@@ -311,10 +311,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // row), and the table takes over from there. The firmware only
     // checks MAP for a sensor fault (DTC 33, ram[52h] <= 64) with
     // ram[43h] > 23, i.e. well above onset, so idle vacuum doesn't trip it.
-    // Scale: sw = (4.55*kPa/180 - 0.256) * 0.945 * 255/5 + 10 (Bosch
-    // 200 kPa sensor, 0.945 divider, the ADC routine's +10).
-    localparam real MAP_IDLE_SW   = 44.0;   // ~38 kPa abs (about -9 psi): warm-idle vacuum
-    localparam real MAP_ATM_SW    = 119.5;  // ~100 kPa abs (0 psi)
+    // Scale (KLR memory map, MAP section): x = 1.22 * kPa - 4, x in the
+    // same software units as ram[52h] (the ADC routine's +10 included;
+    // ch4 below is x - 10). Idle is -17 inHg below 1 bar.
+    localparam real MAP_IDLE_KPA  = 100.0 - 17.0 * 3.386;   // ~42.4 kPa abs: warm-idle vacuum
+    localparam real MAP_ATM_KPA   = 100.0;                  // 1 bar
+    localparam real MAP_IDLE_SW   = 1.22 * MAP_IDLE_KPA - 4.0;  // ~47.7
+    localparam real MAP_ATM_SW    = 1.22 * MAP_ATM_KPA  - 4.0;  // 118.0
     localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
     localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
     real map_load_frac, map_target;
