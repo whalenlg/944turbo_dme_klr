@@ -305,29 +305,47 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ram[51h] map), not a manifold pressure, and its lowest row (57%)
     // already sits at ~137-141 software units (~115 kPa, about +2 psi).
     // Feeding it straight in made the sensor read +2 psi at idle. Below
-    // boost onset the MAP now follows airflow instead: warm-idle vacuum
-    // at closed throttle, rising linearly to ambient at the AFM reading
-    // where ram[43h] leaves 0 (TPS 3Ch ~112 -> 3Ah 52, the table's first
-    // row), and the table takes over from there. The firmware only
-    // checks MAP for a sensor fault (DTC 33, ram[52h] <= 64) with
-    // ram[43h] > 23, i.e. well above onset, so idle vacuum doesn't trip it.
+    // boost onset (the AFM reading where ram[43h] leaves 0: TPS 3Ch ~112
+    // -> 3Ah 52, the table's first row) MAP is modeled from throttle and
+    // RPM instead, and the table takes over from there.
+    //
+    // In the CL model AFM tracks the throttle, so it stands in for
+    // throttle area. Part throttle is choked flow: the throttle passes a
+    // fixed mass flow for its area and the engine pumps out MAP * RPM, so
+    //   MAP = MAP_IDLE * (area / area_idle) * (IDLE_RPM / rpm)
+    // with area = 1 + MAP_AREA_GAIN * (AFM fraction to onset), clamped
+    // between MAP_FLOOR (closed-throttle overrun) and 1 bar. The gain is
+    // set so MAP reaches 1 bar at onset even at 6050 rpm (42.4 * 19 *
+    // 800 / 6050 = 106 kPa), so the hand-off to the table never steps
+    // down. Closed throttle at 2000 rpm reads ~25 kPa (-22 inHg).
+    //
+    // The firmware only checks MAP for a sensor fault (DTC 33, ram[52h]
+    // <= 64) with ram[43h] > 23, i.e. well above onset, so vacuum here
+    // doesn't trip it.
     // Scale (KLR memory map, MAP section): x = 1.22 * kPa - 4, x in the
     // same software units as ram[52h] (the ADC routine's +10 included;
     // ch4 below is x - 10). Idle is -17 inHg below 1 bar.
     localparam real MAP_IDLE_KPA  = 100.0 - 17.0 * 3.386;   // ~42.4 kPa abs: warm-idle vacuum
     localparam real MAP_ATM_KPA   = 100.0;                  // 1 bar
-    localparam real MAP_IDLE_SW   = 1.22 * MAP_IDLE_KPA - 4.0;  // ~47.7
-    localparam real MAP_ATM_SW    = 1.22 * MAP_ATM_KPA  - 4.0;  // 118.0
+    localparam real MAP_FLOOR_KPA = 100.0 - 22.0 * 3.386;   // ~25.5 kPa abs: closed-throttle overrun
+    localparam real MAP_IDLE_RPM  = 800.0;  // warm idle (cl_warm_idle settles here)
+    localparam real MAP_MIN_RPM   = 400.0;  // below this (cranking, rpm_in still 0) hold this RPM
+    localparam real MAP_AREA_GAIN = 18.0;   // throttle area at onset vs closed
     localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
     localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
-    real map_load_frac, map_target;
+    real map_load_frac, map_rpm, map_kpa, map_target;
     always @(*) begin
         map_load_frac = (tps_wiper - MAP_AFM_IDLE) / (MAP_AFM_ONSET - MAP_AFM_IDLE);
         if (map_load_frac < 0.0) map_load_frac = 0.0;
         if (map_load_frac > 1.0) map_load_frac = 1.0;
+        map_rpm = rpm_in;
+        if (map_rpm < MAP_MIN_RPM) map_rpm = MAP_MIN_RPM;
+        map_kpa = MAP_IDLE_KPA * (1.0 + MAP_AREA_GAIN * map_load_frac) * MAP_IDLE_RPM / map_rpm;
+        if (map_kpa < MAP_FLOOR_KPA) map_kpa = MAP_FLOOR_KPA;
+        if (map_kpa > MAP_ATM_KPA)   map_kpa = MAP_ATM_KPA;
         map_target = (tps_wiper >= MAP_AFM_ONSET)
                    ? boost_map_value
-                   : MAP_IDLE_SW + (MAP_ATM_SW - MAP_IDLE_SW) * map_load_frac;
+                   : 1.22 * map_kpa - 4.0;
     end
 
     // ── First-order lag filter on the boost target ───────────────────
