@@ -57,8 +57,11 @@ module dme_klr_dashboard_tb;
     reg [15:0] live_rpm       /*verilator public_flat_rw*/ = 16'hFFFF;
     reg [15:0] live_afm       /*verilator public_flat_rw*/ = 16'hFFFF;
     reg [7:0]  live_tps       /*verilator public_flat_rw*/ = 8'h28;     // idle throttle
-    reg [7:0]  live_coolant   /*verilator public_flat_rw*/ = `_COOLANT_RAW;
-    reg [7:0]  live_airtemp   /*verilator public_flat_rw*/ = `_AIRTEMP_RAW;
+    // Warm-idle temps through the ROM's NTC map (see ntc_celsius in
+    // i8051_dashboard_tb.v): raw 0x37 -> lin 0xB9 = 80 C coolant,
+    // raw 0x95 -> lin 0x64 = 25 C intake air
+    reg [7:0]  live_coolant   /*verilator public_flat_rw*/ = 8'h37;
+    reg [7:0]  live_airtemp   /*verilator public_flat_rw*/ = 8'h95;
     reg [7:0]  live_battery   /*verilator public_flat_rw*/ = `_BATTERY;
     reg [7:0]  live_altitude  /*verilator public_flat_rw*/ = `_ALTITUDE;
     reg [7:0]  live_fuel_qual /*verilator public_flat_rw*/ = `_FUEL_QUAL;

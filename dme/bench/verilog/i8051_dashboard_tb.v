@@ -1967,12 +1967,17 @@ end
 //  PHASE MONITOR
 // ============================================================
 // ── NTC linearised-value → degrees Celsius ──────────────────────
+// The firmware runs both NTC ADC bytes through its linearisation map
+// (maps 1/2, 0x12A6 in 28PIN_DME_PERFORMANCE) into iram[12h]/[13h],
+// which span -40..+125 degC linearly: degC = lin * 165/255 - 40. This
+// puts the ROM's own temperature thresholds where the disassembly notes
+// have them (55h ~14.7 C cold-crank, 58h ~16.7 C lambda enable, 8Ch
+// ~50 C, A2h ~65 C, 7-count hysteresis ~4.6 C). The previous
+// 10 + (lin - 143) * 70/79 fit put 55h/58h at about -40 C.
 function automatic integer ntc_celsius;
     input [7:0] lin;
-    integer diff;
     begin
-        diff = $signed(9'd0 + lin) - 143;
-        ntc_celsius = 10 + (diff * 70) / 79;
+        ntc_celsius = (lin * 165) / 255 - 40;
     end
 endfunction
 

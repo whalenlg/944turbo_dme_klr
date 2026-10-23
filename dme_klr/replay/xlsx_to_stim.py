@@ -19,12 +19,12 @@ Input conversions (log value -> raw ADC byte the model reads)
 -------------------------------------------------------------
   rpm       ' RPM'                     pinned engine RPM (live_rpm)
   afm       'AFM (V)'                  DME ch0, V * 255/5
-  airtemp   'IAT  (V)'                 DME ch2. The logger's "volts" are the
-                                       firmware's linearised value
-                                       (iram[12h]) * 5/255, not the pin:
-                                       the raw byte is found by inverting
-                                       the ROM's NTC map (map 1) - raw 0x50
-                                       gives 0x9E = 3.10 "V" = 75 F.
+  airtemp   'IAT  (V)'                 DME ch2, V * 255/5. The logger's
+                                       volts are the sensor pin: they fall
+                                       as IAT (F) rises (157 -> 160 counts
+                                       = 75 -> 72 F), and through the ROM's
+                                       NTC map 3.10 V reads 20 C (log 24 C)
+                                       on the ntc_celsius() scale.
   dme_tps   'Throttle Switch (Volts)'  DME ch6, V * 255/5 (idle 2.6 V,
                                        off-idle 4.75 V, WOT 4.0 V)
   altitude  'Altimeter (Volts)'        DME ch4, V * 255/5
@@ -33,10 +33,9 @@ Input conversions (log value -> raw ADC byte the model reads)
                                        as 13.8 V, linear through 0)
   coolant   ' ECT (F)'                 DME ch3. deg C -> linearised value
                                        by the testbench's ntc_celsius()
-                                       scale (10 + (lin-143)*70/79, which
-                                       also matches the log's IAT pair),
-                                       then the ROM's NTC map (map 2)
-                                       inverted to the raw byte.
+                                       scale (lin * 165/255 - 40), then
+                                       the ROM's NTC map (map 2) inverted
+                                       to the raw byte.
   boost     'MAP Absolute (PSI)'       KLR ch4, Bosch 200 kPa sensor
                                        (4.55*kPa/180 - 0.256) V, x0.945
                                        divider, * 255/5 (see the KLR
@@ -168,7 +167,7 @@ def lin_for_f(temp_f):
     """Linearised NTC value for temp_f (inverse of ntc_celsius() in
     i8051_dashboard_tb.v)."""
     c = (temp_f - 32.0) * 5.0 / 9.0
-    return 143 + (c - 10.0) * 79.0 / 70.0
+    return (c + 40.0) * 255.0 / 165.0
 
 
 def map_raw(psi, offset=0):
@@ -279,7 +278,7 @@ def main():
     if not sel:
         sys.exit("no rows in the selected window")
 
-    air_map, cool_map = NtcMap(a.dme_rom, 1), NtcMap(a.dme_rom, 2)
+    cool_map = NtcMap(a.dme_rom, 2)
     with open(a.out_prefix + '.stim.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_ms'] + STIM_COLS)
@@ -289,7 +288,7 @@ def main():
                         volts(r['afm_v']),
                         map_raw(r['map_psi'], a.map_offset),
                         cool_map.raw_for(lin_for_f(r['ect_f'])),
-                        air_map.raw_for(r['iat_v'] * 255.0 / 5.0),
+                        volts(r['iat_v']),
                         clamp8(r['batt_v'] * 0xD8 / 13.8),
                         volts(r['alt_v']),
                         0 if not r['fqs'] else clamp8(r['fqs']),
