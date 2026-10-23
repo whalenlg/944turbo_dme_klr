@@ -18,9 +18,11 @@ The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,
 filelist `files_cl`). The throttle is the input: it slews at the same rate
 as the `cl_ramp_*` tests, AFM follows it about 250 ms later, the firmware
 fuels for that airflow, and RPM comes out of the torque balance in
-`var_interrupt_gen_cl.v`. MAP (KLR ch4) follows airflow from idle vacuum
-(~38 kPa, about -9 psi) up to ambient as the throttle opens, and the KLR
-boost-target table takes over from boost onset (AFM 0x77).
+`var_interrupt_gen_cl.v`. MAP (KLR ch4) is modeled from throttle and RPM
+(MAP ~ throttle area / RPM): -17 inHg (~42 kPa abs) at warm idle, deeper
+on a closed-throttle overrun (down to -22 inHg), up to ambient as the
+throttle opens, and the KLR boost-target table takes over from boost onset
+(AFM 0x77).
 
 | name | drives | default |
 |---|---|---|
