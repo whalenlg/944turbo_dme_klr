@@ -19,6 +19,11 @@
 //    bp clear                  clear all breakpoints
 //    snap                      emit a DS snapshot now (while paused too)
 //    trace dme|klr [N]         print the last N instruction addresses
+//    rom dme|klr <path>        while paused, replace that CPU's EPROM with a
+//                              $readmemh-format .mem image (no rebuild; the
+//                              CPU keeps its PC and RAM — restart for a
+//                              clean boot). +dme_rom=<path> / +klr_rom=<path>
+//                              on the command line load images at start.
 //    status                    print state, time, PCs, inputs, breakpoints
 //    quit
 //
@@ -30,6 +35,8 @@
 //    SIM: [BP]     dme=<hex,...> klr=<hex,...>
 //    SIM: [TRACE]  dme|klr <pc>/<ctx0>/<ctx1>/<ctx2>,...  (oldest first; ctx =
 //                  registers as each instruction was fetched, see the tb)
+//    SIM: [ROM]    dme|klr <path>                  (image in that EPROM: at start and
+//                  after each rom command)
 //    SIM: [ERROR]  <message>
 //    SIM: [IGN]    dme|klr t_ns=<n> width_ns=<n>   (from the testbench, per spark)
 //    SIM: [INJ]    t_ns=<n> width_ns=<n>           (injector low time on DME P1.0)
@@ -48,10 +55,12 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -101,6 +110,15 @@ public:
     int run() {
         // Evaluate time 0 so initial blocks run and inputs hold their defaults
         top_->eval();
+        rom_[0] = widePath(TB(live_dme_rom_path));
+        rom_[1] = widePath(TB(live_klr_rom_path));
+        // Images from +dme_rom= / +klr_rom= replace the compiled-in ones
+        // before the CPUs leave reset (DME res_n rises at 1 us)
+        for (int c = 0; c < 2; ++c) {
+            std::string arg = ctx_->commandArgsPlusMatch(c ? "klr_rom=" : "dme_rom=");
+            if (!arg.empty()) loadRom(c, arg.substr(arg.find('=') + 1));
+        }
+        romLines();
         printf("SIM: [READY] %s\n", inputsLine().c_str());
         state("paused", "start");
         while (!ctx_->gotFinish() && !quit_) {
@@ -259,10 +277,19 @@ private:
                 out += (out.empty() ? "" : ",") + hex(q[i].pc) + ctx;
             }
             printf("SIM: [TRACE] %s %s\n", cpu == "klr" ? "klr" : "dme", out.c_str());
+        } else if (cmd == "rom") {
+            std::string cpu, path;
+            in >> cpu >> std::ws;
+            std::getline(in, path);   // the rest of the line, spaces and all
+            if (cpu != "dme" && cpu != "klr") return error("rom needs dme or klr");
+            if (path.empty()) return error("rom needs a .mem file");
+            if (!paused_ || stop_pending_) return error("pause the simulation before loading a ROM");
+            if (loadRom(cpu == "klr", path)) romLines();
         } else if (cmd == "status") {
             state(paused_ ? "paused" : "running", "status");
             printf("SIM: [INPUTS] %s\n", inputsLine().c_str());
             bpLine();
+            romLines();
         } else if (cmd == "quit") {
             quit_ = true;
         } else {
@@ -289,6 +316,83 @@ private:
             top_->eval();
         }
         state("paused", "snap");
+    }
+
+    // ── ROM images ──────────────────────────────────────────
+    std::string rom_[2];   // image in the DME / KLR EPROM
+
+    // Packed Verilog string (right-aligned, zero-padded) to std::string
+    template <typename W> static std::string widePath(const W& w) {
+        std::string s;
+        for (int i = static_cast<int>(sizeof(w) * 8) - 8; i >= 0; i -= 8) {
+            char ch = static_cast<char>((w.data()[i / 32] >> (i % 32)) & 0xFF);
+            if (ch) s += ch;
+        }
+        return s;
+    }
+
+    // Read a $readmemh image (hex bytes, @addr, // and /* */ comments)
+    // into the testbench buffer and have the next DME clock copy it into
+    // the EPROM. Bytes the file doesn't set are 0xFF, like a fresh load.
+    bool loadRom(int klr, const std::string& path) {
+        const char* cpu = klr ? "klr" : "dme";
+        const size_t size = klr ? 4096 : 8192;
+        std::string ext = path.size() >= 4 ? path.substr(path.size() - 4) : "";
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext != ".mem")
+            return error(std::string(cpu) + " ROM must be a .mem file: " + path), false;
+        std::ifstream f(path);
+        if (!f) return error(std::string("can't open ") + cpu + " ROM " + path), false;
+        std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        std::vector<uint8_t> img(size, 0xFF);
+        size_t addr = 0, count = 0, line = 1;
+        auto bad = [&](const std::string& why) {
+            error(std::string(cpu) + " ROM " + path + " line " + std::to_string(line) + ": " + why);
+            return false;
+        };
+        for (size_t i = 0; i < text.size();) {
+            char ch = text[i];
+            if (ch == '\n') { ++line; ++i; continue; }
+            if (isspace(static_cast<unsigned char>(ch))) { ++i; continue; }
+            if (text.compare(i, 2, "//") == 0) { while (i < text.size() && text[i] != '\n') ++i; continue; }
+            if (text.compare(i, 2, "/*") == 0) {
+                size_t e = text.find("*/", i + 2);
+                if (e == std::string::npos) return bad("unterminated comment");
+                line += std::count(text.begin() + i, text.begin() + e, '\n');
+                i = e + 2;
+                continue;
+            }
+            size_t j = i;
+            while (j < text.size() && !isspace(static_cast<unsigned char>(text[j]))) ++j;
+            std::string tok = text.substr(i, j - i);
+            i = j;
+            bool at = tok[0] == '@';
+            std::string digits;
+            for (char d : tok.substr(at)) if (d != '_') digits += d;
+            char* end = nullptr;
+            unsigned long v = digits.empty() ? 0 : std::strtoul(digits.c_str(), &end, 16);
+            if (digits.empty() || *end || !isxdigit(static_cast<unsigned char>(digits[0])))
+                return bad("not a hex value: " + tok);
+            if (at) { addr = v; continue; }
+            if (v > 0xFF) return bad("value wider than a byte: " + tok);
+            if (addr >= size) return bad("past the end of the " + std::to_string(size) + "-byte EPROM");
+            img[addr++] = static_cast<uint8_t>(v);
+            ++count;
+        }
+        if (!count) return error(std::string(cpu) + " ROM " + path + " has no data"), false;
+        for (size_t a = 0; a < size; ++a) TB(live_rom_buf)[a] = img[a];
+        TB(live_rom_cpu) = klr ? 2 : 1;
+        TB(live_rom_req) = TB(live_rom_req) + 1;
+        while (TB(live_rom_ack) != TB(live_rom_req) && top_->eventsPending() && !ctx_->gotFinish()) {
+            ctx_->time(top_->nextTimeSlot());
+            top_->eval();
+        }
+        rom_[klr] = path;
+        return true;
+    }
+
+    void romLines() const {
+        printf("SIM: [ROM] dme %s\nSIM: [ROM] klr %s\n", rom_[0].c_str(), rom_[1].c_str());
     }
 
     void setInput(const std::string& name, const std::string& val) {

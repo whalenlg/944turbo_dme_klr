@@ -10,7 +10,14 @@
 //    POST /cmd        text body, one sim command per line
 //                     (run, pause, step dme 1, set rpm 3000, bp add dme 024E ...
 //                      — see sim_main.cpp)
-//    POST /restart    kill the sim and start a fresh one at t=0
+//    POST /restart    kill the sim and start a fresh one at t=0 (with
+//                     the ROM images currently loaded)
+//    POST /rom?cpu=dme|klr&name=<file.mem>[&reset=1]
+//                     body = a $readmemh .mem image. Only while the sim is
+//                     paused. Saved under obj/roms/<cpu>/, then loaded into
+//                     the running sim (CPU keeps its PC and RAM), or with
+//                     reset=1 the sim restarts at t=0 on the new image.
+//                     The sim reports the result as SIM: [ROM] / [ERROR].
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
 //                     (dme rows also carry num: operands as raw addresses;
@@ -25,8 +32,8 @@
 // ============================================================
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 
@@ -49,6 +56,8 @@ const FORWARD = /^(DME: |KLR: |SIM: |\[DS\]|\[PHASE\]|\[STATUS\])/;
 
 let sim = null;
 let history = [];
+let simState = 'paused';                // from the sim's SIM: [STATE] lines
+const roms = { dme: null, klr: null };  // from its SIM: [ROM] lines; kept across restarts
 const clients = new Set();
 
 function broadcast(line) {
@@ -65,10 +74,16 @@ function startSim() {
   }
   history = [];
   broadcast('SIM: [RESTART]');
+  simState = 'paused';
+  const romArgs = Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
-  sim = spawn(SIM, ['+vcd=/dev/null'], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
+  sim = spawn(SIM, ['+vcd=/dev/null', ...romArgs], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
+    const st = line.match(/^SIM: \[STATE\] (\w+)/);
+    if (st) simState = st[1];
+    const rom = line.match(/^SIM: \[ROM\] (dme|klr) (.+)$/);
+    if (rom) roms[rom[1]] = rom[2];
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
   };
@@ -77,9 +92,40 @@ function startSim() {
   proc.on('exit', code => {
     if (sim === proc) {
       sim = null;
+      simState = 'exited';
       broadcast(`SIM: [EXIT] code=${code}`);
     }
   });
+}
+
+function restartSim() {
+  if (sim) { const old = sim; sim = null; old.kill(); }
+  startSim();
+}
+
+// Uploaded images live next to the sim so a restart can load them again
+const ROM_DIR = join(dirname(SIM), 'roms');
+const ROM_MAX = 1 << 20;   // a full 8 KB image is ~24 KB of text
+
+// POST /rom: check, save, then load into the sim. Returns [status, text].
+function loadRom(url, body) {
+  const cpu = url.searchParams.get('cpu');
+  const name = basename(url.searchParams.get('name') ?? '');
+  if (cpu !== 'dme' && cpu !== 'klr') return [400, 'cpu must be dme or klr'];
+  if (!/^[\w.+ -]+\.mem$/i.test(name)) return [400, 'ROM image must be a .mem file'];
+  if (simState === 'running') return [409, 'pause the simulation before loading a ROM'];
+  const dir = join(ROM_DIR, cpu);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, name);
+  writeFileSync(path, body);
+  console.log(`bridge: ${cpu} ROM ${name} -> ${path}${url.searchParams.get('reset') === '1' ? ' (restart)' : ''}`);
+  if (url.searchParams.get('reset') === '1') {
+    roms[cpu] = path;
+    restartSim();
+  } else if (!send(`rom ${cpu} ${path}`)) {
+    return [409, 'simulator not running'];
+  }
+  return [204, ''];
 }
 
 function send(text) {
@@ -179,13 +225,18 @@ createServer((req, res) => {
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(ASM[cpu]));
   }
-  if (req.method === 'POST' && (url.pathname === '/cmd' || url.pathname === '/restart')) {
+  if (req.method === 'POST' && (url.pathname === '/cmd' || url.pathname === '/restart' || url.pathname === '/rom')) {
     let body = '';
-    req.on('data', d => { body += d; if (body.length > 1e5) req.destroy(); });
+    const max = url.pathname === '/rom' ? ROM_MAX : 1e5;
+    req.on('data', d => { body += d; if (body.length > max) req.destroy(); });
     req.on('end', () => {
+      if (url.pathname === '/rom') {
+        const [code, text] = loadRom(url, body);
+        res.writeHead(code, CORS);
+        return res.end(text);
+      }
       if (url.pathname === '/restart') {
-        if (sim) { const old = sim; sim = null; old.kill(); }
-        startSim();
+        restartSim();
       } else if (!send(body)) {
         res.writeHead(409, CORS);
         return res.end('simulator not running');

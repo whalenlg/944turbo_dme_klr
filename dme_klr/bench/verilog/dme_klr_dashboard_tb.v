@@ -409,6 +409,32 @@ module dme_klr_dashboard_tb;
 `endif
     end
 
+`ifdef LIVE
+    // ── ROM reload (sim_main "rom" command) ──────────────────
+    // sim_main fills live_rom_buf with the new image (0xFF where the file
+    // has no data), sets live_rom_cpu (1 = DME, 2 = KLR) and bumps req;
+    // the next DME clock copies the buffer into that CPU's EPROM array and
+    // copies req to ack. live_*_rom_path are the compiled-in images (the
+    // same macros i8051_top.v / klr_top.v load), for sim_main to report.
+    reg [7:0]  live_rom_buf [0:8191] /*verilator public_flat_rw*/;
+    reg [1:0]  live_rom_cpu  /*verilator public_flat_rw*/ = 2'd0;
+    reg [31:0] live_rom_req  /*verilator public_flat_rw*/ = 32'd0;
+    reg [31:0] live_rom_ack  /*verilator public_flat_rd*/ = 32'd0;
+    reg [8*512-1:0] live_dme_rom_path /*verilator public_flat_rd*/ = {`DME_ROM_DIR, `DME_ROM_FILE};
+    reg [8*512-1:0] live_klr_rom_path /*verilator public_flat_rd*/ = {`KLR_ROM_DIR, `KLR_ROM_FILE};
+    integer live_rom_i;
+    always @(posedge dme_clk)
+        if (live_rom_req != live_rom_ack) begin
+            if (live_rom_cpu == 2'd1)
+                for (live_rom_i = 0; live_rom_i < 8192; live_rom_i = live_rom_i + 1)
+                    `LROM[live_rom_i] = live_rom_buf[live_rom_i];
+            else if (live_rom_cpu == 2'd2)
+                for (live_rom_i = 0; live_rom_i < 4096; live_rom_i = live_rom_i + 1)
+                    u_klr.top.rom_1.rom[live_rom_i] = live_rom_buf[live_rom_i];
+            live_rom_ack <= live_rom_req;
+        end
+`endif
+
     // Hard simulation boundary — terminates at exactly SIM_TIME.
     // SIM_TIME must be passed via -DSIM_TIME=<ns> from the run script.
     // No default — intentional, so a missing define causes a compile error

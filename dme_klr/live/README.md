@@ -12,6 +12,22 @@ node bridge.mjs          # starts the sim, serves http://127.0.0.1:8951 (this Ma
 
 Then open the dashboard and press **LIVE**.
 
+## ROM images
+
+`build_live.sh` compiles in the default images (`DME_ROM_FILE` /
+`KLR_ROM_FILE`), but another `.mem` image can be loaded without a rebuild
+while the sim is paused: the dashboard's **ROM IMAGES** row shows the image
+in each EPROM and has a **LOAD .mem** button per CPU. With **RESTART AFTER
+LOAD** ticked (the default) the sim restarts at t=0 on the new image, so the
+firmware boots from its reset vector; unticked, the image is swapped in
+place and the CPU carries on from its current PC and RAM.
+
+The bridge saves uploaded images under `obj/roms/<cpu>/` and passes them to
+every later restart (`+dme_rom=<path>` / `+klr_rom=<path>`), until another
+image is loaded or the bridge itself is restarted. From a terminal:
+`rom dme|klr <path>` while paused. The disassembly listing still comes from
+the default images' tables, so it won't match a different firmware.
+
 ## Inputs (`set <name> <value>`)
 
 The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,
@@ -41,7 +57,7 @@ closed-loop tests.
 The sim takes one command per line on stdin, so it also works straight from
 a terminal (`obj/dme_klr_live +vcd=/dev/null`). See the header of
 `sim_main.cpp` for the full list: `run`, `pause`, `step dme|klr [N]`,
-`until <ms>`, `set`, `bp add|del dme|klr <hex>`, `bp clear`, `snap`,
+`until <ms>`, `set`, `bp add|del dme|klr <hex>`, `bp clear`, `snap`, `rom`,
 `trace dme|klr [N]`, `status`, `quit`.
 
 The build uses `-DLIVE`, which swaps the compile-time `TEST_*` stimulus for
