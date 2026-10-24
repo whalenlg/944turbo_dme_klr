@@ -141,7 +141,9 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // adc_ch4 is the MAP-table model below
 `elsif LIVE
     // Live debugger without -DBOOST: the web UI sets the MAP reading
-    wire [7:0] adc_ch4 = dme_klr_dashboard_tb.live_boost[7:0];
+    // (capped at 0xF5 so the ADC routine's +10 can't wrap; see below)
+    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
+                         dme_klr_dashboard_tb.live_boost[7:0];
 `else
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
 `endif
@@ -450,8 +452,13 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] boost_adc4_capped = (boost_adc4_final > 8'hF0) ? 8'hF0 : boost_adc4_final;
 
 `ifdef LIVE
-    // Live debugger: the web UI can pin the MAP reading (16'hFFFF = model)
-    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? dme_klr_dashboard_tb.live_boost[7:0] :
+    // Live debugger: the web UI can pin the MAP reading (16'hFFFF = model).
+    // A pinned value is capped at 0xF5, the highest raw reading the ADC
+    // routine's +10 doesn't wrap: unclamped, the slider's 0xFF stored
+    // ram[52h] = 0x09 (deep vacuum, about -26 inHg) instead of full boost.
+    wire [7:0] live_boost_pin = (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
+                                dme_klr_dashboard_tb.live_boost[7:0];
+    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? live_boost_pin :
                          (EXT_STIM) ? boost_adc4_capped : 8'h85;
 `else
     wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_capped : 8'h85;

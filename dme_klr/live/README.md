@@ -29,7 +29,7 @@ throttle opens, and the KLR boost-target table takes over from boost onset
 | `tps` | throttle command (0x28 = idle; the cl tests use 0x72 for ~3000 rpm, 0xD8 for ~6400) | 0x28 |
 | `rpm` | pin engine RPM instead of the torque balance (`auto` = model) | auto |
 | `afm` | pin DME ADC ch0 instead of following the throttle (`auto` = model) | auto |
-| `boost` | pin KLR MAP ADC ch4 instead of the MAP-table model (`auto` = model) | auto |
+| `boost` | pin KLR MAP ADC ch4 instead of the MAP-table model (`auto` = model); values above 0xF5 are held at 0xF5 (~+16 psi), since the KLR adds 10 to the reading and anything higher wraps ram[52h] to near-zero (deep vacuum) | auto |
 | `fuel_qual` | DME ADC ch7 (FQS); also sets the model's fuel energy like the `*_FQS0..7` tests | 0x00 |
 | `coolant`, `airtemp`, `battery`, `altitude` | DME ADC ch3, ch2, ch1, ch4 raw bytes | warm-idle values |
 
