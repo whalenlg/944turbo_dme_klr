@@ -89,11 +89,11 @@ replay; the live debugger can `set` them too).
 |---|---|---|
 | `rpm` | RPM | pinned engine RPM |
 | `afm` | AFM (V) | DME ch0, V × 51 |
-| `airtemp` | IAT (V) | DME ch2. The logger's "volts" are the firmware's linearised value (iram[12h]) × 5/255, so the raw byte comes from inverting the ROM's NTC map (raw 0x50 → 0x9E = 3.10 V = 75 °F, which the log agrees with) |
+| `airtemp` | IAT (V) | DME ch2, V × 51. The logger's volts are the sensor pin: they fall as IAT (F) rises (157 → 160 counts = 75 → 72 °F), and 3.10 V through the ROM's NTC map reads 20 °C on the `ntc_celsius()` scale (log: 24 °C) |
 | `dme_tps` | Throttle Switch (Volts) | DME ch6, V × 51 |
 | `altitude` | Altimeter (Volts) | DME ch4, V × 51 |
 | `battery` | DME Voltage (V) | DME ch1, **assumed** 0xD8 = 13.8 V, linear |
-| `coolant` | ECT (F) | DME ch3: °C → linearised value by the testbench's `ntc_celsius()` scale (which also fits the log's IAT pair), then the ROM's NTC map inverted; ≈0x1C at 190 °F |
+| `coolant` | ECT (F) | DME ch3: °C → linearised value by the testbench's `ntc_celsius()` scale (lin × 165/255 − 40), then the ROM's NTC map inverted; ≈0x2E at 190 °F |
 | `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes), capped at 0xF0 (≈31 psi abs) so the firmware's +10 into ram[52h] can't wrap. The log comes from an f9tech DME with its own 3-bar MAP sensor, so its psi is real pressure: the 33.5 psi peaks (231 kPa) are past what the KLR's stock 200 kPa sensor reads, and sit at the cap. `--map-offset N` (on `run_replay.sh` or `xlsx_to_stim.py`, default 0) takes N counts off, for a log that dumps ram[52h] instead |
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
