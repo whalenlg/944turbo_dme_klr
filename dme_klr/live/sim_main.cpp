@@ -79,6 +79,7 @@ struct Input {
     void* ptr;
     int bits;          // 8 or 16
     bool can_auto;     // 16'hFFFF = follow the model
+    long pin_max = 0;  // pinned values above this are held at it (0 = none)
 };
 
 class LiveSim {
@@ -94,7 +95,8 @@ public:
             {"tps",       &TB(live_tps),        8, false},
             {"rpm",       &TB(live_rpm),       16, true},
             {"afm",       &TB(live_afm),       16, true},
-            {"boost",     &TB(live_boost),     16, true},
+            // ch4 above F5 wraps ram[52h] (the KLR adds 10); klr_tb.v caps it too
+            {"boost",     &TB(live_boost),     16, true, 0xF5},
             {"coolant",   &TB(live_coolant),    8, false},
             {"airtemp",   &TB(live_airtemp),    8, false},
             {"battery",   &TB(live_battery),    8, false},
@@ -408,6 +410,7 @@ private:
                 if (val.empty() || *end) return error("bad value for " + name + ": " + val);
                 long max = in.bits == 8 ? 0xFF : 0xFFFF;
                 if (v < 0 || v > max) return error(name + " out of range: " + val);
+                if (in.pin_max && v > in.pin_max) v = in.pin_max;
             }
             if (in.bits == 8) *static_cast<uint8_t*>(in.ptr) = static_cast<uint8_t>(v);
             else *static_cast<uint16_t*>(in.ptr) = static_cast<uint16_t>(v);
