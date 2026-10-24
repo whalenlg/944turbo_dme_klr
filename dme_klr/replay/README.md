@@ -52,12 +52,18 @@ about an hour under Verilator and several hours under iverilog.
 | `replay_driver.v` | the same driver as a second Verilog top, for iverilog |
 | `replay_main.cpp` | Verilator driver: holds the first row for `WARMUP_MS` (3000) so the firmware syncs, then applies each row at its timestamp and takes a DS snapshot there |
 | `check_replay.py` | pairs each snapshot with its log row, applies tolerances, prints pass rates per channel and per segment, writes every miss to `<name>.mismatches.csv`; exits 1 if a channel passes on fewer than `--min-pass` (90 %) of rows |
+| `expect_to_dash.py` | places each played log row's expected outputs at its sim time (from the `SIM: [ROW]` lines) as `REPLAY: [EXPECT]` lines, which `run_replay.sh` appends to `<name>.dash.log` |
 | `run_replay.sh` | build if stale, convert, run, check |
 
 Outputs land in `../../tmp/dme_klr/replay/dash_logs/` for iverilog runs and
 `../../tmp/dme_klr/replay/v_dash_logs/` for Verilator runs (the same split as
 `run_dashboard_tests.sh` / `v_run_dashboard_tests.sh`), so the two can run at
-the same time. Each run's `.dash.log` loads into the dashboard like any other.
+the same time. Each run's `.dash.log` loads into the dashboard like any other,
+and carries the log's outputs too: the dashboard draws them as dashed
+"LOG (expected)" traces over the matching DME and KLR charts (ignition advance,
+injector pulse, dwell, RPM; KLR retard, coil pulse, knock output and count,
+boost, full load). For a `.dash.log` from before this, append them by hand:
+`./expect_to_dash.py <name>.log <name>.expect.csv >> <name>.dash.log`.
 
 `--iverilog` runs also write `fst/<name>.fst`, made the same way as
 `run_dashboard_tests.sh`'s: `vcd.v` / `klr_vcd.v` dump their chosen signals to
