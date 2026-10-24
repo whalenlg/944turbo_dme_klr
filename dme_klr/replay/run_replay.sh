@@ -39,7 +39,8 @@
 #          dme_klr/, so the two can run in parallel:
 #          <name>.{stim,expect}.csv
 #          <name>.log        (full sim output)
-#          <name>.dash.log   (DS lines, loadable in the dashboard)
+#          <name>.dash.log   (DS lines plus the log's expected outputs as
+#                             REPLAY: [EXPECT] lines, loadable in the dashboard)
 #          <name>.report.txt / <name>.mismatches.csv
 #          fst/<name>.fst    (--iverilog runs: waveform made the same way as
 #                             run_dashboard_tests.sh's, with the signals
@@ -193,6 +194,9 @@ if [ -f "$RUN_DIR/sim.vcd" ]; then
 fi
 grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]" \
     "$OUT.log" > "$OUT.dash.log" || true
+# The log's own outputs at each row's sim time, for the dashboard's chart overlays
+python3 "$REPLAY_DIR/expect_to_dash.py" "$OUT.log" "$OUT.expect.csv" >> "$OUT.dash.log" \
+    || echo "  expect_to_dash.py failed; the dash.log has no expected-data overlay"
 
 # ── Compare ──
 set +e
