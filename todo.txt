@@ -46,19 +46,9 @@ And knock and boost correction PHASE updates for KLR - report degrees an kpa's
 
 Changing ps from C9 eliminated fed code 1-1
 
-Fix web ui - not reading Max. Klr 
-
 Add monitor to extract table lookups
 
-Annotate disassembly with JohnB comments
-
 S/w emulator:
-
-X oad hex
-
-Run
- 
-
 
 Outputs - see page 1 of DME + KLR
 
