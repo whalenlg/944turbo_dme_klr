@@ -1086,7 +1086,10 @@ assign      tdc = tdc_marker;
 reg t1;
 initial begin
     t1 = 1'b0;
-    #(`SIM_TIME / 2);   // switch AC on halfway through simulation
+    // 64'd2 keeps the division 64-bit: with a bare 2, Verilator 5.050
+    // sizes SIM_TIME (e.g. 20000000000) to its 35 bits as a signed value,
+    // so SIM_TIME / 2 came out negative and t1 never switched on
+    #(`SIM_TIME / 64'd2);   // switch AC on halfway through simulation
     t1 = 1'b1;
 end
 `elsif CL_CONDITION_CYCLE_ACTIVE
