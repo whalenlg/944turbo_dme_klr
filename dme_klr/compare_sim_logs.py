@@ -205,6 +205,17 @@ def _values_differ(a_v, b_v, tolerance=0.01):
         return abs(fa - fb) / denom > tolerance
     return True
 
+# Raw ADC readings that move continuously (the throttle during a ramp):
+# a 100 ms snapshot landing a moment earlier or later reads one count
+# apart, e.g. ramp_to_redline's tps_deg 70 vs 69 at t=2010 ms
+FIELD_ABS_TOLERANCE = {"tps_deg": 1, "tps_raw": 1}
+
+def _within_abs(a_v, b_v, abs_tol):
+    a_s, b_s = str(a_v), str(b_v)
+    if _numeric_re.match(a_s) and _numeric_re.match(b_s):
+        return abs(float(a_s) - float(b_s)) <= abs_tol
+    return False
+
 def _values_differ_settling(a_v, b_v, cfg):
     """_values_differ for a SIM_SETTLING_TESTS test: numeric values match
     within max(cfg['abs'], cfg['rel'] * value); others need equality."""
@@ -231,6 +242,8 @@ def field_mismatch_mask(a_seq, b_seq, field, tolerance=0.01):
             continue
         if cfg is None:
             mask[i] = _values_differ(a_row[field], b_row[field], tolerance)
+            if mask[i] and field in FIELD_ABS_TOLERANCE:
+                mask[i] = not _within_abs(a_row[field], b_row[field], FIELD_ABS_TOLERANCE[field])
             continue
         lo, hi = max(0, i - cfg["skew"]), min(len(b_seq), i + cfg["skew"] + 1)
         mask[i] = all(_values_differ_settling(a_row[field], b_seq[j][field], cfg)
@@ -262,8 +275,28 @@ def qualifying_mismatch_mask(a_seq, b_seq, field, tolerance=0.01, min_run=MIN_CO
     return filter_isolated_mismatches(field_mismatch_mask(a_seq, b_seq, field, tolerance), min_run)
 
 
+# Running totals: compared as the increase since the previous snapshot,
+# so one event counted during startup (before both KLRs are defined)
+# doesn't leave the whole run one count apart
+CUMULATIVE_STATUS_FIELDS = {"knock_count"}
+
+def _as_increments(rows):
+    out, prev = [], {}
+    for r in rows:
+        r = dict(r)
+        for f in CUMULATIVE_STATUS_FIELDS & r.keys():
+            v = r[f]
+            if f in prev and _numeric_re.match(str(v)) and _numeric_re.match(str(prev[f])):
+                r[f] = float(v) - float(prev[f])
+            else:
+                del r[f]
+            prev[f] = v
+        out.append(r)
+    return out
+
 def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
     """Compare two sequences of [STATUS] lines field-by-field."""
+    iv_st, vl_st = _as_increments(iv_st), _as_increments(vl_st)
     issues = []
     iv_n, vl_n = len(iv_st), len(vl_st)
     if iv_n == 0 and vl_n == 0:

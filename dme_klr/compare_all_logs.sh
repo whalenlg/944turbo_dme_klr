@@ -136,12 +136,12 @@ if [ $# -gt 0 ]; then
     TESTS=("$@")
 else
     TESTS=("${DASH_TESTS[@]}")
-    # Also pick up any test that has a .dash.log on either side but isn't
-    # listed above (a test added to the run scripts later, a replay run),
-    # so the list going stale can't silently drop tests from the compare
-    for _f in "$IV_DASH_DIR"/*.dash.log "$VL_DASH_DIR"/*.dash.log; do
-        [ -e "$_f" ] || continue
-        _n="$(basename "$_f" .dash.log)"
+    # Also pick up any test run_dashboard_tests.sh defines (its single-test
+    # case labels) that isn't listed above, e.g. one added later or the
+    # replay tests, so the list going stale can't silently drop a test.
+    # Logs left over from tests that no longer exist are not compared.
+    for _n in $(sed -n 's/^        \([A-Za-z0-9_]*\))[[:space:]]*run_\(replay_\)\{0,1\}test .*/\1/p' \
+                    "$SCRIPT_DIR/run_dashboard_tests.sh"); do
         case " ${TESTS[*]} " in *" $_n "*) ;; *) TESTS+=("$_n") ;; esac
     done
 fi
