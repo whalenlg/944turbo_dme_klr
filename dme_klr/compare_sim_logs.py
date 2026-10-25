@@ -260,25 +260,68 @@ def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
                       ", ".join(f"{k}({n})" for k, n in top))
     return issues
 
+_PHASE_T_RE = re.compile(r't=(\d+)\s*ms')
+_SPARK_RE   = re.compile(r'spark_delay=([\d.]+)')
+
+# spark_delay (us) differences under max(SPARK_DELAY_ABS_TOL_US,
+# SPARK_DELAY_REL_TOL * value) are scheduling jitter between the simulators
+# (~1-2 us in steady state); a real retard change moves it far more
+# (1 crank degree is ~185 us at 900 RPM).
+SPARK_DELAY_ABS_TOL_US = 10.0
+SPARK_DELAY_REL_TOL    = 0.05
+# The first sparks after the KLR comes up still carry startup state that
+# differs between the simulators (Verilator zero-inits and runs the KLR
+# before its first reset; Icarus is X until then), so skip them.
+SPARK_DELAY_SKIP = 3
+
+def klr_start_ms(iv_lines, vl_lines):
+    """Earliest time both logs have a defined KLR: the later of each log's
+    first KLR [STATUS] row whose ign_out is 0/1. Icarus leaves the KLR X
+    until the DME first resets it (~400 ms), while Verilator zero-inits
+    and runs it from t=0, so KLR events before this point exist in only
+    one of the logs."""
+    def first_defined(lines):
+        for l in lines:
+            if l.startswith("KLR: [STATUS]") and re.search(r'\bign_out=[01]\b', l):
+                m = _PHASE_T_RE.search(l)
+                if m:
+                    return int(m.group(1))
+        return 0
+    return max(first_defined(iv_lines), first_defined(vl_lines))
+
+def drop_klr_phase_before(lines, t_ms):
+    """Drop KLR [PHASE] lines logged before t_ms (see klr_start_ms)."""
+    out = []
+    for l in lines:
+        if l.startswith("KLR: [PHASE]"):
+            m = _PHASE_T_RE.search(l)
+            if m and int(m.group(1)) < t_ms:
+                continue
+        out.append(l)
+    return out
+
 def compare_phase_sequence(iv_lines, vl_lines, prefix):
-    """Compare phase event sequences, stripping timestamps."""
+    """Compare phase event sequences, stripping timestamps. Measured values
+    (pulse widths, delays) are normalised out of the sequence; spark_delay
+    is then compared numerically with a tolerance."""
     _ts  = re.compile(r't=\d+\s*ms\s*')
-    _num = re.compile(r'(pulse_width|delay_from_ign_in|width)=[\d.]+')
+    _num = re.compile(r'(pulse_width|delay_from_ign_in|spark_delay|width)=[\d.]+')
     _skip = re.compile(r'spurious pulse filtered', re.IGNORECASE)
     def normalise(lines):
         out = []
         for l in lines:
             if not l.startswith(prefix) or _skip.search(l): continue
-            l = _ts.sub('t=T ms  ', l.strip())
+            raw = l.strip()
+            l = _ts.sub('t=T ms  ', raw)
             l = _num.sub(lambda m: m.group(0).split('=')[0] + '=N', l)
-            out.append(l)
+            out.append((l, raw))
         return out
     iv_p = normalise(iv_lines)
     vl_p = normalise(vl_lines)
     # Trim leading events that appear before the first IGN_OUT/engine event
     # These are KLR startup state events that differ due to X-init differences
     def trim_preamble(phases, anchor_re=re.compile(r'IGN_OUT|ENGINE|SYNC', re.IGNORECASE)):
-        for i, p in enumerate(phases):
+        for i, (p, _) in enumerate(phases):
             if anchor_re.search(p): return phases[i:]
         return phases
     if prefix.startswith("KLR"):
@@ -288,12 +331,12 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
         # (FULL_LOAD, ENGINE_SYNC etc.) have minor interleaving differences
         # between simulators due to X-init and scheduling differences.
         _ign = re.compile(r'IGN_OUT', re.IGNORECASE)
-        iv_p = [p for p in iv_p if _ign.search(p)]
-        vl_p = [p for p in vl_p if _ign.search(p)]
+        iv_p = [p for p in iv_p if _ign.search(p[0])]
+        vl_p = [p for p in vl_p if _ign.search(p[0])]
         # Keep only deasserted events (complete ignition pulses)
         # This avoids asserted/deasserted interleaving differences
-        iv_p = [p for p in iv_p if 'deasserted' in p.lower()]
-        vl_p = [p for p in vl_p if 'deasserted' in p.lower()]
+        iv_p = [p for p in iv_p if 'deasserted' in p[0].lower()]
+        vl_p = [p for p in vl_p if 'deasserted' in p[0].lower()]
         # Skip first pulse if it differs greatly (pre-sync long pulse)
         if iv_p and vl_p:
             iv_p = iv_p[1:] if len(iv_p) > 1 else iv_p
@@ -302,14 +345,40 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
     _count_tol = 1 if prefix.startswith("KLR") else 0
     if abs(len(iv_p) - len(vl_p)) > max(_count_tol, int(max(len(iv_p),len(vl_p),1) * 0.01)):
         issues.append(f"{prefix}: count iv={len(iv_p)} vl={len(vl_p)}")
-    for i, (a, b) in enumerate(zip(iv_p, vl_p)):
+    for i, ((a, a_raw), (b, b_raw)) in enumerate(zip(iv_p, vl_p)):
         if a != b:
-            # Use filtered lists for reporting (same as comparison)
-            iv_s = iv_p[i]
-            vl_s = vl_p[i]
-            issues.append(f"{prefix} diverges at entry {i}: iv={iv_s!r} vl={vl_s!r}")
+            issues.append(f"{prefix} diverges at entry {i}: iv={a!r} vl={b!r}")
             break
+    if prefix.startswith("KLR"):
+        issues.extend(compare_spark_delays(iv_p, vl_p, prefix))
     return issues
+
+def compare_spark_delays(iv_p, vl_p, prefix):
+    """Compare spark_delay pulse by pulse (both lists aligned by index, as
+    in compare_phase_sequence). Isolated outliers are dropped like other
+    field blips; only runs of MIN_CONSECUTIVE_MISMATCH+ count."""
+    def delays(phases):
+        out = []
+        for _, raw in phases[SPARK_DELAY_SKIP:]:
+            m = _SPARK_RE.search(raw)
+            t = _PHASE_T_RE.search(raw)
+            out.append((float(m.group(1)) if m else None, t.group(1) if t else '?'))
+        return out
+    iv_d, vl_d = delays(iv_p), delays(vl_p)
+    mask = []
+    for (a, _), (b, _) in zip(iv_d, vl_d):
+        if a is None or b is None:
+            mask.append(False)
+            continue
+        tol = max(SPARK_DELAY_ABS_TOL_US, SPARK_DELAY_REL_TOL * max(a, b))
+        mask.append(abs(a - b) > tol)
+    mask = filter_isolated_mismatches(mask)
+    n = sum(mask)
+    if not n:
+        return []
+    i = mask.index(True)
+    return [f"{prefix} spark_delay mismatches: {n} of {len(mask)} pulses, first at "
+            f"iv t={iv_d[i][1]} ms {iv_d[i][0]:.3f} us vs vl t={vl_d[i][1]} ms {vl_d[i][0]:.3f} us"]
 
 def field_diff_rows(a_st, b_st, field, max_rows=20, tolerance=0.01, min_run=MIN_CONSECUTIVE_MISMATCH):
     """Return up to `max_rows` (index, t, a_val, b_val) tuples where `field`
@@ -588,6 +657,11 @@ def compare_dash(iv_lines, vl_lines, name):
     _skip = re.compile(r'DME: \[SIM\]|VCD info:|dumpfile|Info:.*ignored|Simulated \d|\$finish|\bvvp\b', re.IGNORECASE)
     iv_lines = [l for l in iv_lines if not _skip.search(l)]
     vl_lines = [l for l in vl_lines if not _skip.search(l)]
+    # KLR events from before both simulators have a defined KLR exist in
+    # only one log (see klr_start_ms); drop them before counting/comparing
+    t0 = klr_start_ms(iv_lines, vl_lines)
+    iv_lines = drop_klr_phase_before(iv_lines, t0)
+    vl_lines = drop_klr_phase_before(vl_lines, t0)
     issues = []
 
     prefixes = [
