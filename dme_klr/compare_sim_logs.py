@@ -67,7 +67,7 @@ IGNORED_STATUS_FIELDS_BY_TEST = {
         "wdog":   {"cl_tippy_in"},
     },
     "KLR: [STATUS]": {
-        "cv_pwm": {"cold_start", "isv_cold_idle", "isv_load_droop", "warmup_enrichment"},
+        "cv_pwm": {"cold_start", "cl_cold_start", "isv_cold_idle", "isv_load_droop", "warmup_enrichment"},
         # Mid-dwell or not when the snapshot lands; see SIM_SETTLING_TESTS
         "ign_out": {"cl_tippy_in"},
     },
