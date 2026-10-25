@@ -192,6 +192,100 @@ module dme_klr_dashboard_tb;
     assign tps_wiper_sig = u_dme.afm_wiper;
 `endif
 
+    // ── Spark angles vs TDC ────────────────────────────────────
+    // Crank position in half-teeth since the reference mark, counted from
+    // the crank model's own edges, so the angles don't depend on RPM or on
+    // what the firmware believes. The ref mark is 60 deg (44 half-teeth)
+    // before the TDC that follows it (the model's tdc marker, 22 teeth on)
+    // and the other TDC of the revolution is 180 deg (132 half-teeth)
+    // later: side A = the TDC after the ref mark, side B = the other one.
+    // There is no cam / cylinder-1 signal, so which cylinder of a pair
+    // fired is not known here.
+    //
+    // One line per KLR spark (IGN_OUT falling after a >= 1 ms dwell):
+    //   KLR: [SPARK] t=<ms> side=A|B dme_btdc=<deg> klr_btdc=<deg>
+    //        retard=<deg> delay_us=<us> rpm=<n> dme31=<hh> dme57=<hh>
+    //        klr73=<hh> klr3F=<hh>
+    // dme_btdc: the DME's spark (its tach output rising = KLR ign_in
+    // falling), klr_btdc: the KLR's spark, retard = dme_btdc - klr_btdc,
+    // delay_us = time between them. dme31/dme57 are the DME's advance and
+    // accel adjustment this spark was scheduled from: the firmware writes
+    // the next spark's values right after it fires, so these are the ones
+    // read at the previous DME spark. klr73/klr3F are the KLR's knock
+    // retard slot and tip-in retard as read by the timing delay calculation
+    // (0x1B2: delay = (73h + 3Fh) x the spark period) that set this spark's
+    // delay. Its result in 28h/29h moves to 20h/21h at the next trigger and
+    // to 25h/26h, the one in use, at the trigger after, so this is the last
+    // calculation from before the DME spark two sparks back.
+    integer crank_hp = -1;                     // -1 until the first ref mark
+    time    crank_ref_t = 0, crank_edge_t = 0, crank_hp_ns = 0;
+    always @(negedge u_dme.reference_sensor_gen) begin
+        crank_hp     = 0;
+        crank_ref_t  = $time;
+        crank_edge_t = $time;
+    end
+    always @(u_dme.speed_sensor_gen)
+        if (crank_hp >= 0 && $time != crank_ref_t) begin
+            crank_hp_ns  = $time - crank_edge_t;
+            crank_edge_t = $time;
+            crank_hp     = crank_hp + 1;
+        end
+
+    // Degrees before the coming TDC (negative = after), and which TDC
+    task crank_btdc(output real deg, output reg side_b);
+        real pos, hp;
+        begin
+            if (crank_hp < 0 || crank_hp_ns == 0) begin
+                deg = -999.0; side_b = 1'b0;
+            end else begin
+                pos = crank_hp + ($time - crank_edge_t) / (1.0 * crank_hp_ns);
+                if (pos < 110.0)      begin hp = 44.0  - pos; side_b = 1'b0; end
+                else if (pos < 242.0) begin hp = 176.0 - pos; side_b = 1'b1; end
+                else                  begin hp = 308.0 - pos; side_b = 1'b0; end
+                deg = hp * 360.0 / 264.0;
+            end
+        end
+    endtask
+
+    real    spk_dme_deg = -999.0, spk_klr_deg;
+    reg     spk_dme_side = 1'b0, spk_klr_side;
+    time    spk_dme_t = 0, spk_klr_rise = 0;
+    reg [7:0] spk_dme31 = 8'h00, spk_dme57 = 8'h00, spk_nxt31 = 8'hFF, spk_nxt57 = 8'hFF;
+    reg [7:0] spk_calc73 = 8'h00, spk_calc3F = 8'h00, spk_klr73 = 8'h00, spk_klr3F = 8'h00;
+    reg [7:0] spk_p73_0 = 8'h00, spk_p3F_0 = 8'h00, spk_p73_1 = 8'h00, spk_p3F_1 = 8'h00;
+    // KLR timing delay calculation (mov r1,#73h at 0x1B2, bank 0)
+    always @(posedge u_klr.top.i8048_core_1.clk)
+        if (u_klr.top.i8048_core_1.res_n && u_klr.top.i8048_core_1.state_clk_en &&
+            u_klr.top.i8048_core_1.state == 3'd1 && !u_klr.top.i8048_core_1.cycle_2 &&
+            u_klr.top.i8048_core_1.pc == 12'h1B2) begin
+            spk_calc73 <= u_klr.top.i8048_core_1.ram[7'h73];
+            spk_calc3F <= u_klr.top.i8048_core_1.ram[7'h3F];
+        end
+    always @(posedge tach_dme_to_klr) begin
+        crank_btdc(spk_dme_deg, spk_dme_side);
+        spk_dme_t = $time;
+        spk_dme31 = spk_nxt31;
+        spk_dme57 = spk_nxt57;
+        spk_nxt31 = u_dme.i8051_top.u_cpu.iram[7'h31];
+        spk_nxt57 = u_dme.i8051_top.u_cpu.iram[7'h57];
+        spk_klr73 = spk_p73_1;  spk_klr3F = spk_p3F_1;
+        spk_p73_1 = spk_p73_0;  spk_p3F_1 = spk_p3F_0;
+        spk_p73_0 = spk_calc73; spk_p3F_0 = spk_calc3F;
+    end
+    always @(posedge klr_ign_out) spk_klr_rise = $time;
+    always @(negedge klr_ign_out)
+        // A real dwell (the shorter ones are wait_ign_2 artifacts, the
+        // longer ones the port floating during a KLR reset)
+        if ($time - spk_klr_rise >= 1_000_000 && $time - spk_klr_rise < 50_000_000 &&
+            spk_dme_t != 0 && $time - spk_dme_t < 50_000_000) begin
+            crank_btdc(spk_klr_deg, spk_klr_side);
+            if (spk_dme_deg > -900.0 && spk_klr_deg > -900.0)
+                $display("KLR: [SPARK] t=%0d side=%s dme_btdc=%0.2f klr_btdc=%0.2f retard=%0.2f delay_us=%0.3f rpm=%0d dme31=%02h dme57=%02h klr73=%02h klr3F=%02h",
+                         `DME_KLR_MS, spk_klr_side ? "B" : "A", spk_dme_deg, spk_klr_deg,
+                         spk_dme_deg - spk_klr_deg, ($time - spk_dme_t) / 1000.0, u_dme.ref_rpm,
+                         spk_dme31, spk_dme57, spk_klr73, spk_klr3F);
+        end
+
     // ── Always-on FST visibility for the interconnect above ──────────
     // klr_vcd_combined.v (compiled into this build, in files/files_cl)
     // was meant to add these to the FST but its module is never
