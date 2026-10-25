@@ -20,6 +20,7 @@ Output (one summary line + detail):
 import sys
 import re
 import argparse
+import statistics
 from collections import Counter
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -273,6 +274,8 @@ SPARK_DELAY_REL_TOL    = 0.05
 # differs between the simulators (Verilator zero-inits and runs the KLR
 # before its first reset; Icarus is X until then), so skip them.
 SPARK_DELAY_SKIP = 3
+# spark_delay is compared as a median per window of this much sim time
+SPARK_DELAY_WINDOW_MS = 500
 
 def klr_start_ms(iv_lines, vl_lines):
     """Earliest time both logs have a defined KLR: the later of each log's
@@ -354,31 +357,34 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
     return issues
 
 def compare_spark_delays(iv_p, vl_p, prefix):
-    """Compare spark_delay pulse by pulse (both lists aligned by index, as
-    in compare_phase_sequence). Isolated outliers are dropped like other
-    field blips; only runs of MIN_CONSECUTIVE_MISMATCH+ count."""
-    def delays(phases):
-        out = []
+    """Compare spark_delay as the median over SPARK_DELAY_WINDOW_MS windows
+    of sim time. Pairing sparks one-for-one breaks as soon as one log has
+    an extra or missing spark (everything after is off by one), and single
+    sparks jitter by a KLR timer step between the simulators; a window
+    median only moves when the retard itself does. Only runs of
+    MIN_CONSECUTIVE_MISMATCH+ mismatching windows count."""
+    def windows(phases):
+        bins = {}
         for _, raw in phases[SPARK_DELAY_SKIP:]:
             m = _SPARK_RE.search(raw)
             t = _PHASE_T_RE.search(raw)
-            out.append((float(m.group(1)) if m else None, t.group(1) if t else '?'))
-        return out
-    iv_d, vl_d = delays(iv_p), delays(vl_p)
+            if m and t:
+                bins.setdefault(int(t.group(1)) // SPARK_DELAY_WINDOW_MS, []).append(float(m.group(1)))
+        return {k: statistics.median(v) for k, v in bins.items()}
+    iv_w, vl_w = windows(iv_p), windows(vl_p)
+    keys = sorted(set(iv_w) & set(vl_w))
     mask = []
-    for (a, _), (b, _) in zip(iv_d, vl_d):
-        if a is None or b is None:
-            mask.append(False)
-            continue
+    for k in keys:
+        a, b = iv_w[k], vl_w[k]
         tol = max(SPARK_DELAY_ABS_TOL_US, SPARK_DELAY_REL_TOL * max(a, b))
         mask.append(abs(a - b) > tol)
     mask = filter_isolated_mismatches(mask)
     n = sum(mask)
     if not n:
         return []
-    i = mask.index(True)
-    return [f"{prefix} spark_delay mismatches: {n} of {len(mask)} pulses, first at "
-            f"iv t={iv_d[i][1]} ms {iv_d[i][0]:.3f} us vs vl t={vl_d[i][1]} ms {vl_d[i][0]:.3f} us"]
+    k = keys[mask.index(True)]
+    return [f"{prefix} spark_delay mismatches: {n} of {len(keys)} {SPARK_DELAY_WINDOW_MS} ms windows, "
+            f"first at t={k * SPARK_DELAY_WINDOW_MS} ms median iv={iv_w[k]:.3f} us vl={vl_w[k]:.3f} us"]
 
 def field_diff_rows(a_st, b_st, field, max_rows=20, tolerance=0.01, min_run=MIN_CONSECUTIVE_MISMATCH):
     """Return up to `max_rows` (index, t, a_val, b_val) tuples where `field`
