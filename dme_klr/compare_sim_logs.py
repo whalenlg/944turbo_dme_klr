@@ -49,10 +49,11 @@ _HBLB_RE = re.compile(r'^(.+)_(hb|lb)$', re.IGNORECASE)
 # Fields to drop entirely for a given [STATUS] prefix — never extracted, so
 # they never show up in mismatch counts, --verbose dumps, or --plot output.
 IGNORED_STATUS_FIELDS = {
-    # mb/irq are where the CPU happens to be when the 100 ms snapshot lands
-    # (bank select, inside the timer ISR), like pc: a few rows flip in most
-    # ramp tests without the firmware doing anything different
-    "KLR: [STATUS]": {"pc", "r5", "sp", "r2", "r4", "timer_val", "mb", "irq"},
+    # mb/irq/r0 are where the CPU happens to be when the 100 ms snapshot
+    # lands (bank select, inside the timer ISR, ISR context pointer), like
+    # pc: a few rows flip in most ramp tests without the firmware doing
+    # anything different
+    "KLR: [STATUS]": {"pc", "r0", "r5", "sp", "r2", "r4", "timer_val", "mb", "irq"},
 }
 
 # Fields to drop only for specific named tests (test name = the CLI `name`
