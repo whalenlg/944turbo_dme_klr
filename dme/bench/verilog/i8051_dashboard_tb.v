@@ -1562,6 +1562,10 @@ wire [7:0] afm_effective = afm_wiper;
 
 wire idle_sw = (afm_effective >= `AFM_IDLE_THR);
 reg  [7:0] adc_mux;
+// Each channel's input, all eight at once, so the [DS] snapshot can log
+// what the ADC is being fed (adc_ch0..7) and not only what the firmware
+// has stored from it; adc_mux selects the one P2[2:0] asks for.
+reg  [7:0] adc_ch0, adc_ch1, adc_ch2, adc_ch3, adc_ch4, adc_ch5, adc_ch6, adc_ch7;
 
 // NOTE: was previously `@(p2[2:0] or afm_wiper)`. Now that idle_sw can
 // depend on afm_tippy/afm_cl (not just afm_wiper) under AFM_TIPPY/
@@ -1575,80 +1579,85 @@ reg  [7:0] adc_mux;
 // normal idle-switch / KLR full_load logic below unless live_dme_tps
 // pins it (16'hFFFF = follow that logic), as the log replay does.
 always @(*) begin
-    case (p2[2:0])
-        3'b000: adc_mux = afm_effective;
-        3'b001: adc_mux = dme_klr_dashboard_tb.live_battery;
-        3'b010: adc_mux = dme_klr_dashboard_tb.live_airtemp;
-        3'b011: adc_mux = dme_klr_dashboard_tb.live_coolant;
-        3'b100: adc_mux = dme_klr_dashboard_tb.live_altitude;
-        3'b101: adc_mux = 8'hFF;
-        3'b110: adc_mux = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
+        adc_ch0 = afm_effective;
+        adc_ch1 = dme_klr_dashboard_tb.live_battery;
+        adc_ch2 = dme_klr_dashboard_tb.live_airtemp;
+        adc_ch3 = dme_klr_dashboard_tb.live_coolant;
+        adc_ch4 = dme_klr_dashboard_tb.live_altitude;
+        adc_ch5 = 8'hFF;
+        adc_ch6 = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
                         : idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
-        3'b111: adc_mux = dme_klr_dashboard_tb.live_fuel_qual;
-        default: adc_mux = 8'hF0;
-    endcase
+        adc_ch7 = dme_klr_dashboard_tb.live_fuel_qual;
 end
 `else
 always @(*) begin
-    case (p2[2:0])
 `ifdef AFM_FAULT
-        3'b000: adc_mux = 8'hFF;
+        adc_ch0 = 8'hFF;
 `elsif AFM_CL_RAMP
-        3'b000: adc_mux = afm_cl;
+        adc_ch0 = afm_cl;
 `elsif AFM_TIPPY
-        3'b000: adc_mux = afm_tippy;
+        adc_ch0 = afm_tippy;
 `else
-        3'b000: adc_mux = afm_wiper;
+        adc_ch0 = afm_wiper;
 `endif
 `ifdef CL_CONDITION_CYCLE_ACTIVE
-        3'b001: adc_mux = battery_dynamic_cycle;
+        adc_ch1 = battery_dynamic_cycle;
 `else
-        3'b001: adc_mux = `_BATTERY;
+        adc_ch1 = `_BATTERY;
 `endif
 `ifdef TEST_AIRTEMP_FAIL
-        3'b010: adc_mux = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
+        adc_ch2 = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
 `elsif CL_CONDITION_CYCLE_ACTIVE
-        3'b010: adc_mux = airtemp_dynamic_cycle;
+        adc_ch2 = airtemp_dynamic_cycle;
 `else
-        3'b010: adc_mux = `_AIRTEMP_RAW;
+        adc_ch2 = `_AIRTEMP_RAW;
 `endif
 `ifdef TEST_ISV_COLD_IDLE
-        3'b011: adc_mux = coolant_dynamic;
+        adc_ch3 = coolant_dynamic;
 `elsif TEST_COLD_START
-        3'b011: adc_mux = coolant_dynamic;
+        adc_ch3 = coolant_dynamic;
 `elsif TEST_CL_COLD_START
-        3'b011: adc_mux = coolant_dynamic;
+        adc_ch3 = coolant_dynamic;
 `elsif CL_CONDITION_CYCLE_ACTIVE
-        3'b011: adc_mux = coolant_dynamic_cycle;
+        adc_ch3 = coolant_dynamic_cycle;
 `elsif TEST_COOLANT_FAIL
-        3'b011: adc_mux = 8'h00;  // shorted sensor: matches normal TB
+        adc_ch3 = 8'h00;  // shorted sensor: matches normal TB
 `else
-        3'b011: adc_mux = `_COOLANT_RAW;
+        adc_ch3 = `_COOLANT_RAW;
 `endif
 `ifdef CL_CONDITION_CYCLE_ACTIVE
-        3'b100: adc_mux = altitude_dynamic_cycle;
+        adc_ch4 = altitude_dynamic_cycle;
 `else
-        3'b100: adc_mux = `_ALTITUDE;
+        adc_ch4 = `_ALTITUDE;
 `endif
-        3'b101: adc_mux = 8'hFF;
+        adc_ch5 = 8'hFF;
 `ifdef TPS_FIXED
-        3'b110: adc_mux = `TPS_FIXED;
+        adc_ch6 = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
                                   : 8'h85;                       // grounded: idle/closed=2.6V
 `elsif AFM_TIPPY
-        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
                                   : 8'h85;                       // grounded: idle/closed=2.6V
 `else
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
-        3'b110: adc_mux = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
                                   : 8'h85;                       // grounded: idle/closed=2.6V
 `endif
-        3'b111: adc_mux = `_FUEL_QUAL;
-        default: adc_mux = 8'hF0;
-    endcase
+        adc_ch7 = `_FUEL_QUAL;
 end
 `endif // LIVE
+always @(*)
+    case (p2[2:0])
+        3'b000: adc_mux = adc_ch0;
+        3'b001: adc_mux = adc_ch1;
+        3'b010: adc_mux = adc_ch2;
+        3'b011: adc_mux = adc_ch3;
+        3'b100: adc_mux = adc_ch4;
+        3'b101: adc_mux = adc_ch5;
+        3'b110: adc_mux = adc_ch6;
+        3'b111: adc_mux = adc_ch7;
+    endcase
 
 assign adc_data      = adc_mux;
 assign xadc_data_out = adc_data_out;
@@ -1946,7 +1955,11 @@ task emit_snapshot;
                {p1_in[7:6], p1[5:0]},                     // P1: O2 inputs + latch
                p2,                                        // P2: ADC/addr latch
                {p3[7:6], t1, t0, speed_sensor, reference_sensor, p3_in[1:0]});
-        $write(",%0d\n", ref_rpm);
+        $write(",%0d", ref_rpm);
+        // ADC channel inputs 0-7 (AFM, battery, air temp, coolant, altitude,
+        // -, TPS, fuel quality) as fed to the ADC, not as stored in iram
+        $write(",%02h%02h%02h%02h%02h%02h%02h%02h\n", adc_ch0, adc_ch1, adc_ch2, adc_ch3,
+               adc_ch4, adc_ch5, adc_ch6, adc_ch7);
         snapshot_busy = 1'b0;
     end
 endtask
