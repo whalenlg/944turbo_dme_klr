@@ -436,7 +436,11 @@ module dme_klr_dashboard_tb;
                u_dme.p2,
                {u_dme.p3[7:6], u_dme.t1, u_dme.t0, u_dme.speed_sensor, u_dme.reference_sensor, u_dme.p3_in[1:0]});
 	    //$write(",%02h%02h%02h", u_dme.p1, u_dme.p2, u_dme.p3_in);
-            $write(",%0d\n", u_dme.ref_rpm);
+            $write(",%0d", u_dme.ref_rpm);
+            // ADC channel inputs 0-7 as fed to the DME's ADC (see adc_ch0..7)
+            $write(",%02h%02h%02h%02h%02h%02h%02h%02h\n", u_dme.adc_ch0, u_dme.adc_ch1,
+                   u_dme.adc_ch2, u_dme.adc_ch3, u_dme.adc_ch4, u_dme.adc_ch5,
+                   u_dme.adc_ch6, u_dme.adc_ch7);
 
             // ── KLR: [DS] — 8048 RAM (128 bytes) ─────────────────
             $write("KLR: [DS] %0d,", `DME_KLR_MS);
