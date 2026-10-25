@@ -114,7 +114,7 @@ replay; the live debugger can `set` them too).
 | `klr_retard` | KLR Ign. Retard | DME spark command (rising edge of tach A_1, low during dwell) → KLR spark (falling edge of its coil output), in crank ° at the log RPM | ±1.5 ° |
 | `klr_adv` | KLR Ign. Advance | `ign_adv − klr_retard` | ±1.5 ° |
 | `inj_ms` | Inj. Pulse (ms) | measured injector pulse: P1.0 low time of the latest pulse (`SIM: [INJ]`); n/a when none ended in the last two revolutions (held open or not firing, counted in the summary) | ±0.3 ms |
-| `inj_ms_ram` | Inj. Pulse (ms) | DME iram[4Bh:4Ah] × 2 µs, the computed width; informational, never fails the run | ±0.3 ms |
+| `inj_ms_ram` | Inj. Pulse (ms) | ({4Bh,4Ah} + 5 × 54h) × 2 µs: the computed width plus the injector dead time the firmware adds before loading the timer; informational, never fails the run | ±0.3 ms |
 | `dwell_ms` | Ign. Dwell (ms) | last KLR coil-output pulse width | ±0.5 ms |
 | `icv_pct` | ICV (%) | ISV P1.4-high share of the timer-1 reloads {41h,40h} / {45h,44h} | ±5 % |
 | `rpm` | RPM | iram[37h] × 40 (sanity check that the pin took) | ±80 |

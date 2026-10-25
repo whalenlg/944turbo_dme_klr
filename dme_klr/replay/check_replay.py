@@ -30,8 +30,10 @@ Model-side value of each channel
               ended more than two revolutions earlier: the injector has
               either been held open (P1.0 low, pulse >= the period) or not
               fired at all since, and the summary counts which
-  inj_ms_ram  DME iram[4Bh:4Ah] * 2 us, the pulse width as computed in
-              RAM; reported for comparison only, it never fails the run
+  inj_ms_ram  ({4Bh,4Ah} + 5 * 54h) * 2 us: the computed pulse width plus
+              the injector dead time, which the firmware adds (5 x 54h
+              into r7:r6) before loading the timer with 65536 - ticks.
+              Reported for comparison only, it never fails the run
   dwell_ms    width of the last KLR coil pulse (SIM: [IGN] klr)
   icv_pct     ISV PWM duty from the timer-1 reloads: P1.4-high time
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
@@ -154,8 +156,8 @@ def model_values(row, ign, rpm_log):
     if d:
         if d[0x31] is not None:
             v['ign_adv'] = d[0x31] * HALF_TOOTH_DEG
-        if d[0x4A] is not None and d[0x4B] is not None:
-            v['inj_ms_ram'] = ((d[0x4B] << 8) | d[0x4A]) * 2 / 1000.0
+        if None not in (d[0x4A], d[0x4B], d[0x54]):
+            v['inj_ms_ram'] = (((d[0x4B] << 8) | d[0x4A]) + 5 * d[0x54]) * 2 / 1000.0
         if d[0x37] is not None:
             v['rpm'] = d[0x37] * 40.0
         if None not in (d[0x40], d[0x41], d[0x44], d[0x45]):
