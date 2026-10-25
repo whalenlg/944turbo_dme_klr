@@ -49,7 +49,10 @@ _HBLB_RE = re.compile(r'^(.+)_(hb|lb)$', re.IGNORECASE)
 # Fields to drop entirely for a given [STATUS] prefix — never extracted, so
 # they never show up in mismatch counts, --verbose dumps, or --plot output.
 IGNORED_STATUS_FIELDS = {
-    "KLR: [STATUS]": {"pc", "r5", "sp", "r2", "r4", "timer_val"},
+    # mb/irq are where the CPU happens to be when the 100 ms snapshot lands
+    # (bank select, inside the timer ISR), like pc: a few rows flip in most
+    # ramp tests without the firmware doing anything different
+    "KLR: [STATUS]": {"pc", "r5", "sp", "r2", "r4", "timer_val", "mb", "irq"},
 }
 
 # Fields to drop only for specific named tests (test name = the CLI `name`
@@ -58,8 +61,6 @@ IGNORED_STATUS_FIELDS = {
 IGNORED_STATUS_FIELDS_BY_TEST = {
     "KLR: [STATUS]": {
         "cv_pwm": {"cold_start", "isv_cold_idle", "isv_load_droop", "warmup_enrichment"},
-        "irq":    {"cl_ramp_to_6000_FQS1", "cl_ramp_to_6000_FQS7"},
-        "mb":     {"cl_ramp_to_6000_FQS1", "cl_ramp_to_6000_FQS7"},
     },
 }
 
