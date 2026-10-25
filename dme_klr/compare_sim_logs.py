@@ -275,8 +275,28 @@ def qualifying_mismatch_mask(a_seq, b_seq, field, tolerance=0.01, min_run=MIN_CO
     return filter_isolated_mismatches(field_mismatch_mask(a_seq, b_seq, field, tolerance), min_run)
 
 
+# Running totals: compared as the increase since the previous snapshot,
+# so one event counted during startup (before both KLRs are defined)
+# doesn't leave the whole run one count apart
+CUMULATIVE_STATUS_FIELDS = {"knock_count"}
+
+def _as_increments(rows):
+    out, prev = [], {}
+    for r in rows:
+        r = dict(r)
+        for f in CUMULATIVE_STATUS_FIELDS & r.keys():
+            v = r[f]
+            if f in prev and _numeric_re.match(str(v)) and _numeric_re.match(str(prev[f])):
+                r[f] = float(v) - float(prev[f])
+            else:
+                del r[f]
+            prev[f] = v
+        out.append(r)
+    return out
+
 def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
     """Compare two sequences of [STATUS] lines field-by-field."""
+    iv_st, vl_st = _as_increments(iv_st), _as_increments(vl_st)
     issues = []
     iv_n, vl_n = len(iv_st), len(vl_st)
     if iv_n == 0 and vl_n == 0:
