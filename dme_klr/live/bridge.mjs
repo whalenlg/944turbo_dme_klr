@@ -23,13 +23,14 @@
 //                     (dme rows also carry num: operands as raw addresses;
 //                     rows may carry desc from asm_full.json)
 //
-//  The DME listing follows the image in the DME EPROM: whenever the sim
-//  reports SIM: [ROM] dme <path>, the image is matched (by content, then by
-//  file name) to one with its own workbook, that workbook's tables are
-//  brought up to date (dme_klr/dme_asm_select.sh) and the listing is
-//  swapped. The bridge then sends
-//    SIM: [ASM] dme <workbook> match=content|name|none
-//  and the dashboard fetches /asm/dme again. --dme-asm pins the listing.
+//  Each listing follows the image in that CPU's EPROM: whenever the sim
+//  reports SIM: [ROM] dme|klr <path>, the image is matched (by content, then
+//  by file name) to one with its own workbook, that workbook's tables are
+//  brought up to date (dme_klr/asm_select.sh) and the listing is swapped.
+//  The bridge then sends
+//    SIM: [ASM] dme|klr <workbook> match=content|name|none
+//  and the dashboard fetches /asm/<cpu> again. --dme-asm / --klr-asm pin a
+//  listing.
 //
 //  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
@@ -55,8 +56,9 @@ const arg = (name, dflt) => {
 const PORT    = +arg('port', 8951);
 const SIM     = resolve(arg('sim', join(HERE, 'obj', 'dme_klr_live')));
 const DME_ASM_PIN = arg('dme-asm', null);   // fixed DME listing; otherwise it follows the ROM
-const DME_ASM = resolve(DME_ASM_PIN ?? join(REPO, 'disassemble'));
-const KLR_ASM = resolve(arg('klr-asm', join(REPO, 'bin_images', 'klr')));
+const DME_ASM = resolve(DME_ASM_PIN ?? join(REPO, 'dme', 'disassemble'));
+const KLR_ASM_PIN = arg('klr-asm', null);
+const KLR_ASM = resolve(KLR_ASM_PIN ?? join(REPO, 'klr', 'disassemble'));
 const MAX_HISTORY = 500_000;   // lines kept for replay
 
 // Lines the dashboard uses; the rest ($dumpvar notices, readmem
@@ -95,7 +97,7 @@ function startSim() {
     if (rom) roms[rom[1]] = rom[2];
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
-    if (rom && rom[1] === 'dme') followDmeRom(rom[2]);
+    if (rom) followRom(rom[1], rom[2]);
   };
   createInterface({ input: proc.stdout }).on('line', onLine);
   createInterface({ input: proc.stderr }).on('line', onLine);
@@ -189,24 +191,31 @@ function withFull(rows, full) {
   }
   return rows;
 }
-// A table directory made by dme_asm_select.sh carries its own asm_full.json
-const dmeListing = dir => withFull(listing(dir, 'asm_operand_mapped.hex', 'asm_operands_numeric.hex'),
-                                   (readJson(join(dir, 'asm_full.json')) ?? readJson(FULL))?.dme);
-const ASM = {
-  dme: dmeListing(DME_ASM),
-  klr: withFull(listing(KLR_ASM, 'asm_operands.hex'), readJson(FULL)?.klr),
+// A table directory made by asm_select.sh carries its own asm_full.json
+const CPU_ASM = {
+  dme: { pin: DME_ASM_PIN, dir: DME_ASM, ops: 'asm_operand_mapped.hex', num: 'asm_operands_numeric.hex' },
+  klr: { pin: KLR_ASM_PIN, dir: KLR_ASM, ops: 'asm_operands.hex' },
 };
+const cpuListing = (cpu, dir) => withFull(listing(dir, CPU_ASM[cpu].ops, CPU_ASM[cpu].num),
+                                          (readJson(join(dir, 'asm_full.json')) ?? readJson(FULL))?.[cpu]);
+const ASM = { dme: cpuListing('dme', DME_ASM), klr: cpuListing('klr', KLR_ASM) };
 
-// ── DME listing that follows the loaded image ───────────────
-// The images that have a workbook (dme_klr/dme_asm_select.sh's table)
-const DME_IMAGES = join(REPO, 'bin_images', 'dme');
-const DME_WORKBOOK = {
-  '28PIN_DME_PERFORMANCE.mem': 'disassembleperformance.xlsx',
-  '28PIN_86DME.mem':           'disassemble1986.xlsx',
-  '89DME_951pin.mem':          'disassemble1989.xlsx',
+// ── Listings that follow the loaded images ──────────────────
+// The images that have a workbook (dme_klr/asm_select.sh's table)
+const IMAGES = { dme: join(REPO, 'bin_images', 'dme'), klr: join(REPO, 'bin_images', 'klr') };
+const WORKBOOK = {
+  dme: {
+    '28PIN_DME_PERFORMANCE.mem': 'disassembleperformance.xlsx',
+    '28PIN_86DME.mem':           'disassemble1986.xlsx',
+    '89DME_951pin.mem':          'disassemble1989.xlsx',
+  },
+  klr: {
+    '87KLR_951.mem': '87KLR951.xlsx',
+    '86KLR_951.mem': '86KLR951.xlsx',
+    '89KLR_951.mem': '89KLR951.xlsx',
+  },
 };
-const DME_KNOWN = Object.keys(DME_WORKBOOK);
-const ASM_SELECT = join(HERE, '..', 'dme_asm_select.sh');
+const ASM_SELECT = join(HERE, '..', 'asm_select.sh');
 
 // Bytes of a .mem image as the sim loads it (see sim_main.cpp loadRom)
 function memBytes(file) {
@@ -225,13 +234,15 @@ function parseMem(text) {
   return img;
 }
 const knownBytes = new Map();
-function knownImage(path) {
+function knownImage(cpu, path) {
   const img = memBytes(path);
-  if (img) for (const name of DME_KNOWN) {
-    if (!knownBytes.has(name)) knownBytes.set(name, memBytes(join(DME_IMAGES, name)));
-    if (knownBytes.get(name)?.equals(img)) return { name, match: 'content' };
+  const known = Object.keys(WORKBOOK[cpu]);
+  if (img) for (const name of known) {
+    const k = `${cpu}/${name}`;
+    if (!knownBytes.has(k)) knownBytes.set(k, memBytes(join(IMAGES[cpu], name)));
+    if (knownBytes.get(k)?.equals(img)) return { name, match: 'content' };
   }
-  const name = DME_KNOWN.find(n => n.toLowerCase() === basename(path).toLowerCase());
+  const name = known.find(n => n.toLowerCase() === basename(path).toLowerCase());
   return name ? { name, match: 'name' } : null;
 }
 
@@ -248,27 +259,29 @@ function klrImageName(name, text) {
   return img ? klrKnown.find(k => k.img?.equals(img))?.f ?? null : null;
 }
 
-// Runs on every SIM: [ROM] dme line (start, restart, rom command), so an
-// upload that reuses a file name with new contents is caught too.
-function followDmeRom(path) {
-  if (DME_ASM_PIN) return;
-  const img = knownImage(path);
-  let dir = DME_ASM, workbook = '-';
+// Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
+// that reuses a file name with new contents is caught too.
+function followRom(cpu, path) {
+  const { pin, dir: dflt } = CPU_ASM[cpu];
+  if (pin) return;
+  const CPU = cpu.toUpperCase();
+  const img = knownImage(cpu, path);
+  let dir = dflt, workbook = '-';
   if (img) {
     // Same helper as the run scripts: regenerates stale workbooks/tables
-    const r = spawnSync('bash', ['-c', 'source "$1" && dme_asm_select _arr >&2 && printf %s "$DME_ASM_SEL"', '_', ASM_SELECT],
-                        { env: { ...process.env, DME_ROM_FILE: img.name, DME_ASM_DIR: '' }, encoding: 'utf8',
+    const r = spawnSync('bash', ['-c', `source "$1" && ${cpu}_asm_select _arr >&2 && printf %s "$${CPU}_ASM_SEL"`, '_', ASM_SELECT],
+                        { env: { ...process.env, [`${CPU}_ROM_FILE`]: img.name, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
                           stdio: ['ignore', 'pipe', 'inherit'] });
     if (r.status === 0 && r.stdout.trim()) {
       dir = resolve(r.stdout.trim());
-      workbook = DME_WORKBOOK[img.name];
+      workbook = WORKBOOK[cpu][img.name];
     } else {
-      console.error(`bridge: couldn't prepare the DME tables for ${img.name}; keeping ${DME_ASM}`);
+      console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
     }
   }
-  ASM.dme = dmeListing(dir);
-  console.log(`bridge: DME listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM.dme.length} lines)`);
-  broadcast(`SIM: [ASM] dme ${workbook} match=${img?.match ?? 'none'}`);
+  ASM[cpu] = cpuListing(cpu, dir);
+  console.log(`bridge: ${CPU} listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM[cpu].length} lines)`);
+  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
 }
 
 // ── HTTP ─────────────────────────────────────────────────────

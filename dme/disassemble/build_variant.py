@@ -2,7 +2,7 @@
 
 usage: build_variant.py <src.xlsx> <new .mem> <reference .bin the src sheet was built from> <out.xlsx> [new tag] [ref tag]
   e.g. build_variant.py disassembleperformance.xlsx 28PIN_86DME.mem 28PIN_DME_PERFORMANCE.bin disassemble1986.xlsx 1986 perf
-  (dme_klr/dme_asm_select.sh runs this automatically when the source workbook changes)
+  (dme_klr/asm_select.sh runs this automatically when the source workbook changes)
 
 * Rows whose address and bytes are identical in both images are copied from the
   source sheet with every annotation.

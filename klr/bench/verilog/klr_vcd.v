@@ -438,12 +438,20 @@ initial begin
     last_msg  = "FFFF";
     asm_debug.msg_count = 1;
     registers.call_depth = 0;
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/test_sim.hex",             debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/memory_byte_map.hex",      memory_byte_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_opcode_ins.hex",       opcode);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_instr.hex",            instr);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands.hex",         ops);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/asm_operands_numeric.hex", opsnums);
+    // Disassembly text tables for the KLR image in use. Override at compile
+    // time (dme_klr/asm_select.sh does this for images with their own
+    // workbook, e.g. -DKLR_ASM_DIR=\".../klr/disassemble/asm_89/\").
+    // The RAM symbol map is the same for every image and stays here.
+`ifndef KLR_ASM_DIR
+`define KLR_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/"
+`endif
+    $readmemh({`KLR_ASM_DIR, "test_sim.hex"},             debug_msg);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/memory_byte_map.hex", memory_byte_map);
+    $readmemh({`KLR_ASM_DIR, "asm_opcode_ins.hex"},       opcode);
+    $readmemh({`KLR_ASM_DIR, "asm_instr.hex"},            instr);
+    $readmemh({`KLR_ASM_DIR, "asm_operands.hex"},         ops);
+    $readmemh({`KLR_ASM_DIR, "asm_operands_numeric.hex"}, opsnums);
+    $display("KLR: ASM tables loaded from %s", `KLR_ASM_DIR);
 end
 
 // ============================================================

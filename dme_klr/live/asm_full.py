@@ -12,10 +12,11 @@ bridge.mjs uses it when present. Re-run after editing the spreadsheets:
 
     python3 dme_klr/live/asm_full.py
 
-With --dme <xlsx> --out <json> it writes only the DME rows of that workbook
-({"dme": {...}}); dme_klr/dme_asm_select.sh uses this to put an asm_full.json
-in each disassemble/asm_<image>/ directory, which the bridge prefers for
-whichever DME image is loaded.
+With --dme <xlsx> --out <json> (or --klr) it writes only that CPU's rows of
+that workbook ({"dme": {...}}); dme_klr/asm_select.sh uses this to put an
+asm_full.json in each dme/disassemble/asm_<image>/ and
+klr/disassemble/asm_<image>/ directory, which the bridge prefers for
+whichever image is loaded.
 """
 import json
 import os
@@ -27,8 +28,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 SOURCES = {
     # cpu: (xlsx, operand column, numeric operand column)
-    'dme': (os.path.join(REPO, 'disassemble', 'disassembleperformance.xlsx'), 'operand_mapped', 'operands numeric'),
-    'klr': (os.path.join(REPO, 'bin_images', 'klr', '87KLR951.xlsx'), 'operands', None),
+    'dme': (os.path.join(REPO, 'dme', 'disassemble', 'disassembleperformance.xlsx'), 'operand_mapped', 'operands numeric'),
+    'klr': (os.path.join(REPO, 'klr', 'disassemble', '87KLR951.xlsx'), 'operands', None),
 }
 
 
@@ -45,12 +46,13 @@ def addr(v):
 
 def main():
     sources, dest = SOURCES, os.path.join(HERE, 'asm_full.json')
-    if '--dme' in sys.argv:
+    cpu = next((c for c in ('dme', 'klr') if f'--{c}' in sys.argv), None)
+    if cpu:
         args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
         if '--out' not in args:
-            print('usage: asm_full.py [--dme <xlsx> --out <json>]')
+            print('usage: asm_full.py [--dme|--klr <xlsx> --out <json>]')
             return 2
-        sources = {'dme': (os.path.abspath(args['--dme']),) + SOURCES['dme'][1:]}
+        sources = {cpu: (os.path.abspath(args[f'--{cpu}']),) + SOURCES[cpu][1:]}
         dest = args['--out']
     out = {}
     for cpu, (path, ops_col, num_col) in sources.items():

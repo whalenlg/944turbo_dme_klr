@@ -36,7 +36,10 @@ def main():
         max_addr = int(df['addr_int'].max())
         
         # Targeted columns
-        columns_to_extract = ['Opcode Ins', 'instr', 'operand_mapped', 'operands numeric']
+        # The DME sheets have operand_mapped (symbolic RAM names); the KLR
+        # sheets only have operands -> asm_operands.hex
+        ops_col = 'operand_mapped' if 'operand_mapped' in df.columns else 'operands'
+        columns_to_extract = ['Opcode Ins', 'instr', ops_col, 'operands numeric']
         WIDTH = 20
         # Iterate through every address up to ARRAY_SIZE-1 (not just
         # max_addr) so each output file always has exactly as many words as

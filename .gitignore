@@ -18,6 +18,6 @@ dashboard/
 *.swo
 klr/bench/verilog/i8048_regression
 __pycache__/
-# generated DME disassembly tables and workbook backups (dme_klr/dme_asm_select.sh)
-disassemble/asm_*/
-disassemble/*.prev.xlsx
+# generated DME/KLR disassembly tables and workbook backups (dme_klr/asm_select.sh)
+**/disassemble/asm_*/
+**/disassemble/*.prev.xlsx

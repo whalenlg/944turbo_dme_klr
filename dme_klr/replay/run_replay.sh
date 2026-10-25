@@ -107,10 +107,11 @@ DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
 DME_ROM_FILE="${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
 KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
-# DME disassembly tables to match DME_ROM_FILE (see dme_asm_select.sh)
-source "$DMEKLR_DIR/dme_asm_select.sh"
+# DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
+source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
 dme_asm_select ASM_DEFS || exit 1
+klr_asm_select ASM_DEFS || exit 1
 # DASH_INTERVAL_MS is effectively never: the only snapshots are the
 # per-row ones the replay driver requests.
 DEFINES=(-DDASHBOARD_TB -DDME_KLR_COMBINED -DLIVE
@@ -133,7 +134,7 @@ else
     DRIVER="$REPLAY_DIR/replay_main.cpp"
 fi
 # The ROM choice is baked in, so a different one forces a rebuild too
-ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE ${DME_ASM_SEL:-}"
+ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE ${DME_ASM_SEL:-} ${KLR_ASM_SEL:-}"
 if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
    [ "$(cat "$BIN.rom" 2>/dev/null)" != "$ROM_STAMP" ] || \
    [ -n "$(find "$DRIVER" "$DMEKLR_DIR/bench" "$REPO_DIR/dme/bench" "$REPO_DIR/dme/rtl" \
