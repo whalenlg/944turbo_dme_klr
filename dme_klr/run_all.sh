@@ -5,7 +5,8 @@
 #        iverilog/Verilator comparison, FQS analysis
 #
 #  Usage:
-#    ./run_all.sh [--verilator | --iverilog] [workers]
+#    ./run_all.sh [--verilator | --iverilog] [workers 1-8, default 8]
+#    ./run_all.sh --help
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
 #  comparison + FQS analysis step that depends on both). Pass --verilator or
@@ -17,24 +18,18 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "== git checkout main =="
-(cd "$ROOT" && git checkout main)
-echo "== git pull origin main =="
-(cd "$ROOT" && git pull origin main)
-
-DME_KLR="$ROOT/dme_klr"
-PASS=0; WARN=0; FAIL=0
-START_TIME=$(date +%s)
-
 # ── Parse args: --verilator / --iverilog restrict which simulator suite(s)
 #    run (steps 3-5); default (neither flag) runs both, as before.
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
+usage() { sed -n '3,14s/^# \{0,1\}//p' "$0"; }
 for arg in "$@"; do
     case "$arg" in
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
+        -h|--help)   usage; exit 0 ;;
+        -*)          echo "run_all.sh: unknown option '$arg'" >&2; usage >&2; exit 2 ;;
         *)           ARGS+=("$arg") ;;
     esac
 done
@@ -45,6 +40,24 @@ else
     RUN_IVERILOG="$_want_iverilog"
 fi
 WORKERS="${ARGS[0]:-8}"
+if ! [[ "$WORKERS" =~ ^[1-8]$ ]] || [ "${#ARGS[@]}" -gt 1 ]; then
+    echo "run_all.sh: workers must be a single number 1-8 (got '${ARGS[*]}')" >&2
+    usage >&2
+    exit 2
+fi
+
+echo "== git checkout main =="
+(cd "$ROOT" && git checkout main)
+echo "== git pull origin main =="
+(cd "$ROOT" && git pull origin main)
+
+DME_KLR="$ROOT/dme_klr"
+PASS=0; WARN=0; FAIL=0
+START_TIME=$(date +%s)
+# Summaries older than this marker are from a previous run and must not be
+# reported as this run's result (e.g. a suite that exits without running).
+RUN_MARKER=$(mktemp)
+trap 'rm -f "$RUN_MARKER"' EXIT
 
 # Colours
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -96,12 +109,17 @@ if [ "$RUN_VERILATOR" = "1" ]; then
     log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
     bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee /tmp/vl_suite.log
     log "Verilator test suite completed"
-    VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log 2>/dev/null | tail -1)
+    VL_SUMMARY_LOG=~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log
+    VL_SUMMARY=""
+    [ "$VL_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
+        VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$VL_SUMMARY_LOG" 2>/dev/null | tail -1)
     VL_PASS=$(echo "$VL_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
     VL_WARN=$(echo "$VL_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
     VL_FAIL=$(echo "$VL_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
     VL_TOTAL=$(echo "$VL_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
-    if [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
+    if [ -z "$VL_SUMMARY" ]; then
+        fail "Verilator — no summary from this run (suite did not complete)"
+    elif [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
         ok "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
     elif [ "${VL_FAIL:-0}" -eq 0 ]; then
         warn "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
@@ -120,12 +138,17 @@ if [ "$RUN_IVERILOG" = "1" ]; then
     log "Running: bash run_dashboard_parallel.sh $WORKERS"
     bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee /tmp/iv_suite.log
     log "iverilog test suite completed"
-    IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" ~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log 2>/dev/null | tail -1)
+    IV_SUMMARY_LOG=~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log
+    IV_SUMMARY=""
+    [ "$IV_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
+        IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$IV_SUMMARY_LOG" 2>/dev/null | tail -1)
     IV_PASS=$(echo "$IV_SUMMARY" | grep -o 'PASS: *[0-9]*' | grep -o '[0-9]*')
     IV_WARN=$(echo "$IV_SUMMARY" | grep -o 'WARN: *[0-9]*' | grep -o '[0-9]*')
     IV_FAIL=$(echo "$IV_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
     IV_TOTAL=$(echo "$IV_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
-    if [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
+    if [ -z "$IV_SUMMARY" ]; then
+        fail "iverilog  — no summary from this run (suite did not complete)"
+    elif [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
         ok "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
     elif [ "${IV_FAIL:-0}" -eq 0 ]; then
         warn "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
