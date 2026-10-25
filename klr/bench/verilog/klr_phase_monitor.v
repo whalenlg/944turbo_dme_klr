@@ -80,7 +80,9 @@ always @(posedge clk) begin  // klr_phase_monitor
         // Hold prevs during reset. The DME trigger drives the KLR's /RESET
         // every cycle and the ports float high, so ign_out can rise here
         // without an "asserted" line; its later fall is not a spark.
-        if (ign_out && !ph_klr_ign_prev) ph_klr_ign_rst_hi <= 1'b1;
+        // Case equality so an X->1 rise (Icarus leaves the KLR X until
+        // its first reset) is caught too.
+        if (ign_out === 1'b1 && ph_klr_ign_prev !== 1'b1) ph_klr_ign_rst_hi <= 1'b1;
         ph_klr_ign_prev      <= ign_out;
         ph_klr_knock_prev    <= knock_out;
         ph_klr_fullload_prev <= full_load;
@@ -92,7 +94,7 @@ always @(posedge clk) begin  // klr_phase_monitor
         // Reset just released — sample actual signal values to prevent
         // false edges. vlt inits all regs to 0 so signals may already
         // be non-zero before the firmware runs.
-        if (ign_out && !ph_klr_ign_prev) ph_klr_ign_rst_hi <= 1'b1;
+        if (ign_out === 1'b1 && ph_klr_ign_prev !== 1'b1) ph_klr_ign_rst_hi <= 1'b1;
         ph_klr_ign_prev      <= ign_out;
         ph_klr_knock_prev    <= knock_out;
         ph_klr_fullload_prev <= full_load;
