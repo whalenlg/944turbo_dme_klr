@@ -205,6 +205,17 @@ def _values_differ(a_v, b_v, tolerance=0.01):
         return abs(fa - fb) / denom > tolerance
     return True
 
+# Raw ADC readings that move continuously (the throttle during a ramp):
+# a 100 ms snapshot landing a moment earlier or later reads one count
+# apart, e.g. ramp_to_redline's tps_deg 70 vs 69 at t=2010 ms
+FIELD_ABS_TOLERANCE = {"tps_deg": 1, "tps_raw": 1}
+
+def _within_abs(a_v, b_v, abs_tol):
+    a_s, b_s = str(a_v), str(b_v)
+    if _numeric_re.match(a_s) and _numeric_re.match(b_s):
+        return abs(float(a_s) - float(b_s)) <= abs_tol
+    return False
+
 def _values_differ_settling(a_v, b_v, cfg):
     """_values_differ for a SIM_SETTLING_TESTS test: numeric values match
     within max(cfg['abs'], cfg['rel'] * value); others need equality."""
@@ -231,6 +242,8 @@ def field_mismatch_mask(a_seq, b_seq, field, tolerance=0.01):
             continue
         if cfg is None:
             mask[i] = _values_differ(a_row[field], b_row[field], tolerance)
+            if mask[i] and field in FIELD_ABS_TOLERANCE:
+                mask[i] = not _within_abs(a_row[field], b_row[field], FIELD_ABS_TOLERANCE[field])
             continue
         lo, hi = max(0, i - cfg["skew"]), min(len(b_seq), i + cfg["skew"] + 1)
         mask[i] = all(_values_differ_settling(a_row[field], b_seq[j][field], cfg)
