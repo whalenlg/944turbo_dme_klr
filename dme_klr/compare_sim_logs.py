@@ -334,11 +334,16 @@ def klr_start_ms(iv_lines, vl_lines):
         return 0
     return max(first_defined(iv_lines), first_defined(vl_lines))
 
-def drop_klr_phase_before(lines, t_ms):
-    """Drop KLR [PHASE] lines logged before t_ms (see klr_start_ms)."""
+# Lines dropped before klr_start_ms: KLR events, and [STATUS] snapshots of
+# both CPUs, whose startup values (e.g. DME flags(23) in afm_open_circuit)
+# can differ until Icarus's X state has settled
+_STARTUP_PREFIXES = ("KLR: [PHASE]", "KLR: [STATUS]", "DME: [STATUS]")
+
+def drop_startup_before(lines, t_ms):
+    """Drop _STARTUP_PREFIXES lines logged before t_ms (see klr_start_ms)."""
     out = []
     for l in lines:
-        if l.startswith("KLR: [PHASE]"):
+        if l.startswith(_STARTUP_PREFIXES):
             m = _PHASE_T_RE.search(l)
             if m and int(m.group(1)) < t_ms:
                 continue
@@ -706,10 +711,11 @@ def compare_dash(iv_lines, vl_lines, name):
     iv_lines = [l for l in iv_lines if not _skip.search(l)]
     vl_lines = [l for l in vl_lines if not _skip.search(l)]
     # KLR events from before both simulators have a defined KLR exist in
-    # only one log (see klr_start_ms); drop them before counting/comparing
+    # only one log (see klr_start_ms), and startup [STATUS] values can
+    # differ until then; drop them before counting/comparing
     t0 = klr_start_ms(iv_lines, vl_lines)
-    iv_lines = drop_klr_phase_before(iv_lines, t0)
-    vl_lines = drop_klr_phase_before(vl_lines, t0)
+    iv_lines = drop_startup_before(iv_lines, t0)
+    vl_lines = drop_startup_before(vl_lines, t0)
     issues = []
 
     prefixes = [
