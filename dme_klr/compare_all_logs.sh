@@ -35,7 +35,11 @@ DASH_TESTS=(
     altitude_disconnected
     cl_ac_halfway
     cl_cold_start
+    cl_condition_cycle
+    cl_condition_cycle_idle
+    cl_ramp_to_2100_BOOST_HIGH
     cl_ramp_to_3000
+    cl_ramp_to_3000_BOOST
     cl_ramp_to_3000_FQS0
     cl_ramp_to_3000_FQS1
     cl_ramp_to_3000_FQS2
@@ -44,7 +48,22 @@ DASH_TESTS=(
     cl_ramp_to_3000_FQS5
     cl_ramp_to_3000_FQS6
     cl_ramp_to_3000_FQS7
+    cl_ramp_to_3000_KLR_BATT_DISCONNECTED
+    cl_ramp_to_3000_KLR_BATT_LOW
+    cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH
+    cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW
+    cl_ramp_to_3000_KLR_KNOCK_BLOCKED
+    cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW
+    cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH
+    cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW
+    cl_ramp_to_3000_TPS0
+    cl_ramp_to_4500
+    cl_ramp_to_5000_BOOST_LOW
     cl_ramp_to_6000
+    cl_ramp_to_6000_BOOST
+    cl_ramp_to_6000_BOOST_HIGH
+    cl_ramp_to_6000_BOOST_LOW
+    cl_ramp_to_6000_BOOST_ZERO
     cl_ramp_to_6000_FQS0
     cl_ramp_to_6000_FQS1
     cl_ramp_to_6000_FQS2
@@ -53,9 +72,10 @@ DASH_TESTS=(
     cl_ramp_to_6000_FQS5
     cl_ramp_to_6000_FQS6
     cl_ramp_to_6000_FQS7
+    cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH
+    cl_ramp_to_6000_KLR_ADC0_NOISE_LOW
+    cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW
     cl_ramp_to_redline
-    cl_condition_cycle
-    cl_condition_cycle_idle
     cl_tippy_in
     cl_warm_idle
     cold_start
@@ -70,6 +90,8 @@ DASH_TESTS=(
     ignition_timing
     isv_cold_idle
     isv_load_droop
+    knock_sensor_defect
+    knock_sensor_short_to_ground
     o2_baseline
     o2_disconnected
     o2_lean_stuck
@@ -94,8 +116,10 @@ DASH_TESTS=(
     ramp_to_6000_FQS5
     ramp_to_6000_FQS6
     ramp_to_6000_FQS7
+    ramp_to_6000_knock
     ramp_to_6300
     ramp_to_redline
+    ramp_to_redline_KLR_TPS_HIGH
     ref_sensor_loss
     speed_sensor_loss
     tps_fail
@@ -112,6 +136,14 @@ if [ $# -gt 0 ]; then
     TESTS=("$@")
 else
     TESTS=("${DASH_TESTS[@]}")
+    # Also pick up any test that has a .dash.log on either side but isn't
+    # listed above (a test added to the run scripts later, a replay run),
+    # so the list going stale can't silently drop tests from the compare
+    for _f in "$IV_DASH_DIR"/*.dash.log "$VL_DASH_DIR"/*.dash.log; do
+        [ -e "$_f" ] || continue
+        _n="$(basename "$_f" .dash.log)"
+        case " ${TESTS[*]} " in *" $_n "*) ;; *) TESTS+=("$_n") ;; esac
+    done
 fi
 
 IV_DIR="$IV_DASH_DIR"
