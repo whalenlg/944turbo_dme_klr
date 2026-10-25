@@ -27,6 +27,11 @@ KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
+# DME disassembly tables to match DME_ROM_FILE (see dme_asm_select.sh)
+source "$DMEKLR_DIR/dme_asm_select.sh"
+ASM_DEFS=()
+dme_asm_select ASM_DEFS
+
 cd "$DMEKLR_DIR"
 verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
@@ -41,6 +46,7 @@ verilator --cc --exe --build --timing -j 0 \
     -DDASH_INTERVAL_MS="$DASH_INTERVAL_MS" \
     -DDME_ROM_DIR="\"$DME_ROM_DIR\"" -DDME_ROM_FILE="\"$DME_ROM_FILE\"" \
     -DKLR_ROM_DIR="\"$KLR_ROM_DIR\"" -DKLR_ROM_FILE="\"$KLR_ROM_FILE\"" \
+    "${ASM_DEFS[@]}" \
     -Wno-fatal -Wno-PINMISSING -Wno-IMPLICIT -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND \
     -Wno-REDEFMACRO -Wno-DEFOVERRIDE -Wno-CASEINCOMPLETE -Wno-LATCH -Wno-MULTIDRIVEN \
     "$@" \

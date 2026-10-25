@@ -634,14 +634,22 @@ $dumpvars(1,`TB.tdc);
     registers.call_depth_last_pc=16'hFFFF;
     registers.call_depth_irq_prev=1'b0;
     registers.call_depth_hi_prev=1'b0;
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/test_sim.hex",debug_msg);
+    // Disassembly text tables for the ROM in use. Override at compile time
+    // (dme_klr/dme_asm_select.sh does this for ROMs with their own
+    // workbook, e.g. -DDME_ASM_DIR=\".../disassemble/asm_1986/\").
+    // The RAM symbol maps are the same for every image and stay here.
+`ifndef DME_ASM_DIR
+`define DME_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/disassemble/"
+`endif
+    $readmemh({`DME_ASM_DIR, "test_sim.hex"},debug_msg);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_byte_map.hex",memory_byte_map);
     $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_opcode_ins.hex",opcode);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_instr.hex",instr);
- //   $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands.hex",ops);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operand_mapped.hex",ops);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/asm_operands_numeric.hex",opsnums);
+    $readmemh({`DME_ASM_DIR, "asm_opcode_ins.hex"},opcode);
+    $readmemh({`DME_ASM_DIR, "asm_instr.hex"},instr);
+ //   $readmemh({`DME_ASM_DIR, "asm_operands.hex"},ops);
+    $readmemh({`DME_ASM_DIR, "asm_operand_mapped.hex"},ops);
+    $readmemh({`DME_ASM_DIR, "asm_operands_numeric.hex"},opsnums);
+    $display("DME: ASM tables loaded from %s", `DME_ASM_DIR);
     end
 
 //DEBUG — ISV P1.4 deadlock detector
