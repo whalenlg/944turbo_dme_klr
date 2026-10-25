@@ -20,6 +20,7 @@ Output (one summary line + detail):
 import sys
 import re
 import argparse
+import statistics
 from collections import Counter
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -48,18 +49,41 @@ _HBLB_RE = re.compile(r'^(.+)_(hb|lb)$', re.IGNORECASE)
 # Fields to drop entirely for a given [STATUS] prefix — never extracted, so
 # they never show up in mismatch counts, --verbose dumps, or --plot output.
 IGNORED_STATUS_FIELDS = {
-    "KLR: [STATUS]": {"pc", "r5", "sp", "r2", "r4", "timer_val"},
+    # mb/irq are where the CPU happens to be when the 100 ms snapshot lands
+    # (bank select, inside the timer ISR), like pc: a few rows flip in most
+    # ramp tests without the firmware doing anything different
+    "KLR: [STATUS]": {"pc", "r5", "sp", "r2", "r4", "timer_val", "mb", "irq"},
 }
 
 # Fields to drop only for specific named tests (test name = the CLI `name`
 # argument), for cases where a field is noisy in a handful of tests but
 # should stay compared everywhere else. Keys are lowercased field names.
 IGNORED_STATUS_FIELDS_BY_TEST = {
+    "DME: [STATUS]": {
+        # Snapshots of where the CPU is (B register scratch, watchdog
+        # countdown); see SIM_SETTLING_TESTS
+        "b":      {"cl_tippy_in"},
+        "wdog":   {"cl_tippy_in"},
+    },
     "KLR: [STATUS]": {
         "cv_pwm": {"cold_start", "isv_cold_idle", "isv_load_droop", "warmup_enrichment"},
-        "irq":    {"cl_ramp_to_6000_FQS1", "cl_ramp_to_6000_FQS7"},
-        "mb":     {"cl_ramp_to_6000_FQS1", "cl_ramp_to_6000_FQS7"},
+        # Mid-dwell or not when the snapshot lands; see SIM_SETTLING_TESTS
+        "ign_out": {"cl_tippy_in"},
     },
+}
+
+# Tests whose engine runs slightly out of step between the simulators, so
+# their [STATUS] values are compared loosely. Verilator has no X states: it
+# zero-inits and settles on known values sooner than Icarus, so it reaches
+# a transient (e.g. the cl_tippy_in throttle tip-in) a little earlier and
+# stays a snapshot or so ahead for the rest of the run. That is a simulator
+# difference, not a model one. For these tests a value matches if it is
+# within max(abs, rel * value) of the other simulator's value in any row
+# up to `skew` snapshots away. Measured on cl_tippy_in: fuel/load within
+# ~5% and prpm/tps_raw within ~9% at one row of skew, integer fields
+# (timing_adv, wu, dwell) within 1-2 counts.
+SIM_SETTLING_TESTS = {
+    "cl_tippy_in": {"skew": 1, "abs": 2, "rel": 0.10},
 }
 
 # Set once in main() from args.name; consulted by IGNORED_STATUS_FIELDS_BY_TEST
@@ -180,18 +204,36 @@ def _values_differ(a_v, b_v, tolerance=0.01):
         return abs(fa - fb) / denom > tolerance
     return True
 
+def _values_differ_settling(a_v, b_v, cfg):
+    """_values_differ for a SIM_SETTLING_TESTS test: numeric values match
+    within max(cfg['abs'], cfg['rel'] * value); others need equality."""
+    if a_v == b_v:
+        return False
+    a_s, b_s = str(a_v), str(b_v)
+    if _numeric_re.match(a_s) and _numeric_re.match(b_s):
+        fa, fb = float(a_s), float(b_s)
+        return abs(fa - fb) > max(cfg["abs"], cfg["rel"] * max(abs(fa), abs(fb)))
+    return True
+
 def field_mismatch_mask(a_seq, b_seq, field, tolerance=0.01):
     """Boolean mask over aligned rows: True where `field` differs beyond
     tolerance. A row where the field is missing from either side is False
     (no mismatch there), which also breaks a run of consecutive mismatches.
+    For a SIM_SETTLING_TESTS test, a row matches any b row within `skew`.
     """
     n = min(len(a_seq), len(b_seq))
     mask = [False] * n
+    cfg = SIM_SETTLING_TESTS.get(CURRENT_TEST_NAME)
     for i in range(n):
         a_row, b_row = a_seq[i], b_seq[i]
         if field not in a_row or field not in b_row:
             continue
-        mask[i] = _values_differ(a_row[field], b_row[field], tolerance)
+        if cfg is None:
+            mask[i] = _values_differ(a_row[field], b_row[field], tolerance)
+            continue
+        lo, hi = max(0, i - cfg["skew"]), min(len(b_seq), i + cfg["skew"] + 1)
+        mask[i] = all(_values_differ_settling(a_row[field], b_seq[j][field], cfg)
+                      for j in range(lo, hi) if field in b_seq[j])
     return mask
 
 def filter_isolated_mismatches(mask, min_run=MIN_CONSECUTIVE_MISMATCH):
@@ -273,6 +315,8 @@ SPARK_DELAY_REL_TOL    = 0.05
 # differs between the simulators (Verilator zero-inits and runs the KLR
 # before its first reset; Icarus is X until then), so skip them.
 SPARK_DELAY_SKIP = 3
+# spark_delay is compared as a median per window of this much sim time
+SPARK_DELAY_WINDOW_MS = 500
 
 def klr_start_ms(iv_lines, vl_lines):
     """Earliest time both logs have a defined KLR: the later of each log's
@@ -354,31 +398,34 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
     return issues
 
 def compare_spark_delays(iv_p, vl_p, prefix):
-    """Compare spark_delay pulse by pulse (both lists aligned by index, as
-    in compare_phase_sequence). Isolated outliers are dropped like other
-    field blips; only runs of MIN_CONSECUTIVE_MISMATCH+ count."""
-    def delays(phases):
-        out = []
+    """Compare spark_delay as the median over SPARK_DELAY_WINDOW_MS windows
+    of sim time. Pairing sparks one-for-one breaks as soon as one log has
+    an extra or missing spark (everything after is off by one), and single
+    sparks jitter by a KLR timer step between the simulators; a window
+    median only moves when the retard itself does. Only runs of
+    MIN_CONSECUTIVE_MISMATCH+ mismatching windows count."""
+    def windows(phases):
+        bins = {}
         for _, raw in phases[SPARK_DELAY_SKIP:]:
             m = _SPARK_RE.search(raw)
             t = _PHASE_T_RE.search(raw)
-            out.append((float(m.group(1)) if m else None, t.group(1) if t else '?'))
-        return out
-    iv_d, vl_d = delays(iv_p), delays(vl_p)
+            if m and t:
+                bins.setdefault(int(t.group(1)) // SPARK_DELAY_WINDOW_MS, []).append(float(m.group(1)))
+        return {k: statistics.median(v) for k, v in bins.items()}
+    iv_w, vl_w = windows(iv_p), windows(vl_p)
+    keys = sorted(set(iv_w) & set(vl_w))
     mask = []
-    for (a, _), (b, _) in zip(iv_d, vl_d):
-        if a is None or b is None:
-            mask.append(False)
-            continue
+    for k in keys:
+        a, b = iv_w[k], vl_w[k]
         tol = max(SPARK_DELAY_ABS_TOL_US, SPARK_DELAY_REL_TOL * max(a, b))
         mask.append(abs(a - b) > tol)
     mask = filter_isolated_mismatches(mask)
     n = sum(mask)
     if not n:
         return []
-    i = mask.index(True)
-    return [f"{prefix} spark_delay mismatches: {n} of {len(mask)} pulses, first at "
-            f"iv t={iv_d[i][1]} ms {iv_d[i][0]:.3f} us vs vl t={vl_d[i][1]} ms {vl_d[i][0]:.3f} us"]
+    k = keys[mask.index(True)]
+    return [f"{prefix} spark_delay mismatches: {n} of {len(keys)} {SPARK_DELAY_WINDOW_MS} ms windows, "
+            f"first at t={k * SPARK_DELAY_WINDOW_MS} ms median iv={iv_w[k]:.3f} us vl={vl_w[k]:.3f} us"]
 
 def field_diff_rows(a_st, b_st, field, max_rows=20, tolerance=0.01, min_run=MIN_CONSECUTIVE_MISMATCH):
     """Return up to `max_rows` (index, t, a_val, b_val) tuples where `field`
