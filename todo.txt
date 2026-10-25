@@ -1,27 +1,42 @@
 
+KLR
+Cleanup rdata , wdata and addresses
+Fake WN, RN pulses.
+
+
+Cleanup debug messages, read and write cycles
+
+Others
+
 Add zooms to the graphs in the GUI
 
 Mystery of the 8a case (mem reference) - MOX?
+
+Fix the IGN out missing pulses
 
 Check for overboosts
 
 Chec for overrpm
 
-Fix GUI for new temp vaiarbles
-
-Add low battery to condition test
-
 Check rpm limits (poke a smaller value?)
+
+Code 4-2 on 6k+ tests
 
 Cylinder tracking in log files and signal in tb
 
+Fail tests for all inputs
+
 
 KLR
-Add map sensor to ADC page
-Figure out how to drive map sensor
-Fail tests for all inputs
-Condition test for KLR - low volts on TPS, 
-Add tests to disconnect/short klr sensors, power supply pins
+Trigger
+IGN from DME
+
+
+Better analysis of CV_PWM & tie in to boost level 
+Better analysis of IdleCtrlValveOpen
+Check DME relay active
+
+
 
 ADC chan 6 yielding 87 which ends up as an address that is unknown >7F
 Knock isn't detached on GUI
@@ -37,18 +52,11 @@ Add monitor to extract table lookups
 
 Annotate disassembly with JohnB comments
 
-Set up to change binaries
-
-
 S/w emulator:
 
-Load hex
+X oad hex
 
 Run
-
-Default inputs
-
-Controls - TPS, air temp, water temp, fqs, knock - setting/disconnect
  
 
 
