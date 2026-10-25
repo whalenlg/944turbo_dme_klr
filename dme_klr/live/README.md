@@ -25,8 +25,27 @@ place and the CPU carries on from its current PC and RAM.
 The bridge saves uploaded images under `obj/roms/<cpu>/` and passes them to
 every later restart (`+dme_rom=<path>` / `+klr_rom=<path>`), until another
 image is loaded or the bridge itself is restarted. From a terminal:
-`rom dme|klr <path>` while paused. The disassembly listing still comes from
-the default images' tables, so it won't match a different firmware.
+`rom dme|klr <path>` while paused. The bridge refuses a KLR image (any
+`bin_images/klr/*.mem`, matched by content or file name) loaded into the DME.
+
+The DME debugger listing follows the image in the DME EPROM. Each time the
+sim reports a DME image (start, restart, load), the bridge matches it, by
+content and then by file name, against the images that have a workbook:
+
+| image | listing from |
+|---|---|
+| `28PIN_DME_PERFORMANCE.mem` | `disassemble/disassembleperformance.xlsx` |
+| `28PIN_86DME.mem` | `disassemble/disassemble1986.xlsx` |
+| `89DME_951pin.mem` | `disassemble/disassemble1989.xlsx` |
+
+It brings that workbook's tables in `disassemble/asm_<image>/` up to date
+(`dme_klr/dme_asm_select.sh`, the same helper the run scripts use, so a
+changed `disassembleperformance.xlsx` regenerates the 1986/1989 workbooks
+too), swaps the listing, and sends `SIM: [ASM] dme <workbook> match=...`;
+the dashboard then fetches the listing again and shows the workbook in the
+ROM IMAGES row. An image that matches none of them keeps the default
+`disassemble/` listing and shows **ASM: no workbook**. `--dme-asm <dir>`
+pins the listing to one directory instead. The KLR listing doesn't change.
 
 ## Inputs (`set <name> <value>`)
 
@@ -72,7 +91,8 @@ time) on a 4-core cloud container.
 The asm_*.hex tables cut labels and operands at 20 characters. `asm_full.json`
 holds them in full (plus the spreadsheets' descriptions, shown as row tooltips)
 and the bridge uses it where it agrees with the hex tables. After editing
-`disassemble/disassemble3.xlsx` or `bin_images/klr/87KLR951.xlsx`, regenerate it
+`disassemble/disassembleperformance.xlsx` or `bin_images/klr/87KLR951.xlsx`, regenerate it
+(the per-image DME copies in `disassemble/asm_*/` are regenerated automatically)
 (needs pandas and openpyxl):
 
     python3 dme_klr/live/asm_full.py

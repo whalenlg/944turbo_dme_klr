@@ -11,6 +11,11 @@ asm_full.json next to this script:
 bridge.mjs uses it when present. Re-run after editing the spreadsheets:
 
     python3 dme_klr/live/asm_full.py
+
+With --dme <xlsx> --out <json> it writes only the DME rows of that workbook
+({"dme": {...}}); dme_klr/dme_asm_select.sh uses this to put an asm_full.json
+in each disassemble/asm_<image>/ directory, which the bridge prefers for
+whichever DME image is loaded.
 """
 import json
 import os
@@ -22,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, '..', '..'))
 SOURCES = {
     # cpu: (xlsx, operand column, numeric operand column)
-    'dme': (os.path.join(REPO, 'disassemble', 'disassemble3.xlsx'), 'operand_mapped', 'operands numeric'),
+    'dme': (os.path.join(REPO, 'disassemble', 'disassembleperformance.xlsx'), 'operand_mapped', 'operands numeric'),
     'klr': (os.path.join(REPO, 'bin_images', 'klr', '87KLR951.xlsx'), 'operands', None),
 }
 
@@ -39,8 +44,16 @@ def addr(v):
 
 
 def main():
+    sources, dest = SOURCES, os.path.join(HERE, 'asm_full.json')
+    if '--dme' in sys.argv:
+        args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
+        if '--out' not in args:
+            print('usage: asm_full.py [--dme <xlsx> --out <json>]')
+            return 2
+        sources = {'dme': (os.path.abspath(args['--dme']),) + SOURCES['dme'][1:]}
+        dest = args['--out']
     out = {}
-    for cpu, (path, ops_col, num_col) in SOURCES.items():
+    for cpu, (path, ops_col, num_col) in sources.items():
         df = pd.read_excel(path, sheet_name='ASM')
         rows = {}
         for _, r in df.iterrows():
@@ -55,7 +68,7 @@ def main():
             rows[str(a)] = e
         out[cpu] = rows
         print(f'{cpu}: {len(rows)} rows from {os.path.relpath(path, REPO)}')
-    with open(os.path.join(HERE, 'asm_full.json'), 'w') as f:
+    with open(dest, 'w') as f:
         json.dump(out, f, separators=(',', ':'))
     return 0
 
