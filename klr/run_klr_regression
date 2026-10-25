@@ -1,5 +1,5 @@
 #!/bin/bash
-#python3 ../disassemble/csv2veriloghex.py ../disassemble/test_sim.csv ../disassemble/test_sim.hex 
+#python3 ../dme/disassemble/csv2veriloghex.py ../dme/disassemble/test_sim.csv ../dme/disassemble/test_sim.hex 
 #python3 hex2mem48.py  89KLR_951.hex 89KLR_951.mem
 mkdir -p ../../tmp/klr/fst
 rm -f ../../tmp/klr/i8048_regression_tb.vvp
@@ -10,12 +10,10 @@ source  ../8051_Debug/bin/activate
 # 4096 = the KLR i8048 core's address space (klr_vcd.v's debug_msg/opcode/
 # instr/ops/opsnums[0:4095]) — smaller than the DME 8051's 8192-word space
 # these scripts default to, so it must be passed explicitly here.
-python3 ../disassemble/xlsx2veriloghex.py ../bin_images/klr/87KLR951.xlsx ../bin_images/klr/test_sim.hex 4096
-python3 ../disassemble/xlsxmembyte2veriloghex.py  ../bin_images/klr/87KLR951.xlsx ../bin_images/klr/memory_byte_map.hex
-python3 ../disassemble/xlsxinstr2veriloghex.py  ../bin_images/klr/87KLR951.xlsx 4096
+# Default KLR tables (87KLR951.xlsx) in klr/disassemble/; the other KLR
+# images' tables are made by dme_klr/asm_select.sh.
+python3 ../dme/disassemble/xlsx2veriloghex.py disassemble/87KLR951.xlsx disassemble/test_sim.hex 4096
+python3 ../dme/disassemble/xlsxmembyte2veriloghex.py  disassemble/87KLR951.xlsx disassemble/memory_byte_map.hex
+(cd disassemble && python3 ../../dme/disassemble/xlsxinstr2veriloghex.py 87KLR951.xlsx 4096)
 deactivate
-mv asm_instr.hex ../bin_images/klr
-mv asm_opcode_ins.hex ../bin_images/klr
-mv asm_operands_numeric.hex ../bin_images/klr
-mv asm_operands.hex ../bin_images/klr
 

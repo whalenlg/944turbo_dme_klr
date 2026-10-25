@@ -28,8 +28,8 @@
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# DME disassembly tables to match DME_ROM_FILE (see dme_asm_select.sh)
-source "$SCRIPT_DIR/dme_asm_select.sh"
+# DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
+source "$SCRIPT_DIR/asm_select.sh"
 
 # ── Mode: dashboard-only ─────────────────────────────────────────────────────
 MODE="dash"
@@ -236,6 +236,7 @@ compile_and_run_klr() {
     [ -n "$KLR_ROM_DIR"  ] && rom_overrides+=("-DKLR_ROM_DIR=\"${KLR_ROM_DIR}\"")
     [ -n "$KLR_ROM_FILE" ] && rom_overrides+=("-DKLR_ROM_FILE=\"${KLR_ROM_FILE}\"")
     dme_asm_select rom_overrides || return 1
+    klr_asm_select rom_overrides || return 1
 
     # Record what was actually requested here too (this goes to the
     # runner's own stdout, i.e. the .runner.log) — the $display in

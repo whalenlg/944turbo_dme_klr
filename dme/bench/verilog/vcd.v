@@ -635,15 +635,15 @@ $dumpvars(1,`TB.tdc);
     registers.call_depth_irq_prev=1'b0;
     registers.call_depth_hi_prev=1'b0;
     // Disassembly text tables for the ROM in use. Override at compile time
-    // (dme_klr/dme_asm_select.sh does this for ROMs with their own
-    // workbook, e.g. -DDME_ASM_DIR=\".../disassemble/asm_1986/\").
+    // (dme_klr/asm_select.sh does this for ROMs with their own
+    // workbook, e.g. -DDME_ASM_DIR=\".../dme/disassemble/asm_1986/\").
     // The RAM symbol maps are the same for every image and stay here.
 `ifndef DME_ASM_DIR
-`define DME_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/disassemble/"
+`define DME_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/"
 `endif
     $readmemh({`DME_ASM_DIR, "test_sim.hex"},debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_byte_map.hex",memory_byte_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/disassemble/memory_bit_map.hex",memory_bit_map);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/memory_byte_map.hex",memory_byte_map);
+    $readmemh("/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/memory_bit_map.hex",memory_bit_map);
     $readmemh({`DME_ASM_DIR, "asm_opcode_ins.hex"},opcode);
     $readmemh({`DME_ASM_DIR, "asm_instr.hex"},instr);
  //   $readmemh({`DME_ASM_DIR, "asm_operands.hex"},ops);
