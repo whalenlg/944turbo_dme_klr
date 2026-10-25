@@ -24,7 +24,16 @@ Model-side value of each channel
               the KLR's spark (falling edge of its coil output, which
               is high for the dwell), in crank degrees at the log RPM
   klr_adv     ign_adv - klr_retard
-  inj_ms      DME iram[4Bh:4Ah] * 2 us (computed pulse width)
+  inj_ms      measured injector pulse: P1.0 low time of the latest pulse
+              that ended by the row's time (SIM: [INJ]), which is what
+              the injectors got, dead time included. n/a when that pulse
+              ended more than two revolutions earlier: the injector has
+              either been held open (P1.0 low, pulse >= the period) or not
+              fired at all since, and the summary counts which
+  inj_ms_ram  ({4Bh,4Ah} + 5 * 54h) * 2 us: the computed pulse width plus
+              the injector dead time, which the firmware adds (5 x 54h
+              into r7:r6) before loading the timer with 65536 - ticks.
+              Reported for comparison only, it never fails the run
   dwell_ms    width of the last KLR coil pulse (SIM: [IGN] klr)
   icv_pct     ISV PWM duty from the timer-1 reloads: P1.4-high time
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
@@ -57,6 +66,7 @@ TOLERANCES = {           # absolute, in the channel's own units
     'klr_adv': 1.5,
     'klr_retard': 1.5,
     'inj_ms': 0.3,
+    'inj_ms_ram': 0.3,
     'dwell_ms': 0.5,
     'icv_pct': 5.0,
     'rpm': 80.0,         # iram[37h] has 40 rpm resolution
@@ -67,7 +77,10 @@ CHANNELS = list(TOLERANCES)
 # Channels that only mean something when the event happens: with no knock
 # on either side the row-by-row match is trivially 100%, so they report n/a.
 EVENT_CHANNELS = {'knock_pin'}
-EXPECT_COL = {'knock_pin': 'knocking'}     # channel -> expect.csv column, where they differ
+EXPECT_COL = {'knock_pin': 'knocking',    # channel -> expect.csv column, where they differ
+              'inj_ms_ram': 'inj_ms'}
+# Reported alongside the others but never fail the run
+INFO_CHANNELS = {'inj_ms_ram'}
 KNOCK_RE = re.compile(r'^KLR: \[PHASE\] t=(\d+) ms\s+KNOCK_OUT cleared')
 
 ROW_RE = re.compile(r'^SIM: \[ROW\] idx=(\d+) log_ms=([\d.]+) t_ns=(\d+)')
@@ -86,7 +99,7 @@ def hexbytes(h):
 
 def parse_sim(path):
     rows = {}            # idx -> dict(t_ns, dme, klr, klr_bits)
-    ign = {'dme': [], 'klr': [], 'tach': [], 'knock_ms': []}
+    ign = {'dme': [], 'klr': [], 'tach': [], 'knock_ms': [], 'inj': []}
     cur = None
     with open(path, errors='replace') as f:
         for line in f:
@@ -98,6 +111,10 @@ def parse_sim(path):
             if m:
                 cur = int(m.group(1))
                 rows[cur] = {'t_ns': int(m.group(3)), 'log_ms': float(m.group(2))}
+                continue
+            m = INJ_RE.match(line)
+            if m:
+                ign['inj'].append((int(m.group(1)), int(m.group(2))))
                 continue
             m = IGN_RE.match(line)
             if m:
@@ -112,6 +129,8 @@ def parse_sim(path):
                 parts = line[9:].strip().split(',')
                 if len(parts) >= 2 and len(parts[1]) >= 256:
                     rows[cur]['dme'] = hexbytes(parts[1])
+                if len(parts) >= 3 and re.fullmatch(r'[0-9a-fA-F]{2}', parts[2].strip()[:2]):
+                    rows[cur]['dme_p1'] = int(parts[2].strip()[:2], 16)
             elif line.startswith('KLR: [DS]') and 'klr' not in rows[cur]:
                 parts = line[9:].strip().split(',')
                 if len(parts) >= 4:
@@ -137,8 +156,8 @@ def model_values(row, ign, rpm_log):
     if d:
         if d[0x31] is not None:
             v['ign_adv'] = d[0x31] * HALF_TOOTH_DEG
-        if d[0x4A] is not None and d[0x4B] is not None:
-            v['inj_ms'] = ((d[0x4B] << 8) | d[0x4A]) * 2 / 1000.0
+        if None not in (d[0x4A], d[0x4B], d[0x54]):
+            v['inj_ms_ram'] = (((d[0x4B] << 8) | d[0x4A]) + 5 * d[0x54]) * 2 / 1000.0
         if d[0x37] is not None:
             v['rpm'] = d[0x37] * 40.0
         if None not in (d[0x40], d[0x41], d[0x44], d[0x45]):
@@ -146,6 +165,9 @@ def model_values(row, ign, rpm_log):
             lo = 65536 - ((d[0x45] << 8) | d[0x44])
             if hi + lo > 0:
                 v['icv_pct'] = 100.0 * hi / (hi + lo)
+    p = last_before(ign['inj'], t)
+    if p and rpm_log and t - p[0] <= 2 * 60e9 / rpm_log:
+        v['inj_ms'] = p[1] / 1e6
     # KLR retard: latest KLR spark, against the DME spark command before it
     k = last_before(ign['klr'], t)
     if k:
@@ -189,6 +211,7 @@ def write_mismatch_xlsx(path, mism, stats, tol, min_pass):
                    sum(st['err']) / n if n else None,
                    max((abs(x) for x in st['err']), default=None),
                    'N/A' if c in EVENT_CHANNELS and not st['events']
+                   else 'INFO' if c in INFO_CHANNELS
                    else 'PASS' if n and st['pass'] / n >= min_pass else 'FAIL'])
     for row in ws.iter_rows(min_row=2, min_col=5, max_col=5):
         row[0].number_format = '0%'
@@ -268,6 +291,18 @@ def main():
                              'tps_status': exp['tps_status']})
 
     played = sum(1 for i in range(len(expect)) if i + a.lag_rows in rows)
+    # Rows with no injector pulse in the last two revolutions: held open or not firing
+    held = idle = 0
+    for i, exp in enumerate(expect):
+        r = rows.get(i + a.lag_rows)
+        if not r or not float(exp['rpm']):
+            continue
+        p = last_before(ign['inj'], r['t_ns'])
+        if p is None or r['t_ns'] - p[0] > 2 * 60e9 / float(exp['rpm']):
+            if r.get('dme_p1') is not None and not r['dme_p1'] & 1:
+                held += 1
+            else:
+                idle += 1
     # Knock events over the compared window
     cmp_idx = [i for i in range(len(expect)) if i + a.lag_rows in rows]
     log_knocks = model_knocks = 0
@@ -280,6 +315,8 @@ def main():
           f"(lag {a.lag_rows} rows), {len(ign['tach'])} DME spark commands, {len(ign['klr'])} KLR sparks")
     print(f"Knock events in the compared window: log {log_knocks} (KLR Knock Cnt. increments), "
           f"model {model_knocks} (KNOCK_OUT pulses)")
+    print(f"Rows with no injector pulse in the last two revolutions (inj_ms n/a): "
+          f"{held} held open (P1.0 low), {idle} not firing")
     print()
     print(f"{'channel':<11} {'tol':>6} {'pass':>13} {'n/a':>5} {'mean err':>9} {'max |err|':>10}  worst at")
     failed = []
@@ -297,7 +334,8 @@ def main():
             print(f"{c:<11} {tol[c]:>6g} {'n/a':>13} {st['na']:>4}  (no knock in the log or the model "
                   f"over these {n} rows)")
             continue
-        flag = '' if n and rate >= a.min_pass else '  <-- FAIL'
+        flag = ('' if c in INFO_CHANNELS or (n and rate >= a.min_pass)
+                else '  <-- FAIL')
         if flag:
             failed.append(c)
         print(f"{c:<11} {tol[c]:>6g} {st['pass']:>5}/{n:<5}{rate:>4.0%} {st['na']:>4} "
@@ -305,8 +343,8 @@ def main():
     print()
     print("Pass rate by log segment (fill colour marks the gear pulls):")
     for seg, cs in seg_stats.items():
-        cells = '  '.join(f"{c}={p / n:.0%}" for c, (n, p) in cs.items()
-                          if c not in EVENT_CHANNELS or stats[c]['events'])
+        cells = '  '.join(f"{c}={cs[c][1] / cs[c][0]:.0%}" for c in CHANNELS
+                          if c in cs and (c not in EVENT_CHANNELS or stats[c]['events']))
         print(f"  segment {seg}: {cells}")
 
     if a.mismatches:
