@@ -452,7 +452,7 @@ module var_interrupt_generator_cl (
   `define CL_ISV_REF_PCT10 310   // 31 % — the duty the ISV starts warm idle at
 `endif
 `ifndef CL_ISV_AIR_GAIN
-  `define CL_ISV_AIR_GAIN  10    // AFM counts per 10 % of duty off the reference
+  `define CL_ISV_AIR_GAIN  15    // AFM counts per 10 % of duty off the reference
 `endif
 `ifndef CL_ISV_WIN_NS
   `define CL_ISV_WIN_NS    64'd200_000_000  // 200 ms, many PWM periods

@@ -630,7 +630,7 @@
   `define CL_ISV_AIR
   `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2
   `ifndef SIM_TIME
-  `define SIM_TIME  30000000000     // 30s — 15s settle, 15s with AC
+  `define SIM_TIME  45000000000     // 45s — 22.5s settle, 22.5s with AC
   `endif
   `define _COOLANT_RAW  8'h20
   `define _AIRTEMP_RAW  8'h50

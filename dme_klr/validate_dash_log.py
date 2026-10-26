@@ -900,6 +900,12 @@ TESTS = {
                           'dwell_cap':97},   # estimated from RPM-scaling trend (90@6000, 96@6440, 97@6524) — not directly confirmed from a real log
     'cl_ac_halfway':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AC compressor engages at 10s; expect ISV step-up and slight RPM droop'},
+    'cl_idle_controlled_by_isv': {'rpm_target': 800, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_isv_recovery': {'step_ms': 22500, 'settle_ms': 3000, 'min_dip': 40,
+                                                  'rpm_tol': 50, 'recover_ms': 15000, 'min_integral_rise': 0x0800},
+                          # From the tuning run: 790 rpm before the step, dip to 718 (-73) at 28s, within
+                          # +/-50 of 800 at 33s (10.5s after the step), peak 844 at 41s, integral +0x1B0B
+                          'notes':'CL with ISV bypass air (CL_ISV_AIR): AC on at 22.5s; the firmware idle PI must pull RPM back to its 800 rpm target'},
     'cl_cold_start':     {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':False, 'expect_fuelcut':False,
                           'notes':'CL: cold start without SKIP_LAMBDA_WARMUP; cold enrich flags should fire'},
     # ── DME+KLR combined tests — same expectations as DME-only equivalents ───
@@ -1874,6 +1880,60 @@ def validate(test_name, logpath, dme_file=None):
                     else:
                         fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
                                      f"snapshots, saw {['0x%02x' % v for v in vals]}")
+
+    # ── 5a2. expect_isv_recovery: the firmware's idle-speed PI loop pulls
+    # RPM back after a load step (cl_idle_controlled_by_isv: CL_ISV_AIR, AC
+    # on at SIM_TIME/2). 23h.0 set and 23h.1 clear select the PI branch at
+    # 0x08A6; RPM must dip at the step, get back within rpm_tol of the
+    # firmware's own idle target (7Fh x 40) within recover_ms and stay
+    # there to the end, and the ISV integral (7Eh:7Dh) must rise after the
+    # step, i.e. the ISV did the recovery.
+    isv = exp.get('expect_isv_recovery')
+    if isv:
+        ds = []
+        with open(logpath, errors='replace') as f:
+            for line in f:
+                if line.startswith('DME: [DS]'):
+                    p = line[len('DME: [DS]'):].strip().split(',')
+                    if len(p) < 4 or len(p[1]) < 256:
+                        continue
+                    h = p[1]
+                    bt = lambda a: int(h[a * 2:a * 2 + 2], 16)
+                    try:
+                        ds.append((int(p[0]), int(p[3]), bt(0x23), (bt(0x7E) << 8) | bt(0x7D), bt(0x7F)))
+                    except ValueError:
+                        continue
+        step = isv['step_ms']
+        pre = [d for d in ds if step - 3000 <= d[0] < step]
+        post = [d for d in ds if d[0] >= step]
+        if not pre or not post:
+            fails.append("ISV recovery: no snapshots around the load step")
+        else:
+            settled = [d for d in ds if d[0] >= isv.get('settle_ms', 3000)]
+            bad = [d for d in settled if (d[2] & 0x03) != 0x01]
+            if bad:
+                fails.append(f"ISV recovery: 23h bits 0/1 not 1/0 (idle PI branch) in {len(bad)} snapshots, "
+                             f"first t={bad[0][0]}ms 23h=0x{bad[0][2]:02X}")
+            target = post[-1][4] * 40
+            pre_rpm = sum(d[1] for d in pre) / len(pre)
+            low = min(post, key=lambda d: d[1])
+            dip = pre_rpm - low[1]
+            back = next((d for d in post if d[0] > low[0] and abs(d[1] - target) <= isv['rpm_tol']), None)
+            stays = back is not None and all(abs(d[1] - target) <= isv['rpm_tol'] for d in post if d[0] >= back[0])
+            integ_rise = post[-1][3] - min(d[3] for d in post)
+            msg = (f"ISV recovery: {pre_rpm:.0f} rpm before the step, dip to {low[1]} rpm (-{dip:.0f}) at t={low[0]}ms, "
+                   f"target {target} rpm (7Fh={post[-1][4]})")
+            if dip < isv['min_dip']:
+                fails.append(msg + f" — dip under {isv['min_dip']} rpm, the load step didn't bite")
+            elif back is None or back[0] - step > isv['recover_ms'] or not stays:
+                fails.append(msg + (f" — not back within ±{isv['rpm_tol']} rpm of target to the end "
+                                    f"within {isv['recover_ms']}ms of the step"
+                                    + (f" (got there at t={back[0]}ms)" if back else "")))
+            elif integ_rise < isv['min_integral_rise']:
+                fails.append(msg + f" — ISV integral 7Eh:7Dh rose only 0x{integ_rise:04X}, the ISV didn't do it")
+            else:
+                infos.append(msg + f", back within ±{isv['rpm_tol']} at t={back[0]}ms "
+                             f"({back[0] - step}ms after the step), ISV integral +0x{integ_rise:04X} ✓")
 
     # ── 5b. expect_ext_trigger_stuck_high/low, expect_ext_ign_stuck_high/low
     # KLR_TRIGGER_STUCK_HIGH/LOW / KLR_IGN_IN_STUCK_HIGH/LOW override the
