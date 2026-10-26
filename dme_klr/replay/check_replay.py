@@ -23,7 +23,6 @@ Model-side value of each channel
               of tach A_1, which is low for the dwell; SIM: [TACH]) to
               the KLR's spark (falling edge of its coil output, which
               is high for the dwell), in crank degrees at the log RPM
-  klr_adv     ign_adv - klr_retard
   inj_ms      measured injector pulse: P1.0 low time of the latest pulse
               that ended by the row's time (SIM: [INJ]), which is what
               the injectors got, dead time included. n/a when that pulse
@@ -39,9 +38,11 @@ Model-side value of each channel
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
   rpm         DME iram[37h] * 40 (sanity check that the pinned RPM took)
   full_load   KLR full_load output (DS tail bit)
-  knock_pin   KLR knock output P1.6 (bit 6 of the KLR [DS] P1 byte),
-              active low (the firmware clears P1.6 when it flags knock).
-              Expected: "KLR Knocking" = "Yes" (= 1)
+  knock_cnt   knocks counted since the first compared row: the model's
+              KNOCK_OUT pulses (KLR: [PHASE] ... KNOCK_OUT cleared) against
+              the log's "KLR Knock Cnt." increments, within one count. (The
+              log's "KLR Knocking" flag isn't compared: it reads "Yes" on
+              most rows, wherever the KLR's retard is still active.)
 
 The summary also counts knock events over the compared rows: the log's
 knock-count increments against the model's KNOCK_OUT pulses
@@ -63,7 +64,6 @@ HALF_TOOTH_DEG = 360.0 / 264.0
 
 TOLERANCES = {           # absolute, in the channel's own units
     'ign_adv': 1.5,      # one half-tooth is 1.36 deg
-    'klr_adv': 1.5,
     'klr_retard': 1.5,
     'inj_ms': 0.3,
     'inj_ms_ram': 0.3,
@@ -71,14 +71,13 @@ TOLERANCES = {           # absolute, in the channel's own units
     'icv_pct': 5.0,
     'rpm': 80.0,         # iram[37h] has 40 rpm resolution
     'full_load': 0.0,
-    'knock_pin': 0.0,
+    'knock_cnt': 1.0,    # counts
 }
 CHANNELS = list(TOLERANCES)
 # Channels that only mean something when the event happens: with no knock
 # on either side the row-by-row match is trivially 100%, so they report n/a.
-EVENT_CHANNELS = {'knock_pin'}
-EXPECT_COL = {'knock_pin': 'knocking',    # channel -> expect.csv column, where they differ
-              'inj_ms_ram': 'inj_ms'}
+EVENT_CHANNELS = {'knock_cnt'}
+EXPECT_COL = {'inj_ms_ram': 'inj_ms'}      # channel -> expect.csv column, where they differ
 # Reported alongside the others but never fail the run
 INFO_CHANNELS = {'inj_ms_ram'}
 KNOCK_RE = re.compile(r'^KLR: \[PHASE\] t=(\d+) ms\s+KNOCK_OUT cleared')
@@ -135,9 +134,6 @@ def parse_sim(path):
                 parts = line[9:].strip().split(',')
                 if len(parts) >= 4:
                     rows[cur]['klr_bits'] = parts[3].strip()
-                    p1 = parts[2].strip()[:2]
-                    if re.fullmatch(r'[0-9a-fA-F]{2}', p1):
-                        rows[cur]['klr_p1'] = int(p1, 16)
     for k in ign:
         ign[k].sort()
     return rows, ign
@@ -179,13 +175,12 @@ def model_values(row, ign, rpm_log):
             # a delay longer than one firing interval means a missed pair
             if delay_ns < 60e9 / rpm_log / 2:
                 v['klr_retard'] = delay_ns * 1e-9 * rpm_log / 60.0 * 360.0
-    if v['ign_adv'] is not None and v['klr_retard'] is not None:
-        v['klr_adv'] = v['ign_adv'] - v['klr_retard']
     bits = row.get('klr_bits', '')
     if len(bits) >= 3 and bits[2] in '01':
         v['full_load'] = float(bits[2])
-    if row.get('klr_p1') is not None:
-        v['knock_pin'] = float(1 - ((row['klr_p1'] >> 6) & 1))   # P1.6 low = knock
+    if ign.get('knock_t0_ms') is not None:
+        t_ms = t / 1e6
+        v['knock_cnt'] = float(sum(1 for k in ign['knock_ms'] if ign['knock_t0_ms'] <= k <= t_ms))
     return v
 
 
@@ -257,6 +252,13 @@ def main():
     if not rows:
         sys.exit(f"no SIM: [ROW] lines in {a.sim_log} — did the replay run?")
 
+    # Knock counts are compared from the first compared row on
+    first = next((i for i in range(len(expect)) if i + a.lag_rows in rows), None)
+    base_cnt = None
+    if first is not None:
+        ign['knock_t0_ms'] = rows[first + a.lag_rows]['t_ns'] / 1e6
+        base_cnt = float(expect[first]['knock_cnt'])
+
     stats = {c: {'n': 0, 'pass': 0, 'na': 0, 'err': [], 'worst': None, 'events': 0} for c in CHANNELS}
     seg_stats = {}
     mism = []
@@ -273,6 +275,8 @@ def main():
                 st['na'] += 1
                 continue
             e = float(exp[EXPECT_COL.get(c, c)])
+            if c == 'knock_cnt':
+                e -= base_cnt
             err = mv[c] - e
             ok = abs(err) <= tol[c] + 1e-9
             st['n'] += 1
