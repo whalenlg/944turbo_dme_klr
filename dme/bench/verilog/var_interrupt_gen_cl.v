@@ -449,7 +449,7 @@ module var_interrupt_generator_cl (
     //  (CL_ISV_REF_PCT10, tenths of a %) it adds nothing, so the
     //  settled idle is the one the other cl_ tests already have.
 `ifndef CL_ISV_REF_PCT10
-  `define CL_ISV_REF_PCT10 365   // 36.5 % — the duty the ISV starts warm idle at
+  `define CL_ISV_REF_PCT10 310   // 31 % — the duty the ISV starts warm idle at
 `endif
 `ifndef CL_ISV_AIR_GAIN
   `define CL_ISV_AIR_GAIN  30    // AFM counts per 10 % of duty off the reference

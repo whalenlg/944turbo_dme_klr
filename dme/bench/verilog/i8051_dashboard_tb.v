@@ -1666,6 +1666,17 @@ always @(*) begin
         adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
                                   : 8'h85;                       // grounded: idle/closed=2.6V
 `endif
+`ifdef CL_ISV_AIR
+    // The firmware classifies ch6 with table 0x1124 (0x0659 at reset,
+    // 0x1BC1 while running): < 0x89 code 3, 0x89-0xB7 code 2, 0xB8-0xE6
+    // code 1, >= 0xE7 code 0, into 23h.0/23h.1. Its idle-speed PI loop
+    // (0x08DE -> 0x106B -> 0x0942) only runs on code 2; 0x85 is code 3,
+    // which holds the ISV at a fixed position. The car reads 2.94-3.07 V
+    // here at closed throttle (0x96-0x9D, code 2), so this uses 0x99
+    // (3.0 V) and the ISV regulates idle. The other tests still use the
+    // assumed 0x85 above.
+    if (!idle_sw) adc_ch6 = 8'h99;
+`endif
         adc_ch7 = `_FUEL_QUAL;
 end
 `endif // LIVE
