@@ -1582,7 +1582,19 @@ wire [7:0] afm_effective = afm_tippy;
 wire [7:0] afm_effective = afm_wiper;
 `endif
 
-wire idle_sw = (afm_effective >= `AFM_IDLE_THR);
+`ifdef CL_ISV_AIR
+// The ISV's bypass air (var_interrupt_gen_cl.v) shows on the AFM but
+// doesn't move the throttle, so the throttle switch here and the KLR's
+// throttle angle follow the AFM without it. Otherwise opening the ISV
+// reads as opening the throttle (idle switch off, ch6 off-idle), which
+// turns the firmware's idle control off.
+integer throttle_afm_i;
+always @(*) throttle_afm_i = $signed({1'b0, afm_effective}) - var_interrupt_generator_1.isv_afm_add;
+wire [7:0] throttle_afm = throttle_afm_i < 0 ? 8'd0 : throttle_afm_i > 255 ? 8'd255 : throttle_afm_i[7:0];
+`else
+wire [7:0] throttle_afm = afm_effective;
+`endif
+wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
 reg  [7:0] adc_mux;
 // Each channel's input, all eight at once, so the [DS] snapshot can log
 // what the ADC is being fed (adc_ch0..7) and not only what the firmware
