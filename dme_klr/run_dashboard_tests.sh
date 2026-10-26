@@ -17,7 +17,7 @@
 #  interval override): --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
 #  Added on top of whatever the named test already compiles with.
 #
-#  Output: ../../tmp/dme_klr/dash_logs/<test>.log       (full sim output)
+#  Output: ../../tmp/dme_klr/dash_logs/<test>.log.gz    (full sim output, gzipped)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
 #          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd.gz
 #          ../../tmp/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
@@ -185,7 +185,7 @@ compile_and_run_klr() {
     mkdir -p "$hexdir"
 
     # Clean old output files for this test
-    rm -f "$log" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
+    rm -f "$log" "$log.gz" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
     rm -f "${vcdfile}.gz"
     rm -rf "$hexdir"
     mkdir -p "$hexdir"
@@ -324,6 +324,10 @@ compile_and_run_klr() {
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
     echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
         | tee -a "$LOGDIR/summary.log"
+
+    # Everything the tools read is in the .dash.log now; keep the full
+    # output (a debug run's instruction trace can be GBs) compressed
+    gzip -f "$log"
 
     open_in_dashboard "$LOGDIR/${name}.dash.log"
 }

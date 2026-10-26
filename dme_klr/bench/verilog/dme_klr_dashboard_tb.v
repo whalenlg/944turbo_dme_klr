@@ -202,16 +202,17 @@ module dme_klr_dashboard_tb;
     // There is no cam / cylinder-1 signal, so which cylinder of a pair
     // fired is not known here.
     //
-    // One line per KLR spark (IGN_OUT falling after a >= 1 ms dwell):
-    //   KLR: [SPARK] t=<ms> side=A|B dme_btdc=<deg> klr_btdc=<deg>
-    //        retard=<deg> delay_us=<us> rpm=<n> dme31=<hh> dme57=<hh>
-    //        klr73=<hh> klr3F=<hh>
+    // One line per KLR spark (IGN_OUT falling after a >= 1 ms dwell),
+    // positional to keep the logs small (there's one per spark):
+    //   KLR: [SPARK] <ms>,<A|B>,<dme_btdc>,<klr_btdc>,<delay_us>,<dme31><dme57><klr73><klr3F>
     // dme_btdc: the DME's spark (its tach output rising = KLR ign_in
-    // falling), klr_btdc: the KLR's spark, retard = dme_btdc - klr_btdc,
-    // delay_us = time between them. dme31/dme57 are the DME's advance and
-    // accel adjustment this spark was scheduled from: the firmware writes
-    // the next spark's values right after it fires, so these are the ones
-    // read at the previous DME spark. klr73/klr3F are the KLR's knock
+    // falling), klr_btdc: the KLR's spark, both in degrees before the
+    // TDC (their difference is the retard); delay_us = time between them,
+    // the last field the four bytes in hex. RPM is in the [DS] lines.
+    // dme31/dme57 are the DME's advance and accel adjustment this spark
+    // was scheduled from: the firmware writes the next spark's values
+    // right after it fires, so these are the ones read at the previous
+    // DME spark. klr73/klr3F are the KLR's knock
     // retard slot and tip-in retard as read by the timing delay calculation
     // (0x1B2: delay = (73h + 3Fh) x the spark period) that set this spark's
     // delay. Its result in 28h/29h moves to 20h/21h at the next trigger and
@@ -280,9 +281,9 @@ module dme_klr_dashboard_tb;
             spk_dme_t != 0 && $time - spk_dme_t < 50_000_000) begin
             crank_btdc(spk_klr_deg, spk_klr_side);
             if (spk_dme_deg > -900.0 && spk_klr_deg > -900.0)
-                $display("KLR: [SPARK] t=%0d side=%s dme_btdc=%0.2f klr_btdc=%0.2f retard=%0.2f delay_us=%0.3f rpm=%0d dme31=%02h dme57=%02h klr73=%02h klr3F=%02h",
+                $display("KLR: [SPARK] %0d,%s,%0.2f,%0.2f,%0.1f,%02h%02h%02h%02h",
                          `DME_KLR_MS, spk_klr_side ? "B" : "A", spk_dme_deg, spk_klr_deg,
-                         spk_dme_deg - spk_klr_deg, ($time - spk_dme_t) / 1000.0, u_dme.ref_rpm,
+                         ($time - spk_dme_t) / 1000.0,
                          spk_dme31, spk_dme57, spk_klr73, spk_klr3F);
         end
 

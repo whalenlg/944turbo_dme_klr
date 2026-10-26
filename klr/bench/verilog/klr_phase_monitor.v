@@ -46,6 +46,16 @@ reg [63:0] ph_klr_next_snap;
 reg        ph_klr_res_n_prev;   // reset-release edge detector
 reg  [7:0] ph_klr_knock_sensor_prev; // knock_sensor value tracker (TEST_KNOCK_PULSE)
 reg [31:0] ph_klr_knock_count;  // increments on each knock_out 1->0 transition
+// full_load as the firmware drove it. The port floats high during every
+// KLR reset and the firmware drives it again afterwards, so its raw edges
+// are mostly that float; FULL_LOAD set/cleared compare this level instead,
+// sampled on the last running clock before each reset (or, when the KLR
+// hasn't been reset for FL_DIRECT_NS, on every clock)
+reg        ph_klr_fl_lvl;
+reg        ph_klr_fl_known;
+reg [63:0] ph_klr_last_rst;     // $time(ns) the KLR was last in reset
+reg        ph_klr_rst_low_seen; // "IGN_OUT low after KLR reset" logged once
+`define FL_DIRECT_NS 64'd50_000_000
 
 initial begin
     ph_klr_ign_prev       = 1'b0;
@@ -69,6 +79,10 @@ initial begin
     // the edge-detect logic ever runs on it.
     ph_klr_knock_sensor_prev = 8'd110;
     ph_klr_knock_count    = 32'd0;
+    ph_klr_fl_lvl         = 1'b0;
+    ph_klr_fl_known       = 1'b0;
+    ph_klr_last_rst       = 64'd0;
+    ph_klr_rst_low_seen   = 1'b0;
 end
 
 // ── Unified monitor ───────────────────────────────────────
@@ -77,6 +91,18 @@ always @(posedge clk) begin  // klr_phase_monitor
     ph_klr_res_n_prev <= top.res_n;
 
     if (top.res_n === 1'b0) begin
+        // Entering reset: full_load still holds what the firmware drove
+        if (ph_klr_res_n_prev === 1'b1 && full_load !== 1'bx) begin
+            if (ph_klr_fl_known && full_load !== ph_klr_fl_lvl) begin
+                if (full_load)
+                    $display("KLR: [PHASE] t=%0d ms  FULL_LOAD set       (WOT — P1.5 high)", `KLR_MS(0));
+                else
+                    $display("KLR: [PHASE] t=%0d ms  FULL_LOAD cleared   (part-throttle)", `KLR_MS(0));
+            end
+            ph_klr_fl_lvl   <= full_load;
+            ph_klr_fl_known <= 1'b1;
+        end
+        ph_klr_last_rst <= $time;
         // Hold prevs during reset. The DME trigger drives the KLR's /RESET
         // every cycle and the ports float high, so ign_out can rise here
         // without an "asserted" line; its later fall is not a spark.
@@ -124,12 +150,16 @@ always @(posedge clk) begin  // klr_phase_monitor
                      ($time - ph_klr_ign_in_time) % 1000);
         end
         if (!ign_out && ph_klr_ign_prev) begin
-            if (ph_klr_ign_rst_hi)
+            if (ph_klr_ign_rst_hi) begin
                 // High since the KLR reset (port float), not a dwell or a
                 // spark: logged without "deasserted"/"pulse_width" so pulse
-                // and dwell tools don't count it
-                $display("KLR: [PHASE] t=%0d ms  IGN_OUT low after KLR reset (port floated high during reset)",
-                         `KLR_MS(0));
+                // and dwell tools don't count it. It happens on every
+                // reset, so only the first one is logged
+                if (!ph_klr_rst_low_seen)
+                    $display("KLR: [PHASE] t=%0d ms  IGN_OUT low after KLR reset (port floated high during reset; later ones not logged)",
+                             `KLR_MS(0));
+                ph_klr_rst_low_seen <= 1'b1;
+            end
             else if (($time - ph_klr_ign_out_time) >= 64'd1_000_000)
                 // spark_delay: ign_in falling edge to ign_out falling edge
                 // (the spark), i.e. the KLR's spark retard vs the DME
@@ -190,12 +220,18 @@ always @(posedge clk) begin  // klr_phase_monitor
         ph_klr_pc_prev <= top.i8048_core_1.pc;
 
         // ── full_load: WOT engaged ────────────────────────
-        if (full_load && !ph_klr_fullload_prev)
-            $display("KLR: [PHASE] t=%0d ms  FULL_LOAD set       (WOT — P1.5 high)",
-                     `KLR_MS(0));
-        if (!full_load && ph_klr_fullload_prev)
-            $display("KLR: [PHASE] t=%0d ms  FULL_LOAD cleared   (part-throttle)",
-                     `KLR_MS(0));
+        // Not reset lately (e.g. trigger stuck): no float, follow the pin
+        if ($time - ph_klr_last_rst > `FL_DIRECT_NS && full_load !== 1'bx &&
+            (!ph_klr_fl_known || full_load !== ph_klr_fl_lvl)) begin
+            if (ph_klr_fl_known) begin
+                if (full_load)
+                    $display("KLR: [PHASE] t=%0d ms  FULL_LOAD set       (WOT — P1.5 high)", `KLR_MS(0));
+                else
+                    $display("KLR: [PHASE] t=%0d ms  FULL_LOAD cleared   (part-throttle)", `KLR_MS(0));
+            end
+            ph_klr_fl_lvl   <= full_load;
+            ph_klr_fl_known <= 1'b1;
+        end
         ph_klr_fullload_prev <= full_load;
 
         // ── mb_latch: bank switch ─────────────────────────
