@@ -55,15 +55,19 @@ Input conversions (log value -> raw ADC byte the model reads)
                                        Full Load 0xD8 (the cl_ramp tests'
                                        WOT command)
   fuel_qual ' FQS'                     DME ch7, position 0 -> 0x00
-  knock     'KLR Knocking'             1 while it reads 'Yes' (knocking): the
-                                       KLR knock_sensor gets the
-                                       TEST_KNOCK_PULSE drop once per
-                                       revolution (klr_knock_gen.v), else 0
+  knock     'KLR Knock Cnt.'           1 from a row where the count went up
+                                       (a knock the KLR counted) for one
+                                       revolution: the KLR knock_sensor gets
+                                       the TEST_KNOCK_PULSE drop at the next
+                                       TDC (klr_knock_gen.v, once per
+                                       revolution), else 0. 'KLR Knocking' is a sampled flag
+                                       that reads 'Yes' on most rows, so
+                                       replaying it as the knock signal
+                                       knocked far more than the engine did
 
 Expected outputs (compared by check_replay.py)
 ----------------------------------------------
   ign_adv     'Ignition Advance'   deg
-  klr_adv     'KLR Ign. Advance'   deg
   klr_retard  'KLR Ign. Retard'    deg
   inj_ms      'Inj. Pulse (ms)'
   dwell_ms    'Ign. Dwell (ms)'
@@ -94,7 +98,6 @@ COL = {
     'tps_status': 'Throttle Switch (Status)',
     'fqs': ' FQS',
     'ign_adv': 'Ignition Advance',
-    'klr_adv': 'KLR Ign. Advance',
     'klr_retard': 'KLR Ign. Retard',
     'knocking': 'KLR Knocking',
     'knock_cnt': 'KLR Knock Cnt.',
@@ -105,7 +108,7 @@ COL = {
 
 STIM_COLS = ['rpm', 'afm', 'boost', 'coolant', 'airtemp', 'battery', 'altitude',
              'fuel_qual', 'dme_tps', 'klr_tps', 'o2', 'knock']
-EXPECT_COLS = ['ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
+EXPECT_COLS = ['ign_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
                'rpm', 'full_load', 'knocking', 'knock_cnt', 'map_psi', 'tps_status']
 
 # <name>.trace.csv: the log's own values for every row, all numeric, which
@@ -115,7 +118,7 @@ EXPECT_COLS = ['ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pc
 TRACE_COLS = ['segment',
               'rpm', 'afm_v', 'map_psi', 'ect_f', 'iat_v', 'batt_v', 'alt_v', 'tps_v',
               'nbo2_v', 'tps_status', 'fqs',
-              'ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
+              'ign_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
               'knocking', 'knock_cnt']
 TPS_STATUS_CODE = {'Idle': 0, 'Off Idle': 1, 'Full Load': 2}
 
@@ -278,11 +281,27 @@ def main():
     if not sel:
         sys.exit("no rows in the selected window")
 
+    def knock_count(r):
+        try:
+            return float(r['knock_cnt'])
+        except (TypeError, ValueError):
+            return None
+    # The row before the window gives the first row's starting count
+    prev_cnt = knock_count(rows[sel[0][0] - 1]) if sel[0][0] > 0 else None
+
     cool_map = NtcMap(a.dme_rom, 2)
     with open(a.out_prefix + '.stim.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_ms'] + STIM_COLS)
+        knock_until = None   # ms: hold the knock input for one revolution
         for _, r in sel:
+            t_ms = r['t_s'] * 1000
+            cnt = knock_count(r)
+            if cnt is not None and prev_cnt is not None and cnt > prev_cnt and r['rpm']:
+                knock_until = t_ms + 60000.0 / r['rpm']
+            if cnt is not None:
+                prev_cnt = cnt
+            knock = int(knock_until is not None and t_ms < knock_until)
             w.writerow([f"{r['t_s'] * 1000:.3f}",
                         int(round(r['rpm'])),
                         volts(r['afm_v']),
@@ -295,13 +314,13 @@ def main():
                         volts(r['tps_v']),
                         KLR_TPS_BY_STATUS.get(r['tps_status'], 0x60),
                         o2_code(r['nbo2_v']),
-                        int(r['knocking'] == 'Yes')])
+                        knock])
     with open(a.out_prefix + '.expect.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_ms', 'segment', 'fill'] + EXPECT_COLS)
         for i, r in sel:
             w.writerow([f"{r['t_s'] * 1000:.3f}", seg_of[i], r['fill'] or ''] +
-                       [r['ign_adv'], r['klr_adv'], r['klr_retard'], r['inj_ms'], r['dwell_ms'],
+                       [r['ign_adv'], r['klr_retard'], r['inj_ms'], r['dwell_ms'],
                         r['icv_pct'], r['rpm'], int(r['tps_status'] == 'Full Load'),
                         int(r['knocking'] == 'Yes'), r['knock_cnt'], r['map_psi'], r['tps_status']])
     with open(a.out_prefix + '.trace.csv', 'w', newline='') as f:

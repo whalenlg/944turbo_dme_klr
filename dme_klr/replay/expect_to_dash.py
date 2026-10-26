@@ -10,7 +10,7 @@ simulation timeline, as lines the dashboard overlays on its charts.
 line places expected row i at simulated time T, and one line per played
 row is printed:
 
-    REPLAY: [EXPECT] t=<sim ms> row=<i> seg=<segment> ign_adv=.. klr_adv=..
+    REPLAY: [EXPECT] t=<sim ms> row=<i> seg=<segment> ign_adv=..
             klr_retard=.. inj_ms=.. dwell_ms=.. icv_pct=.. rpm=.. full_load=0|1
             knocking=0|1 knock_cnt=.. map_psi=..
 
@@ -24,7 +24,7 @@ import re
 import sys
 
 ROW_RE = re.compile(r'^SIM: \[ROW\] idx=(\d+) log_ms=([\d.]+) t_ns=(\d+)')
-FIELDS = ['ign_adv', 'klr_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
+FIELDS = ['ign_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
           'rpm', 'full_load', 'knocking', 'knock_cnt', 'map_psi']
 
 

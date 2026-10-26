@@ -41,7 +41,7 @@ Results land in the suite's own `dash_logs/` or `v_dash_logs/` beside the
 other tests (`run_replay.sh --out-dir`). It takes no debug flags. The
 parallel runner's validation reads `<name>.report.txt`: PASS when every channel
 meets its pass rate, WARN naming the channels that don't (currently ign_adv,
-klr_adv, klr_retard and inj_ms), FAIL only if the replay didn't finish. Expect
+klr_retard and inj_ms), FAIL only if the replay didn't finish. Expect
 about an hour under Verilator and several hours under iverilog.
 
 ## Pieces
@@ -77,7 +77,7 @@ before conversion. The waveform also carries the log itself, as signals in the
 | `row_idx`, `log_t_ms`, `log_segment` | the log row playing (time in log ms) and its fill-colour segment |
 | `pin_*` | the raw bytes driven into the model, plus `pin_knock` (`<name>.stim.csv`) |
 | `log_rpm`, `log_afm_v`, `log_map_psi`, `log_ect_f`, `log_iat_v`, `log_batt_v`, `log_alt_v`, `log_tps_v`, `log_nbo2_v`, `log_fqs`, `log_tps_status` | the log's input columns in its own units (`log_tps_status` 0 Idle, 1 Off Idle, 2 Full Load) |
-| `exp_ign_adv`, `exp_klr_adv`, `exp_klr_retard`, `exp_inj_ms`, `exp_dwell_ms`, `exp_icv_pct`, `exp_full_load`, `exp_knocking` (1 = knock), `exp_knock_cnt` | the log's outputs: what the model should produce |
+| `exp_ign_adv`, `exp_klr_retard`, `exp_inj_ms`, `exp_dwell_ms`, `exp_icv_pct`, `exp_full_load`, `exp_knocking` (1 = knock), `exp_knock_cnt` | the log's outputs: what the model should produce |
 
 The `log_*`/`exp_*` values are real-valued, so set GTKWave's data format
 to Analog or Real for them. `xlsx_to_stim.py` writes them to
@@ -104,7 +104,7 @@ replay; the live debugger can `set` them too).
 | `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |
-| `knock` | KLR Knocking | 1 while it reads "Yes" (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
+| `knock` | KLR Knock Cnt. | 1 on a row where the count goes up (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |
 
 ## Compared outputs
 
@@ -112,25 +112,21 @@ replay; the live debugger can `set` them too).
 |---|---|---|---|
 | `ign_adv` | Ignition Advance | DME iram[31h] × 360/264 ° | ±1.5 ° |
 | `klr_retard` | KLR Ign. Retard | DME spark command (rising edge of tach A_1, low during dwell) → KLR spark (falling edge of its coil output), in crank ° at the log RPM | ±1.5 ° |
-| `klr_adv` | KLR Ign. Advance | `ign_adv − klr_retard` | ±1.5 ° |
 | `inj_ms` | Inj. Pulse (ms) | measured injector pulse: P1.0 low time of the latest pulse (`SIM: [INJ]`); n/a when none ended in the last two revolutions (held open or not firing, counted in the summary) | ±0.3 ms |
 | `inj_ms_ram` | Inj. Pulse (ms) | ({4Bh,4Ah} + 5 × 54h) × 2 µs: the computed width plus the injector dead time the firmware adds before loading the timer; informational, never fails the run | ±0.3 ms |
 | `dwell_ms` | Ign. Dwell (ms) | last KLR coil-output pulse width | ±0.5 ms |
 | `icv_pct` | ICV (%) | ISV P1.4-high share of the timer-1 reloads {41h,40h} / {45h,44h} | ±5 % |
 | `rpm` | RPM | iram[37h] × 40 (sanity check that the pin took) | ±80 |
 | `full_load` | Throttle Switch (Status) = Full Load | KLR full_load output | exact |
-| `knock_pin` | KLR Knocking (Yes = 1) | KLR knock output P1.6 low (bit 6 of the KLR [DS] P1 byte; active low) | exact |
+| `knock_cnt` | KLR Knock Cnt. (increase since the first compared row) | the model's KNOCK_OUT pulses (`KLR: [PHASE] ... KNOCK_OUT cleared`) over the same span | ±1 count |
 
-Knock is a KLR output. The replay takes the logger's "KLR Knocking" column as
-"Yes" = knocking (about 73 % of this log's rows), compared against the KLR's
-active-low P1.6 knock line. (The log's 38 "No" runs each end with one count of
-"KLR Knock Cnt.", which suggested the opposite reading; it was inverted on
-request, and the alternative is a one-line change in `xlsx_to_stim.py`.) The report compares the pin level row by row and
-prints knock-event counts for the window: the log's count increments against
-the model's KNOCK_OUT pulses (`KLR: [PHASE] ... KNOCK_OUT cleared`, also in
-the `.dash.log`). The log has no knock-sensor waveform, only the KLR's decision, so
-the replay injects the existing knock test's sensor drop wherever the log
-shows knock (the `knock` input above) and checks the model's KLR knocks there
-too. The first WOT pull has
+The log has no knock-sensor waveform, only the KLR's own bookkeeping, so the
+replay injects the existing knock test's sensor drop (the `knock` input above)
+on each row where "KLR Knock Cnt." goes up: one knock the KLR counted. The
+log's "KLR Knocking" flag isn't used: it reads "Yes" on about 73 % of the rows,
+exactly those where "KLR Ign. Retard" is above 0.5 deg, i.e. while the KLR is
+still pulling timing after a knock, so replaying it as the knock signal knocked
+far more than the engine did. The report also prints the knock totals for the
+window. The first WOT pull has
 no knock events in the log; they're all between 55 s and 113 s
 (`--start-s 55 --end-s 113`).

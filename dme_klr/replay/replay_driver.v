@@ -30,7 +30,7 @@ module replay_driver;
 
     localparam HEADER = "t_ms,rpm,afm,boost,coolant,airtemp,battery,altitude,fuel_qual,dme_tps,klr_tps,o2,knock";
     localparam TRACE_HEADER = {"t_ms,segment,rpm,afm_v,map_psi,ect_f,iat_v,batt_v,alt_v,tps_v,nbo2_v,",
-                               "tps_status,fqs,ign_adv,klr_adv,klr_retard,inj_ms,dwell_ms,icv_pct,knocking,knock_cnt"};
+                               "tps_status,fqs,ign_adv,klr_retard,inj_ms,dwell_ms,icv_pct,knocking,knock_cnt"};
 
     integer   fd, n, idx, warmup_ms;
     real      t_ms, t0_ms, offset_ns, target_ns;
@@ -53,13 +53,13 @@ module replay_driver;
     real      log_rpm, log_afm_v, log_map_psi, log_ect_f, log_iat_v, log_batt_v, log_alt_v,
               log_tps_v, log_nbo2_v, log_fqs;
     integer   log_tps_status;
-    real      exp_ign_adv, exp_klr_adv, exp_klr_retard, exp_inj_ms, exp_dwell_ms, exp_icv_pct,
+    real      exp_ign_adv, exp_klr_retard, exp_inj_ms, exp_dwell_ms, exp_icv_pct,
               exp_knock_cnt;
     reg       exp_knocking, exp_full_load;
     // the tr_* staging copies are read ahead; show_row moves them to log_*/exp_*
     integer   tr_segment, tr_tps_status, tr_knocking;
     real      tr_rpm, tr_afm_v, tr_map_psi, tr_ect_f, tr_iat_v, tr_batt_v, tr_alt_v, tr_tps_v,
-              tr_nbo2_v, tr_fqs, tr_ign_adv, tr_klr_adv, tr_klr_retard, tr_inj_ms, tr_dwell_ms,
+              tr_nbo2_v, tr_fqs, tr_ign_adv, tr_klr_retard, tr_inj_ms, tr_dwell_ms,
               tr_icv_pct, tr_knock_cnt;
 
     initial begin
@@ -69,17 +69,17 @@ module replay_driver;
                   pin_altitude, pin_fuel_qual, pin_dme_tps, pin_klr_tps, pin_o2, pin_knock);
         $dumpvars(1, log_rpm, log_afm_v, log_map_psi, log_ect_f, log_iat_v, log_batt_v,
                   log_alt_v, log_tps_v, log_nbo2_v, log_tps_status, log_fqs);
-        $dumpvars(1, exp_ign_adv, exp_klr_adv, exp_klr_retard, exp_inj_ms, exp_dwell_ms,
+        $dumpvars(1, exp_ign_adv, exp_klr_retard, exp_inj_ms, exp_dwell_ms,
                   exp_icv_pct, exp_full_load, exp_knocking, exp_knock_cnt);
     end
 
     function integer read_trace;
         input integer f;
         begin
-            read_trace = $fscanf(f, "%f,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f,%f,%f,%f,%f,%f,%f,%d,%f\n",
+            read_trace = $fscanf(f, "%f,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f,%f,%f,%f,%f,%f,%d,%f\n",
                                  tr_t_ms, tr_segment, tr_rpm, tr_afm_v, tr_map_psi, tr_ect_f,
                                  tr_iat_v, tr_batt_v, tr_alt_v, tr_tps_v, tr_nbo2_v,
-                                 tr_tps_status, tr_fqs, tr_ign_adv, tr_klr_adv, tr_klr_retard,
+                                 tr_tps_status, tr_fqs, tr_ign_adv, tr_klr_retard,
                                  tr_inj_ms, tr_dwell_ms, tr_icv_pct, tr_knocking, tr_knock_cnt);
         end
     endfunction
@@ -91,7 +91,7 @@ module replay_driver;
             row_idx   = idx;
             log_t_ms  = t_ms;
             if (tfd != 0) begin
-                if (read_trace(tfd) != 21 || tr_t_ms != t_ms) begin
+                if (read_trace(tfd) != 20 || tr_t_ms != t_ms) begin
                     $display("replay: %0s doesn't line up with the stimulus at row %0d; trace signals stop here",
                              trace_file, idx);
                     $fclose(tfd);
@@ -102,7 +102,7 @@ module replay_driver;
                     log_ect_f = tr_ect_f;  log_iat_v = tr_iat_v;  log_batt_v = tr_batt_v;
                     log_alt_v = tr_alt_v;  log_tps_v = tr_tps_v;  log_nbo2_v = tr_nbo2_v;
                     log_tps_status = tr_tps_status;  log_fqs = tr_fqs;
-                    exp_ign_adv = tr_ign_adv;  exp_klr_adv = tr_klr_adv;
+                    exp_ign_adv = tr_ign_adv;
                     exp_klr_retard = tr_klr_retard;  exp_inj_ms = tr_inj_ms;
                     exp_dwell_ms = tr_dwell_ms;  exp_icv_pct = tr_icv_pct;
                     exp_full_load = (tr_tps_status == 2);  exp_knocking = tr_knocking;
