@@ -410,6 +410,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.trigger_in);
     $dumpvars(1, `KLR_TB_PATH.ign_in);
     $dumpvars(1, `KLR_TB_PATH.full_load);
+    $dumpvars(1, klr_tb.cv_duty_pct);          // CV duty, % (real)
     $dumpvars(1, `KLR_TB_PATH.CV_PWM);
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);

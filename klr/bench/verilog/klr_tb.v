@@ -722,6 +722,26 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ============================================================
     klr_dumpvcd u_dumpvcd ();
 
+    // ── CV (boost control valve, KLR P1.4) duty, sim only: the share of each PWM period the pin is high,
+    // in %, updated at every rising edge (high = open, as the replay's
+    // icv_pct and CL_ISV_AIR count it). A pin that hasn't moved for 100 ms
+    // reads 0 or 100. Dumped in every VCD/FST (vcd.v / klr_vcd.v).
+    real     cv_duty_pct = 0.0;
+    realtime cv_duty_pct_rise = 0, cv_duty_pct_fall = 0, cv_duty_pct_edge = 0;
+    always @(posedge top.CV_PWM) begin
+        if (cv_duty_pct_rise > 0)
+            cv_duty_pct = cv_duty_pct_fall > cv_duty_pct_rise
+                     ? 100.0 * (cv_duty_pct_fall - cv_duty_pct_rise) / ($realtime - cv_duty_pct_rise) : 100.0;
+        cv_duty_pct_rise = $realtime;
+        cv_duty_pct_edge = $realtime;
+    end
+    always @(negedge top.CV_PWM) begin
+        cv_duty_pct_fall = $realtime;
+        cv_duty_pct_edge = $realtime;
+    end
+    always #10_000_000
+        if ($realtime - cv_duty_pct_edge > 100_000_000) cv_duty_pct = (top.CV_PWM === 1'b1) ? 100.0 : 0.0;
+
     // ============================================================
     //  Variable-RPM crank + ignition generator
     //  Sweeps from `RPMSTART (840) to `RPMEND (6500) over `SIM_TIME.

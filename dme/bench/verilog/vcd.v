@@ -527,6 +527,7 @@ if (fst_path != "/dev/null") begin
     $display("DME: FST Dump enabled -> %0s", fst_path);
     $dumpfile(fst_path);
     $dumpon;
+    $dumpvars(1, `TB.isv_duty_pct);   // ISV duty, % (real)
 end else begin
     $display("DME: FST Dump suppressed (/dev/null)");
 end
