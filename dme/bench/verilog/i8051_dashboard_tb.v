@@ -619,6 +619,28 @@
   `endif
 `endif
 
+// TEST_CL_IDLE_CONTROLLED_BY_ISV: cl_ac_halfway (warm closed-loop idle,
+// AC on at SIM_TIME/2) with CL_ISV_AIR, so the ISV's bypass air reaches
+// the AFM and the firmware's idle-speed control can pull RPM back after
+// the AC load step instead of the engine just settling lower.
+`ifdef TEST_CL_IDLE_CONTROLLED_BY_ISV
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define CL_ISV_AIR
+  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2
+  `ifndef SIM_TIME
+  `define SIM_TIME  30000000000     // 30s — 15s settle, 15s with AC
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 `ifdef TEST_CL_COLD_START
   `define RPMRAMP
   `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
