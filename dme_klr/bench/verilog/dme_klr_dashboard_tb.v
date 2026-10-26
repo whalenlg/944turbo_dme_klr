@@ -189,7 +189,11 @@ module dme_klr_dashboard_tb;
         if ($time - live_klr_ign_rise >= 100_000)
             $display("SIM: [IGN] klr t_ns=%0d width_ns=%0d", $time, $time - live_klr_ign_rise);
 `else
+`ifdef CL_ISV_AIR
+    assign tps_wiper_sig = u_dme.throttle_afm;   // without the ISV's bypass air
+`else
     assign tps_wiper_sig = u_dme.afm_wiper;
+`endif
 `endif
 
     // ── Spark angles vs TDC ────────────────────────────────────

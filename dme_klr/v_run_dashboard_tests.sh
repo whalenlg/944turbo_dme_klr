@@ -737,6 +737,14 @@ run_test cl_ac_halfway \
     -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY  \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000
 
+# cl_idle_controlled_by_isv: cl_ac_halfway with the ISV's bypass air in the
+# engine model (CL_ISV_AIR), so the firmware's idle control has to bring
+# RPM back after the AC load step at SIM_TIME/2
+run_test cl_idle_controlled_by_isv \
+    -DTEST_CL_IDLE_CONTROLLED_BY_ISV \
+    -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY -DCL_ISV_AIR \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=45000000000
+
 run_test cl_cold_start \
     -DTEST_CL_COLD_START \
     -DRPMRAMP -DCL_MODE -DBOOST \
@@ -1118,6 +1126,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_FQS7) run_test cl_ramp_to_3000_FQS7 $IARG -DTEST_CL_RAMP_TO_3000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DRPMEND=3000 "-D_FUEL_QUAL=8'hA7" -DCL_FUEL_ENERGY_PCT=6 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_redline) run_test cl_ramp_to_redline $IARG -DTEST_CL_RAMP_TO_REDLINE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hEB" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=15000000000 ;;
         cl_ac_halfway)    run_test cl_ac_halfway     $IARG -DTEST_CL_AC_HALFWAY    -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
+        cl_idle_controlled_by_isv) run_test cl_idle_controlled_by_isv $IARG -DTEST_CL_IDLE_CONTROLLED_BY_ISV -DRPMRAMP -DCL_MODE -DBOOST -DCL_AC_HALFWAY -DCL_ISV_AIR -DSKIP_LAMBDA_WARMUP -DSIM_TIME=45000000000 ;;
         cl_cold_start)    run_test cl_cold_start     $IARG -DTEST_CL_COLD_START    -DRPMRAMP -DCL_MODE -DBOOST -DSIM_TIME=60000000000 ;;
         cold_start)       run_test cold_start       $IARG -DTEST_COLD_START       -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25                        -DSIM_TIME=120000000000  ;;
         hot_idle)         run_test hot_idle         $IARG -DTEST_HOT_IDLE         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000   ;;
@@ -1195,7 +1204,7 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "  Idle:        cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt"
             echo "               warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle"
-            echo "               cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
+            echo "               cl_ac_halfway cl_idle_controlled_by_isv cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
             echo "  DME_fail:    idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail"
             echo "               airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             echo "               altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"

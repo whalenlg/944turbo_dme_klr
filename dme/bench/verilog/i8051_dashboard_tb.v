@@ -619,6 +619,28 @@
   `endif
 `endif
 
+// TEST_CL_IDLE_CONTROLLED_BY_ISV: cl_ac_halfway (warm closed-loop idle,
+// AC on at SIM_TIME/2) with CL_ISV_AIR, so the ISV's bypass air reaches
+// the AFM and the firmware's idle-speed control can pull RPM back after
+// the AC load step instead of the engine just settling lower.
+`ifdef TEST_CL_IDLE_CONTROLLED_BY_ISV
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define CL_ISV_AIR
+  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2
+  `ifndef SIM_TIME
+  `define SIM_TIME  45000000000     // 45s — 22.5s settle, 22.5s with AC
+  `endif
+  `define _COOLANT_RAW  8'h20
+  `define _AIRTEMP_RAW  8'h50
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 `ifdef TEST_CL_COLD_START
   `define RPMRAMP
   `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
@@ -1560,7 +1582,19 @@ wire [7:0] afm_effective = afm_tippy;
 wire [7:0] afm_effective = afm_wiper;
 `endif
 
-wire idle_sw = (afm_effective >= `AFM_IDLE_THR);
+`ifdef CL_ISV_AIR
+// The ISV's bypass air (var_interrupt_gen_cl.v) shows on the AFM but
+// doesn't move the throttle, so the throttle switch here and the KLR's
+// throttle angle follow the AFM without it. Otherwise opening the ISV
+// reads as opening the throttle (idle switch off, ch6 off-idle), which
+// turns the firmware's idle control off.
+integer throttle_afm_i;
+always @(*) throttle_afm_i = $signed({1'b0, afm_effective}) - var_interrupt_generator_1.isv_afm_add;
+wire [7:0] throttle_afm = throttle_afm_i < 0 ? 8'd0 : throttle_afm_i > 255 ? 8'd255 : throttle_afm_i[7:0];
+`else
+wire [7:0] throttle_afm = afm_effective;
+`endif
+wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
 reg  [7:0] adc_mux;
 // Each channel's input, all eight at once, so the [DS] snapshot can log
 // what the ADC is being fed (adc_ch0..7) and not only what the firmware
@@ -1643,6 +1677,17 @@ always @(*) begin
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
         adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
                                   : 8'h85;                       // grounded: idle/closed=2.6V
+`endif
+`ifdef CL_ISV_AIR
+    // The firmware classifies ch6 with table 0x1124 (0x0659 at reset,
+    // 0x1BC1 while running): < 0x89 code 3, 0x89-0xB7 code 2, 0xB8-0xE6
+    // code 1, >= 0xE7 code 0, into 23h.0/23h.1. Its idle-speed PI loop
+    // (0x08DE -> 0x106B -> 0x0942) only runs on code 2; 0x85 is code 3,
+    // which holds the ISV at a fixed position. The car reads 2.94-3.07 V
+    // here at closed throttle (0x96-0x9D, code 2), so this uses 0x99
+    // (3.0 V) and the ISV regulates idle. The other tests still use the
+    // assumed 0x85 above.
+    if (!idle_sw) adc_ch6 = 8'h99;
 `endif
         adc_ch7 = `_FUEL_QUAL;
 end

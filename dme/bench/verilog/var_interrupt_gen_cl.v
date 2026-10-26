@@ -431,7 +431,51 @@ module var_interrupt_generator_cl (
                         ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
                         / (afm_rpm_hi - afm_rpm_plateau_end);
         end
+`ifdef CL_ISV_AIR
+        // ISV bypass air reaches the AFM like throttle air does
+        uncapped  = afm_wiper + isv_afm_add;
+        afm_wiper = uncapped < 0 ? 8'd0 : uncapped > 255 ? 8'd255 : uncapped;
+`endif
     end
+
+`ifdef CL_ISV_AIR
+    // ── ISV bypass air (CL_ISV_AIR) ──────────────────────────────
+    //  The idle speed valve (DME P1.4, high = open) bypasses the
+    //  throttle, so its air goes through the AFM: more ISV duty -> a
+    //  higher AFM reading -> the firmware's own fuel pulse grows ->
+    //  combustion torque and RPM follow. That closes the firmware's
+    //  idle-speed loop through this model. The duty is measured from
+    //  the pin over CL_ISV_WIN_NS windows; at the warm-idle duty
+    //  (CL_ISV_REF_PCT10, tenths of a %) it adds nothing, so the
+    //  settled idle is the one the other cl_ tests already have.
+`ifndef CL_ISV_REF_PCT10
+  `define CL_ISV_REF_PCT10 310   // 31 % — the duty the ISV starts warm idle at
+`endif
+`ifndef CL_ISV_AIR_GAIN
+  `define CL_ISV_AIR_GAIN  15    // AFM counts per 10 % of duty off the reference
+`endif
+`ifndef CL_ISV_WIN_NS
+  `define CL_ISV_WIN_NS    64'd200_000_000  // 200 ms, many PWM periods
+`endif
+    reg  [31:0] isv_hi_clk = 0, isv_tot_clk = 0;
+    integer     isv_pct10  = `CL_ISV_REF_PCT10;    // measured duty, 0.1 % units
+    reg  [63:0] isv_win_t0 = 0;
+    integer     isv_afm_add;
+    always @(*) isv_afm_add = ((isv_pct10 - `CL_ISV_REF_PCT10) * `CL_ISV_AIR_GAIN) / 100;
+    always @(posedge clk) begin : isv_duty
+        if ($time - isv_win_t0 >= `CL_ISV_WIN_NS) begin
+            isv_pct10   <= isv_tot_clk ? (isv_hi_clk * 1000) / isv_tot_clk : `CL_ISV_REF_PCT10;
+            isv_hi_clk  <= 0;
+            isv_tot_clk <= 0;
+            isv_win_t0  <= $time;
+            $display("SIM: [ISV] t=%0d ms duty=%0d.%0d%% afm_add=%0d",   // one per window
+                     $time / 64'd1_000_000, isv_pct10 / 10, isv_pct10 % 10, isv_afm_add);
+        end else begin
+            isv_tot_clk <= isv_tot_clk + 1;
+            if (`CL_TB.p1[4] === 1'b1) isv_hi_clk <= isv_hi_clk + 1;
+        end
+    end
+`endif
 
     // ── Initial state ────────────────────────────────────────────
     initial begin

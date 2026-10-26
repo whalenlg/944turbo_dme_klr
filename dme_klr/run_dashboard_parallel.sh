@@ -52,7 +52,7 @@ ALL_TESTS=(
     ramp_to_3000 ramp_to_6000 ramp_to_6000_knock knock_sensor_defect knock_sensor_short_to_ground ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 ramp_to_6300 cl_warm_idle cl_tippy_in cl_ramp_to_3000 cl_ramp_to_3000_KLR_BATT_LOW cl_ramp_to_3000_KLR_BATT_DISCONNECTED cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW cl_ramp_to_3000_TPS0 cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW cl_ramp_to_3000_KLR_KNOCK_BLOCKED cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW cl_ramp_to_3000_BOOST cl_ramp_to_4500 cl_ramp_to_5000_BOOST_LOW cl_condition_cycle cl_condition_cycle_idle cl_ramp_to_6000 cl_ramp_to_6000_BOOST cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW cl_ramp_to_6000_BOOST_HIGH
     cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3
     cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7
-    cl_ramp_to_redline cl_ac_halfway cl_cold_start
+    cl_ramp_to_redline cl_ac_halfway cl_idle_controlled_by_isv cl_cold_start
     warm_idle warm_idle_5s cold_start hot_idle idle_battery_low idle_high_alt idle_poor_fuel ac_on_idle tps_open_circuit altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss
     overrun_cutoff warmup_enrichment afm_open_circuit
     coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck o2_baseline tps_fail
@@ -85,7 +85,7 @@ group_members() {
             echo "ramp_to_3000_FQS0 ramp_to_3000_FQS1 ramp_to_3000_FQS2 ramp_to_3000_FQS3 ramp_to_3000_FQS4 ramp_to_3000_FQS5 ramp_to_3000_FQS6 ramp_to_3000_FQS7 ramp_to_6000_FQS0 ramp_to_6000_FQS1 ramp_to_6000_FQS2 ramp_to_6000_FQS3 ramp_to_6000_FQS4 ramp_to_6000_FQS5 ramp_to_6000_FQS6 ramp_to_6000_FQS7 cl_ramp_to_6000_FQS0 cl_ramp_to_6000_FQS1 cl_ramp_to_6000_FQS2 cl_ramp_to_6000_FQS3 cl_ramp_to_6000_FQS4 cl_ramp_to_6000_FQS5 cl_ramp_to_6000_FQS6 cl_ramp_to_6000_FQS7 cl_ramp_to_3000_FQS0 cl_ramp_to_3000_FQS1 cl_ramp_to_3000_FQS2 cl_ramp_to_3000_FQS3 cl_ramp_to_3000_FQS4 cl_ramp_to_3000_FQS5 cl_ramp_to_3000_FQS6 cl_ramp_to_3000_FQS7"
             ;;
         Idle)
-            echo "cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle cl_ac_halfway cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
+            echo "cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt warmup_enrichment o2_baseline cl_condition_cycle cl_condition_cycle_idle cl_ac_halfway cl_idle_controlled_by_isv cl_cold_start isv_cold_idle isv_load_droop dme_klr_warm_idle ac_on_idle"
             ;;
         DME_fail)
             echo "idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
