@@ -780,7 +780,10 @@ TESTS = {
                           ],
                           'condition_settle_window': 800,
                           'notes':'6-phase condition sweep, held at idle closed-loop'},
-    'cl_ramp_to_6000':   {'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
+    # Full load: the firmware enriches ~20% and runs lambda open-loop
+    # (0x0AAC's load gate), so with the mixture-following O2 sensor the
+    # sensor sits rich throughout — expected for every WOT test below.
+    'cl_ramp_to_6000':   {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s',
                           'dwell_cap':96},
 
@@ -797,7 +800,7 @@ TESTS = {
     #     since triggering it is the entire point of these tests.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
-    'cl_ramp_to_6000_BOOST': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
     'cl_ramp_to_6000_BOOST_ZERO': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
@@ -806,7 +809,7 @@ TESTS = {
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x31,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 75 (raw ADC, clamped at 0) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},
-    'cl_ramp_to_6000_BOOST_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_BOOST_HIGH': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x32,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input raised by 80 (raw ADC, saturating at 0xF0/240 — matches the firmware-compliance cap) — KLR expected to detect this and set DTC 3-2 (0x32, Boost Pressure Too High); has not yet been observed to actually fire despite several fault-injection approaches — see klr_tb.v boost_adc4_high comment for history'},
     'cl_ramp_to_2100_BOOST_HIGH': {'rpm_target': 2100, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
@@ -832,42 +835,42 @@ TESTS = {
                           'require_ram33_value':0x31,
                           'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low), same as cl_ramp_to_6000_BOOST_LOW'},
 
-    'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS0': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS1': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS1': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS2': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS2': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS3': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS3': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS4': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS5': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS6': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS7': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing',
@@ -904,7 +907,7 @@ TESTS = {
                           'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos7: +6% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
-    'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
+    'cl_ramp_to_redline':{'expect_o2':'rich_or_disconnected', 'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s',
                           'dwell_cap':97},   # estimated from RPM-scaling trend (90@6000, 96@6440, 97@6524) — not directly confirmed from a real log
     'cl_ac_halfway':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
