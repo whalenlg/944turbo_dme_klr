@@ -4,9 +4,9 @@
 //  Models a Bosch narrowband lambda sensor oscillating around
 //  stoichiometry (lambda = 1.0).
 //
-//  Signal mapping on 89 DME 951:
-//    P1.6 (o2_bottom) = sensor voltage → 1 = rich, 0 = lean
-//    P1.7 (o2_top)    = sensor voltage → 1 = rich, 0 = lean
+//  Outputs are the sensor voltage, 1 = rich (high), 0 = lean. The DME's
+//  comparators invert onto the pins (i8051_dashboard_tb.v, O2 sensor):
+//    P1.6 = ~o2_bottom, P1.7 = ~o2_top  (pin high = lean)
 //
 //  Phases:
 //    Rich (0):      ~0.9V  → P1.6=1, P1.7=1  (250ms)
@@ -24,8 +24,8 @@
 module o2_generator (
     input  wire clk,
     input  wire rst,
-    output reg  o2_top,     // P1.7: 1=rich, 0=lean
-    output reg  o2_bottom   // P1.6: 1=rich, 0=lean (also high during crossover)
+    output reg  o2_top,     // top comparator: 1=rich, 0=lean (P1.7 inverted)
+    output reg  o2_bottom   // bottom: 1=rich, 0=lean, also 1 in crossover (P1.6 inverted)
 );
 
 localparam RICH_CLKS       = 22'd1_500_000;  // 250ms
