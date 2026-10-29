@@ -46,9 +46,17 @@ Input conversions (log value -> raw ADC byte the model reads)
                                        its own 3-bar sensor, so its psi
                                        is real pressure, past what the
                                        KLR's 200 kPa sensor can read
-  o2        ' NBO2 (V)'                DME P1.7:6 comparators: >= 0.6 V
-                                       rich (3), <= 0.3 V lean (0), else
-                                       crossover (1)
+  o2        (model)                    65535 = the testbench's mixture-
+                                       following O2 sensor closes the
+                                       lambda loop on the replayed mixture.
+                                       The log's NBO2 trace can't: in
+                                       closed-loop cruise it sits under
+                                       0.6 V ~78% of the time (car at
+                                       WBO2 lambda 1.00), and the firmware's
+                                       integrator rails on that imbalance.
+            ' NBO2 (V)'                with --o2-from-log: DME P1.7:6
+                                       comparators >= 0.6 V rich (3),
+                                       <= 0.3 V lean (0), else crossover (1)
   klr_tps   'Throttle Switch (Status)' KLR TPS angle in afm_wiper units.
                                        The log has no throttle angle, so
                                        (ASSUMED) Idle 0x28, Off Idle 0x60,
@@ -254,6 +262,9 @@ def main():
                          "log of the KLR's ram[52h], which is ADC + 10)")
     ap.add_argument('--dme-rom', default=os.environ.get('DME_ROM') or DEFAULT_ROM,
                     help='DME ROM .mem for the NTC maps (default: 28PIN_DME_PERFORMANCE.mem)')
+    ap.add_argument('--o2-from-log', action='store_true',
+                    help="pin O2 from the log's NBO2 (V) instead of the "
+                         "testbench's mixture-following sensor")
     a = ap.parse_args()
 
     rows = read_log(a.xlsx)
@@ -313,7 +324,7 @@ def main():
                         0 if not r['fqs'] else clamp8(r['fqs']),
                         volts(r['tps_v']),
                         KLR_TPS_BY_STATUS.get(r['tps_status'], 0x60),
-                        o2_code(r['nbo2_v']),
+                        o2_code(r['nbo2_v']) if a.o2_from_log else 65535,
                         knock])
     with open(a.out_prefix + '.expect.csv', 'w', newline='') as f:
         w = csv.writer(f)

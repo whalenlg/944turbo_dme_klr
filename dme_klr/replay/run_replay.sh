@@ -18,6 +18,8 @@
 #    ./run_replay.sh --out-dir DIR ...       # results here instead (the dashboard
 #                                            # suites use their own dash_logs)
 #    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 0)
+#    ./run_replay.sh --o2-from-log           # pin O2 from the log's NBO2 instead of
+#                                            # the testbench's mixture-following sensor
 #    ./run_replay.sh --iverilog --KLR_DEBUG ...  # debug build (also --DME_DEBUG,
 #                                            # --DME_DEEP_DEBUG): more waveform, and
 #                                            # a per-instruction trace in <name>.log
@@ -81,6 +83,7 @@ while [ $# -gt 0 ]; do
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
         --map-offset)    STIM_ARGS+=(--map-offset "$2"); shift 2 ;;
+        --o2-from-log)   STIM_ARGS+=(--o2-from-log); shift ;;
         --out-dir)       OUT_DIR="$2"; shift 2 ;;
         --KLR_DEBUG|--DME_DEBUG|--DME_DEEP_DEBUG) EXTRA_DEFS+=("-D${1#--}"); shift ;;
         --list-segments) python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" --list-segments; exit 0 ;;
