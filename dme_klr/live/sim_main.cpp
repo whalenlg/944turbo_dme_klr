@@ -106,6 +106,7 @@ public:
             {"klr_tps",   &TB(live_klr_tps),   16, true},
             {"o2",        &TB(live_o2),        16, true},
             {"knock",     &TB(live_knock),     16, true},
+            {"ac",        &TB(live_ac),         8, false},   // DME T1: 1 = AC compressor on
         };
     }
 

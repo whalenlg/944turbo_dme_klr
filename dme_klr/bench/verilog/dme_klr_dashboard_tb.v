@@ -72,6 +72,7 @@ module dme_klr_dashboard_tb;
     reg [15:0] live_klr_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle, in afm_wiper units
     reg [15:0] live_o2        /*verilator public_flat_rw*/ = 16'hFFFF;  // {o2_7, o2_6}: 0 lean, 1 cross, 3 rich
     reg [15:0] live_knock     /*verilator public_flat_rw*/ = 16'hFFFF;  // 1: crank-synced knock on the KLR knock_sensor (klr_knock_gen.v)
+    reg [7:0]  live_ac        /*verilator public_flat_rw*/ = 8'h00;     // DME T1 (P3.5): 1 = AC compressor on
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     // KLR ram 3Ah / 48h for the log replay's knock filter
@@ -309,8 +310,10 @@ module dme_klr_dashboard_tb;
     // The DME/KLR sub-testbenches each already set up their own
     // $dumpfile (vcd.v / klr_vcd.v); this only adds more variables to
     // whichever of those opens the file first — no new $dumpfile call
-    // needed here.
+    // needed here. #1: after vcd.v's $dumpfile — Verilator drops a
+    // $dumpvars that comes first, and initial-block order isn't defined.
     initial begin
+        #1;
         $dumpvars(1, tach_dme_to_klr);
         $dumpvars(1, ign_out_dme_to_klr);
         $dumpvars(1, klr_ign_out);

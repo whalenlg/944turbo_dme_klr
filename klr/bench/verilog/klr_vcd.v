@@ -395,6 +395,11 @@ initial begin
     // this, so they still need to open the file themselves.
     $dumpfile(`VCD_FILE);
     $dumpon;
+`else
+    // Let vcd.v's initial block open the file first: Verilator drops a
+    // $dumpvars that runs before $dumpfile, and initial-block order
+    // between the two files isn't defined
+    #1;
 `endif
 
     // ── Always-on: minimal signal set (small FST) ─────────────────
@@ -410,6 +415,7 @@ initial begin
     $dumpvars(1, `KLR_TB_PATH.trigger_in);
     $dumpvars(1, `KLR_TB_PATH.ign_in);
     $dumpvars(1, `KLR_TB_PATH.full_load);
+    $dumpvars(1, klr_tb.cv_duty_pct);          // CV duty, % (real)
     $dumpvars(1, `KLR_TB_PATH.CV_PWM);
     $dumpvars(1, `KLR_TB_PATH.knock_out);
     $dumpvars(1, `KLR_TB_PATH.fake_knock);
