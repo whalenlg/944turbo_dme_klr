@@ -41,9 +41,25 @@ module dme_klr_dashboard_tb;
                                 // var_interrupt_generator/_cl) — not
                                 // connected to the KLR, exposed for
                                 // observation/logging at this top level
-    // TPS angle: DME AFM wiper → KLR TPS angle ch7
-    // TPS supply is fixed 201 in klr_tb (5V regulated, independent of battery)
-    wire [7:0] tps_wiper_sig;
+    // ── Throttle angle (what the KLR's TPS reads) ─────────────
+    // throttle_pos: the throttle after its ~250 ms slew, on the DME's
+    // AFM-wiper scale (0x28 closed .. 0xEB WOT) — u_dme.klr_throttle (see
+    // i8051_dashboard_tb), or live_klr_tps when that's pinned. It is
+    // never the AFM: the AFM lags the throttle in the closed-loop builds.
+    // throttle_angle_deg: the same position in degrees, 0 closed ..
+    // THROTTLE_WOT_DEG at 0xEB (nominal plate travel, for traces only).
+    // klr_tps_code: the KLR's ch7 ADC reading that results (klr_tb maps
+    // 26 + (pos-40)*213/195, clamps at 0xDB, ratiometric to ch3).
+    // The DME's ch6 throttle switch is separate (TPS_IDLE_ADC/0xCC/0xF2
+    // in i8051_dashboard_tb) and unchanged.
+`ifndef THROTTLE_WOT_DEG
+`define THROTTLE_WOT_DEG 90.0
+`endif
+    wire [7:0] throttle_pos;
+    real       throttle_angle_deg;
+    always @(*) throttle_angle_deg = (throttle_pos <= 8'd40) ? 0.0
+                                   : (throttle_pos - 40) * `THROTTLE_WOT_DEG / 195.0;
+    wire [7:0] klr_tps_code = u_klr.adc_ch7;
 `ifdef LIVE
     // ── Live-debugger inputs ──────────────────────────────────
     // Written between evals by dme_klr/live/sim_main.cpp when the web UI
@@ -69,7 +85,7 @@ module dme_klr_dashboard_tb;
     // Pins used by the open-loop log replay (dme_klr/replay/); same
     // 16'hFFFF / 8'hFF = "use the model" convention as above.
     reg [15:0] live_dme_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // DME ADC ch6 (throttle switch)
-    reg [15:0] live_klr_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle, in afm_wiper units
+    reg [15:0] live_klr_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // throttle_pos (KLR TPS), 0x28 closed .. 0xEB WOT
     reg [15:0] live_o2        /*verilator public_flat_rw*/ = 16'hFFFF;  // {o2_7, o2_6}: 0 lean, 1 cross, 3 rich
     reg [15:0] live_knock     /*verilator public_flat_rw*/ = 16'hFFFF;  // 1: crank-synced knock on the KLR knock_sensor (klr_knock_gen.v)
     reg [7:0]  live_ac        /*verilator public_flat_rw*/ = 8'h00;     // DME T1 (P3.5): 1 = AC compressor on
@@ -81,8 +97,8 @@ module dme_klr_dashboard_tb;
     wire [7:0] live_klr_ram48 /*verilator public_flat_rd*/ = u_klr.top.i8048_core_1.ram[7'h48];
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
-    assign tps_wiper_sig = (live_klr_tps == 16'hFFFF) ? u_dme.klr_throttle   // throttle after its slew (see i8051_dashboard_tb)
-                                                      : live_klr_tps[7:0];
+    assign throttle_pos = (live_klr_tps == 16'hFFFF) ? u_dme.klr_throttle   // throttle after its slew (see i8051_dashboard_tb)
+                                                     : live_klr_tps[7:0];
 
     // Instruction-start trackers for breakpoints, stepping and the PC
     // trace. *_ipc is the address of the opcode most recently fetched and
@@ -194,7 +210,7 @@ module dme_klr_dashboard_tb;
         if ($time - live_klr_ign_rise >= 100_000)
             $display("SIM: [IGN] klr t_ns=%0d width_ns=%0d", $time, $time - live_klr_ign_rise);
 `else
-    assign tps_wiper_sig = u_dme.klr_throttle;   // see i8051_dashboard_tb
+    assign throttle_pos = u_dme.klr_throttle;   // see i8051_dashboard_tb
 `endif
 
     // ── Spark angles vs TDC ────────────────────────────────────
@@ -315,7 +331,9 @@ module dme_klr_dashboard_tb;
         $dumpvars(1, klr_ign_out);
         $dumpvars(1, full_load);
         $dumpvars(1, tdc);
-        $dumpvars(1, tps_wiper_sig);
+        $dumpvars(1, throttle_pos);
+        $dumpvars(1, throttle_angle_deg);
+        $dumpvars(1, klr_tps_code);
         $dumpvars(1, ext_trigger);
         $dumpvars(1, ext_ign);
     end
@@ -399,7 +417,7 @@ module dme_klr_dashboard_tb;
         .ext_ign         ( ext_ign             ),  // DME tach → KLR ign (inverted)
         .ign_out         ( klr_ign_out         ),  // KLR spark output → DME ign
         .full_load       ( full_load_klr       ),  // KLR WOT flag → DME
-        .tps_wiper   ( tps_wiper_sig       ),  // AFM → KLR TPS angle ch7
+        .tps_wiper       ( throttle_pos        ),  // throttle → KLR TPS angle ch7
         .rpm_in          ( u_dme.ref_rpm       ),  // DME tick-measured RPM (reg [31:0]) → KLR -DBOOST map (unused if -DBOOST undefined)
         .dme_clk         ( dme_clk             ),  // → KLR's knock_signal_generator (crank-synced knock_sensor waveform)
         .tdc             ( tdc                 ),  // → KLR's knock_signal_generator

@@ -1661,7 +1661,7 @@ wire idle_sw = 1'b0;
 wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
 `endif
 
-// The KLR's throttle angle (dme_klr_dashboard_tb.tps_wiper_sig, normal
+// The KLR's throttle angle (dme_klr_dashboard_tb.throttle_pos, normal
 // and live builds alike): the throttle itself (afm_wiper), closed in the
 // CL_THROTTLE_CLOSED builds above, or, where the AFM is the (scripted-RPM)
 // engine model's, that AFM without the ISV's bypass air
