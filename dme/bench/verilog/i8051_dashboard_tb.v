@@ -1104,7 +1104,11 @@ assign      tdc = tdc_marker;
 // T1: AC compressor status input. 0=off (default), 1=on.
 //     Override with -DAC_COMP_ON for always-on, or -DCL_AC_HALFWAY
 //     for mid-simulation switch (fires at SIM_TIME/2).
-`ifdef CL_AC_HALFWAY
+`ifdef LIVE
+// Live debugger / log replay: the live panel's AC switch
+wire t1;
+assign t1 = dme_klr_dashboard_tb.live_ac[0];
+`elsif CL_AC_HALFWAY
 reg t1;
 initial begin
     t1 = 1'b0;

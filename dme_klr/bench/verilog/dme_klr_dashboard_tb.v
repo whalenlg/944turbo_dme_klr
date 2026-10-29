@@ -72,6 +72,7 @@ module dme_klr_dashboard_tb;
     reg [15:0] live_klr_tps   /*verilator public_flat_rw*/ = 16'hFFFF;  // KLR TPS angle, in afm_wiper units
     reg [15:0] live_o2        /*verilator public_flat_rw*/ = 16'hFFFF;  // {o2_7, o2_6}: 0 lean, 1 cross, 3 rich
     reg [15:0] live_knock     /*verilator public_flat_rw*/ = 16'hFFFF;  // 1: crank-synced knock on the KLR knock_sensor (klr_knock_gen.v)
+    reg [7:0]  live_ac        /*verilator public_flat_rw*/ = 8'h00;     // DME T1 (P3.5): 1 = AC compressor on
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
