@@ -98,6 +98,14 @@
 //  Per-test parameter overrides (identical to i8051_dashboard_tb.v)
 // ============================================================
 
+// Warm idle: the live dashboard's defaults (LivePanel hints), so the
+// scripted tests and a live session run the same engine. Raw ADC values;
+// the firmware linearises them in place into 13h/12h.
+//   coolant 0x31 ~ 85 C (185 F)    air temp 0x9E ~ 20 C (68 F)
+// (Until 2026-10 the tests used coolant 0x20 ~ 103 C and air 0x50 ~ 62 C.)
+`define WARM_COOLANT_RAW 8'h31
+`define WARM_AIRTEMP_RAW 8'h9E
+
 `ifdef TEST_WARM_IDLE
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP
@@ -108,8 +116,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  60000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -133,8 +141,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -167,7 +175,7 @@
   `define SIM_TIME  25000000000
   `endif
   `define _COOLANT_RAW  8'h10
-  `define _AIRTEMP_RAW  8'h50
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -183,8 +191,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'h8C
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -200,8 +208,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'h00
   `ifndef _FUEL_QUAL
@@ -224,8 +232,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hFF
   `ifndef _FUEL_QUAL
@@ -248,8 +256,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -271,8 +279,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -297,8 +305,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  8000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -318,8 +326,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  8000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -337,8 +345,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  10000000000      // 10s — enough to see ISV and fuel response to AC load
   `endif
-  `define _COOLANT_RAW  8'h20        // warm engine
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW        // warm engine
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -382,8 +390,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  30000000000     // 30s — matches the 3000-family's duration
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -400,8 +408,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -446,8 +454,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  35000000000     // 35s — between the 30s/40s used for 3000/6000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -473,8 +481,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  35000000000     // 35s — matching the 4500-family's duration
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -575,8 +583,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -593,8 +601,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  40000000000     // 40s
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -610,8 +618,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  20000000000     // 20s — 10s pre-AC, 10s with AC
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -632,8 +640,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  45000000000     // 45s — 22.5s settle, 22.5s with AC
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -675,8 +683,8 @@
                                       // needs more than 10s to fully return
                                       // to idle before steady-state is judged
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -706,8 +714,8 @@
                                      // closes at t=32s + ~18s coast-down/
                                      // fuel-reintroduction/re-settle at idle
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -740,8 +748,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -758,7 +766,7 @@
   `define SIM_TIME  5000000000
   `endif
   `define _COOLANT_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot
-  `define _AIRTEMP_RAW  8'h50
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -774,7 +782,7 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
   `define _AIRTEMP_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot air
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
@@ -792,8 +800,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  25000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -810,8 +818,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  25000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -828,8 +836,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  25000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -846,8 +854,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  5000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -865,8 +873,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  10000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -884,8 +892,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  10000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -903,8 +911,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  10000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -922,8 +930,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  15000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -941,8 +949,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  15000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -960,8 +968,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  15000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -994,8 +1002,8 @@
   `ifndef SIM_TIME
   `define SIM_TIME  12000000000
   `endif
-  `define _COOLANT_RAW  8'h20
-  `define _AIRTEMP_RAW  8'h50
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
   `define _BATTERY      8'hD8
   `define _ALTITUDE     8'hF8
   `ifndef _FUEL_QUAL
@@ -1007,10 +1015,10 @@
 //  ADC channel defaults
 // ============================================================
 `ifndef _COOLANT_RAW
-  `define _COOLANT_RAW  8'h20
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
 `endif
 `ifndef _AIRTEMP_RAW
-  `define _AIRTEMP_RAW  8'h50
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
 `endif
 `ifndef _BATTERY
   `define _BATTERY      8'hD8
