@@ -1653,11 +1653,8 @@ wire [7:0] throttle_afm = afm_effective;
 // RPM, WOT (cl_warm_idle ran away to 6800 rpm once idle lambda drifted
 // rich). The scripted-RPM ramps (ramp_to_*) keep the AFM as their
 // throttle: there RPM is the driver's command.
-`ifdef CL_MODE
-`ifdef AFM_FROM_ENGINE_MODEL
-  `define CL_THROTTLE_CLOSED
-`endif
-`endif
+// (CL_THROTTLE_CLOSED is defined in var_interrupt_gen_cl.v, compiled
+// first, which also holds the AFM at the closed-throttle idle base.)
 `ifdef CL_THROTTLE_CLOSED
 wire idle_sw = 1'b0;
 `else
