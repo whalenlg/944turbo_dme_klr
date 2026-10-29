@@ -150,7 +150,7 @@
                                  // fuel, FQS position 0) if not overridden.
 `endif
 `ifndef CL_FRICTION_RPM2_DIV
-  `define CL_FRICTION_RPM2_DIV   1178000  // quadratic term: rpm*rpm/DIV — fit
+  `define CL_FRICTION_RPM2_DIV   1247000  // quadratic term: rpm*rpm/DIV — fit
                                            // through idle+3000. Refit for the
                                            // mixture-following O2 sensor: lambda
                                            // now trims part load's ~4%-rich base
@@ -160,9 +160,12 @@
                                            // at 2654 rpm instead of 2796. Scaled
                                            // by the quadratic share at that point
                                            // (9.7/7.8) from 890000 (1107000),
-                                           // then +6.4% so the lowest FQS
-                                           // position (FQS7, 2637 rpm) clears
-                                           // the 2700 floor. Idle is
+                                           // then 1178000 and 1247000 so the
+                                           // FQS positions the CL model makes
+                                           // the least torque at (FQS1/3/5/7,
+                                           // their richened pulse trimmed back
+                                           // by lambda; 2673-2705 rpm) clear
+                                           // the 2700 floor by ~50 rpm. Idle is
                                            // unaffected (840^2/DIV is 0 either way).
                                            // Earlier history: re-tuned again:
                                            // the previous 760000 was margin-
@@ -188,14 +191,14 @@
                                                 // touch that anchor's margin at all.
 `endif
 `ifndef CL_FRICTION_CUBIC_DIV
-  `define CL_FRICTION_CUBIC_DIV  253500000  // cubic term: (rpm-THRESHOLD)^3/DIV,
+  `define CL_FRICTION_CUBIC_DIV  245000000  // cubic term: (rpm-THRESHOLD)^3/DIV,
                                              // only applied above THRESHOLD.
                                              // Refit with RPM2_DIV above: full
                                              // load runs with lambda off, so
                                              // cl_ramp_to_6000's fuel is unchanged;
                                              // this restores the total friction at
                                              // its 6388 rpm equilibrium (quadratic
-                                             // 45.9 -> 34.8, cubic 42.6 -> 54.6).
+                                             // 45.9 -> 32.9, cubic 42.6 -> 56.5).
                                              // Re-tuned alongside CL_FRICTION_RPM2_DIV
                                              // (see that comment) with base=26
                                              // held fixed throughout the search
