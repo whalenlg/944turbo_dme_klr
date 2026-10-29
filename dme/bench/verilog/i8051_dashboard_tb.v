@@ -1643,12 +1643,34 @@ wire [7:0] throttle_afm = afm_effective;
 `else
 wire [7:0] throttle_afm = afm_effective;
 `endif
+// Closed-loop builds on the engine model's AFM (cl_warm_idle,
+// cl_ac_halfway, cl_cold_start, cl_condition_cycle_idle,
+// cl_idle_controlled_by_isv) have no driver throttle: the engine model
+// makes RPM from the fuel and the AFM from RPM, so the AFM follows RPM,
+// not a pedal. The driver's foot is off, so the throttle is closed
+// whatever RPM does. Deriving it from that AFM made any RPM rise read as
+// opening the throttle: ch6 off-idle, idle loop off, off-idle fuel, more
+// RPM, WOT (cl_warm_idle ran away to 6800 rpm once idle lambda drifted
+// rich). The scripted-RPM ramps (ramp_to_*) keep the AFM as their
+// throttle: there RPM is the driver's command.
+`ifdef CL_MODE
+`ifdef AFM_FROM_ENGINE_MODEL
+  `define CL_THROTTLE_CLOSED
+`endif
+`endif
+`ifdef CL_THROTTLE_CLOSED
+wire idle_sw = 1'b0;
+`else
 wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
+`endif
 
 // The KLR's throttle angle (dme_klr_dashboard_tb.tps_wiper_sig, normal
-// and live builds alike): the throttle itself (afm_wiper), or, where the
-// AFM is the engine model's, that AFM without the ISV's bypass air
-`ifdef AFM_FROM_ENGINE_MODEL
+// and live builds alike): the throttle itself (afm_wiper), closed in the
+// CL_THROTTLE_CLOSED builds above, or, where the AFM is the (scripted-RPM)
+// engine model's, that AFM without the ISV's bypass air
+`ifdef CL_THROTTLE_CLOSED
+wire [7:0] klr_throttle = 8'h28;
+`elsif AFM_FROM_ENGINE_MODEL
 wire [7:0] klr_throttle = throttle_afm;
 `else
 wire [7:0] klr_throttle = afm_wiper;
