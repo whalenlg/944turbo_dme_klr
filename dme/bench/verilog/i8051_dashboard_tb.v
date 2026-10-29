@@ -1751,16 +1751,26 @@ adc_delay_8 adc_delay_8_1 (
 );
 
 // ─── O2 sensor ──────────────────────────────────────────────
-// Encoding (matches o2_gen.v):
+// o2_6/o2_7 say what the sensor voltage is (matches o2_gen.v):
 //   Rich (~0.9V):         o2_6=1, o2_7=1
 //   Crossover (~0.5V):    o2_6=1, o2_7=0
 //   Lean (~0.1V):         o2_6=0, o2_7=0
-//   Disconnected (open):  o2_6=0, o2_7=0  — confirmed via analog recovery-
-//                          circuit sim: an open input floats both comparator
-//                          outputs low, electrically identical to Lean.
+// The DME's comparators (S800 CA139, analog/o2.jpg) take the sensor on
+// their inverting inputs against a ~0.6 V ladder and drive P1.7/P1.6
+// open-collector, so the pins are the inverse: rich reads low, lean
+// high. The firmware agrees (0x0A7F: P1.7 high adds fuel). See p1_in.
+//   Disconnected (open):  both pins low (o2_pins_low) — the analog
+//                          recovery-circuit sim: an open input floats both
+//                          comparator outputs low.
+wire o2_pins_low;
 `ifdef O2_FLAT_DISCONNECTED
+    assign o2_pins_low = 1'b1;
     assign o2_6 = 1'b0;
     assign o2_7 = 1'b0;
+`else
+    assign o2_pins_low = 1'b0;
+`endif
+`ifdef O2_FLAT_DISCONNECTED
 `elsif O2_FLAT_LEAN
     assign o2_6 = 1'b0;
     assign o2_7 = 1'b0;
@@ -1794,8 +1804,8 @@ always @(clk) begin
     p1_in[3] = 1'b1;
     p1_in[4] = 1'b1;
     p1_in[5] = 1'b1;
-    p1_in[6] = o2_6;
-    p1_in[7] = o2_7;
+    p1_in[6] = ~o2_6 & ~o2_pins_low;   // comparator inverts (see O2 sensor)
+    p1_in[7] = ~o2_7 & ~o2_pins_low;
 
     p3_in[7:6] = 2'b11;           // unused, idle high
     p3_in[5]   = t1;              // T1 (P3.5) — AC compressor status (driven via t1 assign)
@@ -2028,7 +2038,7 @@ task emit_snapshot;
         // read back as X from the output latch, which corrupts the hex field
         // (e.g. "X77X") and makes the dashboard show '?'.  Source those bits
         // from the driven *_in signals instead.
-        //   P1.7/P1.6 = O2 sensor inputs (p1_in[7:6] = o2_7/o2_6)
+        //   P1.7/P1.6 = O2 sensor inputs (p1_in[7:6] = ~{o2_7,o2_6}, inverted)
         //   P3.5/P3.4 = T1/T0 (t1/t0 wires); P3.2 = ref sensor; P3.1:0 serial
         $write(",%02h%02h%02h",
                {p1_in[7:6], p1[5:0]},                     // P1: O2 inputs + latch

@@ -237,11 +237,11 @@ TESTS = {
                                   'with this firmware weighting intake-air-temp correction more heavily than '
                                   'coolant in the idle mixture target).'},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'lean_or_disconnected'},
+                          'expect_o2':'rich_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'rich'},
+                          'expect_o2':'rich_or_disconnected'},
     'o2_lean_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'lean_or_disconnected'},
+                          'expect_o2':'lean'},
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
@@ -1369,14 +1369,16 @@ def debounce_wot(rows):
 def detect_o2_status(rows):
     """Classify O2 sensor behaviour from post-startup [DS] snapshots.
 
-    Returns one of 'ok', 'lean_or_disconnected', 'rich', or None if there
+    Returns one of 'ok', 'rich_or_disconnected', 'lean', or None if there
     aren't enough post-startup snapshots to judge.
 
       R3e changes after startup  -> 'ok' (sensor switching normally)
-      R3e stuck, B26=1           -> 'lean_or_disconnected' (fixed-lean and
-                                     disconnected are indistinguishable from
-                                     this byte alone)
-      R3e stuck, B26=0           -> 'rich'
+      R3e stuck, B26=1           -> 'rich_or_disconnected' (B26 = 24h.6 =
+                                     NOT P1.7, and the DME's comparators
+                                     put P1.7 low for a rich sensor; an
+                                     open sensor floats both pins low too,
+                                     so the two can't be told apart here)
+      R3e stuck, B26=0           -> 'lean'
     """
     # "After startup" = everything past the same startup window used
     # elsewhere in this script for steady-state windows (last/first 20%,
@@ -1394,9 +1396,9 @@ def detect_o2_status(rows):
     # flag bit (it should be stable once the condition is latched).
     b26 = post_startup[-1]['o2_b26']
     if b26 == 1:
-        return 'lean_or_disconnected', o2_vals[-1], b26
+        return 'rich_or_disconnected', o2_vals[-1], b26
     else:
-        return 'rich', o2_vals[-1], b26
+        return 'lean', o2_vals[-1], b26
 
 # ─── Main validator ───────────────────────────────────────────────────────────
 
@@ -2504,8 +2506,8 @@ def validate(test_name, logpath, dme_file=None):
     # intentionally inject an O2 fault (o2_disconnected/o2_lean_stuck/
     # o2_rich_stuck) expect that specific stuck state via 'expect_o2' in
     # their TESTS entry; every other test defaults to expecting 'ok'.
-    # Note: 'lean_or_disconnected' is a single detected category — B26
-    # alone can't tell a disconnected sensor apart from one stuck lean.
+    # Note: 'rich_or_disconnected' is a single detected category — B26
+    # alone can't tell a disconnected sensor apart from one stuck rich.
     o2_status, o2_last_val, o2_b26 = detect_o2_status(rows)
     expect_o2 = exp.get('expect_o2', 'ok')
     if o2_status is None:
