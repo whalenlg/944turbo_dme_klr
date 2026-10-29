@@ -122,7 +122,10 @@ replay; the live debugger can `set` them too).
 
 The log has no knock-sensor waveform, only the KLR's own bookkeeping, so the
 replay injects the existing knock test's sensor drop (the `knock` input above)
-on each row where "KLR Knock Cnt." goes up: one knock the KLR counted. The
+on each row where "KLR Knock Cnt." goes up: one knock the KLR counted. A logged knock is
+only applied while the simulated KLR's ram 3Ah > 48h, which its knock check
+(0x0D3A) needs before it counts one; the rest are filtered out, logged as
+`SIM: [KNOCK] ... applied=0`, and taken off the log's count in the report. The
 log's "KLR Knocking" flag isn't used: it reads "Yes" on about 73 % of the rows,
 exactly those where "KLR Ign. Retard" is above 0.5 deg, i.e. while the KLR is
 still pulling timing after a knock, so replaying it as the knock signal knocked

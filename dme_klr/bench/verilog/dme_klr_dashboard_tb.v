@@ -75,6 +75,10 @@ module dme_klr_dashboard_tb;
     reg [7:0]  live_ac        /*verilator public_flat_rw*/ = 8'h00;     // DME T1 (P3.5): 1 = AC compressor on
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
+    // KLR ram 3Ah / 48h for the log replay's knock filter
+    // (replay_main.cpp): the KLR only counts a knock while 3Ah > 48h
+    wire [7:0] live_klr_ram3a /*verilator public_flat_rd*/ = u_klr.top.i8048_core_1.ram[7'h3A];
+    wire [7:0] live_klr_ram48 /*verilator public_flat_rd*/ = u_klr.top.i8048_core_1.ram[7'h48];
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
     assign tps_wiper_sig = (live_klr_tps == 16'hFFFF) ? u_dme.afm_wiper   // throttle after its slew (see i8051_dashboard_tb)
