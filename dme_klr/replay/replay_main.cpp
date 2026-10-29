@@ -123,7 +123,7 @@ public:
         printf("SIM: [REPLAY] rows=%zu warmup_ms=%.0f log_ms=%.3f..%.3f\n", rows_.size(), warmup_ms,
                rows_[0].t_ms, rows_.back().t_ms);
         top_->eval();         // initial blocks set the live_* defaults first
-        apply(rows_[0]);
+        apply(rows_[0], 0);
         size_t next = 0;
         auto wall0 = std::chrono::steady_clock::now();
         auto last_tick = wall0;
@@ -133,7 +133,7 @@ public:
             while (next < rows_.size() && now >= rows_[next].t_ms * 1e6 + offset_ns) {
                 printf("SIM: [ROW] idx=%zu log_ms=%.3f t_ns=%.0f\n", next, rows_[next].t_ms, now);
                 TB(live_snap_req) = TB(live_snap_req) + 1;
-                apply(rows_[next]);
+                apply(rows_[next], next);
                 ++next;
             }
             if (next == rows_.size() && now >= end_ns && TB(live_snap_ack) == TB(live_snap_req)) break;
@@ -183,10 +183,19 @@ private:
         return v >= 0 && v <= (in.bits == 8 ? 0xFF : 0xFFFF);
     }
 
-    void apply(const Row& r) {
+    void apply(const Row& r, size_t idx) {
         for (size_t i = 0; i < cols_.size(); ++i) {
-            if (cols_[i]->bits == 8) *static_cast<uint8_t*>(cols_[i]->ptr) = static_cast<uint8_t>(r.vals[i]);
-            else *static_cast<uint16_t*>(cols_[i]->ptr) = static_cast<uint16_t>(r.vals[i]);
+            long v = r.vals[i];
+            // A logged knock only where the KLR could have counted one:
+            // its knock check (0x0D3A) needs ram 3Ah > 48h, so a knock the
+            // log shows while 3Ah <= 48h is filtered out (as replay_driver.v)
+            if (cols_[i]->ptr == &TB(live_knock) && v == 1) {
+                unsigned r3a = TB(live_klr_ram3a), r48 = TB(live_klr_ram48);
+                if (r3a <= r48) v = 0;
+                printf("SIM: [KNOCK] idx=%zu applied=%ld r3A=%02x r48=%02x\n", idx, v, r3a, r48);
+            }
+            if (cols_[i]->bits == 8) *static_cast<uint8_t*>(cols_[i]->ptr) = static_cast<uint8_t>(v);
+            else *static_cast<uint16_t*>(cols_[i]->ptr) = static_cast<uint16_t>(v);
         }
     }
 

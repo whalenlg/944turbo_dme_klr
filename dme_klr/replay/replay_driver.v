@@ -50,6 +50,7 @@ module replay_driver;
               pin_fuel_qual, pin_dme_tps, pin_klr_tps;
     reg [1:0] pin_o2;
     reg       pin_knock;
+    reg [7:0] knock_r3a, knock_r48;
     real      log_rpm, log_afm_v, log_map_psi, log_ect_f, log_iat_v, log_batt_v, log_alt_v,
               log_tps_v, log_nbo2_v, log_fqs;
     integer   log_tps_status;
@@ -125,6 +126,15 @@ module replay_driver;
             dme_klr_dashboard_tb.live_dme_tps   = dme_tps;
             dme_klr_dashboard_tb.live_klr_tps   = klr_tps;
             dme_klr_dashboard_tb.live_o2        = o2;
+            // A logged knock only where the KLR could have counted one:
+            // its knock check (0x0D3A) needs ram 3Ah > 48h, so a knock the
+            // log shows while 3Ah <= 48h is filtered out
+            if (knock) begin
+                knock_r3a = dme_klr_dashboard_tb.live_klr_ram3a;
+                knock_r48 = dme_klr_dashboard_tb.live_klr_ram48;
+                if (knock_r3a <= knock_r48) knock = 0;
+                $display("SIM: [KNOCK] idx=%0d applied=%0d r3A=%02h r48=%02h", idx, knock, knock_r3a, knock_r48);
+            end
             dme_klr_dashboard_tb.live_knock     = knock;
             pin_rpm = rpm;  pin_afm = afm;  pin_boost = boost;  pin_coolant = coolant;
             pin_airtemp = airtemp;  pin_battery = battery;  pin_altitude = altitude;

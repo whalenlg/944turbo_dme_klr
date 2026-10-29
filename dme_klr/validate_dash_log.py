@@ -43,7 +43,7 @@ TESTS = {
                                   'override exactly (same style of direct-override sanity check as tps_fail\'s '
                                   'iram[0x16]).'},
     'idle_high_alt':     {'rpm_target':  840, 'fuel_range':(1.5, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x33, 'ISVIntegralLo(7D)')],
+                          'expect_isv_loop_active':True,
                           'notes':'High altitude (_ALTITUDE=0x00 vs baseline\'s 0xF8) barely moves idle fueling '
                                   '(real run: avg 2.145ms vs warm_idle_5s\'s 2.286ms — real but well within '
                                   'fuel_range noise), so that check alone cannot prove the fault fired. The '
@@ -93,7 +93,7 @@ TESTS = {
     # worst-case correction regardless of how far out of range the
     # reading is.
     'fuel_qual_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x17, 0xFF, 'ADC_FUELQUAL(17)'), (0x7D, 0x4F, 'ISVIntegralLo(7D)')],
+                          'expect_iram_bytes':[(0x17, 0xFF, 'ADC_FUELQUAL(17)')], 'expect_isv_loop_active':True,
                           'notes':'Same as idle_poor_fuel but _FUEL_QUAL=0xFF (open circuit) instead of 0xA7 '
                                   '(plausible worst-quality reading) — checks the DME\'s response to an '
                                   'implausible fuel-quality reading vs a merely worst-case one. No DTC expected '
@@ -177,7 +177,7 @@ TESTS = {
                                   'test exists to catch rather than a fluke. Reproduced identically under '
                                   'Verilator (same reset cadence) — not an Icarus-specific artifact.'},
     'idle_poor_fuel':    {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x4F, 'ISVIntegralLo(7D)')],
+                          'expect_isv_loop_active':True,
                           'notes':'Poor fuel quality (_FUEL_QUAL=0xA7, same worst-case value the FQS7 tests use) '
                                   'barely moves idle fueling (real run: avg 2.432ms vs warm_idle_5s\'s 2.286ms — '
                                   'real but well within fuel_range noise), so that check alone cannot prove the '
@@ -186,7 +186,7 @@ TESTS = {
                                   'quality skews the idle mixture target too, detected via the same downstream '
                                   'ISV-controller symptom rather than raw sensor readback.'},
     'ac_on_idle':        {'rpm_target':  840, 'fuel_range':(1.8, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x84, 'ISVIntegralLo(7D)')],
+                          'expect_isv_loop_active':True,
                           'notes':'This test is open-loop (no CL_MODE), so the ~50rpm droop physics '
                                   '(CL_AC_TORQUE in var_interrupt_gen_cl.v) never applies here — RPM is just '
                                   'scripted to 840 regardless of AC load, so an RPM-droop check would not work. '
@@ -221,7 +221,7 @@ TESTS = {
                                   'engine is physically at idle RPM — same category as cl_ramp_to_3000_TPS0\'s '
                                   'full_load-stuck-high exemption.'},
     'coolant_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 4.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x41, 'ISVIntegralLo(7D)')],
+                          'expect_isv_loop_active':True,
                           'notes':'coolant_fail barely moves idle fueling (both baseline and this fault are '
                                   'already past cold-start enrichment), so fuel_range alone cannot prove the '
                                   'fault fired. iram[0x7D] is the ISV (idle speed valve) PID integral term, low '
@@ -230,18 +230,18 @@ TESTS = {
                                   'the false-hot coolant reading skews the enrichment/mixture target. Shifts '
                                   'from 0x3B (baseline) to 0x41 for this fault, untouched by tps_fail.'},
     'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_iram_bytes':[(0x7D, 0x72, 'ISVIntegralLo(7D)')],
+                          'expect_isv_loop_active':True,
                           'notes':'Same reasoning as coolant_fail — fuel_range alone does not prove the fault. '
                                   'The same ISV integral term (iram[0x7D]) shifts from 0x3B (baseline) to 0x72 '
                                   'for this fault (a much larger shift than coolant_fail\'s 0x41, consistent '
                                   'with this firmware weighting intake-air-temp correction more heavily than '
                                   'coolant in the idle mixture target).'},
     'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'lean_or_disconnected'},
+                          'expect_o2':'rich_or_disconnected'},
     'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'rich'},
+                          'expect_o2':'rich_or_disconnected'},
     'o2_lean_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_o2':'lean_or_disconnected'},
+                          'expect_o2':'lean'},
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
@@ -1072,12 +1072,12 @@ DME_FILE_OVERRIDES = {
         # single real sample; fuel_qual_disconnected keeps its
         # ADC_FUELQUAL(17)=0xFF tuple unchanged (that's a direct sensor
         # readback, ROM-independent) and only overrides ISVIntegralLo.
-        'idle_poor_fuel':         {'expect_iram_bytes': [(0x7D, 0x8E, 'ISVIntegralLo(7D)')]},
-        'idle_high_alt':          {'expect_iram_bytes': [(0x7D, 0x72, 'ISVIntegralLo(7D)')]},
-        'ac_on_idle':             {'expect_iram_bytes': [(0x7D, 0x3F, 'ISVIntegralLo(7D)')]},
-        'fuel_qual_disconnected': {'expect_iram_bytes': [(0x17, 0xFF, 'ADC_FUELQUAL(17)'), (0x7D, 0x8E, 'ISVIntegralLo(7D)')]},
-        'coolant_fail':           {'expect_iram_bytes': [(0x7D, 0x5C, 'ISVIntegralLo(7D)')]},
-        'airtemp_fail':           {'expect_iram_bytes': [(0x7D, 0x6B, 'ISVIntegralLo(7D)')]},
+        'idle_poor_fuel':         {'expect_isv_loop_active':True},
+        'idle_high_alt':          {'expect_isv_loop_active':True},
+        'ac_on_idle':             {'expect_isv_loop_active':True},
+        'fuel_qual_disconnected': {'expect_iram_bytes':[(0x17, 0xFF, 'ADC_FUELQUAL(17)')], 'expect_isv_loop_active':True},
+        'coolant_fail':           {'expect_isv_loop_active':True},
+        'airtemp_fail':           {'expect_isv_loop_active':True},
 
         # ramp_to_redline / ramp_to_redline_KLR_TPS_HIGH: both WARN "No
         # injected fuel snapshots in steady state" at the exact same
@@ -1191,6 +1191,9 @@ def parse_ds(line):
                                 # low byte — shifts for BOTH coolant_fail
                                 # (0x3B->0x41) and airtemp_fail
                                 # (0x3B->0x72), untouched by tps_fail
+        'iram_0x7e': b(0x7E),  # ISV integral, high byte (7Eh:7Dh)
+        'iram_0x23': b(0x23),  # 23h.0/.1: ch6 throttle-switch code
+                                # (bit0 set, bit1 clear = idle PI loop)
         'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
                                 # TPS_FIXED's value (0x85->0x80),
                                 # untouched by either thermal fault
@@ -1366,14 +1369,16 @@ def debounce_wot(rows):
 def detect_o2_status(rows):
     """Classify O2 sensor behaviour from post-startup [DS] snapshots.
 
-    Returns one of 'ok', 'lean_or_disconnected', 'rich', or None if there
+    Returns one of 'ok', 'rich_or_disconnected', 'lean', or None if there
     aren't enough post-startup snapshots to judge.
 
       R3e changes after startup  -> 'ok' (sensor switching normally)
-      R3e stuck, B26=1           -> 'lean_or_disconnected' (fixed-lean and
-                                     disconnected are indistinguishable from
-                                     this byte alone)
-      R3e stuck, B26=0           -> 'rich'
+      R3e stuck, B26=1           -> 'rich_or_disconnected' (B26 = 24h.6 =
+                                     NOT P1.7, and the DME's comparators
+                                     put P1.7 low for a rich sensor; an
+                                     open sensor floats both pins low too,
+                                     so the two can't be told apart here)
+      R3e stuck, B26=0           -> 'lean'
     """
     # "After startup" = everything past the same startup window used
     # elsewhere in this script for steady-state windows (last/first 20%,
@@ -1391,9 +1396,9 @@ def detect_o2_status(rows):
     # flag bit (it should be stable once the condition is latched).
     b26 = post_startup[-1]['o2_b26']
     if b26 == 1:
-        return 'lean_or_disconnected', o2_vals[-1], b26
+        return 'rich_or_disconnected', o2_vals[-1], b26
     else:
-        return 'rich', o2_vals[-1], b26
+        return 'lean', o2_vals[-1], b26
 
 # ─── Main validator ───────────────────────────────────────────────────────────
 
@@ -1880,6 +1885,32 @@ def validate(test_name, logpath, dme_file=None):
                     else:
                         fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
                                      f"snapshots, saw {['0x%02x' % v for v in vals]}")
+
+    # ── 5a1b. expect_isv_loop_active: with the closed throttle at 0x99
+    # (ch6 code 2) the firmware's idle-speed PI loop runs. These tests
+    # hold RPM fixed (840 against its 800 target), so the ISV integral
+    # 7Eh:7Dh keeps moving instead of settling and no single 7Dh value can
+    # be expected (these used to be constants recorded at the old 0x85,
+    # code 3, where the loop doesn't run). Every post-ASE snapshot must
+    # be on the PI branch (23h.0 set, 23h.1 clear) and the integral must
+    # move.
+    if exp.get('expect_isv_loop_active'):
+        t_end_ev = next((p for p in phases if 'AFTER-START ENRICH end' in p), '')
+        m_ase_end = re.search(r't=(\d+)', t_end_ev)
+        post = [r for r in rows if r['t'] >= int(m_ase_end.group(1))] if m_ase_end else []
+        if not post:
+            warns.append("expect_isv_loop_active: no post-ASE snapshots")
+        else:
+            off_pi = [r for r in post if (r['iram_0x23'] & 0x03) != 0x01]
+            integ = [(r['iram_0x7e'] << 8) | r['iram_0x7d'] for r in post]
+            if off_pi:
+                fails.append(f"ISV loop: {len(off_pi)} of {len(post)} post-ASE snapshots off the idle PI "
+                             f"branch (23h.0/.1 = {sorted(set(r['iram_0x23'] & 3 for r in off_pi))}, want 1)")
+            elif len(set(integ)) < 5:
+                fails.append(f"ISV loop: integral 7Eh:7Dh barely moves ({len(set(integ))} values)")
+            else:
+                infos.append(f"ISV loop active ✓ (PI branch throughout, 7E:7D "
+                             f"{integ[0]:04x}->{integ[-1]:04x}, {min(integ):04x}-{max(integ):04x})")
 
     # ── 5a2. expect_isv_recovery: the firmware's idle-speed PI loop pulls
     # RPM back after a load step (cl_idle_controlled_by_isv: CL_ISV_AIR, AC
@@ -2475,8 +2506,8 @@ def validate(test_name, logpath, dme_file=None):
     # intentionally inject an O2 fault (o2_disconnected/o2_lean_stuck/
     # o2_rich_stuck) expect that specific stuck state via 'expect_o2' in
     # their TESTS entry; every other test defaults to expecting 'ok'.
-    # Note: 'lean_or_disconnected' is a single detected category — B26
-    # alone can't tell a disconnected sensor apart from one stuck lean.
+    # Note: 'rich_or_disconnected' is a single detected category — B26
+    # alone can't tell a disconnected sensor apart from one stuck rich.
     o2_status, o2_last_val, o2_b26 = detect_o2_status(rows)
     expect_o2 = exp.get('expect_o2', 'ok')
     if o2_status is None:

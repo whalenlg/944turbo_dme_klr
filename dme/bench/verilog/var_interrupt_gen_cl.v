@@ -1,8 +1,13 @@
 // Every closed-loop build runs the ISV's bypass air (CL_ISV_AIR, below);
-// this file is compiled before i8051_dashboard_tb.v, which does the same
+// this file is compiled before i8051_dashboard_tb.v, which does the same.
+// Not cl_cold_start: its RPM is the scripted crank ramp (CL_RPM_CRANK_RAMP),
+// which ISV air can't raise, so the idle loop winds the ISV open during
+// the 30 s crank and its air would triple the fuel at idle.
 `ifdef CL_MODE
-  `ifndef CL_ISV_AIR
-    `define CL_ISV_AIR
+  `ifndef TEST_CL_COLD_START
+    `ifndef CL_ISV_AIR
+      `define CL_ISV_AIR
+    `endif
   `endif
 `endif
 // ============================================================

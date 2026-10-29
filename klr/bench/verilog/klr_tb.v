@@ -129,7 +129,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // -DKLR_BATT_DISCONNECTED pegs it at 0 — battery sense wire open/
     // disconnected, reading no voltage at all rather than merely a low
     // one.
-`ifdef KLR_BATT_DISCONNECTED
+`ifdef LIVE
+    // Live debugger / log replay: the same battery reading the DME gets
+    wire [7:0] adc_ch1 = dme_klr_dashboard_tb.live_battery;
+`elsif KLR_BATT_DISCONNECTED
     reg [7:0] adc_ch1 = 8'h00;  // battery — disconnected (KLR_BATT_DISCONNECTED test)
 `elsif KLR_BATT_LOW
     reg [7:0] adc_ch1 = 8'hd8 >> 1;  // battery — halved (KLR_BATT_LOW test)
@@ -142,7 +145,9 @@ module klr_tb #(parameter EXT_STIM = 0) (
 `elsif LIVE
     // Live debugger without -DBOOST: the web UI sets the MAP reading
     // (capped at 0xF5 so the ADC routine's +10 can't wrap; see below)
-    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
+    // 16'hFFFF ("auto") is the fixed MAP the non-LIVE build uses, 0x85
+    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost == 16'hFFFF) ? 8'h85 :
+                         (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
                          dme_klr_dashboard_tb.live_boost[7:0];
 `else
     reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
@@ -721,6 +726,26 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  because the klr_system instance below is named `top`.
     // ============================================================
     klr_dumpvcd u_dumpvcd ();
+
+    // ── CV (boost control valve, KLR P1.4) duty, sim only: the share of each PWM period the pin is high,
+    // in %, updated at every rising edge (high = open, as the replay's
+    // icv_pct and CL_ISV_AIR count it). A pin that hasn't moved for 100 ms
+    // reads 0 or 100. Dumped in every VCD/FST (vcd.v / klr_vcd.v).
+    real     cv_duty_pct = 0.0;
+    realtime cv_duty_pct_rise = 0, cv_duty_pct_fall = 0, cv_duty_pct_edge = 0;
+    always @(posedge top.CV_PWM) begin
+        if (cv_duty_pct_rise > 0)
+            cv_duty_pct = cv_duty_pct_fall > cv_duty_pct_rise
+                     ? 100.0 * (cv_duty_pct_fall - cv_duty_pct_rise) / ($realtime - cv_duty_pct_rise) : 100.0;
+        cv_duty_pct_rise = $realtime;
+        cv_duty_pct_edge = $realtime;
+    end
+    always @(negedge top.CV_PWM) begin
+        cv_duty_pct_fall = $realtime;
+        cv_duty_pct_edge = $realtime;
+    end
+    always #10_000_000
+        if ($realtime - cv_duty_pct_edge > 100_000_000) cv_duty_pct = (top.CV_PWM === 1'b1) ? 100.0 : 0.0;
 
     // ============================================================
     //  Variable-RPM crank + ignition generator

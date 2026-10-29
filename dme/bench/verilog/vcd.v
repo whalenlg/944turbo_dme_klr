@@ -30,7 +30,7 @@ reg [159:0] opcode[0:8191],instr[0:8191],ops[0:8191],opsnums[0:8191];
   // with vcd2fst after the sim finishes.
   `define VCD_FILE "sim.vcd"
 `endif
-reg [1023:0] fst_path;
+reg [8*512-1:0] fst_path;   // room for long absolute paths
 
 // ============================================================
 //  FST hierarchy grouping (DME_DEBUG/DME_DEEP_DEBUG waveform
@@ -527,6 +527,7 @@ if (fst_path != "/dev/null") begin
     $display("DME: FST Dump enabled -> %0s", fst_path);
     $dumpfile(fst_path);
     $dumpon;
+    $dumpvars(1, `TB.isv_duty_pct);   // ISV duty, % (real)
 end else begin
     $display("DME: FST Dump suppressed (/dev/null)");
 end

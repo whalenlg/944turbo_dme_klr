@@ -1112,7 +1112,11 @@ assign      tdc = tdc_marker;
 // T1: AC compressor status input. 0=off (default), 1=on.
 //     Override with -DAC_COMP_ON for always-on, or -DCL_AC_HALFWAY
 //     for mid-simulation switch (fires at SIM_TIME/2).
-`ifdef CL_AC_HALFWAY
+`ifdef LIVE
+// Live debugger / log replay: the live panel's AC switch
+wire t1;
+assign t1 = dme_klr_dashboard_tb.live_ac[0];
+`elsif CL_AC_HALFWAY
 reg t1;
 initial begin
     t1 = 1'b0;
@@ -1190,6 +1194,26 @@ assign A_1_tach_pulse  = p1[1];  // module output port
 assign A_2_dme_relay   = p1[2];
 assign A_3_unused_p1_3 = p1[3];
 assign A_4_idle_speed  = p1[4];
+
+// ── ISV (idle speed valve, P1.4) duty, sim only: the share of each PWM period the pin is high,
+// in %, updated at every rising edge (high = open, as the replay's
+// icv_pct and CL_ISV_AIR count it). A pin that hasn't moved for 100 ms
+// reads 0 or 100. Dumped in every VCD/FST (vcd.v / klr_vcd.v).
+real     isv_duty_pct = 0.0;
+realtime isv_duty_pct_rise = 0, isv_duty_pct_fall = 0, isv_duty_pct_edge = 0;
+always @(posedge A_4_idle_speed) begin
+    if (isv_duty_pct_rise > 0)
+        isv_duty_pct = isv_duty_pct_fall > isv_duty_pct_rise
+                 ? 100.0 * (isv_duty_pct_fall - isv_duty_pct_rise) / ($realtime - isv_duty_pct_rise) : 100.0;
+    isv_duty_pct_rise = $realtime;
+    isv_duty_pct_edge = $realtime;
+end
+always @(negedge A_4_idle_speed) begin
+    isv_duty_pct_fall = $realtime;
+    isv_duty_pct_edge = $realtime;
+end
+always #10_000_000
+    if ($realtime - isv_duty_pct_edge > 100_000_000) isv_duty_pct = (A_4_idle_speed === 1'b1) ? 100.0 : 0.0;
 assign A_5_KLR_ign_out = p1[5];  // module output port
 
 // ─── VCD dump ───────────────────────────────────────────────
@@ -1591,10 +1615,13 @@ wire [7:0] afm_effective = afm_wiper;
   `define AFM_FROM_ENGINE_MODEL      // the CL model's AFM, ISV bypass air included
 `endif
 
-// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v)
+// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v),
+// except cl_cold_start's scripted crank ramp (see there)
 `ifdef CL_MODE
-  `ifndef CL_ISV_AIR
-    `define CL_ISV_AIR
+  `ifndef TEST_CL_COLD_START
+    `ifndef CL_ISV_AIR
+      `define CL_ISV_AIR
+    `endif
   `endif
 `endif
 
@@ -1748,16 +1775,26 @@ adc_delay_8 adc_delay_8_1 (
 );
 
 // ─── O2 sensor ──────────────────────────────────────────────
-// Encoding (matches o2_gen.v):
+// o2_6/o2_7 say what the sensor voltage is (matches o2_gen.v):
 //   Rich (~0.9V):         o2_6=1, o2_7=1
 //   Crossover (~0.5V):    o2_6=1, o2_7=0
 //   Lean (~0.1V):         o2_6=0, o2_7=0
-//   Disconnected (open):  o2_6=0, o2_7=0  — confirmed via analog recovery-
-//                          circuit sim: an open input floats both comparator
-//                          outputs low, electrically identical to Lean.
+// The DME's comparators (S800 CA139, analog/o2.jpg) take the sensor on
+// their inverting inputs against a ~0.6 V ladder and drive P1.7/P1.6
+// open-collector, so the pins are the inverse: rich reads low, lean
+// high. The firmware agrees (0x0A7F: P1.7 high adds fuel). See p1_in.
+//   Disconnected (open):  both pins low (o2_pins_low) — the analog
+//                          recovery-circuit sim: an open input floats both
+//                          comparator outputs low.
+wire o2_pins_low;
 `ifdef O2_FLAT_DISCONNECTED
+    assign o2_pins_low = 1'b1;
     assign o2_6 = 1'b0;
     assign o2_7 = 1'b0;
+`else
+    assign o2_pins_low = 1'b0;
+`endif
+`ifdef O2_FLAT_DISCONNECTED
 `elsif O2_FLAT_LEAN
     assign o2_6 = 1'b0;
     assign o2_7 = 1'b0;
@@ -1791,8 +1828,8 @@ always @(clk) begin
     p1_in[3] = 1'b1;
     p1_in[4] = 1'b1;
     p1_in[5] = 1'b1;
-    p1_in[6] = o2_6;
-    p1_in[7] = o2_7;
+    p1_in[6] = ~o2_6 & ~o2_pins_low;   // comparator inverts (see O2 sensor)
+    p1_in[7] = ~o2_7 & ~o2_pins_low;
 
     p3_in[7:6] = 2'b11;           // unused, idle high
     p3_in[5]   = t1;              // T1 (P3.5) — AC compressor status (driven via t1 assign)
@@ -2025,7 +2062,7 @@ task emit_snapshot;
         // read back as X from the output latch, which corrupts the hex field
         // (e.g. "X77X") and makes the dashboard show '?'.  Source those bits
         // from the driven *_in signals instead.
-        //   P1.7/P1.6 = O2 sensor inputs (p1_in[7:6] = o2_7/o2_6)
+        //   P1.7/P1.6 = O2 sensor inputs (p1_in[7:6] = ~{o2_7,o2_6}, inverted)
         //   P3.5/P3.4 = T1/T0 (t1/t0 wires); P3.2 = ref sensor; P3.1:0 serial
         $write(",%02h%02h%02h",
                {p1_in[7:6], p1[5:0]},                     // P1: O2 inputs + latch

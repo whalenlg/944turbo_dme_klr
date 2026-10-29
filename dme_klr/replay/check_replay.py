@@ -38,7 +38,8 @@ Model-side value of each channel
               65536-{41h,40h} over the period incl. 65536-{45h,44h}
   rpm         DME iram[37h] * 40 (sanity check that the pinned RPM took)
   full_load   KLR full_load output (DS tail bit)
-  knock_cnt   knocks counted since the first compared row: the model's
+  knock_cnt   knocks counted since the first compared row (less the log
+              knocks the replay filtered: KLR ram 3Ah <= 48h): the model's
               KNOCK_OUT pulses (KLR: [PHASE] ... KNOCK_OUT cleared) against
               the log's "KLR Knock Cnt." increments, within one count. (The
               log's "KLR Knocking" flag isn't compared: it reads "Yes" on
@@ -86,6 +87,7 @@ ROW_RE = re.compile(r'^SIM: \[ROW\] idx=(\d+) log_ms=([\d.]+) t_ns=(\d+)')
 IGN_RE = re.compile(r'^SIM: \[(IGN\] dme|IGN\] klr|TACH\]) t_ns=(\d+) width_ns=(\d+)')
 IGN_KIND = {'IGN] dme': 'dme', 'IGN] klr': 'klr', 'TACH]': 'tach'}
 INJ_RE = re.compile(r'^SIM: \[INJ\] t_ns=(\d+) width_ns=(\d+)')
+KNOCKIN_RE = re.compile(r'^SIM: \[KNOCK\] idx=(\d+) applied=(\d)')
 
 
 def hexbytes(h):
@@ -98,7 +100,7 @@ def hexbytes(h):
 
 def parse_sim(path):
     rows = {}            # idx -> dict(t_ns, dme, klr, klr_bits)
-    ign = {'dme': [], 'klr': [], 'tach': [], 'knock_ms': [], 'inj': []}
+    ign = {'dme': [], 'klr': [], 'tach': [], 'knock_ms': [], 'inj': [], 'knock_in': {}}
     cur = None
     with open(path, errors='replace') as f:
         for line in f:
@@ -110,6 +112,10 @@ def parse_sim(path):
             if m:
                 cur = int(m.group(1))
                 rows[cur] = {'t_ns': int(m.group(3)), 'log_ms': float(m.group(2))}
+                continue
+            m = KNOCKIN_RE.match(line)
+            if m:
+                ign['knock_in'][int(m.group(1))] = int(m.group(2))
                 continue
             m = INJ_RE.match(line)
             if m:
@@ -135,7 +141,8 @@ def parse_sim(path):
                 if len(parts) >= 4:
                     rows[cur]['klr_bits'] = parts[3].strip()
     for k in ign:
-        ign[k].sort()
+        if isinstance(ign[k], list):
+            ign[k].sort()
     return rows, ign
 
 
@@ -258,6 +265,16 @@ def main():
     if first is not None:
         ign['knock_t0_ms'] = rows[first + a.lag_rows]['t_ns'] / 1e6
         base_cnt = float(expect[first]['knock_cnt'])
+    # Log knocks the replay filtered out (KLR ram 3Ah <= 48h, see
+    # replay_driver.v): a run of knock rows is one event, filtered if its
+    # first row wasn't applied. They come off the log's count.
+    filtered = []
+    prev = None
+    for j in sorted(ign['knock_in']):
+        if prev is None or j != prev + 1:
+            if not ign['knock_in'][j]:
+                filtered.append(j)
+        prev = j
 
     stats = {c: {'n': 0, 'pass': 0, 'na': 0, 'err': [], 'worst': None, 'events': 0} for c in CHANNELS}
     seg_stats = {}
@@ -276,7 +293,7 @@ def main():
                 continue
             e = float(exp[EXPECT_COL.get(c, c)])
             if c == 'knock_cnt':
-                e -= base_cnt
+                e -= base_cnt + bisect.bisect_right(filtered, j)
             err = mv[c] - e
             ok = abs(err) <= tol[c] + 1e-9
             st['n'] += 1
@@ -315,9 +332,12 @@ def main():
         t0 = rows[cmp_idx[0] + a.lag_rows]['t_ns'] / 1e6
         t1 = rows[cmp_idx[-1] + a.lag_rows]['t_ns'] / 1e6
         model_knocks = sum(1 for t in ign['knock_ms'] if t0 <= t <= t1)
+        lo, hi = cmp_idx[0] + a.lag_rows, cmp_idx[-1] + a.lag_rows
+        n_filtered = sum(1 for j in filtered if lo <= j <= hi)
     print(f"Replay check: {played}/{len(expect)} log rows compared "
           f"(lag {a.lag_rows} rows), {len(ign['tach'])} DME spark commands, {len(ign['klr'])} KLR sparks")
-    print(f"Knock events in the compared window: log {log_knocks} (KLR Knock Cnt. increments), "
+    print(f"Knock events in the compared window: log {log_knocks} (KLR Knock Cnt. increments, "
+          f"{n_filtered if cmp_idx else 0} of them filtered: KLR ram 3Ah <= 48h), "
           f"model {model_knocks} (KNOCK_OUT pulses)")
     print(f"Rows with no injector pulse in the last two revolutions (inj_ms n/a): "
           f"{held} held open (P1.0 low), {idle} not firing")
