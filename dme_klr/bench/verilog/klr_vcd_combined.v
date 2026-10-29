@@ -36,7 +36,7 @@
 //  a sibling of the `top`/klr_system instance, not nested under it).
 //  The always-on DME<->KLR interconnect signals this session actually
 //  needed (tach_dme_to_klr, ign_out_dme_to_klr, klr_ign_out, full_load,
-//  tdc, tps_wiper_sig) were added directly in dme_klr_dashboard_tb.v
+//  tdc, throttle_pos) were added directly in dme_klr_dashboard_tb.v
 //  instead, in its own initial block, which is guaranteed to run.
 //  Bringing this whole module online (instantiating it + fixing both
 //  references + verifying the disassembly tracker actually works) is

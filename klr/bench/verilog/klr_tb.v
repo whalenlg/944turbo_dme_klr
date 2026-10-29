@@ -71,7 +71,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     output wire full_load,          // KLR P1.5 → DME full_load (WOT flag)
     // TPS angle input from DME side — only meaningful when EXT_STIM=1
     // TPS supply is fixed (5V regulated on KLR board, independent of 12V battery)
-    input  wire [7:0] tps_wiper,   // DME AFM wiper ADC value → KLR TPS angle ch7
+    input  wire [7:0] tps_wiper,   // throttle position (DME AFM-wiper scale, 0x28 closed .. 0xEB WOT) → KLR TPS angle ch7
     // RPM from the DME physics model — u_dme.ref_rpm is reg [31:0] in
     // i8051_dashboard_tb.v (a direct tick-count-based RPM calc, not the
     // 16-bit-range var_interrupt_gen_cl.v crpm value), so this port must
