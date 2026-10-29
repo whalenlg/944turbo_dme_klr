@@ -76,7 +76,7 @@ module dme_klr_dashboard_tb;
     // one DS pair and copies req to ack.
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
-    assign tps_wiper_sig = (live_klr_tps == 16'hFFFF) ? u_dme.afm_wiper   // throttle after its slew (see i8051_dashboard_tb)
+    assign tps_wiper_sig = (live_klr_tps == 16'hFFFF) ? u_dme.klr_throttle   // throttle after its slew (see i8051_dashboard_tb)
                                                       : live_klr_tps[7:0];
 
     // Instruction-start trackers for breakpoints, stepping and the PC
@@ -189,11 +189,7 @@ module dme_klr_dashboard_tb;
         if ($time - live_klr_ign_rise >= 100_000)
             $display("SIM: [IGN] klr t_ns=%0d width_ns=%0d", $time, $time - live_klr_ign_rise);
 `else
-`ifdef CL_ISV_AIR
-    assign tps_wiper_sig = u_dme.throttle_afm;   // without the ISV's bypass air
-`else
-    assign tps_wiper_sig = u_dme.afm_wiper;
-`endif
+    assign tps_wiper_sig = u_dme.klr_throttle;   // see i8051_dashboard_tb
 `endif
 
     // ── Spark angles vs TDC ────────────────────────────────────
