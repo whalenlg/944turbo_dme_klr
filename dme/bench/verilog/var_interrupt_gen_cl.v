@@ -1,3 +1,10 @@
+// Every closed-loop build runs the ISV's bypass air (CL_ISV_AIR, below);
+// this file is compiled before i8051_dashboard_tb.v, which does the same
+`ifdef CL_MODE
+  `ifndef CL_ISV_AIR
+    `define CL_ISV_AIR
+  `endif
+`endif
 // ============================================================
 //  var_interrupt_gen_cl.v  —  Closed-Loop RPM Generator
 //  89 DME 951 simulation — Bosch Motronic 3.1 / Porsche 944 Turbo

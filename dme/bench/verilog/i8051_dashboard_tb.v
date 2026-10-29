@@ -1580,6 +1580,14 @@ wire [7:0] afm_effective = afm_cl;
 wire [7:0] afm_effective = afm_tippy;
 `else
 wire [7:0] afm_effective = afm_wiper;
+  `define AFM_FROM_ENGINE_MODEL      // the CL model's AFM, ISV bypass air included
+`endif
+
+// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v)
+`ifdef CL_MODE
+  `ifndef CL_ISV_AIR
+    `define CL_ISV_AIR
+  `endif
 `endif
 
 `ifdef CL_ISV_AIR
@@ -1588,13 +1596,30 @@ wire [7:0] afm_effective = afm_wiper;
 // throttle angle follow the AFM without it. Otherwise opening the ISV
 // reads as opening the throttle (idle switch off, ch6 off-idle), which
 // turns the firmware's idle control off.
+// (Only where the AFM is the engine model's: the ramp/tippy/fault/live
+// AFMs are commanded and don't carry the ISV air.)
+`ifdef AFM_FROM_ENGINE_MODEL
 integer throttle_afm_i;
 always @(*) throttle_afm_i = $signed({1'b0, afm_effective}) - var_interrupt_generator_1.isv_afm_add;
 wire [7:0] throttle_afm = throttle_afm_i < 0 ? 8'd0 : throttle_afm_i > 255 ? 8'd255 : throttle_afm_i[7:0];
 `else
 wire [7:0] throttle_afm = afm_effective;
 `endif
+`else
+wire [7:0] throttle_afm = afm_effective;
+`endif
 wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
+
+// ch6 (throttle switch) at closed throttle. The car reads 2.94-3.07 V
+// here (0x96-0x9D); 0x99 is 3.0 V. The firmware classifies ch6 with
+// table 0x1124 (0x0659 at reset, 0x1BC1 while running) into 23h.0/.1:
+// < 0x89 code 3, 0x89-0xB7 code 2, 0xB8-0xE6 code 1 (WOT 0xCC here),
+// >= 0xE7 code 0 (off-idle 0xF2). Its idle-speed PI loop (0x08DE ->
+// 0x106B -> 0x0942) only runs on code 2; the 0x85 used before was code
+// 3, which holds the ISV at a fixed position.
+`ifndef TPS_IDLE_ADC
+  `define TPS_IDLE_ADC 8'h99
+`endif
 reg  [7:0] adc_mux;
 // Each channel's input, all eight at once, so the [DS] snapshot can log
 // what the ADC is being fed (adc_ch0..7) and not only what the firmware
@@ -1620,7 +1645,7 @@ always @(*) begin
         adc_ch4 = dme_klr_dashboard_tb.live_altitude;
         adc_ch5 = 8'hFF;
         adc_ch6 = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
-                        : idle_sw ? (full_load ? 8'hCC : 8'hF2) : 8'h85;
+                        : idle_sw ? (full_load ? 8'hCC : 8'hF2) : `TPS_IDLE_ADC;
         adc_ch7 = dme_klr_dashboard_tb.live_fuel_qual;
 end
 `else
@@ -1669,25 +1694,14 @@ always @(*) begin
         adc_ch6 = `TPS_FIXED;
 `elsif AFM_CL_RAMP
         adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
-                                  : 8'h85;                       // grounded: idle/closed=2.6V
+                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `elsif AFM_TIPPY
         adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
-                                  : 8'h85;                       // grounded: idle/closed=2.6V
+                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `else
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
         adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
-                                  : 8'h85;                       // grounded: idle/closed=2.6V
-`endif
-`ifdef CL_ISV_AIR
-    // The firmware classifies ch6 with table 0x1124 (0x0659 at reset,
-    // 0x1BC1 while running): < 0x89 code 3, 0x89-0xB7 code 2, 0xB8-0xE6
-    // code 1, >= 0xE7 code 0, into 23h.0/23h.1. Its idle-speed PI loop
-    // (0x08DE -> 0x106B -> 0x0942) only runs on code 2; 0x85 is code 3,
-    // which holds the ISV at a fixed position. The car reads 2.94-3.07 V
-    // here at closed throttle (0x96-0x9D, code 2), so this uses 0x99
-    // (3.0 V) and the ISV regulates idle. The other tests still use the
-    // assumed 0x85 above.
-    if (!idle_sw) adc_ch6 = 8'h99;
+                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `endif
         adc_ch7 = `_FUEL_QUAL;
 end

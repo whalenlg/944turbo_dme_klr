@@ -1652,7 +1652,7 @@ def validate(test_name, logpath, dme_file=None):
     # ── 2d. DME TPS ADC reading (iram[0x16], ADC_TPS) vs RPM target —
     # universal check. The DME's own TPS ADC mux (i8051_dashboard_tb.v,
     # channel 3'b110) is bucketed into exactly 3 discrete values, never a
-    # continuous sweep: idle/closed=0x85, partial/off-idle=0xF2, WOT=0xCC.
+    # continuous sweep: idle/closed=0x99 (the car's 3.0 V), partial/off-idle=0xF2, WOT=0xCC.
     # Confirmed from real data that these 3 values are the correct
     # buckets. Skipped for any test that already asserts its own value at
     # offset 0x16 (e.g. tps_fail, which deliberately forces ADC_TPS to a
@@ -1662,7 +1662,7 @@ def validate(test_name, logpath, dme_file=None):
     # itself makes the KLR's full_load flag genuinely fail stuck-high —
     # a confirmed real consequence of that specific fault, not an
     # anomaly to flag).
-    TPS_IDLE, TPS_PARTIAL, TPS_WOT = 0x85, 0xF2, 0xCC
+    TPS_IDLE, TPS_PARTIAL, TPS_WOT = 0x99, 0xF2, 0xCC
     _tps_offset_overridden = (any(off == 0x16 for off, _, _ in exp.get('expect_iram_bytes', [])) or
                               exp.get('skip_tps_bucket_check', False))
     if not _tps_offset_overridden:
@@ -1688,21 +1688,21 @@ def validate(test_name, logpath, dme_file=None):
             bad = tps_vals - {TPS_IDLE}
             if bad:
                 fails.append(f"idle test but iram[0x16] (TPS ADC) saw non-idle value(s) "
-                             f"{sorted(hex(v) for v in bad)} — expected only 0x85 (idle/closed)")
+                             f"{sorted(hex(v) for v in bad)} — expected only 0x99 (idle/closed)")
             else:
-                infos.append("TPS ADC idle-only ✓ (iram[0x16]=0x85 throughout)")
+                infos.append("TPS ADC idle-only ✓ (iram[0x16]=0x99 throughout)")
         elif rpm_target == 3000:
             bad = tps_vals - {TPS_IDLE, TPS_PARTIAL}
             if bad:
                 fails.append(f"3000-target test but iram[0x16] (TPS ADC) saw WOT/unexpected value(s) "
-                             f"{sorted(hex(v) for v in bad)} — expected only idle(0x85)/partial(0xF2)")
+                             f"{sorted(hex(v) for v in bad)} — expected only idle(0x99)/partial(0xF2)")
             else:
                 infos.append(f"TPS ADC idle/partial only ✓ ({sorted(hex(v) for v in tps_vals)})")
         elif rpm_target == 6000:
             has_idle = TPS_IDLE in tps_vals
             has_wot  = TPS_WOT in tps_vals
             if not has_idle or not has_wot:
-                missing = [n for n, present in (('idle(0x85)', has_idle), ('WOT(0xCC)', has_wot)) if not present]
+                missing = [n for n, present in (('idle(0x99)', has_idle), ('WOT(0xCC)', has_wot)) if not present]
                 fails.append(f"6000-target test but iram[0x16] (TPS ADC) never showed {', '.join(missing)} "
                              f"— observed values: {sorted(hex(v) for v in tps_vals)}")
             else:
