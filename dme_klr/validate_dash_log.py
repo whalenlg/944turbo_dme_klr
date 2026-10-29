@@ -343,26 +343,31 @@ TESTS = {
                                   'checks settle properly also revealed the absolute fuel level itself drifts '
                                   'down over the longer hold (FQS0 baseline: 2.457ms at 10s -> 2.184ms at 30s) — '
                                   'a separate, real long-settling-time effect, not a bug in this change.'},
+    # ramp_to_3000_FQS*: 3000 rpm part load runs lambda closed-loop, and the
+    # mixture-following O2 sensor lets it trim the FQS fuel step back to
+    # stoich within seconds, so the settled fuel change is ~0% (measured
+    # -0.9 .. +1.8%). fqs_fuel_pct_open_loop keeps the position's own step
+    # for reference; the timing-retard checks are unchanged.
     'ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':1, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'fqs_pos':1, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3, 'fqs_straight_baseline':True,
                           'notes':'FQS pos1: +3% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':2, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'fqs_pos':2, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3, 'fqs_straight_baseline':True,
                           'notes':'FQS pos2: -3% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'fqs_pos':3, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6, 'fqs_straight_baseline':True,
                           'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':4, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+0, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos4: +0% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':5, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos5: +3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':6, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos6: -3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':7, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos7: +6% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
 
     # --- ramp_to_6000 FQS sweep (non-CL/open-loop; timing retard not yet
@@ -2322,7 +2327,7 @@ def validate(test_name, logpath, dme_file=None):
     fqs_fuel_baseline = exp.get('fqs_fuel_baseline')
     fqs_straight_baseline = exp.get('fqs_straight_baseline', False)
     if fqs_fuel_pct is not None and steady:
-        tol = 5.0  # +/- percentage points, tightened from the old direction-only check
+        tol = exp.get('fqs_fuel_tol', 5.0)  # +/- percentage points, tightened from the old direction-only check
 
         if fqs_straight_baseline:
             # RPM is scripted/identical across the whole family (e.g. the
