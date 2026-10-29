@@ -1820,12 +1820,23 @@ wire o2_pins_low;
 `elsif O2_FLAT_RICH
     assign o2_6 = 1'b1;
     assign o2_7 = 1'b1;
-`elsif CL_MODE
-    // Closed-loop builds: the sensor follows the mixture the firmware
-    // actually delivers, so the lambda integrator (1Bh) limit-cycles
-    // around stoich. (The free-running o2_generator square wave below
-    // ignores the mixture; its 267 ms "lean" vs 250 ms "rich" walked 1Bh
-    // to its +15% clamp at idle.)
+`elsif O2_SQUARE_WAVE
+    // The old free-running square wave (o2_gen.v), on request only
+    wire _o2_6, _o2_7;
+    o2_generator o2_generator_1 (
+        .clk       ( clk   ),
+        .rst       ( rst   ),
+        .o2_top    ( _o2_7 ),
+        .o2_bottom ( _o2_6 )
+    );
+`else
+    // The sensor follows the mixture the firmware actually delivers, so
+    // the lambda integrator (1Bh) limit-cycles around stoich. It needs
+    // only the firmware's own fuel and load, so it serves the scripted-
+    // RPM builds as well as the CL engine model. (The free-running
+    // o2_generator square wave, -DO2_SQUARE_WAVE, ignores the mixture;
+    // its 267 ms "lean" vs 250 ms "rich" walked 1Bh to its +15% clamp at
+    // idle.)
     //   mixture  = fuel time 4B:4A / air per stroke 46:47 (the firmware's
     //              own load from the AFM and RPM), rich above O2_STOICH_X1000
     //              (1.025: warm idle with lambda held off, 1Bh = 0x80;
@@ -1858,14 +1869,6 @@ wire o2_pins_low;
     end
     assign _o2_7 = (o2_mv > 550);
     assign _o2_6 = (o2_mv > 450);
-`else
-    wire _o2_6, _o2_7;
-    o2_generator o2_generator_1 (
-        .clk       ( clk   ),
-        .rst       ( rst   ),
-        .o2_top    ( _o2_7 ),
-        .o2_bottom ( _o2_6 )
-    );
 `endif
 `ifdef O2_FLAT_DISCONNECTED
 `elsif O2_FLAT_LEAN
