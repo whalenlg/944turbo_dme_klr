@@ -1591,10 +1591,13 @@ wire [7:0] afm_effective = afm_wiper;
   `define AFM_FROM_ENGINE_MODEL      // the CL model's AFM, ISV bypass air included
 `endif
 
-// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v)
+// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v),
+// except cl_cold_start's scripted crank ramp (see there)
 `ifdef CL_MODE
-  `ifndef CL_ISV_AIR
-    `define CL_ISV_AIR
+  `ifndef TEST_CL_COLD_START
+    `ifndef CL_ISV_AIR
+      `define CL_ISV_AIR
+    `endif
   `endif
 `endif
 
