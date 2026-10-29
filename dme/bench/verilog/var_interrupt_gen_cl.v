@@ -10,6 +10,31 @@
     `endif
   `endif
 `endif
+// CL_THROTTLE_CLOSED: closed-loop idle builds on this engine model
+// (cl_warm_idle, cl_ac_halfway, cl_cold_start, cl_condition_cycle_idle,
+// cl_idle_controlled_by_isv) have no driver throttle, so the throttle is
+// closed. A closed throttle is choked: the air it passes barely changes
+// with RPM, so the AFM sits at the idle base (plus the ISV's bypass air)
+// instead of following the RPM curve below, which is the air a ramp's
+// opening throttle lets in. Following RPM there made extra fuel a
+// runaway: more RPM -> more AFM -> more load per stroke -> more fuel.
+// With the air fixed, more RPM means less load per stroke, which is the
+// engine's own negative feedback. i8051_dashboard_tb.v also holds the
+// throttle switch and the KLR's throttle angle closed in these builds.
+// (Commanded-throttle builds — AFM_CL_RAMP ramps, tippy, live — define
+// CL_MODE in i8051_dashboard_tb.v or pass AFM_CL_RAMP/LIVE, so they
+// don't get here.)
+`ifdef CL_MODE
+`ifndef AFM_CL_RAMP
+`ifndef LIVE
+`ifndef TEST_TIPPY_IN
+`ifndef AFM_FAULT
+  `define CL_THROTTLE_CLOSED
+`endif
+`endif
+`endif
+`endif
+`endif
 // ============================================================
 //  var_interrupt_gen_cl.v  —  Closed-Loop RPM Generator
 //  89 DME 951 simulation — Bosch Motronic 3.1 / Porsche 944 Turbo
@@ -415,8 +440,13 @@ module var_interrupt_generator_cl (
         real    uncapped_real;
         crpm     = rpm_fp / `CL_INERTIA;
 
+`ifdef CL_THROTTLE_CLOSED
+        if (1) begin
+            afm_wiper = afm_adc_lo;   // closed throttle: choked, see top
+`else
         if (crpm <= afm_rpm_lo) begin
             afm_wiper = afm_adc_lo;
+`endif
         end else if (crpm <= afm_rpm_plateau_end) begin
             // Logarithmic curve, capped at the 6000-family's D8
             // ceiling. crpm > afm_rpm_lo (840) is already guaranteed

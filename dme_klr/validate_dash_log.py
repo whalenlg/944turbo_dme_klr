@@ -236,9 +236,14 @@ TESTS = {
                                   'for this fault (a much larger shift than coolant_fail\'s 0x41, consistent '
                                   'with this firmware weighting intake-air-temp correction more heavily than '
                                   'coolant in the idle mixture target).'},
-    'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+    # Idle runs lambda (ch6 0x99 = code 2 enables it, 0x0AAC). A stuck
+    # sensor drives the integrator 1Bh to the ROM's clamp: rich (or open,
+    # which floats both comparator pins low) to 0x60 (0x11A7, -25%: idle
+    # fuel ~1.39 ms), lean to 0x93 (0x11A6, +15%: ~2.10 ms), vs ~2.02 ms
+    # for the switching sensor (o2_baseline).
+    'o2_disconnected':   {'rpm_target':  840, 'fuel_range':(1.2, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'rich_or_disconnected'},
-    'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+    'o2_rich_stuck':     {'rpm_target':  840, 'fuel_range':(1.2, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'rich_or_disconnected'},
     'o2_lean_stuck':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_o2':'lean'},
@@ -293,7 +298,11 @@ TESTS = {
                                   'expected to stay 0 here (the default check already confirms that); '
                                   'expect_log_pattern instead verifies the override itself keeps reaching the '
                                   'firmware (tps_raw=ff in the raw KLR STATUS trace), independent of the DTC.'},
-    'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.45, 5.0),  'expect_ase':True,  'expect_fuelcut':True},
+    # Floor was 2.45 ms with 62 C intake air at start, which latches the
+    # firmware's hot-start enrichment (3Ch timer from 0x27, 4Fh factor
+    # ~+24% decaying over ~20 s, still active at this 10 s test's end).
+    # At the warm-idle 20 C start it doesn't fire: ~2.19 ms.
+    'ramp_to_3000':      {'rpm_target': 3000, 'fuel_range':(2.0, 5.0),   'expect_ase':True,  'expect_fuelcut':True},
     'ramp_to_6000':      {'rpm_target': 6000, 'fuel_range':(8.0, 14.0),  'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90},
     'ramp_to_6000_knock':{'rpm_target': 6000, 'rpm_final_target': 840, 'expect_ase':True,  'expect_fuelcut':True,  'dwell_cap':90, 'expect_ram33_value':0x11,
                           'expect_knock_pulse':True, 'expect_ram33_zero_by_end':True,
