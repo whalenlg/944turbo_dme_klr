@@ -250,7 +250,10 @@ TESTS = {
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
-    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+    # tps_fail: ch6 0x80 = code 3 holds lambda off at idle (0x0AAC), so the
+    # O2 sensor sits on whichever side the untrimmed base mixture is (~1.023
+    # vs the 1.025 anchor — too close to call a side): 'static'.
+    'tps_fail':          {'expect_o2':'static', 'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x16, 0x80, 'ADC_TPS(16)')],
                           'weak_detection_warn':'WEAK DETECTION: only evidence is iram[0x16] reading back the '
                                   'TPS_FIXED override value itself (0x80) — proves the override reached the '
@@ -2526,7 +2529,9 @@ def validate(test_name, logpath, dme_file=None):
         infos.append("O2 check skipped — not enough post-startup DS snapshots")
     else:
         o2_desc = o2_status if o2_status == 'ok' else f"{o2_status} (R3e stuck=0x{o2_last_val:02X}, B26={o2_b26})"
-        if o2_status == expect_o2:
+        # 'static': lambda open-loop, so the sensor holds whichever side the
+        # fixed mixture puts it on — either stuck state passes, switching fails
+        if o2_status == expect_o2 or (expect_o2 == 'static' and o2_status in ('lean', 'rich_or_disconnected')):
             infos.append(f"O2 {o2_desc} ✓" + ("" if expect_o2 == 'ok' else " (expected fault confirmed)"))
         else:
             fails.append(f"O2 status '{o2_status}' does not match expected '{expect_o2}' — {o2_desc}")
