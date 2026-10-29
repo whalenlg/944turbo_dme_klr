@@ -1705,7 +1705,17 @@ def validate(test_name, logpath, dme_file=None):
         # bucket transition persists for 2+ consecutive samples; drop any
         # sample that differs from both neighbors before checking bucket
         # membership.
-        _tps_seq = [r['iram_0x16'] for r in tps_window if r['iram_0x16'] is not None]
+        # Classify by the firmware's own ch6 buckets (table 0x1124 into
+        # 23h.0/.1), not exact bytes: the testbench now runs the KLR's
+        # full_load line through the DME input's RC (i8051_dashboard_tb.v,
+        # full_load_rc), so ch6 is continuous along 0xF2..0xCC. Bucket
+        # representatives keep the messages below unchanged.
+        def _bucket(v):
+            if v < 0x89:  return v            # code 3: leave as-is (unexpected here)
+            if v <= 0xB7: return TPS_IDLE     # code 2: closed / idle
+            if v <= 0xE6: return TPS_WOT      # code 1: WOT
+            return TPS_PARTIAL                # code 0: off-idle
+        _tps_seq = [_bucket(r['iram_0x16']) for r in tps_window if r['iram_0x16'] is not None]
         _n = len(_tps_seq)
         tps_vals = {v for i, v in enumerate(_tps_seq)
                     if v == (_tps_seq[i-1] if i > 0 else None) or v == (_tps_seq[i+1] if i < _n - 1 else None)}
