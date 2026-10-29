@@ -130,8 +130,8 @@ module replay_driver;
             // its knock check (0x0D3A) needs ram 3Ah > 48h, so a knock the
             // log shows while 3Ah <= 48h is filtered out
             if (knock) begin
-                knock_r3a = dme_klr_dashboard_tb.u_klr.top.i8048_core_1.ram[7'h3A];
-                knock_r48 = dme_klr_dashboard_tb.u_klr.top.i8048_core_1.ram[7'h48];
+                knock_r3a = dme_klr_dashboard_tb.live_klr_ram3a;
+                knock_r48 = dme_klr_dashboard_tb.live_klr_ram48;
                 if (knock_r3a <= knock_r48) knock = 0;
                 $display("SIM: [KNOCK] idx=%0d applied=%0d r3A=%02h r48=%02h", idx, knock, knock_r3a, knock_r48);
             end
