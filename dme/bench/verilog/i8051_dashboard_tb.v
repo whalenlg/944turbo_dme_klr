@@ -1112,7 +1112,11 @@ assign      tdc = tdc_marker;
 // T1: AC compressor status input. 0=off (default), 1=on.
 //     Override with -DAC_COMP_ON for always-on, or -DCL_AC_HALFWAY
 //     for mid-simulation switch (fires at SIM_TIME/2).
-`ifdef CL_AC_HALFWAY
+`ifdef LIVE
+// Live debugger / log replay: the live panel's AC switch
+wire t1;
+assign t1 = dme_klr_dashboard_tb.live_ac[0];
+`elsif CL_AC_HALFWAY
 reg t1;
 initial begin
     t1 = 1'b0;
@@ -1190,6 +1194,26 @@ assign A_1_tach_pulse  = p1[1];  // module output port
 assign A_2_dme_relay   = p1[2];
 assign A_3_unused_p1_3 = p1[3];
 assign A_4_idle_speed  = p1[4];
+
+// ── ISV (idle speed valve, P1.4) duty, sim only: the share of each PWM period the pin is high,
+// in %, updated at every rising edge (high = open, as the replay's
+// icv_pct and CL_ISV_AIR count it). A pin that hasn't moved for 100 ms
+// reads 0 or 100. Dumped in every VCD/FST (vcd.v / klr_vcd.v).
+real     isv_duty_pct = 0.0;
+realtime isv_duty_pct_rise = 0, isv_duty_pct_fall = 0, isv_duty_pct_edge = 0;
+always @(posedge A_4_idle_speed) begin
+    if (isv_duty_pct_rise > 0)
+        isv_duty_pct = isv_duty_pct_fall > isv_duty_pct_rise
+                 ? 100.0 * (isv_duty_pct_fall - isv_duty_pct_rise) / ($realtime - isv_duty_pct_rise) : 100.0;
+    isv_duty_pct_rise = $realtime;
+    isv_duty_pct_edge = $realtime;
+end
+always @(negedge A_4_idle_speed) begin
+    isv_duty_pct_fall = $realtime;
+    isv_duty_pct_edge = $realtime;
+end
+always #10_000_000
+    if ($realtime - isv_duty_pct_edge > 100_000_000) isv_duty_pct = (A_4_idle_speed === 1'b1) ? 100.0 : 0.0;
 assign A_5_KLR_ign_out = p1[5];  // module output port
 
 // ─── VCD dump ───────────────────────────────────────────────
