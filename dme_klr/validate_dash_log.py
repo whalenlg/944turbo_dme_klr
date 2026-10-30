@@ -250,7 +250,10 @@ TESTS = {
     'o2_baseline':       {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'No O2 fault injected — baseline for differential comparison against '
                                   'o2_disconnected/o2_rich_stuck/o2_lean_stuck'},
-    'tps_fail':          {'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
+    # tps_fail: ch6 0x80 = code 3 holds lambda off at idle (0x0AAC), so the
+    # O2 sensor sits on whichever side the untrimmed base mixture is (~1.023
+    # vs the 1.025 anchor — too close to call a side): 'static'.
+    'tps_fail':          {'expect_o2':'static', 'rpm_target':  840, 'fuel_range':(1.8, 3.0),   'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x16, 0x80, 'ADC_TPS(16)')],
                           'weak_detection_warn':'WEAK DETECTION: only evidence is iram[0x16] reading back the '
                                   'TPS_FIXED override value itself (0x80) — proves the override reached the '
@@ -340,26 +343,31 @@ TESTS = {
                                   'checks settle properly also revealed the absolute fuel level itself drifts '
                                   'down over the longer hold (FQS0 baseline: 2.457ms at 10s -> 2.184ms at 30s) — '
                                   'a separate, real long-settling-time effect, not a bug in this change.'},
+    # ramp_to_3000_FQS*: 3000 rpm part load runs lambda closed-loop, and the
+    # mixture-following O2 sensor lets it trim the FQS fuel step back to
+    # stoich within seconds, so the settled fuel change is ~0% (measured
+    # -0.9 .. +1.8%). fqs_fuel_pct_open_loop keeps the position's own step
+    # for reference; the timing-retard checks are unchanged.
     'ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':1, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True,
+                          'fqs_pos':1, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3, 'fqs_straight_baseline':True,
                           'notes':'FQS pos1: +3% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':2, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True,
+                          'fqs_pos':2, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3, 'fqs_straight_baseline':True,
                           'notes':'FQS pos2: -3% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':3, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True,
+                          'fqs_pos':3, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6, 'fqs_straight_baseline':True,
                           'notes':'FQS pos3: +6% fuel, non-CL, no timing retard expected'},
     'ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':4, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+0, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos4: +0% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':5, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos5: +3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':6, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos6: -3% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
     'ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.8, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
+                          'fqs_pos':7, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6, 'fqs_straight_baseline':True, 'fqs_expect_zero_retard':True,
                           'notes':'FQS pos7: +6% fuel, non-CL, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale), straight FQS0 baseline'},
 
     # --- ramp_to_6000 FQS sweep (non-CL/open-loop; timing retard not yet
@@ -762,8 +770,8 @@ TESTS = {
     'cl_condition_cycle': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':31000, 't_end':36000, 'direction':None},
-                              {'name':'COOLANT TEMP', 't_begin':38000, 't_end':43000, 'direction':'+', 'min_pct':0.5},
-                              {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'COOLANT TEMP', 't_begin':38000, 't_end':43000, 'direction':None, 'expect_byte_step':0x4E},
+                              {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5, 'expect_flag':(0x25, 0x80)},
                               {'name':'CAT',          't_begin':52000, 't_end':57000, 'direction':None},
                               {'name':'AC',           't_begin':59000, 't_end':64000, 'direction':'+', 'min_pct':1.0},
                               {'name':'BATTERY',       't_begin':66000, 't_end':71000, 'direction':None},
@@ -772,15 +780,18 @@ TESTS = {
     'cl_condition_cycle_idle': {'rpm_target': 840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':2000,  't_end':7000,  'direction':None},
-                              {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':'+', 'min_pct':0.5},
-                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':None, 'expect_byte_step':0x4E},
+                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':None, 'expect_flag':(0x25, 0x80)},  # idle: the ISV opens to restore the air mass the thinner air took, so fuel returns to ~sea level
                               {'name':'CAT',          't_begin':23000, 't_end':28000, 'direction':None},
                               {'name':'AC',           't_begin':30000, 't_end':35000, 'direction':'+', 'min_pct':1.0},
                               {'name':'BATTERY',       't_begin':37000, 't_end':42000, 'direction':None},
                           ],
                           'condition_settle_window': 800,
                           'notes':'6-phase condition sweep, held at idle closed-loop'},
-    'cl_ramp_to_6000':   {'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
+    # Full load: the firmware enriches ~20% and runs lambda open-loop
+    # (0x0AAC's load gate), so with the mixture-following O2 sensor the
+    # sensor sits rich throughout — expected for every WOT test below.
+    'cl_ramp_to_6000':   {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s',
                           'dwell_cap':96},
 
@@ -797,7 +808,7 @@ TESTS = {
     #     since triggering it is the entire point of these tests.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
-    'cl_ramp_to_6000_BOOST': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
     'cl_ramp_to_6000_BOOST_ZERO': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
@@ -806,7 +817,7 @@ TESTS = {
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x31,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 75 (raw ADC, clamped at 0) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},
-    'cl_ramp_to_6000_BOOST_HIGH': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_BOOST_HIGH': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x32,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input raised by 80 (raw ADC, saturating at 0xF0/240 — matches the firmware-compliance cap) — KLR expected to detect this and set DTC 3-2 (0x32, Boost Pressure Too High); has not yet been observed to actually fire despite several fault-injection approaches — see klr_tb.v boost_adc4_high comment for history'},
     'cl_ramp_to_2100_BOOST_HIGH': {'rpm_target': 2100, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
@@ -832,79 +843,82 @@ TESTS = {
                           'require_ram33_value':0x31,
                           'notes':'CL: AFM steps to ~5000RPM target (AFM_CL_TARGET=0xA6, ESTIMATED) with -DBOOST active and boost input reduced by 65 (raw ADC) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low), same as cl_ramp_to_6000_BOOST_LOW'},
 
-    'cl_ramp_to_6000_FQS0': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS0': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS1': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS1': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS2': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS2': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS3': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS3': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS4': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS4': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos4: +0% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS5': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS5': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos5: +3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS6': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS6': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos6: -3% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_6000_FQS7': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+    'cl_ramp_to_6000_FQS7': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':-2.77, 'fqs_straight_baseline':True,
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
+    # cl_ramp_to_3000_FQS*: as ramp_to_3000_FQS*, part-load lambda trims the
+    # FQS fuel step back to stoich, and with air-limited torque every
+    # position settles at the same RPM, so the settled step is ~0%.
     'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':1, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':2, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':3, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6.00, 'fqs_timing_retard':0.00,
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':4, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+0.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos4: +0% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':5, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos5: +3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':6, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos6: -3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
-                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.542,
+                          'fqs_pos':7, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos7: +6% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
-    'cl_ramp_to_redline':{'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
+    'cl_ramp_to_redline':{'expect_o2':'rich_or_disconnected', 'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s',
                           'dwell_cap':97},   # estimated from RPM-scaling trend (90@6000, 96@6440, 97@6524) — not directly confirmed from a real log
     'cl_ac_halfway':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
@@ -1201,6 +1215,8 @@ def parse_ds(line):
                                 # (0x3B->0x41) and airtemp_fail
                                 # (0x3B->0x72), untouched by tps_fail
         'iram_0x7e': b(0x7E),  # ISV integral, high byte (7Eh:7Dh)
+        'iram_0x25': b(0x25),  # 25h.7: the firmware's high-altitude flag (0x1BD8)
+        'iram_0x4e': b(0x4E),  # 4Eh: coolant-driven enrichment term
         'iram_0x23': b(0x23),  # 23h.0/.1: ch6 throttle-switch code
                                 # (bit0 set, bit1 clear = idle PI loop)
         'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
@@ -1691,7 +1707,17 @@ def validate(test_name, logpath, dme_file=None):
         # bucket transition persists for 2+ consecutive samples; drop any
         # sample that differs from both neighbors before checking bucket
         # membership.
-        _tps_seq = [r['iram_0x16'] for r in tps_window if r['iram_0x16'] is not None]
+        # Classify by the firmware's own ch6 buckets (table 0x1124 into
+        # 23h.0/.1), not exact bytes: the testbench now runs the KLR's
+        # full_load line through the DME input's RC (i8051_dashboard_tb.v,
+        # full_load_rc), so ch6 is continuous along 0xF2..0xCC. Bucket
+        # representatives keep the messages below unchanged.
+        def _bucket(v):
+            if v < 0x89:  return v            # code 3: leave as-is (unexpected here)
+            if v <= 0xB7: return TPS_IDLE     # code 2: closed / idle
+            if v <= 0xE6: return TPS_WOT      # code 1: WOT
+            return TPS_PARTIAL                # code 0: off-idle
+        _tps_seq = [_bucket(r['iram_0x16']) for r in tps_window if r['iram_0x16'] is not None]
         _n = len(_tps_seq)
         tps_vals = {v for i, v in enumerate(_tps_seq)
                     if v == (_tps_seq[i-1] if i > 0 else None) or v == (_tps_seq[i+1] if i < _n - 1 else None)}
@@ -2316,7 +2342,7 @@ def validate(test_name, logpath, dme_file=None):
     fqs_fuel_baseline = exp.get('fqs_fuel_baseline')
     fqs_straight_baseline = exp.get('fqs_straight_baseline', False)
     if fqs_fuel_pct is not None and steady:
-        tol = 5.0  # +/- percentage points, tightened from the old direction-only check
+        tol = exp.get('fqs_fuel_tol', 5.0)  # +/- percentage points, tightened from the old direction-only check
 
         if fqs_straight_baseline:
             # RPM is scripted/identical across the whole family (e.g. the
@@ -2498,6 +2524,31 @@ def validate(test_name, logpath, dme_file=None):
             fuel_during = sum(r['fuel_actual'] for r in during_rows) / len(during_rows)
             fuel_pct = (fuel_during - fuel_before) / fuel_before * 100.0 if fuel_before else 0.0
 
+            # The firmware's own correction for the phase: lambda (and at
+            # idle the ISV) close the loop on fuel, so the correction byte
+            # or flag is the direct evidence that the firmware responded.
+            flag = phase.get('expect_flag')          # (offset, mask): set in the phase, clear before
+            if flag:
+                off, mask = flag
+                f = f'iram_0x{off:02x}'
+                in_rows  = [r for r in rows if t_begin + 500 <= r['t'] <= t_end and r.get(f) is not None]
+                pre_rows = [r for r in rows if t_begin - settle_window <= r['t'] < t_begin and r.get(f) is not None]
+                if in_rows and pre_rows and all(r[f] & mask for r in in_rows) and not any(r[f] & mask for r in pre_rows):
+                    infos.append(f"{phase['name']}: firmware flag {off:02X}h&{mask:02X} set for the phase ✓")
+                else:
+                    fails.append(f"{phase['name']}: firmware flag {off:02X}h&{mask:02X} doesn't follow the phase "
+                                 f"(before {sorted({hex(r[f]) for r in pre_rows})}, during {sorted({hex(r[f]) for r in in_rows})})")
+            step = phase.get('expect_byte_step')     # offset: settles at a different value in the phase
+            if step is not None:
+                f = f'iram_0x{step:02x}'
+                bv = {r[f] for r in before_rows if r.get(f) is not None}
+                dv = {r[f] for r in during_rows if r.get(f) is not None}
+                if bv and dv and not (bv & dv):
+                    infos.append(f"{phase['name']}: {step:02X}h steps {sorted(hex(v) for v in bv)} -> {sorted(hex(v) for v in dv)} ✓")
+                else:
+                    fails.append(f"{phase['name']}: {step:02X}h doesn't step in the phase "
+                                 f"(before {sorted(hex(v) for v in bv)}, during {sorted(hex(v) for v in dv)})")
+
             direction = phase.get('direction')
             min_pct = phase.get('min_pct')
             if direction is None:
@@ -2523,7 +2574,9 @@ def validate(test_name, logpath, dme_file=None):
         infos.append("O2 check skipped — not enough post-startup DS snapshots")
     else:
         o2_desc = o2_status if o2_status == 'ok' else f"{o2_status} (R3e stuck=0x{o2_last_val:02X}, B26={o2_b26})"
-        if o2_status == expect_o2:
+        # 'static': lambda open-loop, so the sensor holds whichever side the
+        # fixed mixture puts it on — either stuck state passes, switching fails
+        if o2_status == expect_o2 or (expect_o2 == 'static' and o2_status in ('lean', 'rich_or_disconnected')):
             infos.append(f"O2 {o2_desc} ✓" + ("" if expect_o2 == 'ok' else " (expected fault confirmed)"))
         else:
             fails.append(f"O2 status '{o2_status}' does not match expected '{expect_o2}' — {o2_desc}")

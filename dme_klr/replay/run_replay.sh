@@ -18,6 +18,8 @@
 #    ./run_replay.sh --out-dir DIR ...       # results here instead (the dashboard
 #                                            # suites use their own dash_logs)
 #    ./run_replay.sh --map-offset 16         # raw counts off the MAP byte (default 0)
+#    ./run_replay.sh --o2-from-log           # pin O2 from the log's NBO2 instead of
+#                                            # the testbench's mixture-following sensor
 #    ./run_replay.sh --iverilog --KLR_DEBUG ...  # debug build (also --DME_DEBUG,
 #                                            # --DME_DEEP_DEBUG): more waveform, and
 #                                            # a per-instruction trace in <name>.log
@@ -31,7 +33,11 @@
 #  Env:  WARMUP_MS (default 3000) — first log row held this long so the
 #        firmware syncs and settles before the log plays
 #        DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
-#        (same defaults as live/build_live.sh)
+#        (same defaults as live/build_live.sh): replay on another ROM
+#        image, e.g. the logged car's own, by
+#          DME_ROM_DIR=/path/to/ DME_ROM_FILE=car.mem ./run_replay.sh ...
+#        (a .mem as in bin_images/; a ROM change rebuilds; the stimulus's
+#        NTC conversions use the same DME image)
 #        REBUILD=1 forces a rebuild
 #
 #  Output: ../../tmp/dme_klr/replay/dash_logs/ (iverilog) or
@@ -81,6 +87,9 @@ while [ $# -gt 0 ]; do
         --start-s|--end-s) WINDOW+=("$1" "$2"); shift 2 ;;
         --all)           WINDOW=(--start-s 0); NAME="${NAME:-all}"; shift ;;
         --map-offset)    STIM_ARGS+=(--map-offset "$2"); shift 2 ;;
+        --o2-from-log)   STIM_ARGS+=(--o2-from-log); shift ;;
+        --afm-vref)      STIM_ARGS+=(--afm-vref "$2"); shift 2 ;;
+        --afm-offset)    STIM_ARGS+=(--afm-offset "$2"); shift 2 ;;
         --out-dir)       OUT_DIR="$2"; shift 2 ;;
         --KLR_DEBUG|--DME_DEBUG|--DME_DEEP_DEBUG) EXTRA_DEFS+=("-D${1#--}"); shift ;;
         --list-segments) python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" --list-segments; exit 0 ;;
@@ -164,7 +173,8 @@ if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
 fi
 
 # ── Stimulus + expected outputs from the log ──
-python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}" "${STIM_ARGS[@]}"
+# (the same DME image the sim runs, for its NTC maps)
+python3 "$REPLAY_DIR/xlsx_to_stim.py" "$XLSX" "$OUT" "${WINDOW[@]}" --dme-rom "$DME_ROM_DIR$DME_ROM_FILE" "${STIM_ARGS[@]}"
 
 # ── Run (from a scratch dir: the tb drops its hex/vcd dumps in cwd) ──
 RUN_DIR="$OUT_DIR/run_$NAME"

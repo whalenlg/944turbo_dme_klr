@@ -85,6 +85,33 @@ to Analog or Real for them. `xlsx_to_stim.py` writes them to
 `+trace=`). Verilator runs make no waveform, because Verilator's
 tracing ignores the `$dumpvars` scopes and would dump the whole design.
 
+## The logged car's ROM
+
+The log in `bench/verilog/10_9_evening_WOT_Run.xlsx` is from someone else's
+car, whose DME/KLR ROM images are unknown. The replay runs the sim's images
+(`28PIN_DME_PERFORMANCE.mem`, `87KLR_951.mem`), so differences in fuel or
+timing can come from the car's own maps rather than the sim: at 5.0 V the
+sim injects ~1.22x the log's time off-idle but ~1.56x at full load, which
+isn't a constant injector or sensor factor. Don't tune replay inputs to close
+those gaps. To replay on the car's own images when they're available:
+
+    DME_ROM_DIR=/path/to/ DME_ROM_FILE=car_dme.mem \
+    KLR_ROM_DIR=/path/to/ KLR_ROM_FILE=car_klr.mem ./run_replay.sh ...
+
+(`.mem` as in `bin_images/`; a ROM change rebuilds, and the stimulus's NTC
+conversions use the same DME image.)
+
+`--afm-vref V` (default 5.0) and `--afm-offset V` (default 0) set the AFM
+conversion: the AFM is ratiometric to the DME's internal regulated 5 V (spec
+5.0 V ± 0.5 V, independent of battery), so ch0 = (V_afm − offset) / V_ref ×
+255. A sweep on this log (48–60 s) raised injector match from 56% (5.0 V) to
+96% (5.3 V) but lowered ignition advance match from 71% to 62%; over the full
+60 s at 5.3 V: injector 35% → 64%, ignition 85% → 81% (segment 0 69% → 26%),
+full-load segments still 0%. Ignition, the more independent check on load,
+does best at the nominal 5.0 V and falls off on both sides (48–60 s:
+4.7 V 46%, 4.85 V 50%, 5.0 V 71%, 5.15 V 65%, 5.3 V 62%, 5.45 V 56%), so
+the default stays there.
+
 ## Inputs
 
 The replay pins these through the `live_*` registers in
@@ -101,7 +128,7 @@ replay; the live debugger can `set` them too).
 | `battery` | DME Voltage (V) | DME ch1, **assumed** 0xD8 = 13.8 V, linear |
 | `coolant` | ECT (F) | DME ch3: °C → linearised value by the testbench's `ntc_celsius()` scale (lin × 165/255 − 40), then the ROM's NTC map inverted; ≈0x2E at 190 °F |
 | `boost` | MAP Absolute (PSI) | KLR ch4, Bosch 200 kPa sensor × 0.945 divider (KLR memory map, Units Notes), capped at 0xF0 (≈31 psi abs) so the firmware's +10 into ram[52h] can't wrap. The log comes from an f9tech DME with its own 3-bar MAP sensor, so its psi is real pressure: the 33.5 psi peaks (231 kPa) are past what the KLR's stock 200 kPa sensor reads, and sit at the cap. `--map-offset N` (on `run_replay.sh` or `xlsx_to_stim.py`, default 0) takes N counts off, for a log that dumps ram[52h] instead |
-| `o2` | NBO2 (V) | ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
+| `o2` | (model) | auto (65535): the testbench's mixture-following O2 sensor closes the lambda loop on the replayed mixture, as the car's did. The log's NBO2 trace can't: in closed-loop cruise it sits under 0.6 V ~78% of the time while the car holds WBO2 λ 1.00, and the firmware's lambda integrator rails on that imbalance. `--o2-from-log` pins it from NBO2 (V) instead: ≥ 0.6 V rich, ≤ 0.3 V lean, else crossover |
 | `klr_tps` | Throttle Switch (Status) | **assumed**: the log has no throttle angle, so Idle 0x28, Off Idle 0x60, Full Load 0xD8 (afm_wiper units) |
 | `fuel_qual` | FQS | position 0 → 0x00 |
 | `knock` | KLR Knock Cnt. | 1 on a row where the count goes up (see below): the KLR knock_sensor gets the `TEST_KNOCK_PULSE` drop (32 teeth after TDC, held 107 teeth or until the next TDC) on every TDC (once per revolution), in `klr_knock_gen.v`'s `-DLIVE` branch; 0 leaves it at the nominal 110 |

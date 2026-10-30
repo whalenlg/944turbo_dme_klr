@@ -140,6 +140,11 @@
 `ifndef CL_FUEL_SCALE
   `define CL_FUEL_SCALE  14   // idle ~1.97ms → combustion≈27 > friction=26 → net≈+1
 `endif
+`ifndef CL_STOICH_X1000
+  `define CL_STOICH_X1000 1025  // fuel/load at stoich (4B:4A over 46:47): warm
+                                 // idle with lambda held off — see the torque
+                                 // update and O2_STOICH_X1000
+`endif
 `ifndef CL_FUEL_ENERGY_PCT
   `define CL_FUEL_ENERGY_PCT 0  // FQS: manual fuel-quality switch the driver
                                  // sets when fuel is off-spec. Positive = weak
@@ -148,10 +153,29 @@
                                  // of pulse width. Negative = potent fuel =>
                                  // HIGHER energy density. Defaults to 0 (normal
                                  // fuel, FQS position 0) if not overridden.
+                                 // No longer used by the torque (air-limited,
+                                 // see the torque update); kept so the FQS test
+                                 // builds that pass it still compile.
 `endif
 `ifndef CL_FRICTION_RPM2_DIV
-  `define CL_FRICTION_RPM2_DIV   890000   // quadratic term: rpm*rpm/DIV — fit
-                                           // through idle+3000. Re-tuned again:
+  `define CL_FRICTION_RPM2_DIV   1247000  // quadratic term: rpm*rpm/DIV — fit
+                                           // through idle+3000. Refit for the
+                                           // mixture-following O2 sensor: lambda
+                                           // now trims part load's ~4%-rich base
+                                           // map toward stoich, so cl_ramp_to_3000
+                                           // burns 1205 (4B:4A) instead of 1277,
+                                           // combustion 33.8 vs 35.7, and settled
+                                           // at 2654 rpm instead of 2796. Scaled
+                                           // by the quadratic share at that point
+                                           // (9.7/7.8) from 890000 (1107000),
+                                           // then 1178000 and 1247000 so the
+                                           // FQS positions the CL model makes
+                                           // the least torque at (FQS1/3/5/7,
+                                           // their richened pulse trimmed back
+                                           // by lambda; 2673-2705 rpm) clear
+                                           // the 2700 floor by ~50 rpm. Idle is
+                                           // unaffected (840^2/DIV is 0 either way).
+                                           // Earlier history: re-tuned again:
                                            // the previous 760000 was margin-
                                            // checked with base=25 in the search
                                            // script, but base=26 was what actually
@@ -175,8 +199,14 @@
                                                 // touch that anchor's margin at all.
 `endif
 `ifndef CL_FRICTION_CUBIC_DIV
-  `define CL_FRICTION_CUBIC_DIV  320000000  // cubic term: (rpm-THRESHOLD)^3/DIV,
+  `define CL_FRICTION_CUBIC_DIV  245000000  // cubic term: (rpm-THRESHOLD)^3/DIV,
                                              // only applied above THRESHOLD.
+                                             // Refit with RPM2_DIV above: full
+                                             // load runs with lambda off, so
+                                             // cl_ramp_to_6000's fuel is unchanged;
+                                             // this restores the total friction at
+                                             // its 6388 rpm equilibrium (quadratic
+                                             // 45.9 -> 32.9, cubic 42.6 -> 56.5).
                                              // Re-tuned alongside CL_FRICTION_RPM2_DIV
                                              // (see that comment) with base=26
                                              // held fixed throughout the search
@@ -593,6 +623,8 @@ module var_interrupt_generator_cl (
     always @(posedge clk) begin : ref_and_dynamics
         integer fuel_sample;
         integer combustion;
+        integer air_fuel;
+        integer burned;
         integer friction;
         integer crpm_now;
         reg signed [63:0] highrpm_delta;   // 64-bit: delta^3 can exceed 32-bit
@@ -658,23 +690,28 @@ module var_interrupt_generator_cl (
                     rpm_fp         <= crank_ramp_target($time) * `CL_INERTIA;
                     period_current <= `RPMCONST / crank_ramp_target($time);
                 end else begin
-                    // Fuel-quality compensation (FQS driver switch): firmware
-                    // widens/narrows the injector pulse to compensate for
-                    // off-spec fuel, so a working compensation system should
-                    // deliver roughly the SAME combustion energy regardless
-                    // of fuel quality — not more energy just because the
-                    // pulse got wider. Scale by the inverse of the pulse-
-                    // width compensation (CL_FUEL_ENERGY_PCT) so richer
-                    // pulse width (weak fuel, +pct) and leaner pulse width
-                    // (potent fuel, -pct) roughly cancel, leaving combustion
-                    // close to the FQS0/normal-fuel baseline. Deliberately
-                    // imperfect — real compensation isn't exact either.
-`ifdef LIVE
-                    combustion = (fuel_sample / 5 * `CL_FUEL_SCALE * 100)
-                                 / (100 + fuel_energy_pct(dme_klr_dashboard_tb.live_fuel_qual)) / 100;
-`else
-                    combustion = (fuel_sample / 5 * `CL_FUEL_SCALE * 100) / (100 + `CL_FUEL_ENERGY_PCT) / 100;
-`endif
+                    // Air-limited combustion: the torque comes from the
+                    // air the cylinder gets, and the fuel only limits it
+                    // when the mixture is lean. air_fuel is the fuel that
+                    // air would burn at stoich: the firmware's own load
+                    // 46:47 (air per stroke from the AFM and RPM) times
+                    // CL_STOICH_X1000, the same warm-idle anchor the O2
+                    // sensor uses (i8051_dashboard_tb.v, O2_STOICH_X1000).
+                    // Fuel past stoich (full-load enrichment, a richer FQS
+                    // position) burns no extra air, so it adds nothing;
+                    // a lambda trim at stoich barely moves power, as on a
+                    // real engine. (This replaces the fuel-proportional
+                    // torque and its FQS "fuel energy" scaling: the 951's
+                    // FQS selects octane, which changes neither the
+                    // energy nor the stoich ratio.)
+                    air_fuel   = ({`CL_IRAM(8'h46), `CL_IRAM(8'h47)} * `CL_STOICH_X1000) / 1000;
+                    // At altitude the load comes from an AFM reading flow x
+                    // sqrt(rho) (i8051_dashboard_tb.v, afm_at_alt) while the
+                    // real air is x rho: a further x sqrt(rho)
+                    if (`CL_TB.alt_high)
+                        air_fuel = air_fuel * `CL_TB.alt_sqrt_x1000 / 1000;
+                    burned     = (fuel_sample < air_fuel) ? fuel_sample : air_fuel;
+                    combustion = burned / 5 * `CL_FUEL_SCALE / 100;
 
                     friction = `CL_FRICTION;
                     if (`CL_TB.t1 == 1'b1)

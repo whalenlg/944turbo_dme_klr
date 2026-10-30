@@ -1683,6 +1683,20 @@ wire [7:0] klr_throttle = afm_wiper;
 `ifndef TPS_IDLE_ADC
   `define TPS_IDLE_ADC 8'h99
 `endif
+// The KLR's full_load line (P1.5) reaches ch6 through the DME's input
+// network (R762 47k into the ADC pin's 100n, tau ~4.7 ms). The 8048's
+// ports float high while it's held in reset — on every crank trigger —
+// and stay high until the firmware rewrites P1, so the raw line pulses
+// "WOT" each trigger; on the car the RC averages those away. Without it
+// the DME's ADC could catch an instant of a pulse (cl_ramp_to_3000_FQS2
+// read ch6 = 0xCC at part throttle). full_load_rc is that RC, 0..1000000.
+`ifndef FULL_LOAD_TAU_US
+  `define FULL_LOAD_TAU_US 4700
+`endif
+integer full_load_rc = 0;
+always #10_000 full_load_rc = full_load_rc + ((full_load ? 1000000 : 0) - full_load_rc) / (`FULL_LOAD_TAU_US / 10);
+// ch6 with the throttle open: off-idle 0xF2 .. WOT 0xCC along the RC
+wire [7:0] ch6_open = 8'hF2 - (38 * full_load_rc) / 1000000;
 reg  [7:0] adc_mux;
 // Each channel's input, all eight at once, so the [DS] snapshot can log
 // what the ADC is being fed (adc_ch0..7) and not only what the firmware
@@ -1695,20 +1709,61 @@ reg  [7:0] adc_ch0, adc_ch1, adc_ch2, adc_ch3, adc_ch4, adc_ch5, adc_ch6, adc_ch
 // signal that idle_sw transitively depends on unless each one is added
 // here too. `always @(*)` re-evaluates on any input change and avoids
 // re-introducing the same class of staleness bug this file just had.
+// ── Altitude: air density ─────────────────────────────────────
+// The altitude input (ch4) is a pressure switch: below 0x80 it says
+// "high altitude" (0x00; 0xF8 = low, 0xFF = open circuit). Up there the
+// air is thinner, ALT_DENSITY_X1000/1000 of sea level (default 0.88,
+// ~1000 m). The engine breathes about the same volume, so:
+//   - real air per stroke drops by rho (var_interrupt_gen_cl.v torque),
+//   - the flap AFM, deflected by dynamic pressure, reads flow x sqrt(rho):
+//     it drops, but only half as far, so it over-reads mass by
+//     1/sqrt(rho). The DME's altitude switch removes that: 0x1D3C scales
+//     fuel by 0x11CB = 0x78 (x0.9375 = sqrt(0.88)).
+// The firmware's AFM linearisation (0x03B2, tables 0x10F4/0x10FC/0x1104)
+// is exponential: flow x1.837 per 32 ADC counts. So sqrt(rho) on the flow
+// is a constant ADC shift, alt_afm_shift = 32 ln(sqrt(rho)) / ln(1.837)
+// (-3 counts at 0.88), applied to the AFM the sensor reports.
+`ifndef ALT_DENSITY_X1000
+  `define ALT_DENSITY_X1000 880
+`endif
+integer alt_afm_shift;
+integer alt_sqrt_x1000;
+initial begin
+    alt_sqrt_x1000 = $rtoi($sqrt(`ALT_DENSITY_X1000 / 1000.0) * 1000.0 + 0.5);
+    alt_afm_shift  = $rtoi(32.0 * $ln($sqrt(`ALT_DENSITY_X1000 / 1000.0)) / $ln(1.837) - 0.5);
+end
+// from ch4's source (adc_ch4 itself is assigned in the same block as ch0)
+`ifdef LIVE
+wire [7:0] alt_switch = dme_klr_dashboard_tb.live_altitude;
+`elsif CL_CONDITION_CYCLE_ACTIVE
+wire [7:0] alt_switch = altitude_dynamic_cycle;
+`else
+wire [7:0] alt_switch = `_ALTITUDE;
+`endif
+wire alt_high = (alt_switch < 8'h80);
+function automatic [7:0] afm_at_alt;
+    input [7:0] afm;
+    integer v;
+    begin
+        v = afm + (alt_high ? alt_afm_shift : 0);
+        afm_at_alt = v < 0 ? 8'd0 : v > 255 ? 8'd255 : v[7:0];
+    end
+endfunction
+
 `ifdef LIVE
 // Live debugger: every ADC channel reads the value the web UI last set
 // in dme_klr_dashboard_tb (see dme_klr/live/). TPS (ch6) keeps the
 // normal idle-switch / KLR full_load logic below unless live_dme_tps
 // pins it (16'hFFFF = follow that logic), as the log replay does.
 always @(*) begin
-        adc_ch0 = afm_effective;
+        adc_ch0 = (dme_klr_dashboard_tb.live_afm == 16'hFFFF) ? afm_at_alt(afm_effective) : afm_effective;  // a pinned AFM is the sensor reading itself
         adc_ch1 = dme_klr_dashboard_tb.live_battery;
         adc_ch2 = dme_klr_dashboard_tb.live_airtemp;
         adc_ch3 = dme_klr_dashboard_tb.live_coolant;
         adc_ch4 = dme_klr_dashboard_tb.live_altitude;
         adc_ch5 = 8'hFF;
         adc_ch6 = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
-                        : idle_sw ? (full_load ? 8'hCC : 8'hF2) : `TPS_IDLE_ADC;
+                        : idle_sw ? ch6_open : `TPS_IDLE_ADC;
         adc_ch7 = dme_klr_dashboard_tb.live_fuel_qual;
 end
 `else
@@ -1716,11 +1771,11 @@ always @(*) begin
 `ifdef AFM_FAULT
         adc_ch0 = 8'hFF;
 `elsif AFM_CL_RAMP
-        adc_ch0 = afm_cl;
+        adc_ch0 = afm_at_alt(afm_cl);
 `elsif AFM_TIPPY
-        adc_ch0 = afm_tippy;
+        adc_ch0 = afm_at_alt(afm_tippy);
 `else
-        adc_ch0 = afm_wiper;
+        adc_ch0 = afm_at_alt(afm_wiper);
 `endif
 `ifdef CL_CONDITION_CYCLE_ACTIVE
         adc_ch1 = battery_dynamic_cycle;
@@ -1756,14 +1811,14 @@ always @(*) begin
 `ifdef TPS_FIXED
         adc_ch6 = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `elsif AFM_TIPPY
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `else
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `endif
         adc_ch7 = `_FUEL_QUAL;
@@ -1820,7 +1875,8 @@ wire o2_pins_low;
 `elsif O2_FLAT_RICH
     assign o2_6 = 1'b1;
     assign o2_7 = 1'b1;
-`else
+`elsif O2_SQUARE_WAVE
+    // The old free-running square wave (o2_gen.v), on request only
     wire _o2_6, _o2_7;
     o2_generator o2_generator_1 (
         .clk       ( clk   ),
@@ -1828,6 +1884,55 @@ wire o2_pins_low;
         .o2_top    ( _o2_7 ),
         .o2_bottom ( _o2_6 )
     );
+`else
+    // The sensor follows the mixture the firmware actually delivers, so
+    // the lambda integrator (1Bh) limit-cycles around stoich. It needs
+    // only the firmware's own fuel and load, so it serves the scripted-
+    // RPM builds as well as the CL engine model. (The free-running
+    // o2_generator square wave, -DO2_SQUARE_WAVE, ignores the mixture;
+    // its 267 ms "lean" vs 250 ms "rich" walked 1Bh to its +15% clamp at
+    // idle.)
+    //   mixture  = fuel time 4B:4A / air per stroke 46:47 (the firmware's
+    //              own load from the AFM and RPM), rich above O2_STOICH_X1000
+    //              (1.025: warm idle with lambda held off, 1Bh = 0x80;
+    //              part load's base map sits ~4% richer, full load ~20%)
+    //   delay    = O2_DELAY_MS of exhaust transport (a shift register,
+    //              sampled every ms), then the sensor's own ~O2_TAU_MS
+    //              first-order swing between 100 mV lean and 850 mV rich
+    //   o2_7/o2_6 = sensor above 550 / 450 mV (top/bottom comparator;
+    //              crossover is between them)
+`ifndef O2_STOICH_X1000
+  `define O2_STOICH_X1000 1025
+`endif
+`ifndef O2_DELAY_MS
+  `define O2_DELAY_MS 150
+`endif
+`ifndef O2_TAU_MS
+  `define O2_TAU_MS 30
+`endif
+    wire _o2_6, _o2_7;
+    reg  [255:0] o2_rich_line = 256'd0;
+    integer      o2_mv = 100;
+    reg          o2_rich_now;
+    always #1_000_000 begin : o2_mixture
+        integer fuel, load;
+        fuel = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4B], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4A]};
+        load = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h46], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h47]};
+        // the real air per stroke: at altitude the firmware's load comes
+        // from an AFM reading flow x sqrt(rho) while the real air is x rho
+        // (see "Altitude: air density"), a further x sqrt(rho)
+        if (alt_high) load = load * alt_sqrt_x1000 / 1000;
+        o2_rich_now  = (load != 0) && (fuel * 1000 > load * `O2_STOICH_X1000);
+        o2_rich_line = {o2_rich_line[254:0], o2_rich_now};
+        o2_mv = o2_mv + ((o2_rich_line[`O2_DELAY_MS - 1] ? 850 : 100) - o2_mv) / `O2_TAU_MS;
+    end
+    assign _o2_7 = (o2_mv > 550);
+    assign _o2_6 = (o2_mv > 450);
+`endif
+`ifdef O2_FLAT_DISCONNECTED
+`elsif O2_FLAT_LEAN
+`elsif O2_FLAT_RICH
+`else
 `ifdef LIVE
     // Live debugger / log replay: live_o2 = {o2_7, o2_6} pins the
     // comparator outputs (0 lean, 1 crossover, 3 rich); 16'hFFFF = generator.

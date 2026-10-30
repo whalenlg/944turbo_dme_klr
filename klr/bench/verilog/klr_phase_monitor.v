@@ -91,15 +91,17 @@ always @(posedge clk) begin  // klr_phase_monitor
     ph_klr_res_n_prev <= top.res_n;
 
     if (top.res_n === 1'b0) begin
-        // Entering reset: full_load still holds what the firmware drove
-        if (ph_klr_res_n_prev === 1'b1 && full_load !== 1'bx) begin
-            if (ph_klr_fl_known && full_load !== ph_klr_fl_lvl) begin
-                if (full_load)
+        // Entering reset: on this first reset clock the port has already
+        // floated high (klr_top.v, "full_load (P1.5) during reset"), so
+        // the level the firmware drove is the previous clock's
+        if (ph_klr_res_n_prev === 1'b1 && ph_klr_fullload_prev !== 1'bx) begin
+            if (ph_klr_fl_known && ph_klr_fullload_prev !== ph_klr_fl_lvl) begin
+                if (ph_klr_fullload_prev)
                     $display("KLR: [PHASE] t=%0d ms  FULL_LOAD set       (WOT — P1.5 high)", `KLR_MS(0));
                 else
                     $display("KLR: [PHASE] t=%0d ms  FULL_LOAD cleared   (part-throttle)", `KLR_MS(0));
             end
-            ph_klr_fl_lvl   <= full_load;
+            ph_klr_fl_lvl   <= ph_klr_fullload_prev;
             ph_klr_fl_known <= 1'b1;
         end
         ph_klr_last_rst <= $time;
