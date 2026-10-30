@@ -705,6 +705,11 @@ module var_interrupt_generator_cl (
                     // FQS selects octane, which changes neither the
                     // energy nor the stoich ratio.)
                     air_fuel   = ({`CL_IRAM(8'h46), `CL_IRAM(8'h47)} * `CL_STOICH_X1000) / 1000;
+                    // At altitude the load comes from an AFM reading flow x
+                    // sqrt(rho) (i8051_dashboard_tb.v, afm_at_alt) while the
+                    // real air is x rho: a further x sqrt(rho)
+                    if (`CL_TB.alt_high)
+                        air_fuel = air_fuel * `CL_TB.alt_sqrt_x1000 / 1000;
                     burned     = (fuel_sample < air_fuel) ? fuel_sample : air_fuel;
                     combustion = burned / 5 * `CL_FUEL_SCALE / 100;
 
