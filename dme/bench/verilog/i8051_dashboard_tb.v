@@ -1693,8 +1693,11 @@ wire [7:0] klr_throttle = afm_wiper;
 `ifndef FULL_LOAD_TAU_US
   `define FULL_LOAD_TAU_US 4700
 `endif
+// full_load is X until the KLR's firmware first writes P1; `full_load ?`
+// would then load X into the integer for good (4-state simulators only,
+// so iverilog, not Verilator), so only a known 1 charges the RC.
 integer full_load_rc = 0;
-always #10_000 full_load_rc = full_load_rc + ((full_load ? 1000000 : 0) - full_load_rc) / (`FULL_LOAD_TAU_US / 10);
+always #10_000 full_load_rc = full_load_rc + (((full_load === 1'b1) ? 1000000 : 0) - full_load_rc) / (`FULL_LOAD_TAU_US / 10);
 // ch6 with the throttle open: off-idle 0xF2 .. WOT 0xCC along the RC
 wire [7:0] ch6_open = 8'hF2 - (38 * full_load_rc) / 1000000;
 reg  [7:0] adc_mux;
