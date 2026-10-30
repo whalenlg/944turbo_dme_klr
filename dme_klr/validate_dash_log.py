@@ -269,6 +269,79 @@ TESTS = {
                                   'symptom), this mostly proves the harness override reached the firmware '
                                   'rather than an independent consequence of the fault; kept as a sanity check '
                                   'since no better downstream signature has been found yet for this one.'},
+    # ── Opposite-direction input faults (one per input that only had a
+    # stuck-at test in one direction). Expectations recorded from real
+    # iverilog runs against warm_idle_5s (fuel ~1.85 ms, dwell 0x12,
+    # 23h=0x89, 12h/13h alternating linearised/raw air/coolant).
+    'afm_short_to_ground': {'rpm_target':  840, 'fuel_range':(0.5, 1.2),  'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x10, 0x00, 'ADC_AFM(10)')],
+                          'notes':'AFM ch0 forced to 0x00. Real run: injection drops to ~0.88 ms (about half '
+                                  'of warm_idle_5s) and the ISV integral 7Eh:7Dh freezes at 0x9245 once ASE '
+                                  'ends, so the idle loop check is left off. No DTC (same as afm_open_circuit). '
+                                  'The throttle switch still reads idle (iram[0x16]=0x99): unlike AFM_FAULT, '
+                                  'the short is applied to the ADC channel only.'},
+    'battery_disconnected': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True,  'expect_fuelcut':True,
+                          'dwell_min':90, 'expect_iram_bytes':[(0x11, 0x00, 'ADC_BATTERY(11)')],
+                          'expect_isv_loop_active':True,
+                          'notes':'DME battery ch1 forced to 0x00. Real run: dwell goes to 0x6A (106 half-teeth, '
+                                  'vs 0x12 normal and ~0x2A for idle_battery_low), the firmware treating 0 V '
+                                  'as the worst case for coil charge time; IGN_OUT shows 186 events vs 124. '
+                                  'Injector pulse is unchanged (~1.85 ms). Only the DME sense is opened here; '
+                                  'the KLR battery input stays nominal, so no KLR DTC.'},
+    'airtemp_open_circuit': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x12, (0x02, 0xFF), 'AIRTEMP(12)')], 'expect_isv_loop_active':True,
+                          'notes':'Air temp ch2 forced to 0xFF (open NTC). Real run: the firmware linearises it '
+                                  'in place to 0x02 (coldest end; a snapshot between conversions catches the raw '
+                                  '0xFF), where warm_idle_5s shows 0x5D/0x9E. Fuel only moves ~2% (1.885 vs 1.849 ms), so the 12h '
+                                  'readback is the signature, the same weakness airtemp_fail has.'},
+    'coolant_open_circuit': {'rpm_target':  840, 'fuel_range':(4.0, 9.0), 'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_o2':'rich_or_disconnected',
+                          'expect_iram_bytes':[(0x13, (0x02, 0xFF), 'COOLANT(13)')],
+                          'notes':'Coolant ch3 forced to 0xFF (open NTC = extreme cold). Real run: 13h '
+                                  'linearises to 0x02, the coolant enrichment term 4Eh is active, steady fuel is '
+                                  '~6.9 ms (3.7x warm_idle_5s), the O2 sensor goes rich and the ISV integral '
+                                  'pins at 0x84EA. A hot engine reading as frozen is the classic open-sensor '
+                                  'symptom (rich, sooty idle); no DTC.'},
+    'tps_ch6_short_to_ground': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_o2':'static',
+                          'expect_iram_bytes':[(0x16, 0x00, 'ADC_TPS(16)'), (0x23, 0x8B, 'FLAGS(23)')],
+                          'notes':'DME ch6 forced to 0x00. Real run: 23h.0/.1 = 3, the same code tps_fail '
+                                  '(0x80) gives, so lambda and the idle PI loop are off and the O2 sensor sits '
+                                  'lean. Fuel unchanged (~1.83 ms).'},
+    'tps_ch6_open_circuit': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_iram_bytes':[(0x16, 0xFF, 'ADC_TPS(16)'), (0x23, 0x88, 'FLAGS(23)')],
+                          'notes':'DME ch6 forced to 0xFF. Real run: 23h.0/.1 = 0, a code none of the other '
+                                  'tests reach, so the idle PI loop is off and the ISV integral resets to 0x8000; '
+                                  'O2 keeps switching and fuel is unchanged (~1.85 ms).'},
+    'ref_sensor_stuck_low': {'rpm_target':  840, 'fuel_range':(0.0, 5.0), 'expect_ase':True,  'expect_fuelcut':True,
+                          'weak_detection_warn':'WEAK DETECTION: same limit as ref_sensor_loss: nothing in the '
+                                  'dash log proves P3.2 is held low (the ports field\'s P3 low nibble reads Z), '
+                                  'and the firmware does not react, so a broken override would look identical.',
+                          'notes':'P3.2/INT0 shorted to ground from t=3500ms. Real run: benign, exactly like '
+                                  'ref_sensor_loss (held high): RPM stays 840, fuel ~1.84 ms, IGN_OUT keeps '
+                                  'pulsing, no DTC. Consistent with speed_sensor_loss\'s finding that the speed '
+                                  'signal, not the reference, drives RPM and the main loop.'},
+    'ref_sensor_missing_at_start': {'rpm_target':  840, 'expect_ase':True, 'expect_fuelcut':True, 'expect_o2':'lean',
+                          'expect_fail_markers':['ENGINE SYNC never fired',
+                                                  'AFTER-START ENRICH never began',
+                                                  'FUEL CUT never cleared',
+                                                  'RPM never reached target'],
+                          'notes':'No reference signal from power-on (P3.2 held high through cranking). Real '
+                                  'run: the engine never starts. The DME measures cranking RPM from the speed '
+                                  'sensor (STATUS prpm ~840) but ENGINE SYNC never fires, the INTERRUPT BLOCK '
+                                  'set at t=2ms never clears and fuel cut never ends, so nothing is injected '
+                                  'for the whole 8 s. Contrast ref_sensor_loss/ref_sensor_stuck_low, where '
+                                  'losing ref after sync is benign: the reference is needed to sync, not to run.'},
+    'speed_sensor_stuck_low': {'rpm_target':  840, 'fuel_range':(0.0, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_fail_markers':['A_2_dme_relay (P1.2) not held low',
+                                                  'IGN_OUT stopped pulsing for',
+                                                  'TPS ADC) saw non-idle value',
+                                                  'ADC_BATTERY) saw non-nominal value',
+                                                  'No injected fuel snapshots in steady state'],
+                          'notes':'P3.3/INT1 shorted to ground from t=3500ms. Real run: the same failure as '
+                                  'speed_sensor_loss (held high): IGN_OUT stops at t=3475ms for the rest of the '
+                                  'run, the relay drops from t=3600ms and injection stops, so the DME starves its '
+                                  'watchdog either way the line fails.'},
     # KLR TPS wiper forced to full-scale (0xFF) at idle regardless of
     # actual throttle position. Originally guessed this would trip DTC
     # 4-2 (0x42, TPS Angle Sensor: Voltage Too High) by analogy with
@@ -522,6 +595,28 @@ TESTS = {
                                   'DTC firing (t=6310ms) was confirmed — the remaining ~8.7s was pure runoff. '
                                   'skip_rpm_target_check: settled RPM only reached 2707 at the original 15s '
                                   '(barely above the 2700 floor already), same rationale as KLR_BATT_LOW.'},
+    'cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x41, 'skip_tps_bucket_check':True, 'skip_rpm_target_check':True,
+                          'notes':'KLR ADC ch3 (TPS 5V supply) at 0x00, which also takes the ratiometric ch7 to 0. '
+                                  'Real run: DTC 4-1 (0x41, TPS Power Wires) at t=6410ms, the same code and '
+                                  'timing as cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW; the same TPS-bucket and RPM '
+                                  'exemptions apply for the same 8 s window.'},
+    'cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'skip_rpm_target_check':True, 'expect_fail_markers':['saw WOT/unexpected value'],
+                          'notes':'KLR->DME full_load wire stuck at the WOT level through a part-throttle ramp. '
+                                  'Real run: as soon as the throttle leaves idle (t~2.5s) the DME\'s TPS ADC '
+                                  'reads 0xCD (WOT) and stays there, so the universal 3000-target TPS-bucket '
+                                  'check FAILs, which is the demonstration of the fault (mirror of '
+                                  'cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW). At idle the line has no effect, since '
+                                  'ch6 only uses full_load off idle. KLR computes full_load=0 correctly; no DTC.'},
+    'cl_ramp_to_3000_BOOST_OPEN_CIRCUIT': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'skip_rpm_target_check':True,
+                          'expect_klr_ram_bytes':[(0x52, 0x09, 'ram[0x52] (MAP)')],
+                          'notes':'KLR MAP ch4 forced to 0xFF (open, pulled to the rail), past the bench\'s '
+                                  '0xF0 cap. Real run: the ADC routine\'s +10 wraps and ram[0x52] sits at 0x09 '
+                                  '(deep vacuum) for the whole run, so the KLR reads an open MAP sensor as '
+                                  'no boost rather than over-boost, and sets no DTC in 10 s (BOOST_ZERO, the '
+                                  'shorted case, sets 0x33). ram[33] stays 0.'},
 
     # KLR_TRIGGER_STUCK_HIGH: the DME's crank-ref-pulse wire reaching the
     # KLR (trigger_in, wired straight to the KLR CPU's /RESET — res_n =
@@ -1228,6 +1323,10 @@ def parse_ds(line):
                                 # forces this to _ALTITUDE's value (0xFF)
         'iram_0x17': b(0x17),  # ADC_FUELQUAL — nominal 0x00, fuel_qual_disconnected
                                 # forces this to _FUEL_QUAL's value (0xFF)
+        'iram_0x10': b(0x10),  # ADC_AFM — afm_short_to_ground forces 0x00
+        'iram_0x12': b(0x12),  # air temp, linearised in place — airtemp_open_circuit
+                                # holds it at 0x02 (raw 0xFF between conversions)
+        'iram_0x13': b(0x13),  # coolant, same — coolant_open_circuit: 0x02 / raw 0xFF
     }
 
 
@@ -1915,7 +2014,17 @@ def validate(test_name, logpath, dme_file=None):
                 for offset, expected, label in expect_iram_bytes:
                     field = f'iram_0x{offset:02x}'
                     vals = sorted(set(r[field] for r in post_ase_rows))
-                    if vals == [expected]:
+                    # A tuple lists every value the byte may hold: 12h/13h
+                    # are linearised in place, so a snapshot can catch the
+                    # raw ADC reading before the conversion overwrites it.
+                    if isinstance(expected, tuple):
+                        if set(vals) <= set(expected):
+                            infos.append(f"{label} in {['0x%02x' % v for v in expected]} ✓ "
+                                         f"({len(post_ase_rows)} snapshots)")
+                        else:
+                            fails.append(f"{label} expected only {['0x%02x' % v for v in expected]} for all "
+                                         f"post-ASE snapshots, saw {['0x%02x' % v for v in vals]}")
+                    elif vals == [expected]:
                         infos.append(f"{label}=0x{expected:02x} ✓ (stable, {len(post_ase_rows)} snapshots)")
                     else:
                         fails.append(f"{label} expected constant 0x{expected:02x} for all post-ASE "
@@ -2675,6 +2784,24 @@ def validate(test_name, logpath, dme_file=None):
         if not no_data and not bad:
             addr_list = ",".join(f"0x{a:02X}" for a in addrs)
             infos.append(f"KLR ram[{addr_list}] all cleared to 0x00 by end ✓")
+
+    # ── 17d. expect_klr_ram_bytes: [(addr, value, label)] — a KLR RAM byte
+    # (from the same KLR: [DS] dump) must hold `value` in every snapshot
+    # from its first non-zero reading on (RAM starts cleared, before the
+    # firmware's first ADC pass), e.g. cl_ramp_to_3000_BOOST_OPEN_CIRCUIT's
+    # ram[0x52] pinned at the wrapped MAP reading.
+    for addr, expected, label in exp.get('expect_klr_ram_bytes', []):
+        events = [parse_klr_ds_byte(l, addr) for l in lines]
+        seq = [e[1] for e in events if e is not None and e[1] is not None]
+        while seq and seq[0] == 0:
+            seq.pop(0)
+        vals = sorted(set(seq))
+        if not vals:
+            warns.append(f"KLR {label}: no valid readings found in KLR: [DS] dump")
+        elif vals == [expected]:
+            infos.append(f"KLR {label}=0x{expected:02x} ✓ ({len(seq)} snapshots)")
+        else:
+            fails.append(f"KLR {label} expected constant 0x{expected:02x}, saw {['0x%02x' % v for v in vals]}")
 
     # ── 17d. General r57/knock_count sanity checks (all tests)
     # KLR ram[0x57] (boost-reduction level) and knock_count (testbench-

@@ -450,6 +450,21 @@ run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW \
     -DRPMRAMP -DCL_MODE -DBOOST -DKLR_ADC0_NOISE_LOW -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
+# cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH: KLR->DME full_load wire stuck at the WOT level through a part-throttle ramp (FULL_LOAD_STUCK_LOW's opposite).
+run_test cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH \
+    -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_FULL_LOAD_STUCK_HIGH \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
+# cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST: KLR TPS 5V supply (ch3) gone entirely: 0x00, which also zeroes the ratiometric ch7.
+run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST \
+    -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOST \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
+
+# cl_ramp_to_3000_BOOST_OPEN_CIRCUIT: KLR MAP sensor (ch4) open, pulled to the rail: 0xFF, past the bench's 0xF0 cap, so the firmware's +10 wrap is exercised.
+run_test cl_ramp_to_3000_BOOST_OPEN_CIRCUIT \
+    -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_OPEN_CIRCUIT \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
+
 # FULL_LOAD_STUCK_LOW: KLR computes full_load correctly internally, but
 # the wire actually reaching the DME (P1.5) is stuck low — the WOT
 # indication itself "isn't happening" regardless of real throttle
@@ -791,6 +806,52 @@ run_test tps_fail \
     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
 
+# afm_short_to_ground: AFM wiper shorted to ground: ch0 reads 0x00 (afm_open_circuit's opposite).
+run_test afm_short_to_ground \
+    -DTEST_WARM_IDLE_5S -DAFM_SHORT_TO_GROUND \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# battery_disconnected: DME battery sense open: ch1 reads 0x00 (idle_battery_low is only low).
+run_test battery_disconnected \
+    -DTEST_WARM_IDLE_5S -DDME_BATT_DISCONNECTED \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# airtemp_open_circuit: Air temp NTC open: ch2 pulled to the rail, 0xFF (airtemp_fail is the 0x00 short).
+run_test airtemp_open_circuit \
+    -DTEST_WARM_IDLE_5S -DAIRTEMP_OPEN_CIRCUIT \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# coolant_open_circuit: Coolant NTC open: ch3 pulled to the rail, 0xFF (coolant_fail is the 0x00 short).
+run_test coolant_open_circuit \
+    -DTEST_WARM_IDLE_5S -DCOOLANT_OPEN_CIRCUIT \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# tps_ch6_short_to_ground: DME TPS/idle input (ch6) shorted to ground: 0x00 (tps_fail holds it at 0x80).
+run_test tps_ch6_short_to_ground \
+    -DTEST_WARM_IDLE_5S -DTPS_FIXED=8\'h00 \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# tps_ch6_open_circuit: DME TPS/idle input (ch6) open, pulled to the rail: 0xFF.
+run_test tps_ch6_open_circuit \
+    -DTEST_WARM_IDLE_5S -DTPS_FIXED=8\'hFF \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000
+
+# ref_sensor_stuck_low: Reference sensor (P3.2/INT0) shorted to ground from t=3500ms (ref_sensor_loss's opposite).
+run_test ref_sensor_stuck_low \
+    -DTEST_WARM_IDLE_5S -DREF_SENSOR_STUCK_LOW \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
+
+# ref_sensor_missing_at_start: no reference signal from power-on (open
+# wire through cranking), so the engine has to sync on the speed sensor alone.
+run_test ref_sensor_missing_at_start \
+    -DTEST_WARM_IDLE_5S -DREF_SENSOR_ABSENT \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
+
+# speed_sensor_stuck_low: Speed sensor (P3.3/INT1) shorted to ground from t=3500ms (speed_sensor_loss's opposite).
+run_test speed_sensor_stuck_low \
+    -DTEST_WARM_IDLE_5S -DSPEED_SENSOR_STUCK_LOW \
+    -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000
+
 # --- RPM sweep tests ---
 run_test ramp_to_3000 \
     -DTEST_RAMP_TO_3000 \
@@ -1017,6 +1078,9 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_KLR_KNOCK_BLOCKED) run_test cl_ramp_to_3000_KLR_KNOCK_BLOCKED $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DTEST_KNOCK_FAKE_BLOCKED -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW) run_test cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_FULL_LOAD_STUCK_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH) run_test cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_FULL_LOAD_STUCK_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST) run_test cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DKLR_TPS_SUPPLY_LOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
+        cl_ramp_to_3000_BOOST_OPEN_CIRCUIT) run_test cl_ramp_to_3000_BOOST_OPEN_CIRCUIT $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_OPEN_CIRCUIT -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_LOW) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_3000_BOOST) run_test cl_ramp_to_3000_BOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_2100_BOOST_HIGH) run_test cl_ramp_to_2100_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_2100 -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
@@ -1070,6 +1134,15 @@ if [ -n "$1" ]; then
         o2_lean_stuck)    run_test o2_lean_stuck    $IARG -DTEST_O2_LEAN_STUCK    -DO2_FLAT_LEAN  -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         o2_baseline)      run_test o2_baseline      $IARG -DTEST_O2_BASELINE                              -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=25000000000 ;;
         tps_fail)         run_test tps_fail         $IARG -DTEST_TPS_FAIL         -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
+        afm_short_to_ground) run_test afm_short_to_ground $IARG -DTEST_WARM_IDLE_5S -DAFM_SHORT_TO_GROUND -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        battery_disconnected) run_test battery_disconnected $IARG -DTEST_WARM_IDLE_5S -DDME_BATT_DISCONNECTED -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        airtemp_open_circuit) run_test airtemp_open_circuit $IARG -DTEST_WARM_IDLE_5S -DAIRTEMP_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        coolant_open_circuit) run_test coolant_open_circuit $IARG -DTEST_WARM_IDLE_5S -DCOOLANT_OPEN_CIRCUIT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        tps_ch6_short_to_ground) run_test tps_ch6_short_to_ground $IARG -DTEST_WARM_IDLE_5S "-DTPS_FIXED=8'h00" -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        tps_ch6_open_circuit) run_test tps_ch6_open_circuit $IARG -DTEST_WARM_IDLE_5S "-DTPS_FIXED=8'hFF" -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000 ;;
+        ref_sensor_missing_at_start) run_test ref_sensor_missing_at_start $IARG -DTEST_WARM_IDLE_5S -DREF_SENSOR_ABSENT -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
+        ref_sensor_stuck_low) run_test ref_sensor_stuck_low $IARG -DTEST_WARM_IDLE_5S -DREF_SENSOR_STUCK_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
+        speed_sensor_stuck_low) run_test speed_sensor_stuck_low $IARG -DTEST_WARM_IDLE_5S -DSPEED_SENSOR_STUCK_LOW -DRPMRAMP -DRPMSTART=100 -DRPMEND=840 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=8000000000 ;;
         ramp_to_3000)     run_test ramp_to_3000     $IARG -DTEST_RAMP_TO_3000     -DRPMRAMP -DRPMSTART=100 -DRPMEND=3000 -DRPM_RAMP_PCT=50  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000   ;;
         ramp_to_6000)     run_test ramp_to_6000     $IARG -DTEST_RAMP_TO_6000      -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000   ;;
         ramp_to_6000_knock) run_test ramp_to_6000_knock $IARG -DTEST_RAMP_TO_6000 -DRPMRAMP -DRPMSTART=100 -DRPMEND=6000 -DRPM_RAMP_PCT=25 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 -DTEST_KNOCK_PULSE -DRPM_RAMP_DOWN ;;
@@ -1121,6 +1194,7 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW"
             echo "               cl_ramp_to_6000_BOOST_HIGH cl_ramp_to_2100_BOOST_HIGH"
             echo "               ramp_to_redline_KLR_TPS_HIGH tps_open_circuit"
+            echo "               cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST cl_ramp_to_3000_BOOST_OPEN_CIRCUIT"
             echo "  Fuel:        ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "               cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "  Idle:        cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt"
@@ -1129,6 +1203,7 @@ if [ -n "$1" ]; then
             echo "  DME_fail:    idle_battery_low idle_poor_fuel overrun_cutoff afm_open_circuit coolant_fail"
             echo "               airtemp_fail o2_disconnected o2_rich_stuck o2_lean_stuck tps_fail"
             echo "               altitude_disconnected fuel_qual_disconnected ref_sensor_loss speed_sensor_loss"
+            echo "               afm_short_to_ground battery_disconnected airtemp_open_circuit coolant_open_circuit tps_ch6_short_to_ground tps_ch6_open_circuit ref_sensor_missing_at_start ref_sensor_stuck_low speed_sensor_stuck_low"
             echo "  Replay:      replay_wot_60s (first 60 s of the recorded WOT log, open loop)"
             echo ""
             exit 1

@@ -31,8 +31,11 @@ VL_DASH_DIR="$BASE/v_dash_logs"
 DASH_TESTS=(
     ac_on_idle
     afm_open_circuit
+    afm_short_to_ground
     airtemp_fail
+    airtemp_open_circuit
     altitude_disconnected
+    battery_disconnected
     cl_ac_halfway
     cl_cold_start
     cl_condition_cycle
@@ -40,6 +43,7 @@ DASH_TESTS=(
     cl_ramp_to_2100_BOOST_HIGH
     cl_ramp_to_3000
     cl_ramp_to_3000_BOOST
+    cl_ramp_to_3000_BOOST_OPEN_CIRCUIT
     cl_ramp_to_3000_FQS0
     cl_ramp_to_3000_FQS1
     cl_ramp_to_3000_FQS2
@@ -50,9 +54,11 @@ DASH_TESTS=(
     cl_ramp_to_3000_FQS7
     cl_ramp_to_3000_KLR_BATT_DISCONNECTED
     cl_ramp_to_3000_KLR_BATT_LOW
+    cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH
     cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH
     cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW
     cl_ramp_to_3000_KLR_KNOCK_BLOCKED
+    cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST
     cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW
     cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH
     cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW
@@ -80,6 +86,7 @@ DASH_TESTS=(
     cl_warm_idle
     cold_start
     coolant_fail
+    coolant_open_circuit
     dme_klr_warm_idle
     dwell_scaling
     fuel_qual_disconnected
@@ -121,7 +128,12 @@ DASH_TESTS=(
     ramp_to_redline
     ramp_to_redline_KLR_TPS_HIGH
     ref_sensor_loss
+    ref_sensor_missing_at_start
+    ref_sensor_stuck_low
     speed_sensor_loss
+    speed_sensor_stuck_low
+    tps_ch6_open_circuit
+    tps_ch6_short_to_ground
     tps_fail
     tps_open_circuit
     warm_idle
