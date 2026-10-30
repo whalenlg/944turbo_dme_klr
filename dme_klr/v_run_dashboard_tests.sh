@@ -61,81 +61,6 @@ VCD_ENABLE=0
 if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 VCD_ENABLE="${VCD:-$VCD_ENABLE}"
 
-# Dashboard URL — set DASHBOARD_URL env var to override
-DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:5173}"
-
-# Vite project public directory — a symlink is created here pointing
-# at the log directory so Vite serves logs as static files.
-# Set DASHBOARD_PUBLIC env var to your Vite project's public/ folder.
-# e.g. export DASHBOARD_PUBLIC=~/projects/dme951-dash/public
-DASHBOARD_PUBLIC="${DASHBOARD_PUBLIC:-}"
-
-# Symlink name inside public/ that points to the log directory
-DASH_LOGS_LINK="dash_logs"
-
-# --------------------------------------------------------
-#  ensure_symlink
-#
-#  Creates public/dash_logs -> LOGDIR if it doesn't exist.
-# --------------------------------------------------------
-ensure_symlink() {
-    [ -z "$DASHBOARD_PUBLIC" ] && return 1
-    [ -d "$DASHBOARD_PUBLIC" ] || { echo "  [DASHBOARD] DASHBOARD_PUBLIC not found: $DASHBOARD_PUBLIC"; return 1; }
-    local link="$DASHBOARD_PUBLIC/$DASH_LOGS_LINK"
-    if [ -L "$link" ]; then
-        return 0   # already exists
-    fi
-    ln -s "$LOGDIR" "$link"
-    echo "  [DASHBOARD] Created symlink: $link → $LOGDIR"
-}
-
-# --------------------------------------------------------
-#  open_in_dashboard <log_path>
-#
-#  Ensures the public/dash_logs symlink exists, then opens
-#  the dashboard with ?log=/dash_logs/<filename> so the app
-#  fetches it directly from Vite's static file server.
-#  Set AUTO_OPEN=0 to disable browser opening entirely.
-# --------------------------------------------------------
-open_in_dashboard() {
-    local logpath="$1"
-    local logfile
-    logfile="$(basename "$logpath")"
-
-    [ "${AUTO_OPEN:-1}" = "0" ] && return 0
-
-    # Detect browser open command
-    local open_cmd=""
-    if command -v open &>/dev/null; then
-        open_cmd="open"
-    elif command -v xdg-open &>/dev/null; then
-        open_cmd="xdg-open"
-    else
-        echo "  [DASHBOARD] No browser open command found"
-        echo "  [DASHBOARD] Load manually: $logpath"
-        return 0
-    fi
-
-    if [ -z "$DASHBOARD_PUBLIC" ]; then
-        echo "  [DASHBOARD] DASHBOARD_PUBLIC not set"
-        echo "  [DASHBOARD] e.g. export DASHBOARD_PUBLIC=~/projects/dme951-dash/public"
-        echo "              Load manually: $logpath"
-        return 0
-    fi
-
-    ensure_symlink || return 0
-
-    if ! curl -sf --max-time 2 "$DASHBOARD_URL" > /dev/null 2>&1; then
-        echo "  [DASHBOARD] Server not reachable at $DASHBOARD_URL — start your dev server"
-        echo "              Then open: ${DASHBOARD_URL}?log=/${DASH_LOGS_LINK}/${logfile}"
-        return 0
-    fi
-
-    local url="${DASHBOARD_URL}?log=/${DASH_LOGS_LINK}/${logfile}"
-    $open_cmd "$url" 2>/dev/null
-    echo "  [DASHBOARD] Opened: $url"
-}
-
 mkdir -p "$VVP_DIR" "$VLTDIR" "$LOGDIR" "$VCDDIR" "$HEXDIR"
 
 # Mode alias used by run_all and case block
@@ -161,7 +86,6 @@ run_replay_test() {
     verdict=$(grep -E "^FAIL:" "$LOGDIR/${name}.report.txt" || echo "all channels within tolerance")
     echo "  DONE: $name — $(grep '^Replay check:' "$LOGDIR/${name}.report.txt" | cut -d, -f1 | sed 's/^Replay check: //') — ${verdict}" \
         | tee -a "$LOGDIR/summary.log"
-    open_in_dashboard "$LOGDIR/${name}.dash.log"
 }
 ACTIVE_LOG="$LOGDIR/summary.log"
 echo "  Mode: DASHBOARD (dme_klr_dashboard_tb, snapshot output)"
@@ -379,8 +303,6 @@ compile_and_run_klr() {
     # Everything the tools read is in the .dash.log now; keep the full
     # output (a debug run's instruction trace can be GBs) compressed
     gzip -f "$log"
-
-    open_in_dashboard "$LOGDIR/${name}.dash.log"
 
     compare_with_iv "$name" \
         "$LOGDIR/${name}.dash.log" \
@@ -1077,7 +999,6 @@ if [ -n "$1" ]; then
     done
     IARG="$_interval$_dbg_flags"
     set -- "$TEST_NAME"
-    SINGLE_TEST=1   # enables open_in_dashboard after compile_and_run_klr
     case "$1" in
         warm_idle)        run_test warm_idle        $IARG -DTEST_WARM_IDLE        -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=10  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=60000000000   ;;
         warm_idle_5s)     run_test warm_idle_5s     $IARG -DTEST_WARM_IDLE_5S     -DRPMRAMP -DRPMSTART=100 -DRPMEND=840  -DRPM_RAMP_PCT=25  -DSKIP_LAMBDA_WARMUP -DSIM_TIME=5000000000    ;;
