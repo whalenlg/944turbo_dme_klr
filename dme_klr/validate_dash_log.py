@@ -781,7 +781,7 @@ TESTS = {
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':2000,  't_end':7000,  'direction':None},
                               {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':None, 'expect_byte_step':0x4E},
-                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':None, 'expect_flag':(0x25, 0x80)}  # idle: the ISV opens to restore the air mass the thinner air took, so fuel returns to ~sea level,
+                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':None, 'expect_flag':(0x25, 0x80)},  # idle: the ISV opens to restore the air mass the thinner air took, so fuel returns to ~sea level
                               {'name':'CAT',          't_begin':23000, 't_end':28000, 'direction':None},
                               {'name':'AC',           't_begin':30000, 't_end':35000, 'direction':'+', 'min_pct':1.0},
                               {'name':'BATTERY',       't_begin':37000, 't_end':42000, 'direction':None},
