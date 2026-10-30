@@ -23,7 +23,8 @@
 //  ign_out     Retard-adjusted ignition output → coil driver.
 //              P2.7 — high = allow spark, low = suppress/retard.
 //  ign_out_n   Complementary ignition output (P2.6).
-//  full_load   P1.5 — full-load enrichment flag read by DME.
+//  full_load   P1.5 — full-load enrichment flag read by DME (floats high
+//              during every reset — see "full_load (P1.5) during reset").
 //
 //  Port assignments (verified against i8048_tb.v)
 //  ────────────────────────────────────────────────
@@ -55,6 +56,24 @@
 //
 //    trigger_in rising  →  res_n = 0 (CPU held in reset)
 //    trigger_in falling →  res_n = 1 (CPU running free)
+//
+//  full_load (P1.5) during reset
+//  ─────────────────────────────
+//  The 8049's ports are quasi-bidirectional and reset to 1, and they
+//  stay 1 until the firmware next writes P1 after reset is released.
+//  So P1.5 floats HIGH ("WOT") for the whole reset pulse on every crank
+//  trigger, plus a short run-in, even at part throttle with the
+//  firmware's TPS reading (ram 3Ah) far below its WOT threshold. On
+//  cl_ramp_to_3000_FQS2 a probe on the DME's ch6 sample caught 123
+//  full_load-high readings at part throttle: 76 during the KLR's reset,
+//  47 just after it, none from the firmware deciding full load. This is
+//  real 8048 behaviour, not a sim artifact; what keeps it from reaching
+//  the DME on the car is the DME's ch6 input network (R762 47k into the
+//  ADC pin's 100n, tau ~4.7 ms), which i8051_dashboard_tb.v models as
+//  full_load_rc (FULL_LOAD_TAU_US). Anything sampling P1.5 directly
+//  (scope, logic analyser, a monitor) sees these pulses every trigger;
+//  read the firmware's own decision from ram 3Ah, or from P1.5 just
+//  before each reset.
 //
 //  ROM naming convention
 //  ─────────────────────
@@ -151,7 +170,7 @@ module klr_system (
     // ============================================================
     assign ign_out   = p2[7];
     assign ign_out_n = p2[6];
-    assign full_load = p1[5];
+    assign full_load = p1[5];   // floats high in reset: see header
     assign CV_PWM    = p1[4];
     assign knock_out = p1[6];
     assign fake_knock= p1[7];
