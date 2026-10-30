@@ -70,6 +70,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     output wire ign_out,            // KLR P2.7 → DME ign  (retard-gated spark)
     output wire full_load,          // KLR P1.5 → DME full_load (WOT flag); pulses high
                                     // on every trigger reset, see klr_schematics/full_load_reset.md
+                                    // and klr_top.v ("full_load (P1.5) during reset")
     // TPS angle input from DME side — only meaningful when EXT_STIM=1
     // TPS supply is fixed (5V regulated on KLR board, independent of 12V battery)
     input  wire [7:0] tps_wiper,   // throttle position (DME AFM-wiper scale, 0x28 closed .. 0xEB WOT) → KLR TPS angle ch7

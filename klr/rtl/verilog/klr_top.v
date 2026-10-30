@@ -67,13 +67,13 @@
 //  cl_ramp_to_3000_FQS2 a probe on the DME's ch6 sample caught 123
 //  full_load-high readings at part throttle: 76 during the KLR's reset,
 //  47 just after it, none from the firmware deciding full load. This is
-//  real 8048 behaviour, not a sim artifact; what keeps it from reaching
+//  real 8049 (8048-family) behaviour, not a sim artifact; what keeps it from reaching
 //  the DME on the car is the DME's ch6 input network (R762 47k into the
 //  ADC pin's 100n, tau ~4.7 ms), which i8051_dashboard_tb.v models as
 //  full_load_rc (FULL_LOAD_TAU_US). Anything sampling P1.5 directly
 //  (scope, logic analyser, a monitor) sees these pulses every trigger;
 //  read the firmware's own decision from ram 3Ah, or from P1.5 just
-//  before each reset.
+//  before each reset. More in klr/klr_schematics/full_load_reset.md.
 //
 //  ROM naming convention
 //  ─────────────────────
