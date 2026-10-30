@@ -770,8 +770,8 @@ TESTS = {
     'cl_condition_cycle': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':31000, 't_end':36000, 'direction':None},
-                              {'name':'COOLANT TEMP', 't_begin':38000, 't_end':43000, 'direction':'+', 'min_pct':0.5},
-                              {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'COOLANT TEMP', 't_begin':38000, 't_end':43000, 'direction':None, 'expect_byte_step':0x4E},
+                              {'name':'ALTITUDE',     't_begin':45000, 't_end':50000, 'direction':'-', 'min_pct':0.5, 'expect_flag':(0x25, 0x80)},
                               {'name':'CAT',          't_begin':52000, 't_end':57000, 'direction':None},
                               {'name':'AC',           't_begin':59000, 't_end':64000, 'direction':'+', 'min_pct':1.0},
                               {'name':'BATTERY',       't_begin':66000, 't_end':71000, 'direction':None},
@@ -780,8 +780,8 @@ TESTS = {
     'cl_condition_cycle_idle': {'rpm_target': 840, 'fuel_range':(1.5, 3.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'condition_phases': [
                               {'name':'AIR TEMP',     't_begin':2000,  't_end':7000,  'direction':None},
-                              {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':'+', 'min_pct':0.5},
-                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':'-', 'min_pct':0.5},
+                              {'name':'COOLANT TEMP', 't_begin':9000,  't_end':14000, 'direction':None, 'expect_byte_step':0x4E},
+                              {'name':'ALTITUDE',     't_begin':16000, 't_end':21000, 'direction':'-', 'min_pct':0.5, 'expect_flag':(0x25, 0x80)},
                               {'name':'CAT',          't_begin':23000, 't_end':28000, 'direction':None},
                               {'name':'AC',           't_begin':30000, 't_end':35000, 'direction':'+', 'min_pct':1.0},
                               {'name':'BATTERY',       't_begin':37000, 't_end':42000, 'direction':None},
@@ -1215,6 +1215,8 @@ def parse_ds(line):
                                 # (0x3B->0x41) and airtemp_fail
                                 # (0x3B->0x72), untouched by tps_fail
         'iram_0x7e': b(0x7E),  # ISV integral, high byte (7Eh:7Dh)
+        'iram_0x25': b(0x25),  # 25h.7: the firmware's high-altitude flag (0x1BD8)
+        'iram_0x4e': b(0x4E),  # 4Eh: coolant-driven enrichment term
         'iram_0x23': b(0x23),  # 23h.0/.1: ch6 throttle-switch code
                                 # (bit0 set, bit1 clear = idle PI loop)
         'iram_0x16': b(0x16),  # ADC_TPS — tps_fail forces this to
@@ -2521,6 +2523,31 @@ def validate(test_name, logpath, dme_file=None):
             fuel_before = sum(r['fuel_actual'] for r in before_rows) / len(before_rows)
             fuel_during = sum(r['fuel_actual'] for r in during_rows) / len(during_rows)
             fuel_pct = (fuel_during - fuel_before) / fuel_before * 100.0 if fuel_before else 0.0
+
+            # The firmware's own correction for the phase: lambda (and at
+            # idle the ISV) close the loop on fuel, so the correction byte
+            # or flag is the direct evidence that the firmware responded.
+            flag = phase.get('expect_flag')          # (offset, mask): set in the phase, clear before
+            if flag:
+                off, mask = flag
+                f = f'iram_0x{off:02x}'
+                in_rows  = [r for r in rows if t_begin + 500 <= r['t'] <= t_end and r.get(f) is not None]
+                pre_rows = [r for r in rows if t_begin - settle_window <= r['t'] < t_begin and r.get(f) is not None]
+                if in_rows and pre_rows and all(r[f] & mask for r in in_rows) and not any(r[f] & mask for r in pre_rows):
+                    infos.append(f"{phase['name']}: firmware flag {off:02X}h&{mask:02X} set for the phase ✓")
+                else:
+                    fails.append(f"{phase['name']}: firmware flag {off:02X}h&{mask:02X} doesn't follow the phase "
+                                 f"(before {sorted({hex(r[f]) for r in pre_rows})}, during {sorted({hex(r[f]) for r in in_rows})})")
+            step = phase.get('expect_byte_step')     # offset: settles at a different value in the phase
+            if step is not None:
+                f = f'iram_0x{step:02x}'
+                bv = {r[f] for r in before_rows if r.get(f) is not None}
+                dv = {r[f] for r in during_rows if r.get(f) is not None}
+                if bv and dv and not (bv & dv):
+                    infos.append(f"{phase['name']}: {step:02X}h steps {sorted(hex(v) for v in bv)} -> {sorted(hex(v) for v in dv)} ✓")
+                else:
+                    fails.append(f"{phase['name']}: {step:02X}h doesn't step in the phase "
+                                 f"(before {sorted(hex(v) for v in bv)}, during {sorted(hex(v) for v in dv)})")
 
             direction = phase.get('direction')
             min_pct = phase.get('min_pct')

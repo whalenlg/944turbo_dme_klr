@@ -1709,13 +1709,54 @@ reg  [7:0] adc_ch0, adc_ch1, adc_ch2, adc_ch3, adc_ch4, adc_ch5, adc_ch6, adc_ch
 // signal that idle_sw transitively depends on unless each one is added
 // here too. `always @(*)` re-evaluates on any input change and avoids
 // re-introducing the same class of staleness bug this file just had.
+// ── Altitude: air density ─────────────────────────────────────
+// The altitude input (ch4) is a pressure switch: below 0x80 it says
+// "high altitude" (0x00; 0xF8 = low, 0xFF = open circuit). Up there the
+// air is thinner, ALT_DENSITY_X1000/1000 of sea level (default 0.88,
+// ~1000 m). The engine breathes about the same volume, so:
+//   - real air per stroke drops by rho (var_interrupt_gen_cl.v torque),
+//   - the flap AFM, deflected by dynamic pressure, reads flow x sqrt(rho):
+//     it drops, but only half as far, so it over-reads mass by
+//     1/sqrt(rho). The DME's altitude switch removes that: 0x1D3C scales
+//     fuel by 0x11CB = 0x78 (x0.9375 = sqrt(0.88)).
+// The firmware's AFM linearisation (0x03B2, tables 0x10F4/0x10FC/0x1104)
+// is exponential: flow x1.837 per 32 ADC counts. So sqrt(rho) on the flow
+// is a constant ADC shift, alt_afm_shift = 32 ln(sqrt(rho)) / ln(1.837)
+// (-3 counts at 0.88), applied to the AFM the sensor reports.
+`ifndef ALT_DENSITY_X1000
+  `define ALT_DENSITY_X1000 880
+`endif
+integer alt_afm_shift;
+integer alt_sqrt_x1000;
+initial begin
+    alt_sqrt_x1000 = $rtoi($sqrt(`ALT_DENSITY_X1000 / 1000.0) * 1000.0 + 0.5);
+    alt_afm_shift  = $rtoi(32.0 * $ln($sqrt(`ALT_DENSITY_X1000 / 1000.0)) / $ln(1.837) - 0.5);
+end
+// from ch4's source (adc_ch4 itself is assigned in the same block as ch0)
+`ifdef LIVE
+wire [7:0] alt_switch = dme_klr_dashboard_tb.live_altitude;
+`elsif CL_CONDITION_CYCLE_ACTIVE
+wire [7:0] alt_switch = altitude_dynamic_cycle;
+`else
+wire [7:0] alt_switch = `_ALTITUDE;
+`endif
+wire alt_high = (alt_switch < 8'h80);
+function automatic [7:0] afm_at_alt;
+    input [7:0] afm;
+    integer v;
+    begin
+        v = afm + (alt_high ? alt_afm_shift : 0);
+        afm_at_alt = v < 0 ? 8'd0 : v > 255 ? 8'd255 : v[7:0];
+    end
+endfunction
+
 `ifdef LIVE
 // Live debugger: every ADC channel reads the value the web UI last set
 // in dme_klr_dashboard_tb (see dme_klr/live/). TPS (ch6) keeps the
 // normal idle-switch / KLR full_load logic below unless live_dme_tps
 // pins it (16'hFFFF = follow that logic), as the log replay does.
 always @(*) begin
-        adc_ch0 = afm_effective;
+        adc_ch0 = (dme_klr_dashboard_tb.live_afm == 16'hFFFF) ? afm_at_alt(afm_effective) : afm_effective;  // a pinned AFM is the sensor reading itself
         adc_ch1 = dme_klr_dashboard_tb.live_battery;
         adc_ch2 = dme_klr_dashboard_tb.live_airtemp;
         adc_ch3 = dme_klr_dashboard_tb.live_coolant;
@@ -1730,11 +1771,11 @@ always @(*) begin
 `ifdef AFM_FAULT
         adc_ch0 = 8'hFF;
 `elsif AFM_CL_RAMP
-        adc_ch0 = afm_cl;
+        adc_ch0 = afm_at_alt(afm_cl);
 `elsif AFM_TIPPY
-        adc_ch0 = afm_tippy;
+        adc_ch0 = afm_at_alt(afm_tippy);
 `else
-        adc_ch0 = afm_wiper;
+        adc_ch0 = afm_at_alt(afm_wiper);
 `endif
 `ifdef CL_CONDITION_CYCLE_ACTIVE
         adc_ch1 = battery_dynamic_cycle;
