@@ -1820,7 +1820,8 @@ wire o2_pins_low;
 `elsif O2_FLAT_RICH
     assign o2_6 = 1'b1;
     assign o2_7 = 1'b1;
-`else
+`elsif O2_SQUARE_WAVE
+    // The old free-running square wave (o2_gen.v), on request only
     wire _o2_6, _o2_7;
     o2_generator o2_generator_1 (
         .clk       ( clk   ),
@@ -1828,6 +1829,51 @@ wire o2_pins_low;
         .o2_top    ( _o2_7 ),
         .o2_bottom ( _o2_6 )
     );
+`else
+    // The sensor follows the mixture the firmware actually delivers, so
+    // the lambda integrator (1Bh) limit-cycles around stoich. It needs
+    // only the firmware's own fuel and load, so it serves the scripted-
+    // RPM builds as well as the CL engine model. (The free-running
+    // o2_generator square wave, -DO2_SQUARE_WAVE, ignores the mixture;
+    // its 267 ms "lean" vs 250 ms "rich" walked 1Bh to its +15% clamp at
+    // idle.)
+    //   mixture  = fuel time 4B:4A / air per stroke 46:47 (the firmware's
+    //              own load from the AFM and RPM), rich above O2_STOICH_X1000
+    //              (1.025: warm idle with lambda held off, 1Bh = 0x80;
+    //              part load's base map sits ~4% richer, full load ~20%)
+    //   delay    = O2_DELAY_MS of exhaust transport (a shift register,
+    //              sampled every ms), then the sensor's own ~O2_TAU_MS
+    //              first-order swing between 100 mV lean and 850 mV rich
+    //   o2_7/o2_6 = sensor above 550 / 450 mV (top/bottom comparator;
+    //              crossover is between them)
+`ifndef O2_STOICH_X1000
+  `define O2_STOICH_X1000 1025
+`endif
+`ifndef O2_DELAY_MS
+  `define O2_DELAY_MS 150
+`endif
+`ifndef O2_TAU_MS
+  `define O2_TAU_MS 30
+`endif
+    wire _o2_6, _o2_7;
+    reg  [255:0] o2_rich_line = 256'd0;
+    integer      o2_mv = 100;
+    reg          o2_rich_now;
+    always #1_000_000 begin : o2_mixture
+        integer fuel, load;
+        fuel = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4B], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4A]};
+        load = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h46], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h47]};
+        o2_rich_now  = (load != 0) && (fuel * 1000 > load * `O2_STOICH_X1000);
+        o2_rich_line = {o2_rich_line[254:0], o2_rich_now};
+        o2_mv = o2_mv + ((o2_rich_line[`O2_DELAY_MS - 1] ? 850 : 100) - o2_mv) / `O2_TAU_MS;
+    end
+    assign _o2_7 = (o2_mv > 550);
+    assign _o2_6 = (o2_mv > 450);
+`endif
+`ifdef O2_FLAT_DISCONNECTED
+`elsif O2_FLAT_LEAN
+`elsif O2_FLAT_RICH
+`else
 `ifdef LIVE
     // Live debugger / log replay: live_o2 = {o2_7, o2_6} pins the
     // comparator outputs (0 lean, 1 crossover, 3 rich); 16'hFFFF = generator.
