@@ -262,6 +262,11 @@ def main():
                          "log of the KLR's ram[52h], which is ADC + 10)")
     ap.add_argument('--dme-rom', default=os.environ.get('DME_ROM') or DEFAULT_ROM,
                     help='DME ROM .mem for the NTC maps (default: 28PIN_DME_PERFORMANCE.mem)')
+    ap.add_argument('--afm-vref', type=float, default=5.0,
+                    help="the DME's AFM reference voltage: the AFM is ratiometric, "
+                         "so its ADC reads V_afm / V_ref x 255 (default 5.0)")
+    ap.add_argument('--afm-offset', type=float, default=0.0,
+                    help="volts taken off the logged AFM voltage (logger ground offset)")
     ap.add_argument('--o2-from-log', action='store_true',
                     help="pin O2 from the log's NBO2 (V) instead of the "
                          "testbench's mixture-following sensor")
@@ -315,7 +320,7 @@ def main():
             knock = int(knock_until is not None and t_ms < knock_until)
             w.writerow([f"{r['t_s'] * 1000:.3f}",
                         int(round(r['rpm'])),
-                        volts(r['afm_v']),
+                        clamp8((r['afm_v'] - a.afm_offset) * 255.0 / a.afm_vref),
                         map_raw(r['map_psi'], a.map_offset),
                         cool_map.raw_for(lin_for_f(r['ect_f'])),
                         volts(r['iat_v']),
