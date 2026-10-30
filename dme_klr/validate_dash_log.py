@@ -883,36 +883,39 @@ TESTS = {
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
+    # cl_ramp_to_3000_FQS*: as ramp_to_3000_FQS*, part-load lambda trims the
+    # FQS fuel step back to stoich, and with air-limited torque every
+    # position settles at the same RPM, so the settled step is ~0%.
     'cl_ramp_to_3000_FQS0': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
                           'fqs_pos':0, 'fqs_fuel_pct':+0.00, 'fqs_timing_retard':0.00,
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos0: +0% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS1': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':1, 'fqs_fuel_pct':+3.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':1, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3.00, 'fqs_timing_retard':0.00,
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos1: +3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS2': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':2, 'fqs_fuel_pct':-3.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':2, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3.00, 'fqs_timing_retard':0.00,
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos2: -3% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS3': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':3, 'fqs_fuel_pct':+6.00, 'fqs_timing_retard':0.00,
+                          'fqs_pos':3, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6.00, 'fqs_timing_retard':0.00,
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos3: +6% fuel, 0.00° timing'},
     'cl_ramp_to_3000_FQS4': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':4, 'fqs_fuel_pct':+0.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':4, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+0.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos4: +0% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS5': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':5, 'fqs_fuel_pct':+3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':5, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos5: +3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS6': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':6, 'fqs_fuel_pct':-3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':6, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':-3.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos6: -3% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_3000_FQS7': {'rpm_target': 3000, 'fuel_range':(1.5, 4.5), 'expect_ase':True, 'expect_fuelcut':True,
-                          'fqs_pos':7, 'fqs_fuel_pct':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
+                          'fqs_pos':7, 'fqs_fuel_pct':0, 'fqs_fuel_tol':2.0, 'fqs_fuel_pct_open_loop':+6.00, 'fqs_expect_zero_retard':True, 'fqs_timing_baseline_ht':29.00,  # baseline: avg of cl_ramp_to_3000_FQS0-3 tail-window timing_adv (extract_timing_adv.py), same-family/same-RPM
                           'fqs_fuel_floor':1.5, 'fqs_fuel_baseline':2.327,
                           'notes':'FQS pos7: +6% fuel, ~0° timing retard expected (moderate-RPM/part-throttle — see load_idx=airflow/rpm rationale)'},
     'cl_ramp_to_redline':{'expect_o2':'rich_or_disconnected', 'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
@@ -1702,7 +1705,17 @@ def validate(test_name, logpath, dme_file=None):
         # bucket transition persists for 2+ consecutive samples; drop any
         # sample that differs from both neighbors before checking bucket
         # membership.
-        _tps_seq = [r['iram_0x16'] for r in tps_window if r['iram_0x16'] is not None]
+        # Classify by the firmware's own ch6 buckets (table 0x1124 into
+        # 23h.0/.1), not exact bytes: the testbench now runs the KLR's
+        # full_load line through the DME input's RC (i8051_dashboard_tb.v,
+        # full_load_rc), so ch6 is continuous along 0xF2..0xCC. Bucket
+        # representatives keep the messages below unchanged.
+        def _bucket(v):
+            if v < 0x89:  return v            # code 3: leave as-is (unexpected here)
+            if v <= 0xB7: return TPS_IDLE     # code 2: closed / idle
+            if v <= 0xE6: return TPS_WOT      # code 1: WOT
+            return TPS_PARTIAL                # code 0: off-idle
+        _tps_seq = [_bucket(r['iram_0x16']) for r in tps_window if r['iram_0x16'] is not None]
         _n = len(_tps_seq)
         tps_vals = {v for i, v in enumerate(_tps_seq)
                     if v == (_tps_seq[i-1] if i > 0 else None) or v == (_tps_seq[i+1] if i < _n - 1 else None)}

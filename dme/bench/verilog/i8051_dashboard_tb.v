@@ -1683,6 +1683,20 @@ wire [7:0] klr_throttle = afm_wiper;
 `ifndef TPS_IDLE_ADC
   `define TPS_IDLE_ADC 8'h99
 `endif
+// The KLR's full_load line (P1.5) reaches ch6 through the DME's input
+// network (R762 47k into the ADC pin's 100n, tau ~4.7 ms). The 8048's
+// ports float high while it's held in reset — on every crank trigger —
+// and stay high until the firmware rewrites P1, so the raw line pulses
+// "WOT" each trigger; on the car the RC averages those away. Without it
+// the DME's ADC could catch an instant of a pulse (cl_ramp_to_3000_FQS2
+// read ch6 = 0xCC at part throttle). full_load_rc is that RC, 0..1000000.
+`ifndef FULL_LOAD_TAU_US
+  `define FULL_LOAD_TAU_US 4700
+`endif
+integer full_load_rc = 0;
+always #10_000 full_load_rc = full_load_rc + ((full_load ? 1000000 : 0) - full_load_rc) / (`FULL_LOAD_TAU_US / 10);
+// ch6 with the throttle open: off-idle 0xF2 .. WOT 0xCC along the RC
+wire [7:0] ch6_open = 8'hF2 - (38 * full_load_rc) / 1000000;
 reg  [7:0] adc_mux;
 // Each channel's input, all eight at once, so the [DS] snapshot can log
 // what the ADC is being fed (adc_ch0..7) and not only what the firmware
@@ -1708,7 +1722,7 @@ always @(*) begin
         adc_ch4 = dme_klr_dashboard_tb.live_altitude;
         adc_ch5 = 8'hFF;
         adc_ch6 = (dme_klr_dashboard_tb.live_dme_tps != 16'hFFFF) ? dme_klr_dashboard_tb.live_dme_tps[7:0]
-                        : idle_sw ? (full_load ? 8'hCC : 8'hF2) : `TPS_IDLE_ADC;
+                        : idle_sw ? ch6_open : `TPS_IDLE_ADC;
         adc_ch7 = dme_klr_dashboard_tb.live_fuel_qual;
 end
 `else
@@ -1756,14 +1770,14 @@ always @(*) begin
 `ifdef TPS_FIXED
         adc_ch6 = `TPS_FIXED;
 `elsif AFM_CL_RAMP
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `elsif AFM_TIPPY
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `else
         // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
-        adc_ch6 = idle_sw ? (full_load ? 8'hCC : 8'hF2)  // open: WOT=4.0V / off-idle=4.75V
+        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
                                   : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
 `endif
         adc_ch7 = `_FUEL_QUAL;
