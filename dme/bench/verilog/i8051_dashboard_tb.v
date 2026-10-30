@@ -1918,6 +1918,10 @@ wire o2_pins_low;
         integer fuel, load;
         fuel = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4B], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4A]};
         load = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h46], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h47]};
+        // the real air per stroke: at altitude the firmware's load comes
+        // from an AFM reading flow x sqrt(rho) while the real air is x rho
+        // (see "Altitude: air density"), a further x sqrt(rho)
+        if (alt_high) load = load * alt_sqrt_x1000 / 1000;
         o2_rich_now  = (load != 0) && (fuel * 1000 > load * `O2_STOICH_X1000);
         o2_rich_line = {o2_rich_line[254:0], o2_rich_now};
         o2_mv = o2_mv + ((o2_rich_line[`O2_DELAY_MS - 1] ? 850 : 100) - o2_mv) / `O2_TAU_MS;
