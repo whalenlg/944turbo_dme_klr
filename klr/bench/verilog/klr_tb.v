@@ -467,6 +467,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
                                 dme_klr_dashboard_tb.live_boost[7:0];
     wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? live_boost_pin :
                          (EXT_STIM) ? boost_adc4_capped : 8'h85;
+`elsif BOOST_OPEN_CIRCUIT
+    // MAP signal open, pulled to the rail: 0xFF, deliberately past the
+    // 0xF0 cap above. This is the reading a real open wire gives, so the
+    // firmware's +10 wrap (ram[52h] = 0x09) is part of what's tested.
+    wire [7:0] adc_ch4 = 8'hFF;  // conn 23 MAP sensor — open circuit (BOOST_OPEN_CIRCUIT test)
 `else
     wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_capped : 8'h85;
 `endif
@@ -656,10 +661,14 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // low throttle (up to raw_tps~40) — 0x18 clears it across a much
     // wider range (up to raw_tps~100), so the fault triggers reliably
     // over more of the throttle sweep, not just near idle.
-`ifndef KLR_TPS_SUPPLY_LOW
-    wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
-`else
+// -DKLR_TPS_SUPPLY_LOST: the supply gone entirely (0x00), which also
+// takes the ratiometric ch7 reading to 0.
+`ifdef KLR_TPS_SUPPLY_LOST
+    wire [7:0] adc_ch3 = 8'h00;  // conn 1  TPS 5V supply — lost (KLR_TPS_SUPPLY_LOST test)
+`elsif KLR_TPS_SUPPLY_LOW
     wire [7:0] adc_ch3 = 8'h18;  // conn 1  TPS 5V supply — ~9.4% of normal (KLR_TPS_SUPPLY_LOW test)
+`else
+    wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
 `endif
 
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)

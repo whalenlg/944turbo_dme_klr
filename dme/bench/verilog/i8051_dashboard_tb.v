@@ -1773,6 +1773,8 @@ end
 always @(*) begin
 `ifdef AFM_FAULT
         adc_ch0 = 8'hFF;
+`elsif AFM_SHORT_TO_GROUND
+        adc_ch0 = 8'h00;  // AFM wiper shorted to ground (afm_short_to_ground)
 `elsif AFM_CL_RAMP
         adc_ch0 = afm_at_alt(afm_cl);
 `elsif AFM_TIPPY
@@ -1780,13 +1782,17 @@ always @(*) begin
 `else
         adc_ch0 = afm_at_alt(afm_wiper);
 `endif
-`ifdef CL_CONDITION_CYCLE_ACTIVE
+`ifdef DME_BATT_DISCONNECTED
+        adc_ch1 = 8'h00;  // battery sense open — reads no voltage (battery_disconnected)
+`elsif CL_CONDITION_CYCLE_ACTIVE
         adc_ch1 = battery_dynamic_cycle;
 `else
         adc_ch1 = `_BATTERY;
 `endif
 `ifdef TEST_AIRTEMP_FAIL
         adc_ch2 = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
+`elsif AIRTEMP_OPEN_CIRCUIT
+        adc_ch2 = 8'hFF;  // open NTC: pull-up takes it to the rail (airtemp_open_circuit)
 `elsif CL_CONDITION_CYCLE_ACTIVE
         adc_ch2 = airtemp_dynamic_cycle;
 `else
@@ -1802,6 +1808,8 @@ always @(*) begin
         adc_ch3 = coolant_dynamic_cycle;
 `elsif TEST_COOLANT_FAIL
         adc_ch3 = 8'h00;  // shorted sensor: matches normal TB
+`elsif COOLANT_OPEN_CIRCUIT
+        adc_ch3 = 8'hFF;  // open NTC: pull-up takes it to the rail (coolant_open_circuit)
 `else
         adc_ch3 = `_COOLANT_RAW;
 `endif
@@ -2039,6 +2047,19 @@ interrupt_generator interrupt_generator_1 (
   `define REF_LOSS_T_MS 3000
   `endif
 assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b1 : reference_sensor_gen;
+// REF_SENSOR_STUCK_LOW: the opposite fault — the INT0 line shorted to
+// ground from REF_LOSS_T_MS onward (ref_sensor_stuck_low).
+// REF_SENSOR_ABSENT: no reference signal at all, from power-on — the
+// open wire of TEST_REF_SENSOR_LOSS, but present through cranking, so
+// it shows whether the engine can sync and start on the speed sensor
+// alone (ref_sensor_missing_at_start).
+`elsif REF_SENSOR_ABSENT
+assign reference_sensor = 1'b1;
+`elsif REF_SENSOR_STUCK_LOW
+  `ifndef REF_LOSS_T_MS
+  `define REF_LOSS_T_MS 3500
+  `endif
+assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b0 : reference_sensor_gen;
 `else
 assign reference_sensor = reference_sensor_gen;
 `endif
@@ -2052,6 +2073,13 @@ assign reference_sensor = reference_sensor_gen;
   `define SPEED_LOSS_T_MS 3000
   `endif
 assign speed_sensor = (`DME_MS >= `SPEED_LOSS_T_MS) ? 1'b1 : speed_sensor_gen;
+// SPEED_SENSOR_STUCK_LOW: INT1 shorted to ground from SPEED_LOSS_T_MS
+// onward (speed_sensor_stuck_low).
+`elsif SPEED_SENSOR_STUCK_LOW
+  `ifndef SPEED_LOSS_T_MS
+  `define SPEED_LOSS_T_MS 3500
+  `endif
+assign speed_sensor = (`DME_MS >= `SPEED_LOSS_T_MS) ? 1'b0 : speed_sensor_gen;
 `else
 assign speed_sensor = speed_sensor_gen;
 `endif

@@ -437,6 +437,10 @@ module dme_klr_dashboard_tb;
     // macros elsewhere in this test suite.
 `ifdef KLR_FULL_LOAD_STUCK_LOW
     assign full_load = 1'b0;
+// KLR_FULL_LOAD_STUCK_HIGH: the same wire stuck at the WOT level, so the
+// DME sees full load whenever the throttle is off idle.
+`elsif KLR_FULL_LOAD_STUCK_HIGH
+    assign full_load = 1'b1;
 `else
     assign full_load = full_load_klr;
 `endif
