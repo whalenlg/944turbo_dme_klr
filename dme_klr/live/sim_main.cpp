@@ -1088,8 +1088,16 @@ private:
         std::string s;
         for (auto& in : inputs_) {
             long v = in.bits == 8 ? *static_cast<uint8_t*>(in.ptr) : *static_cast<uint16_t*>(in.ptr);
-            s += (s.empty() ? "" : ",") + std::string(in.name) + "=" +
-                 (in.can_auto && v == 0xFFFF ? "auto" : std::to_string(v));
+            std::string val = in.can_auto && v == 0xFFFF ? "auto" : std::to_string(v);
+            if (scripted_) {
+                // The test's script drives the engine, not these controls:
+                // show what rpm / afm / boost read now, "script" for the rest
+                std::string n = in.name;
+                long now = n == "rpm" ? TB(live_rpm_now) : n == "afm" ? TB(live_afm_now)
+                         : n == "boost" ? TB(live_boost_now) : 0xFFFF;
+                val = now == 0xFFFF ? "script" : std::to_string(now);
+            }
+            s += (s.empty() ? "" : ",") + std::string(in.name) + "=" + val;
         }
         return s;
     }
@@ -1107,6 +1115,8 @@ private:
         printf("SIM: [STATE] %s t_ns=%llu dme_pc=%s klr_pc=%s reason=%s\n", st,
                static_cast<unsigned long long>(tNs()), hex(TB(live_dme_ipc)).c_str(),
                hex(TB(live_klr_ipc)).c_str(), why.c_str());
+        // a scripted run's inputs move on their own: refresh them at each stop
+        if (scripted_ && std::string(st) != "running") printf("SIM: [INPUTS] %s\n", inputsLine().c_str());
         fflush(stdout);
     }
 
