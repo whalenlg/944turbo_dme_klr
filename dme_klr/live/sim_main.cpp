@@ -188,6 +188,7 @@ public:
         if (*ctx_->commandArgsPlusMatch("autosnap=0")) auto_snap_ = false;
         if (*ctx_->commandArgsPlusMatch("breakonwarn=1")) break_on_warn_ = true;
         if (*ctx_->commandArgsPlusMatch("loadpin=0")) pin_on_load_ = false;
+        if (scripted_) auto_snap_ = false;
         g_onModelLine = [this](const std::string& l) { modelLine(l); };
     }
 
@@ -208,6 +209,16 @@ public:
         state("paused", "start");
         std::string load = ctx_->commandArgsPlusMatch("load=");
         if (!load.empty()) loadSnapshot(load.substr(load.find('=') + 1));
+        // +runto=<ns> [+runlabel=<text>]: run there and pause, then say
+        // "loaded" (how the bridge opens a regression test's warning)
+        std::string runto = ctx_->commandArgsPlusMatch("runto=");
+        if (!runto.empty()) {
+            std::string label = ctx_->commandArgsPlusMatch("runlabel=");
+            runto_label_ = label.empty() ? "runto" : label.substr(label.find('=') + 1);
+            until_ns_ = std::strtod(runto.c_str() + runto.find('=') + 1, nullptr);
+            runto_ = true;
+            resume("runto");
+        }
         while (!ctx_->gotFinish() && !quit_) {
             if (paused_) {
                 std::string line;
@@ -264,6 +275,11 @@ private:
             if (TB(live_snap_ack) == TB(live_snap_req)) {
                 stop_pending_ = false;
                 paused_ = true;
+                if (runto_ && stop_reason_ == "until") {
+                    runto_ = false;
+                    printf("SIM: [SNAP] loaded t_ns=%llu exact=1 dir=%s\n",
+                           static_cast<unsigned long long>(tNs()), runto_label_.c_str());
+                }
                 state("paused", stop_reason_);
             }
             return;
@@ -359,6 +375,9 @@ private:
         std::istringstream in(line);
         std::string cmd;
         if (!(in >> cmd)) return;
+        if (scripted_ && (cmd == "save" || cmd == "load" || cmd == "set" || (cmd == "autosnap" && line.find(" on") != std::string::npos)))
+            return error(cmd + " isn't available while running a regression test (build_live.sh --test): its "
+                         "inputs come from the test's script and its state can't be saved. RESTART goes back to the live simulator");
         if (cmd == "run") {
             resume("run");
         } else if (cmd == "pause") {
@@ -601,6 +620,13 @@ private:
     std::string snapdir_ = "snapshots";
     bool rom_arg_[2] = {false, false};   // image given with +dme_rom= / +klr_rom=
     bool auto_snap_ = true, break_on_warn_ = false;
+#ifdef LIVE_SCRIPTED
+    bool scripted_ = true;       // build_live.sh --test: the test's own stimulus
+#else
+    bool scripted_ = false;
+#endif
+    bool runto_ = false;         // +runto= in progress
+    std::string runto_label_;
     bool pin_on_load_ = true;    // +loadpin=0: keep rpm/afm/boost on auto after a load
     int auto_max_ = 25, auto_taken_ = 0;
     bool limit_told_ = false;

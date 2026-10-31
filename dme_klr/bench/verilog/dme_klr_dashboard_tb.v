@@ -25,6 +25,16 @@
 
 `define DME_KLR_MS ($time / 1_000_000)
 
+// LIVE: the live debugger (dme_klr/live/): the web UI drives the inputs
+// (live_* below, read by the sub-testbenches under LIVE) and LIVE_DEBUG
+// gives sim_main its hooks (breakpoints, stepping, on-demand snapshots,
+// ROM reload). LIVE_DEBUG alone keeps a test's own scripted stimulus:
+// build_live.sh --test <name> builds a regression test that way, so the
+// dashboard can open it at the moment it warned.
+`ifdef LIVE
+  `define LIVE_DEBUG
+`endif
+
 module dme_klr_dashboard_tb;
 
     // ── Interconnect ──────────────────────────────────────────
@@ -60,7 +70,7 @@ module dme_klr_dashboard_tb;
     always @(*) throttle_angle_deg = (throttle_pos <= 8'd40) ? 0.0
                                    : (throttle_pos - 40) * `THROTTLE_WOT_DEG / 195.0;
     wire [7:0] klr_tps_code = u_klr.adc_ch7;
-`ifdef LIVE
+`ifdef LIVE_DEBUG
     // ── Live-debugger inputs ──────────────────────────────────
     // Written between evals by dme_klr/live/sim_main.cpp when the web UI
     // changes a control; read by the DME/KLR sub-testbenches under LIVE.
@@ -99,11 +109,19 @@ module dme_klr_dashboard_tb;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
     // What rpm / afm / boost read right now, model or pinned: a snapshot
     // load pins the auto ones to these so the engine holds that point
+`ifdef CL_MODE
     wire [15:0] live_rpm_now   /*verilator public_flat_rd*/ = u_dme.var_interrupt_generator_1.rpm_fp / `CL_INERTIA;
+`else
+    wire [15:0] live_rpm_now   /*verilator public_flat_rd*/ = 16'hFFFF;   // no torque model to pin from
+`endif
     wire [7:0]  live_afm_now   /*verilator public_flat_rd*/ = u_dme.adc_ch0;
     wire [7:0]  live_boost_now /*verilator public_flat_rd*/ = u_klr.adc_ch4;
+`ifdef LIVE
     assign throttle_pos = (live_klr_tps == 16'hFFFF) ? u_dme.klr_throttle   // throttle after its slew (see i8051_dashboard_tb)
                                                      : live_klr_tps[7:0];
+`else
+    assign throttle_pos = u_dme.klr_throttle;   // the test's own throttle script
+`endif
 
     // Instruction-start trackers for breakpoints, stepping and the PC
     // trace. *_ipc is the address of the opcode most recently fetched and
@@ -497,7 +515,7 @@ module dme_klr_dashboard_tb;
                 ext_trigger,        // KLR trigger_in, post fault-injection override
                 ext_ign);           // KLR ign_in, post fault-injection override
 
-`ifdef LIVE
+`ifdef LIVE_DEBUG
             // CPU registers for the debugger's operand-value column
             $display("SIM: [REGS] dme t_ms=%0d acc=%02h b=%02h psw=%02h sp=%02h dptr=%02h%02h ie=%02h ip=%02h tcon=%02h tmod=%02h tl0=%02h th0=%02h tl1=%02h th1=%02h scon=%02h sbuf=%02h pcon=%02h p0=%02h p1=%02h p2=%02h p3=%02h",
                 `DME_KLR_MS, u_dme.i8051_top.u_cpu.acc, u_dme.i8051_top.u_cpu.b_reg, u_dme.i8051_top.u_cpu.psw,
@@ -535,14 +553,14 @@ module dme_klr_dashboard_tb;
             emit_combined_snapshot;
             next_snap_ns <= next_snap_ns + (`DASH_INTERVAL_MS * 64'd1_000_000);
         end
-`ifdef LIVE
+`ifdef LIVE_DEBUG
         else if (live_snap_req != live_snap_ack)
             emit_combined_snapshot;
         live_snap_ack <= live_snap_req;
 `endif
     end
 
-`ifdef LIVE
+`ifdef LIVE_DEBUG
     // ── ROM reload (sim_main "rom" command) ──────────────────
     // sim_main fills live_rom_buf with the new image (0xFF where the file
     // has no data), sets live_rom_cpu (1 = DME, 2 = KLR) and bumps req;

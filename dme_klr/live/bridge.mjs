@@ -58,7 +58,7 @@
 // ============================================================
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync, renameSync, cpSync, rmdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync, renameSync, cpSync, rmdirSync, watch } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -97,7 +97,9 @@ function broadcast(line) {
   for (const res of clients) res.write(msg);
 }
 
-// load: { dir, history } to start from a snapshot (see loadSnapshot)
+// load: { dir, history } to start from a snapshot (see loadSnapshot), or
+// { test: { bin, runTo, id } } to run a regression test's build to the
+// moment it warned (see loadTest)
 function startSim(load = null) {
   if (!existsSync(SIM)) {
     console.error(`Simulator not found: ${SIM}\nBuild it with ./build_live.sh`);
@@ -110,11 +112,15 @@ function startSim(load = null) {
   // error over a fresh t=0 run instead of the old run's numbers.
   let pending = load ? load.history : null;
   simState = 'paused';
-  const romArgs = Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
-  const snapArgs = [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
-                    ...(load ? [`+load=${load.dir}`] : [])];
+  const test = load?.test;
+  // A test build keeps the ROMs it was compiled with
+  const romArgs = test ? [] : Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
+  const snapArgs = test ? ['+autosnap=0', `+runto=${test.runTo}`, `+runlabel=${test.id}`]
+                        : [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
+                           ...(load ? [`+load=${load.dir}`] : [])];
+  const bin = test?.bin ?? SIM;
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
-  sim = spawn(SIM, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
+  sim = spawn(bin, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
     if (pending && /^SIM: \[SNAP\] loaded /.test(line)) {
@@ -389,6 +395,14 @@ function finishSnapshot(dir, tNs, reason) {
 
 function snapInfo(id, full = false) {
   const dir = snapPath(id);
+  const req = readJson(join(dir, 'request.json'));
+  if (req?.format === 'dme-klr-test-snapshot' && !existsSync(join(dir, 'state.bin'))) {
+    if (full) return { id, kind: 'test', ...req, built: testBuilt(req) };
+    const roms = {};
+    for (const cpu of ['dme', 'klr']) roms[cpu] = { name: basename(req.roms?.[cpu] ?? ''), sha256: null, workbook: null };
+    return { id, kind: 'test', test: req.test, t_ns: (req.t_ms ?? 0) * 1e6, created: req.created, reason: req.reason === 'fail' ? 'fail' : 'test',
+             label: req.test, trigger: `${req.test}: ${req.trigger}`, pc: null, inputs: null, roms, bytes: 0 };
+  }
   const sj = readJson(join(dir, 'sim.json'));
   if (!sj || !existsSync(join(dir, 'state.bin'))) return null;
   const man = readJson(join(dir, 'manifest.json')) ?? {};
@@ -410,6 +424,7 @@ function listSnapshots() {
 // Restart the sim from a snapshot, on its own EPROM images
 function loadSnapshot(id) {
   const dir = snapPath(id);
+  if (!existsSync(join(dir, 'state.bin')) && existsSync(join(dir, 'request.json'))) return loadTest(id);
   if (!existsSync(join(dir, 'state.bin'))) return [404, `no snapshot ${id}`];
   // Its EPROM images become the loaded ones (copied next to uploaded
   // images, so later restarts still find them if the snapshot is deleted)
@@ -423,6 +438,71 @@ function loadSnapshot(id) {
   console.log(`bridge: loading snapshot ${id} (${lines.length} history lines)`);
   restartSim({ dir, history: lines });
   return [204, ''];
+}
+
+// ── Regression-test snapshots (test_snap.py) ─────────────────
+// A test's warning is a request.json: which test, its -D flags and ROMs,
+// and the time. LOAD builds the test with the debugger's hooks
+// (build_live.sh --test, in obj/tests/<test>/, kept for next time) and
+// runs it there, paused. Progress goes out as SIM: [SNAP] building lines.
+const TEST_SOURCES = [join(HERE, 'sim_main.cpp'), join(HERE, 'snapshot.h'), join(HERE, 'build_live.sh'),
+                      join(REPO, 'dme_klr', 'bench', 'verilog', 'dme_klr_dashboard_tb.v')];
+const testDir = req => join(dirname(SIM), 'tests', req.test);
+const testStamp = req => JSON.stringify({ defines: req.defines, roms: req.roms, interval: req.interval_ms, script: req.script });
+function testBuilt(req) {
+  const bin = join(testDir(req), 'dme_klr_live');
+  try {
+    if (readFileSync(join(testDir(req), 'build.stamp'), 'utf8') !== testStamp(req)) return false;
+    const t = statSync(bin).mtimeMs;
+    return TEST_SOURCES.every(f => { try { return statSync(f).mtimeMs <= t; } catch { return true; } });
+  } catch { return false; }
+}
+let testBuild = null;   // the build in progress: { id, proc }
+// Regression runs add requests while the page is open: tell it to refetch
+try {
+  let t = null;
+  watch(SNAP_DIR, () => { clearTimeout(t); t = setTimeout(() => broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=scan'), 500); });
+} catch { /* no fs.watch here: the list refreshes on the next snapshot */ }
+function loadTest(id) {
+  const req = readJson(join(snapPath(id), 'request.json'));
+  if (!snapId(req?.test ?? '') || !Array.isArray(req.defines)) return [400, `snapshot ${id}: bad request.json`];
+  if (testBuild) return [409, `already building ${testBuild.id}`];
+  const run = () => {
+    console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms`);
+    restartSim({ test: { bin: join(testDir(req), 'dme_klr_live'), runTo: req.t_ns, id } });
+  };
+  if (testBuilt(req)) { run(); return [204, '']; }
+  // ROM images as the test ran them; the script finds its own -D flags
+  const env = { ...process.env, DASH_INTERVAL_MS: String(req.interval_ms ?? 100) };
+  for (const cpu of ['dme', 'klr']) {
+    const p = req.roms?.[cpu];
+    if (p) { env[`${cpu.toUpperCase()}_ROM_DIR`] = dirname(p) + '/'; env[`${cpu.toUpperCase()}_ROM_FILE`] = basename(p); }
+  }
+  const args = [join(HERE, 'build_live.sh'), '--test', req.test, ...(req.script && existsSync(req.script) ? ['--script', req.script] : [])];
+  broadcast(`SIM: [SNAP] building id=${id} test=${req.test} starting (a few minutes the first time)`);
+  const proc = spawn('bash', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  testBuild = { id, proc };
+  const tail = [];
+  const onLine = line => {
+    tail.push(line); if (tail.length > 20) tail.shift();
+    if (/^(gen_state|Built|- V|%Error|  [DK][MK][ER]|.*error:)/.test(line))
+      broadcast(`SIM: [SNAP] building id=${id} test=${req.test} ${line.trim().slice(0, 200)}`);
+  };
+  createInterface({ input: proc.stdout }).on('line', onLine);
+  createInterface({ input: proc.stderr }).on('line', onLine);
+  proc.on('exit', code => {
+    testBuild = null;
+    if (code === 0) {
+      writeFileSync(join(testDir(req), 'build.stamp'), testStamp(req));
+      broadcast(`SIM: [SNAP] building id=${id} test=${req.test} done`);
+      run();
+    } else {
+      const why = tail.filter(l => /error/i.test(l)).slice(-2).join(' | ') || tail.slice(-1)[0] || `exit ${code}`;
+      broadcast(`SIM: [SNAP] building id=${id} test=${req.test} failed`);
+      broadcast(`SIM: [ERROR] building test ${req.test} failed: ${why.slice(0, 300)}`);
+    }
+  });
+  return [202, ''];
 }
 
 // Every file of a snapshot, base64, in one gzip'd JSON
@@ -439,7 +519,7 @@ function snapBundle(id) {
 function unpackBundle(buf) {
   let b;
   try { b = JSON.parse(gunzipSync(buf).toString('utf8')); } catch { return [400, 'not a .dmesnap file'] }
-  if (b?.format !== 'dme-klr-live-snapshot-bundle' || !b.files?.['state.bin'] || !b.files?.['sim.json'])
+  if (b?.format !== 'dme-klr-live-snapshot-bundle' || !((b.files?.['state.bin'] && b.files?.['sim.json']) || b.files?.['request.json']))
     return [400, 'not a .dmesnap file'];
   const base = snapId(b.id) ?? 'uploaded';
   let id = base;
@@ -454,7 +534,7 @@ function unpackBundle(buf) {
     writeFileSync(join(dir, rel), Buffer.from(data, 'base64'));
   }
   console.log(`bridge: uploaded snapshot -> ${dir}`);
-  broadcast(`SIM: [SNAP] ready id=${id} t_ns=${readJson(join(dir, 'sim.json'))?.t_ns ?? 0} reason=upload`);
+  broadcast(`SIM: [SNAP] ready id=${id} t_ns=${readJson(join(dir, 'sim.json'))?.t_ns ?? readJson(join(dir, 'request.json'))?.t_ns ?? 0} reason=upload`);
   return [200, JSON.stringify({ id })];
 }
 
