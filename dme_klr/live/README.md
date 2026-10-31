@@ -51,6 +51,52 @@ matches none of them keeps the default `<cpu>/disassemble/` listing and
 shows **ASM: no workbook**. `--dme-asm <dir>` / `--klr-asm <dir>` pin a
 listing to one directory instead.
 
+## Snapshots
+
+Whenever the model prints a warning or error (a line with `[WARN]`,
+`WARNING` or `ERROR`, e.g. `DME: [WARN] ... INJ PW ... > one rev`, a dead-code
+entry, `ERROR: Unimplemented Opcode`), the sim saves a snapshot of the whole
+model into `obj/snapshots/<date>-t<ms>ms-<warning>/`, and the run carries on.
+**SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
+dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that
+moment, so you can set breakpoints, step and change inputs from there.
+
+A snapshot holds:
+
+| file | contents |
+|---|---|
+| `state.bin` | every variable of the Verilated model: both CPUs' registers, internal RAM and pipeline state, the EPROM arrays, ADCs, timers, the engine/AFM/O2/knock models, testbench pins and Verilator's own edge-detect state; plus the clock and delay timing, inputs, breakpoints and the last 512 instructions of each CPU |
+| `sim.json` | the same for reading: the warning line, time, PCs, inputs, CPU registers, DME iram / KLR RAM, testbench signals, the `[DS]` / `[REGS]` lines of that moment, the trace |
+| `rom/dme/*.mem`, `rom/klr/*.mem` | the EPROM contents at that moment, as `.mem` images |
+| `manifest.json` | (bridge) each image's SHA-256, file name and disassembly workbook |
+| `history.log.gz` | (bridge) the last 60,000 lines of the run, replayed to the charts on load |
+
+Loading gives the same run as the original from that time on (checked line
+for line, including through a throttle change still inside its 250 ms AFM
+lag). It needs the same build of the simulator: `state.bin` lists the model's
+variables, and a build from different Verilog is refused with a message.
+After a rebuild of the same Verilog the variables still match, but if the
+simulator's code moved (any change to `sim_main.cpp`, another compiler) each
+clock keeps its period while its phase is approximated, a shift of well under
+a microsecond, and the sim says so (`SIM: [SNAP] loaded ... exact=0`).
+
+Automatic snapshots are taken at most once a sim second per kind of warning
+and 25 per run (`autosnap max <n>`). **AUTO ON WARNING** / `autosnap on|off`
+turns them off; **PAUSE ON WARNING** / `breakonwarn on` also pauses the sim
+after each one. **⬇** downloads a snapshot as one `.dmesnap` file and
+**UPLOAD .dmesnap** adds it back, e.g. on another machine with the same build.
+
+How it works: Verilator's own `--savable` refuses `--timing`, so
+`build_live.sh` runs `gen_state.py` on the generated headers to list every
+member variable (`obj/live_fields.cpp`), and `snapshot.h` saves and restores
+those bytes. Processes waiting on a `#delay` are C++ coroutines, which can't
+be saved; a restore starts a fresh process, whose coroutines already exist,
+and gives each the wake-up time it had when saved. A snapshot is taken at a
+moment when no coroutine is part way through a block (the KLR core's `#10`
+display delay, for instance), at most a few ns after it was asked for. This
+reads `VlDelayScheduler`'s private queue, checked with Verilator 5.038 and
+5.048.
+
 ## Inputs (`set <name> <value>`)
 
 The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,
@@ -81,7 +127,9 @@ The sim takes one command per line on stdin, so it also works straight from
 a terminal (`obj/dme_klr_live +vcd=/dev/null`). See the header of
 `sim_main.cpp` for the full list: `run`, `pause`, `step dme|klr [N]`,
 `until <ms>`, `set`, `bp add|del dme|klr <hex>`, `bp clear`, `snap`, `rom`,
-`trace dme|klr [N]`, `status`, `quit`.
+`trace dme|klr [N]`, `save [label]`, `load <dir>`, `autosnap on|off|max <n>`,
+`breakonwarn on|off`, `status`, `quit`. From a terminal, `+snapdir=<dir>`
+picks where snapshots go and `+load=<dir>` starts from one.
 
 The build uses `-DLIVE`, which swaps the compile-time `TEST_*` stimulus for
 registers in `dme_klr_dashboard_tb.v`. Without `-DLIVE` the testbenches are

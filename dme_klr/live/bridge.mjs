@@ -18,6 +18,14 @@
 //                     the running sim (CPU keeps its PC and RAM), or with
 //                     reset=1 the sim restarts at t=0 on the new image.
 //                     The sim reports the result as SIM: [ROM] / [ERROR].
+//    GET  /snapshots  JSON list of saved snapshots, newest first (see
+//                     Snapshots below)
+//    GET  /snapshots/<id>         everything in it: sim.json + manifest.json
+//    GET  /snapshots/<id>/bundle  one-file download (.dmesnap: gzip'd JSON
+//                                 holding every file of the snapshot)
+//    POST /snapshots/<id>/load    restart the sim from that snapshot
+//    POST /snapshots/upload       body = a .dmesnap; unpacked as a new snapshot
+//    DELETE /snapshots/<id>
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
 //                     (dme rows also carry num: operands as raw addresses;
@@ -32,6 +40,15 @@
 //  and the dashboard fetches /asm/<cpu> again. --dme-asm / --klr-asm pin a
 //  listing.
 //
+//  Snapshots: the sim saves one on every warning (and on "save" via
+//  /cmd) into obj/snapshots/<id>/ and prints SIM: [SNAP] saved ... dir=.
+//  The bridge then adds manifest.json (each EPROM image's SHA-256, file
+//  name and disassembly workbook) and history.log.gz (the run's recent
+//  output, so the charts show the lead-up after a load), and sends
+//    SIM: [SNAP] ready id=<id> t_ns=<n> reason=warn|manual
+//  Loading restarts the sim with +load=<dir> on the snapshot's own EPROM
+//  images, replaying history.log.gz to the dashboard first.
+//
 //  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
 //
@@ -41,7 +58,9 @@
 // ============================================================
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
@@ -78,23 +97,36 @@ function broadcast(line) {
   for (const res of clients) res.write(msg);
 }
 
-function startSim() {
+// load: { dir, history } to start from a snapshot (see loadSnapshot)
+function startSim(load = null) {
   if (!existsSync(SIM)) {
     console.error(`Simulator not found: ${SIM}\nBuild it with ./build_live.sh`);
     process.exit(1);
   }
   history = [];
   broadcast('SIM: [RESTART]');
+  // The run up to the snapshot, so the charts show the lead-up
+  if (load) for (const line of load.history) broadcast(line);
   simState = 'paused';
   const romArgs = Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
+  const snapArgs = [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
+                    ...(load ? [`+load=${load.dir}`] : [])];
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
-  sim = spawn(SIM, ['+vcd=/dev/null', ...romArgs], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
+  sim = spawn(SIM, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
     const st = line.match(/^SIM: \[STATE\] (\w+)/);
     if (st) simState = st[1];
     const rom = line.match(/^SIM: \[ROM\] (dme|klr) (.+)$/);
     if (rom) roms[rom[1]] = rom[2];
+    const cfg = line.match(/^SIM: \[SNAPCFG\] auto=(\w+) break=(\w+)/);
+    if (cfg) Object.assign(snapCfg, { auto: cfg[1] === 'on', break: cfg[2] === 'on' });
+    const saved = line.match(/^SIM: \[SNAP\] saved t_ns=(\d+) reason=(\S+) dir=(.+)$/);
+    if (saved) {
+      if (FORWARD.test(line)) broadcast(line);
+      finishSnapshot(saved[3], saved[1], saved[2]);
+      return;
+    }
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
     if (rom) followRom(rom[1], rom[2]);
@@ -110,9 +142,9 @@ function startSim() {
   });
 }
 
-function restartSim() {
+function restartSim(load = null) {
   if (sim) { const old = sim; sim = null; old.kill(); }
-  startSim();
+  startSim(load);
 }
 
 // Uploaded images live next to the sim so a restart can load them again
@@ -284,6 +316,123 @@ function followRom(cpu, path) {
   broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
 }
 
+// ── Snapshots ────────────────────────────────────────────────
+const SNAP_DIR = join(dirname(SIM), 'snapshots');
+const SNAP_HISTORY = 60_000;        // lines of the run kept with each snapshot
+const SNAP_UPLOAD_MAX = 64 << 20;
+const snapCfg = { auto: true, break: false };   // from SIM: [SNAPCFG]; kept across restarts
+const ROM_BYTES = { dme: 8192, klr: 4096 };
+const snapId = id => /^[\w.+-]+$/.test(id ?? '') && !id.startsWith('.') ? id : null;
+const snapPath = id => join(SNAP_DIR, id);
+
+// The .mem image the sim wrote for each CPU (rom/<cpu>/<name>.mem)
+function snapRoms(dir) {
+  const out = {};
+  for (const cpu of ['dme', 'klr']) {
+    try {
+      const f = readdirSync(join(dir, 'rom', cpu)).find(n => /\.mem$/i.test(n));
+      if (f) out[cpu] = join(dir, 'rom', cpu, f);
+    } catch { /* none */ }
+  }
+  return out;
+}
+
+// After the sim writes a snapshot: identify the ROMs and keep the run so far
+function finishSnapshot(dir, tNs, reason) {
+  const id = basename(dir);
+  try {
+    const romInfo = {};
+    for (const [cpu, file] of Object.entries(snapRoms(dir))) {
+      const img = memBytes(file)?.subarray(0, ROM_BYTES[cpu]);
+      const known = knownImage(cpu, file);
+      romInfo[cpu] = {
+        name: basename(file),
+        sha256: img ? createHash('sha256').update(img).digest('hex') : null,
+        workbook: known ? WORKBOOK[cpu][known.name] : null,
+        image: known?.name ?? null,
+        match: known?.match ?? 'none',
+      };
+    }
+    const lines = history.slice(-SNAP_HISTORY).filter(l => !l.startsWith('SIM: [RESTART]'));
+    writeFileSync(join(dir, 'history.log.gz'), gzipSync(lines.join('\n') + '\n'));
+    writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ id, roms: romInfo, history_lines: lines.length }, null, 1));
+  } catch (e) {
+    console.error(`bridge: snapshot ${id}: ${e.message}`);
+  }
+  broadcast(`SIM: [SNAP] ready id=${id} t_ns=${tNs} reason=${reason}`);
+}
+
+function snapInfo(id, full = false) {
+  const dir = snapPath(id);
+  const sj = readJson(join(dir, 'sim.json'));
+  if (!sj || !existsSync(join(dir, 'state.bin'))) return null;
+  const man = readJson(join(dir, 'manifest.json')) ?? {};
+  if (full) return { id, ...sj, manifest: man };
+  const roms = {};
+  for (const cpu of ['dme', 'klr'])
+    roms[cpu] = { name: man.roms?.[cpu]?.name ?? basename(sj.roms?.[cpu]?.path ?? ''), sha256: man.roms?.[cpu]?.sha256 ?? null,
+                  workbook: man.roms?.[cpu]?.workbook ?? null, crc32: sj.roms?.[cpu]?.crc32 ?? null };
+  return { id, t_ns: sj.t_ns, created: sj.created, reason: sj.reason, label: sj.label, trigger: sj.trigger,
+           pc: sj.pc, inputs: sj.inputs, roms, bytes: statSync(join(dir, 'state.bin')).size };
+}
+
+function listSnapshots() {
+  let ids = [];
+  try { ids = readdirSync(SNAP_DIR).filter(snapId); } catch { return []; }
+  return ids.map(id => snapInfo(id)).filter(Boolean).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? '') || b.id.localeCompare(a.id));
+}
+
+// Restart the sim from a snapshot, on its own EPROM images
+function loadSnapshot(id) {
+  const dir = snapPath(id);
+  if (!existsSync(join(dir, 'state.bin'))) return [404, `no snapshot ${id}`];
+  // Its EPROM images become the loaded ones (copied next to uploaded
+  // images, so later restarts still find them if the snapshot is deleted)
+  for (const [cpu, file] of Object.entries(snapRoms(dir))) {
+    mkdirSync(join(ROM_DIR, cpu), { recursive: true });
+    roms[cpu] = join(ROM_DIR, cpu, basename(file));
+    writeFileSync(roms[cpu], readFileSync(file));
+  }
+  let lines = [];
+  try { lines = gunzipSync(readFileSync(join(dir, 'history.log.gz'))).toString('utf8').split('\n').filter(Boolean); } catch { /* none */ }
+  console.log(`bridge: loading snapshot ${id} (${lines.length} history lines)`);
+  restartSim({ dir, history: lines });
+  return [204, ''];
+}
+
+// Every file of a snapshot, base64, in one gzip'd JSON
+function walk(dir, rel = '') {
+  return readdirSync(join(dir, rel), { withFileTypes: true }).flatMap(e =>
+    e.isDirectory() ? walk(dir, join(rel, e.name)) : [join(rel, e.name)]);
+}
+function snapBundle(id) {
+  const dir = snapPath(id);
+  const files = {};
+  for (const f of walk(dir)) files[f.split(/[\\/]/).join('/')] = readFileSync(join(dir, f)).toString('base64');
+  return gzipSync(JSON.stringify({ format: 'dme-klr-live-snapshot-bundle', version: 1, id, files }));
+}
+function unpackBundle(buf) {
+  let b;
+  try { b = JSON.parse(gunzipSync(buf).toString('utf8')); } catch { return [400, 'not a .dmesnap file'] }
+  if (b?.format !== 'dme-klr-live-snapshot-bundle' || !b.files?.['state.bin'] || !b.files?.['sim.json'])
+    return [400, 'not a .dmesnap file'];
+  const base = snapId(b.id) ?? 'uploaded';
+  let id = base;
+  for (let n = 2; existsSync(snapPath(id)); n++) id = `${base}-${n}`;
+  const dir = snapPath(id);
+  for (const [rel, data] of Object.entries(b.files)) {
+    const parts = rel.split('/');
+    if (parts.some(p => !p || p === '.' || p === '..') || !parts.every(p => /^[\w.+ -]+$/.test(p))) return [400, `bad file name in bundle: ${rel}`];
+  }
+  for (const [rel, data] of Object.entries(b.files)) {
+    mkdirSync(dirname(join(dir, rel)), { recursive: true });
+    writeFileSync(join(dir, rel), Buffer.from(data, 'base64'));
+  }
+  console.log(`bridge: uploaded snapshot -> ${dir}`);
+  broadcast(`SIM: [SNAP] ready id=${id} t_ns=${readJson(join(dir, 'sim.json'))?.t_ns ?? 0} reason=upload`);
+  return [200, JSON.stringify({ id })];
+}
+
 // ── HTTP ─────────────────────────────────────────────────────
 // Only these page origins may use the bridge: the published dashboard
 // and a dev server on this machine (--allow-origin adds more). Requests
@@ -300,7 +449,7 @@ const originOk = o => !o || ALLOWED.some(a => typeof a === 'string' ? a === o : 
 const cors = o => o ? {
   'Access-Control-Allow-Origin': o,
   'Vary': 'Origin',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   // Lets the https gh-pages dashboard reach this local server in Chrome
   'Access-Control-Allow-Private-Network': 'true',
@@ -323,6 +472,46 @@ createServer((req, res) => {
     clients.add(res);
     req.on('close', () => clients.delete(res));
     return;
+  }
+  // ── /snapshots ─────────────────────────────────────────────
+  const snap = url.pathname.match(/^\/snapshots(?:\/([^/]+))?(?:\/(bundle|load))?$/);
+  if (snap) {
+    const [, rawId, action] = snap;
+    const json = (code, body) => { res.writeHead(code, { ...CORS, 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+    const text = (code, body) => { res.writeHead(code, CORS); res.end(body); };
+    if (req.method === 'GET' && !rawId) return json(200, listSnapshots());
+    if (req.method === 'POST' && rawId === 'upload' && !action) {
+      const chunks = [];
+      let size = 0;
+      req.on('data', d => { chunks.push(d); size += d.length; if (size > SNAP_UPLOAD_MAX) req.destroy(); });
+      req.on('end', () => {
+        const [code, body] = unpackBundle(Buffer.concat(chunks));
+        res.writeHead(code, { ...CORS, 'Content-Type': code === 200 ? 'application/json' : 'text/plain' });
+        res.end(body);
+      });
+      return;
+    }
+    const id = snapId(rawId && decodeURIComponent(rawId));
+    if (!id || !existsSync(snapPath(id))) return text(404, `no snapshot ${rawId}`);
+    if (req.method === 'GET' && !action) {
+      const info = snapInfo(id, true);
+      return info ? json(200, info) : text(404, `snapshot ${id} is incomplete`);
+    }
+    if (req.method === 'GET' && action === 'bundle') {
+      res.writeHead(200, { ...CORS, 'Content-Type': 'application/octet-stream',
+                           'Content-Disposition': `attachment; filename="${id}.dmesnap"` });
+      return res.end(snapBundle(id));
+    }
+    if (req.method === 'POST' && action === 'load') {
+      const [code, body] = loadSnapshot(id);
+      return text(code, body);
+    }
+    if (req.method === 'DELETE' && !action) {
+      rmSync(snapPath(id), { recursive: true, force: true });
+      broadcast(`SIM: [SNAP] deleted id=${id}`);
+      return text(204, '');
+    }
+    return text(405, 'method not allowed');
   }
   if (req.method === 'GET' && url.pathname.startsWith('/asm/')) {
     const cpu = url.pathname.slice(5);
