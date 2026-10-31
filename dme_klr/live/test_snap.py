@@ -12,9 +12,10 @@
 #  (build_live.sh --test <name>) and runs it to that time, paused.
 #
 #  Usage:
-#    test_snap.py scan <test> <log[.gz]> [--fail <detail>] [--script <runner.sh>]
+#    test_snap.py scan <test> <log[.gz]> [--fail|--warn <detail>] [--script <runner.sh>]
 #        write requests for the first warning/error of each kind in the
-#        log (at most 5), or, with --fail, one at the end of the run when
+#        log (at most 5), or, with --fail / --warn (the validator's verdict,
+#        run_dashboard_parallel.sh), one at the end of the run when
 #        the log has none; earlier requests for that test are replaced
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
@@ -94,7 +95,7 @@ def req_test(d):
         return None
 
 
-def scan(name, log, fail, script):
+def scan(name, log, fail, script, verdict='FAIL'):
     opener = gzip.open if str(log).endswith('.gz') else open
     hits, last_ms = [], 0
     interval = int(os.environ.get('DASH_INTERVAL_MS', '100'))
@@ -121,7 +122,7 @@ def scan(name, log, fail, script):
     except OSError as e:
         sys.exit(f'test_snap.py: {log}: {e}')
     if fail is not None and not hits:
-        hits.append((last_ms, 'fail', f'FAIL {name}: {fail}', 'fail', 0))
+        hits.append((last_ms, verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 0))
 
     SNAPDIR.mkdir(parents=True, exist_ok=True)
     if fail is None:
@@ -157,16 +158,18 @@ def scan(name, log, fail, script):
 
 def main(argv):
     if len(argv) < 3 or argv[1] not in ('scan', 'defines'):
-        sys.exit('usage: test_snap.py scan <test> <log> [--fail <detail>] [--script <sh>] | defines <test> [--script <sh>]')
+        sys.exit('usage: test_snap.py scan <test> <log> [--fail|--warn <detail>] [--script <sh>] | defines <test> [--script <sh>]')
     cmd, name, rest = argv[1], argv[2], argv[3:]
     script = DMEKLR / 'run_dashboard_tests.sh'
     fail = None
+    verdict = 'FAIL'
     log = None
     i = 0
     while i < len(rest):
         if rest[i] == '--script':
             script = Path(rest[i + 1]); i += 2
-        elif rest[i] == '--fail':
+        elif rest[i] in ('--fail', '--warn'):
+            verdict = rest[i][2:].upper()
             fail = rest[i + 1]; i += 2
         else:
             log = rest[i]; i += 1
@@ -178,7 +181,7 @@ def main(argv):
         return 0
     if not log:
         sys.exit('test_snap.py scan needs a log file')
-    return scan(name, log, fail, script)
+    return scan(name, log, fail, script, verdict)
 
 
 if __name__ == '__main__':
