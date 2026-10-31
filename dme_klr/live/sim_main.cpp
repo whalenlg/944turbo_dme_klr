@@ -184,6 +184,7 @@ public:
         if (!dir.empty()) snapdir_ = dir.substr(dir.find('=') + 1);
         if (*ctx_->commandArgsPlusMatch("autosnap=0")) auto_snap_ = false;
         if (*ctx_->commandArgsPlusMatch("breakonwarn=1")) break_on_warn_ = true;
+        if (*ctx_->commandArgsPlusMatch("loadpin=0")) pin_on_load_ = false;
         g_onModelLine = [this](const std::string& l) { modelLine(l); };
     }
 
@@ -597,6 +598,7 @@ private:
     std::string snapdir_ = "snapshots";
     bool rom_arg_[2] = {false, false};   // image given with +dme_rom= / +klr_rom=
     bool auto_snap_ = true, break_on_warn_ = false;
+    bool pin_on_load_ = true;    // +loadpin=0: keep rpm/afm/boost on auto after a load
     int auto_max_ = 25, auto_taken_ = 0;
     bool limit_told_ = false;
     std::map<std::string, uint64_t> kind_last_ns_;   // last auto snapshot per kind of warning
@@ -782,7 +784,7 @@ private:
             std::ofstream o(dir / "state.bin", std::ios::binary);
             char hx[32];
             snprintf(hx, sizeof hx, "%016llx", static_cast<unsigned long long>(layout_));
-            o << "DMEKLR-LIVE-STATE 1\n" << "layout " << hx << "\n" << "time " << ctx_->time() << "\n";
+            o << "DMEKLR-LIVE-STATE 1\n" << "layout " << hx << "\n" << "verilator " << Verilated::productVersion() << "\n" << "time " << ctx_->time() << "\n";
             o << "delays " << delays.size() << "\n";
             for (auto& e : delays) o << e.key << " " << e.fn << "\n";
             o << "afm " << afm_.size() << "\n";
@@ -901,7 +903,7 @@ private:
         char hx[32];
         snprintf(hx, sizeof hx, "%016llx", static_cast<unsigned long long>(layout_));
         j << "],\n\"model\":{\"layout\":\"" << hx << "\",\"fields\":" << fields_.size() << ",\"bytes\":" << total
-          << ",\"delays\":" << delays.size() << "}\n}\n";
+          << ",\"delays\":" << delays.size() << ",\"verilator\":" << liveJson(Verilated::productVersion()) << "}\n}\n";
         std::ofstream(dir / "sim.json") << j.str();
 
         printf("SIM: [SNAP] saved t_ns=%llu reason=%s dir=%s\n", static_cast<unsigned long long>(t_ns),
@@ -918,6 +920,7 @@ private:
         auto bad = [&](const std::string& why) { error("load: " + dirArg + ": " + why); return false; };
         if (!std::getline(in, line) || line != "DMEKLR-LIVE-STATE 1") return bad("not a snapshot (or a newer format)");
         uint64_t layout = 0, time = 0;
+        std::string verilator;   // version that built the saving simulator (newer snapshots)
         std::vector<LiveDelay> delays;
         std::vector<Afm> afm;
         std::string roms[2];
@@ -930,6 +933,7 @@ private:
             ls >> word;
             if (word == "layout") { std::string h; ls >> h; layout = std::strtoull(h.c_str(), nullptr, 16); }
             else if (word == "time") ls >> time;
+            else if (word == "verilator") std::getline(ls >> std::ws, verilator);
             else if (word == "delays" || word == "afm") {
                 size_t n = 0;
                 ls >> n;
@@ -973,9 +977,13 @@ private:
                 auto it = mine.find(n);
                 if (it == mine.end() || it->second != sz) { if (!differ++) example = n; }
             }
-            return bad("saved from a different build of the model (" + std::to_string(differ) + " of " +
-                       std::to_string(names.size()) + " variables differ, e.g. " + example +
-                       "); load it with the simulator it was saved from");
+            std::string why = "saved by a different build of the simulator";
+            if (!verilator.empty() && verilator != Verilated::productVersion())
+                why += " (Verilator " + verilator + "; this one is " + Verilated::productVersion() + ")";
+            else if (differ)
+                why += " (" + std::to_string(differ) + " of " + std::to_string(names.size()) +
+                       " variables differ, e.g. " + example + ")";
+            return bad(why + ". Nothing was loaded: a snapshot only loads into the simulator build that saved it");
         }
         std::vector<char> data(total);
         if (!in.read(data.data(), static_cast<std::streamsize>(total))) return bad("state.bin is truncated");
@@ -1010,6 +1018,18 @@ private:
         kind_last_ns_.clear();
         printf("SIM: [SNAP] loaded t_ns=%llu exact=%d dir=%s\n", static_cast<unsigned long long>(tNs()), exact ? 1 : 0,
                fs::absolute(dir).string().c_str());
+        // Hold the engine at the saved operating point: rpm / afm / boost
+        // that were following the model are pinned to what they read then
+        // (tick auto in the dashboard to let the model run again)
+        if (pin_on_load_) {
+            if (TB(live_rpm) == 0xFFFF) TB(live_rpm) = TB(live_rpm_now);
+            if (TB(live_afm) == 0xFFFF) TB(live_afm) = TB(live_afm_now);
+            if (TB(live_boost) == 0xFFFF) TB(live_boost) = std::min<uint16_t>(TB(live_boost_now), 0xF5);
+        }
+        // A [DS] / [REGS] pair of the restored state, so the dashboard's
+        // stats and RAM views show it straight away
+        TB(live_snap_req) = TB(live_snap_req) + 1;
+        while (TB(live_snap_ack) != TB(live_snap_req) && advance()) {}
         romLines();
         printf("SIM: [INPUTS] %s\n", inputsLine().c_str());
         bpLine();

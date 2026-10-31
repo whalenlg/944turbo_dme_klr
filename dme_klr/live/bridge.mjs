@@ -105,8 +105,10 @@ function startSim(load = null) {
   }
   history = [];
   broadcast('SIM: [RESTART]');
-  // The run up to the snapshot, so the charts show the lead-up
-  if (load) for (const line of load.history) broadcast(line);
+  // The run up to the snapshot, so the charts show the lead-up. Sent
+  // once the sim says the load worked; if it fails, the page shows the
+  // error over a fresh t=0 run instead of the old run's numbers.
+  let pending = load ? load.history : null;
   simState = 'paused';
   const romArgs = Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
   const snapArgs = [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
@@ -115,6 +117,12 @@ function startSim(load = null) {
   sim = spawn(SIM, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(SIM), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
+    if (pending && /^SIM: \[SNAP\] loaded /.test(line)) {
+      for (const h of pending) broadcast(h);
+      pending = null;
+    } else if (pending && /^SIM: \[ERROR\] load/.test(line)) {
+      pending = null;
+    }
     const st = line.match(/^SIM: \[STATE\] (\w+)/);
     if (st) simState = st[1];
     const rom = line.match(/^SIM: \[ROM\] (dme|klr) (.+)$/);
