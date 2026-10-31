@@ -252,6 +252,10 @@ compile_and_run_klr() {
     # Everything the tools read is in the .dash.log now; keep the full
     # output (a debug run's instruction trace can be GBs) compressed
     gzip -f "$log"
+
+    # A warning or error in the run: note where, so the live dashboard can
+    # open the test at that moment (dme_klr/live/test_snap.py)
+    python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$log.gz" --script "${BASH_SOURCE[0]}" || true
 }
 
 # --------------------------------------------------------

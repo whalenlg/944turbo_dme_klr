@@ -304,6 +304,10 @@ compile_and_run_klr() {
     # output (a debug run's instruction trace can be GBs) compressed
     gzip -f "$log"
 
+    # A warning or error in the run: note where, so the live dashboard can
+    # open the test at that moment (dme_klr/live/test_snap.py)
+    python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$log.gz" --script "${BASH_SOURCE[0]}" || true
+
     compare_with_iv "$name" \
         "$LOGDIR/${name}.dash.log" \
         "$IV_LOGDIR/${name}.dash.log"

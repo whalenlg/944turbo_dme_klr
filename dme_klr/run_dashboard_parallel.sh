@@ -222,6 +222,12 @@ validate_one() {
 
     printf "  [${colour}%s${reset}]   %-22s %s\n" "$verdict" "$name" "$detail"
     printf "%s\t%-22s\t%s\n" "$verdict" "$name" "$detail" >> "$VALIDATION_LOG"
+    # A FAIL with no warning in the run: still note it for the live
+    # dashboard (at the end of the run; dme_klr/live/test_snap.py)
+    if [ "$verdict" = "FAIL" ] && [ -f "$LOGDIR/${name}.log.gz" ]; then
+        python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$LOGDIR/${name}.log.gz" \
+            --fail "$detail" --script "$RUN_TESTS" >/dev/null || true
+    fi
     return $rc
 }
 

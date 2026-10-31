@@ -110,6 +110,27 @@ display delay, for instance), at most a few ns after it was asked for. This
 reads `VlDelayScheduler`'s private queue, checked with Verilator 5.038 and
 5.048 (5.050 builds).
 
+### Regression-test warnings
+
+The regression runs (`run_dashboard_tests.sh`, `v_run_dashboard_tests.sh`,
+`run_dashboard_parallel.sh`) use their own builds with each test's scripted
+stimulus, so they can't save a `state.bin`. Instead, after each test
+`test_snap.py` scans its log, and for the first warning or error of each
+kind (at most 5; or, for a FAIL in `run_dashboard_parallel.sh` with no
+warning, the end of the run) writes a folder with `request.json` into the
+snapshot directory: the test, its `-D` flags, ROM images, the time and the
+line. A rerun of the test replaces its old ones.
+
+They show in the dashboard's SNAPSHOTS list as **TEST** rows. **LOAD**
+builds that test with the debugger's hooks (`build_live.sh --test <name>`:
+the testbench's `LIVE_DEBUG` without `LIVE`, so its own stimulus stays; in
+`obj/tests/<name>/`, a few minutes the first time and reused after) and runs
+it to just after that moment, paused, so breakpoints, stepping and the RAM
+views work from there. Getting there takes as long as the sim needs to reach
+that time. The input controls do nothing in a test run (its inputs follow
+the script), it can't be saved, and **RESTART** goes back to the live
+simulator.
+
 ## Inputs (`set <name> <value>`)
 
 The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,
