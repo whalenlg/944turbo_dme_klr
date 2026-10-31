@@ -60,6 +60,13 @@ model into `obj/snapshots/<date>-t<ms>ms-<warning>/`, and the run carries on.
 **SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
 dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that
 moment, so you can set breakpoints, step and change inputs from there.
+After a load the sim is paused at the snapshot's time, the live stats and
+the DME / KLR IRAM views show the restored RAM straight away, and any of
+RPM, AFM and boost that were on **auto** are pinned to the values they had
+at that moment (auto unticked), so the engine holds that operating point
+while you step; tick **auto** to let the models take over again
+(`+loadpin=0` keeps them on auto). The other inputs (throttle, coolant,
+FQS, switches...) are restored as they were.
 
 A snapshot holds:
 
@@ -74,7 +81,11 @@ A snapshot holds:
 Loading gives the same run as the original from that time on (checked line
 for line, including through a throttle change still inside its 250 ms AFM
 lag). It needs the same build of the simulator: `state.bin` lists the model's
-variables, and a build from different Verilog is refused with a message.
+variables, and a build from different Verilog or another Verilator version
+is refused with a red message under the snapshot list (the sim then stays
+at t=0, nothing loaded). A snapshot from someone else's machine only loads
+if both simulators were built the same way; otherwise reproduce it from its
+**INFO** (inputs, ROMs) and save your own.
 After a rebuild of the same Verilog the variables still match, but if the
 simulator's code moved (any change to `sim_main.cpp`, another compiler) each
 clock keeps its period while its phase is approximated, a shift of well under
@@ -95,7 +106,7 @@ and gives each the wake-up time it had when saved. A snapshot is taken at a
 moment when no coroutine is part way through a block (the KLR core's `#10`
 display delay, for instance), at most a few ns after it was asked for. This
 reads `VlDelayScheduler`'s private queue, checked with Verilator 5.038 and
-5.048.
+5.048 (5.050 builds).
 
 ## Inputs (`set <name> <value>`)
 

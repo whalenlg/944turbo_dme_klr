@@ -97,6 +97,11 @@ module dme_klr_dashboard_tb;
     wire [7:0] live_klr_ram48 /*verilator public_flat_rd*/ = u_klr.top.i8048_core_1.ram[7'h48];
     reg [31:0] live_snap_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_snap_ack  /*verilator public_flat_rd*/ = 32'd0;
+    // What rpm / afm / boost read right now, model or pinned: a snapshot
+    // load pins the auto ones to these so the engine holds that point
+    wire [15:0] live_rpm_now   /*verilator public_flat_rd*/ = u_dme.var_interrupt_generator_1.rpm_fp / `CL_INERTIA;
+    wire [7:0]  live_afm_now   /*verilator public_flat_rd*/ = u_dme.adc_ch0;
+    wire [7:0]  live_boost_now /*verilator public_flat_rd*/ = u_klr.adc_ch4;
     assign throttle_pos = (live_klr_tps == 16'hFFFF) ? u_dme.klr_throttle   // throttle after its slew (see i8051_dashboard_tb)
                                                      : live_klr_tps[7:0];
 
