@@ -12,10 +12,12 @@
 #  (build_live.sh --test <name>) and runs it to that time, paused.
 #
 #  Usage:
-#    test_snap.py scan <test> <log[.gz]> [--fail <detail>] [--script <runner.sh>]
+#    test_snap.py scan <test> <log[.gz]> [--fail|--warn <detail>] [--script <runner.sh>]
 #        write requests for the first warning/error of each kind in the
-#        log (at most 5), or, with --fail, one at the end of the run when
-#        the log has none; earlier requests for that test are replaced
+#        log (at most 5); with --fail / --warn (the validator's verdict,
+#        run_dashboard_parallel.sh), one at the first t=<ms> its detail
+#        names, else at the end of the run if the log had no warning;
+#        a plain scan replaces the test's earlier requests
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
 #
@@ -94,7 +96,15 @@ def req_test(d):
         return None
 
 
-def scan(name, log, fail, script):
+def req_reason(d):
+    try:
+        r = json.loads((d / 'request.json').read_text())
+        return f"{r.get('source', 'log')}-{r.get('reason')}"
+    except (OSError, ValueError):
+        return None
+
+
+def scan(name, log, fail, script, verdict='FAIL'):
     opener = gzip.open if str(log).endswith('.gz') else open
     hits, last_ms = [], 0
     interval = int(os.environ.get('DASH_INTERVAL_MS', '100'))
@@ -120,8 +130,19 @@ def scan(name, log, fail, script):
                         break
     except OSError as e:
         sys.exit(f'test_snap.py: {log}: {e}')
-    if fail is not None and not hits:
-        hits.append((last_ms, 'fail', f'FAIL {name}: {fail}', 'fail', 0))
+    if fail is not None:
+        # The validator's verdict: at the first time its detail names
+        # ("at t=6410ms", "@t=812ms"), else at the end of the run, and
+        # then only if the log had no warning of its own
+        # the problem itself is after "WARN:" / "FAIL:" when the detail has one
+        mark = max(fail.find('WARN:'), fail.find('FAIL:'))
+        tm = re.search(r'\bt=(\d+)\s*ms', fail[mark:] if mark >= 0 else '') or re.search(r'\bt=(\d+)\s*ms', fail)
+        warned = bool(hits)
+        hits = []
+        if tm:
+            hits.append((int(tm.group(1)), verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 1))
+        elif not warned:
+            hits.append((last_ms, verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 0))
 
     SNAPDIR.mkdir(parents=True, exist_ok=True)
     if fail is None:
@@ -131,8 +152,8 @@ def scan(name, log, fail, script):
             if req.is_file() and not (d / 'state.bin').exists():
                 if req_test(d) == name:
                     shutil.rmtree(d, ignore_errors=True)
-    elif any(req_test(d) == name for d in SNAPDIR.iterdir()):
-        return 0   # the run's warnings are already recorded
+    elif any(req_test(d) == name and req_reason(d) == 'validator-' + verdict.lower() for d in SNAPDIR.iterdir()):
+        return 0   # this verdict is already recorded
 
     defines = test_defines(name, script) or []
     stamp = time.strftime('%Y%m%d-%H%M%S')
@@ -148,7 +169,7 @@ def scan(name, log, fail, script):
             'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             'test': name, 'script': str(Path(script).resolve()), 'defines': defines,
             'roms': roms(), 'interval_ms': interval,
-            't_ms': t_ms, 't_ns': (t_ms + after) * 1_000_000, 'reason': reason, 'trigger': line,
+            'source': 'log' if fail is None else 'validator', 't_ms': t_ms, 't_ns': (t_ms + after) * 1_000_000, 'reason': reason, 'trigger': line,
             'log': str(Path(log).resolve()),
         }, indent=1) + '\n')
         print(f'  SNAP: {name} t={t_ms} ms {reason}: {d}')
@@ -157,16 +178,18 @@ def scan(name, log, fail, script):
 
 def main(argv):
     if len(argv) < 3 or argv[1] not in ('scan', 'defines'):
-        sys.exit('usage: test_snap.py scan <test> <log> [--fail <detail>] [--script <sh>] | defines <test> [--script <sh>]')
+        sys.exit('usage: test_snap.py scan <test> <log> [--fail|--warn <detail>] [--script <sh>] | defines <test> [--script <sh>]')
     cmd, name, rest = argv[1], argv[2], argv[3:]
     script = DMEKLR / 'run_dashboard_tests.sh'
     fail = None
+    verdict = 'FAIL'
     log = None
     i = 0
     while i < len(rest):
         if rest[i] == '--script':
             script = Path(rest[i + 1]); i += 2
-        elif rest[i] == '--fail':
+        elif rest[i] in ('--fail', '--warn'):
+            verdict = rest[i][2:].upper()
             fail = rest[i + 1]; i += 2
         else:
             log = rest[i]; i += 1
@@ -178,7 +201,7 @@ def main(argv):
         return 0
     if not log:
         sys.exit('test_snap.py scan needs a log file')
-    return scan(name, log, fail, script)
+    return scan(name, log, fail, script, verdict)
 
 
 if __name__ == '__main__':
