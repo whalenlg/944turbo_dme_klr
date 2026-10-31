@@ -178,6 +178,9 @@ public:
         };
         liveFields(root->vlSymsp, fields_);
         layout_ = liveLayoutHash(fields_);
+        if (fields_.size() < 100)
+            error("this build lists only " + std::to_string(fields_.size()) +
+                  " model variables, so snapshots can't be saved or loaded: rerun ./build_live.sh");
         afm_field_ = field({"TOP__dme_klr_dashboard_tb__u_dme.afm_commanded",
                             "TOP__dme_klr_dashboard_tb__u_dme.__PVT__afm_commanded"});
         std::string dir = ctx_->commandArgsPlusMatch("snapdir=");
@@ -758,6 +761,9 @@ private:
     }
 
     void writeSnapshot(const SaveReq& req) {
+        if (fields_.size() < 100)
+            return error("this build lists only " + std::to_string(fields_.size()) +
+                         " model variables, so it can't save snapshots: rerun ./build_live.sh");
         namespace fs = std::filesystem;
         uint64_t t_ns = tNs();
         std::time_t now = std::time(nullptr);
@@ -912,6 +918,9 @@ private:
     }
 
     bool loadSnapshot(const std::string& dirArg) {
+        if (fields_.size() < 100)
+            return error("this build lists only " + std::to_string(fields_.size()) +
+                         " model variables, so it can't load snapshots: rerun ./build_live.sh"), false;
         namespace fs = std::filesystem;
         fs::path dir(dirArg);
         std::ifstream in(dir / "state.bin", std::ios::binary);

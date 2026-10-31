@@ -80,4 +80,8 @@ for cls, inst in instances:
         out.append(f'    liveAdd(v, "{inst}.{name}", s->{inst}.{name});')
 out.append('}')
 (obj / 'live_fields.cpp').write_text('\n'.join(out) + '\n')
-print(f'gen_state.py: {sum(len(members[c]) for c, _ in instances)} members in {len(instances)} instances')
+total = sum(len(members[c]) for c, _ in instances)
+print(f'gen_state.py: {total} members in {len(instances)} instances')
+if total < 100:
+    sys.exit(f'gen_state.py: only {total} members found; the Verilated headers in {obj} '
+             'are not in a form this script understands, so snapshots would be empty')
