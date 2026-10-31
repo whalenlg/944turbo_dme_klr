@@ -134,7 +134,9 @@ def scan(name, log, fail, script, verdict='FAIL'):
         # The validator's verdict: at the first time its detail names
         # ("at t=6410ms", "@t=812ms"), else at the end of the run, and
         # then only if the log had no warning of its own
-        tm = re.search(r'\bt=(\d+)\s*ms', fail)
+        # the problem itself is after "WARN:" / "FAIL:" when the detail has one
+        mark = max(fail.find('WARN:'), fail.find('FAIL:'))
+        tm = re.search(r'\bt=(\d+)\s*ms', fail[mark:] if mark >= 0 else '') or re.search(r'\bt=(\d+)\s*ms', fail)
         warned = bool(hits)
         hits = []
         if tm:
