@@ -67,7 +67,11 @@ verilator --cc --exe --build --timing -j 0 \
 # that file, and Verilator's runtime with live_printf.h (only the runtime
 # prints: $display goes through its VL_PRINTF), and relink
 python3 "$LIVE_DIR/gen_state.py" "$LIVE_DIR/obj" Vdme_klr_dashboard_tb
-rm -f "$LIVE_DIR/obj/verilated.o"
+# Delete the objects so make rebuilds them: the real live_fields.cpp can
+# land in the same second its stand-in was compiled, and a make that
+# compares whole seconds (macOS's /usr/bin/make 3.81) would then keep the
+# empty one, and snapshots would hold no variables
+rm -f "$LIVE_DIR/obj/verilated.o" "$LIVE_DIR/obj/live_fields.o"
 make -s -C "$LIVE_DIR/obj" -f Vdme_klr_dashboard_tb.mk \
     OPT_GLOBAL="-Os -include $LIVE_DIR/live_printf.h" dme_klr_live
 
