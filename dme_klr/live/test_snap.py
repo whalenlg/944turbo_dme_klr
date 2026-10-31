@@ -18,6 +18,9 @@
 #        run_dashboard_parallel.sh), one at the first t=<ms> its detail
 #        names, else at the end of the run if the log had no warning;
 #        a plain scan replaces the test's earlier requests
+#    test_snap.py add <test> <ms> [label] [--script <runner.sh>]
+#        a request for a moment you pick, without running the regression:
+#        LOAD in the dashboard then builds the test and runs it there
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
 #
@@ -156,34 +159,59 @@ def scan(name, log, fail, script, verdict='FAIL'):
         return 0   # this verdict is already recorded
 
     defines = test_defines(name, script) or []
-    stamp = time.strftime('%Y%m%d-%H%M%S')
     for t_ms, reason, line, k, after in hits:
-        d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}'[:120]
-        n = 2
-        while d.exists():
-            d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}-{n}'[:120]
-            n += 1
-        d.mkdir(parents=True)
-        (d / 'request.json').write_text(json.dumps({
-            'format': 'dme-klr-test-snapshot', 'version': 1,
-            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-            'test': name, 'script': str(Path(script).resolve()), 'defines': defines,
-            'roms': roms(), 'interval_ms': interval,
-            'source': 'log' if fail is None else 'validator', 't_ms': t_ms, 't_ns': (t_ms + after) * 1_000_000, 'reason': reason, 'trigger': line,
-            'log': str(Path(log).resolve()),
-        }, indent=1) + '\n')
-        print(f'  SNAP: {name} t={t_ms} ms {reason}: {d}')
+        write_request(name, script, defines, t_ms, (t_ms + after) * 1_000_000, reason, line, k,
+                      'log' if fail is None else 'validator', str(Path(log).resolve()))
+    return 0
+
+
+def write_request(name, script, defines, t_ms, t_ns, reason, line, k, source, log):
+    SNAPDIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime('%Y%m%d-%H%M%S')
+    d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}'[:120]
+    n = 2
+    while d.exists():
+        d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}-{n}'[:120]
+        n += 1
+    d.mkdir(parents=True)
+    (d / 'request.json').write_text(json.dumps({
+        'format': 'dme-klr-test-snapshot', 'version': 1,
+        'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'test': name, 'script': str(Path(script).resolve()), 'defines': defines,
+        'roms': roms(), 'interval_ms': int(os.environ.get('DASH_INTERVAL_MS', '100')),
+        'source': source, 't_ms': t_ms, 't_ns': t_ns, 'reason': reason, 'trigger': line,
+        'log': log,
+    }, indent=1) + '\n')
+    print(f'  SNAP: {name} t={t_ms} ms {reason}: {d}')
+    return d
+
+
+def add(name, ms, script, label):
+    """A request for a moment chosen by hand, no regression run needed"""
+    defines = test_defines(name, script)
+    if defines is None:
+        sys.exit(f'test_snap.py: no test "{name}" in {script}')
+    t_ns = int(round(ms * 1e6))
+    sim = next((int(d.split('=', 1)[1]) for d in defines if d.startswith('-DSIM_TIME=')), None)
+    if sim is not None and t_ns > sim:
+        sys.exit(f'test_snap.py: {name} only runs to {sim / 1e6:g} ms')
+    tag = re.sub(r'[^\w.+-]+', '-', label).strip('-')[:40] if label else 'manual'
+    write_request(name, script, defines, int(ms), t_ns, 'manual',
+                  f'{label or "chosen time"} ({ms:g} ms)', tag, 'manual', None)
     return 0
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ('scan', 'defines'):
-        sys.exit('usage: test_snap.py scan <test> <log> [--fail|--warn <detail>] [--script <sh>] | defines <test> [--script <sh>]')
+    if len(argv) < 3 or argv[1] not in ('scan', 'defines', 'add'):
+        sys.exit('usage: test_snap.py scan <test> <log> [--fail|--warn <detail>] [--script <sh>]\n'
+                 '       test_snap.py add <test> <ms> [label] [--script <sh>]\n'
+                 '       test_snap.py defines <test> [--script <sh>]')
     cmd, name, rest = argv[1], argv[2], argv[3:]
     script = DMEKLR / 'run_dashboard_tests.sh'
     fail = None
     verdict = 'FAIL'
     log = None
+    extra = []
     i = 0
     while i < len(rest):
         if rest[i] == '--script':
@@ -191,8 +219,17 @@ def main(argv):
         elif rest[i] in ('--fail', '--warn'):
             verdict = rest[i][2:].upper()
             fail = rest[i + 1]; i += 2
-        else:
+        elif log is None:
             log = rest[i]; i += 1
+        else:
+            extra.append(rest[i]); i += 1
+    if cmd == 'add':
+        pos = [log] + extra if log else extra
+        try:
+            ms = float(pos[0])
+        except (IndexError, ValueError):
+            sys.exit('test_snap.py add needs a time in ms')
+        return add(name, ms, script, ' '.join(pos[1:]))
     if cmd == 'defines':
         d = test_defines(name, script)
         if d is None:

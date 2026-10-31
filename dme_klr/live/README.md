@@ -131,6 +131,11 @@ that time. The input controls do nothing in a test run (its inputs follow
 the script), it can't be saved, and **RESTART** goes back to the live
 simulator.
 
+To open a test at a moment of your choosing without running the
+regression, type the test's name and a time in the **TEST … at … ms** row
+under the snapshot list (or run `live/test_snap.py add <test> <ms>
+[label]`), then LOAD the row it adds.
+
 ## Inputs (`set <name> <value>`)
 
 The engine runs on the closed-loop model (`CL_MODE`, `AFM_CL_RAMP`, `BOOST`,

@@ -25,6 +25,7 @@
 //                                 holding every file of the snapshot)
 //    POST /snapshots/<id>/load    restart the sim from that snapshot
 //    POST /snapshots/upload       body = a .dmesnap; unpacked as a new snapshot
+//    POST /snapshots/test         body = {test, ms, label}: a regression test's run to that time
 //    DELETE /snapshots/<id>
 //    GET  /asm/dme    JSON disassembly listing (same data as the vcd.v /
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
@@ -593,6 +594,24 @@ createServer((req, res) => {
         const [code, body] = unpackBundle(Buffer.concat(chunks));
         res.writeHead(code, { ...CORS, 'Content-Type': code === 200 ? 'application/json' : 'text/plain' });
         res.end(body);
+      });
+      return;
+    }
+    // POST /snapshots/test  body {"test": name, "ms": time, "label": text}:
+    // a regression-test snapshot at a moment picked by hand (test_snap.py add)
+    if (req.method === 'POST' && rawId === 'test' && !action) {
+      let body = '';
+      req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
+      req.on('end', () => {
+        let b;
+        try { b = JSON.parse(body); } catch { return text(400, 'body must be JSON {test, ms, label}'); }
+        if (!snapId(b?.test ?? '') || !(+b.ms >= 0)) return text(400, 'need a test name and a time in ms');
+        const r = spawnSync('python3', [join(HERE, 'test_snap.py'), 'add', b.test, String(+b.ms),
+                                        ...String(b.label ?? '').split(/\s+/).filter(Boolean)],
+                            { env: { ...process.env, DMEKLR_SNAPDIR: SNAP_DIR }, encoding: 'utf8' });
+        if (r.status !== 0) return text(400, (r.stderr || r.stdout || 'test_snap.py failed').trim());
+        broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=test');
+        return text(204, '');
       });
       return;
     }
