@@ -9,6 +9,12 @@
 #  model (CL_MODE + AFM_CL_RAMP + BOOST): throttle is the input, and
 #  AFM, RPM and boost are computed.
 #
+#  Builds once, lists the model's variables for snapshots from the
+#  generated headers (gen_state.py -> obj/live_fields.cpp, see
+#  snapshot.h), then rebuilds that one file and relinks. Verilator's
+#  runtime is compiled with live_printf.h so the driver sees the
+#  model's output (warnings trigger snapshots).
+#
 #  Usage:  ./build_live.sh [extra verilator -D flags]
 #  Env:    DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
 #          (default: this repo's bin_images, 28PIN_DME_PERFORMANCE.mem
@@ -34,9 +40,13 @@ dme_asm_select ASM_DEFS
 klr_asm_select ASM_DEFS
 
 cd "$DMEKLR_DIR"
+mkdir -p "$LIVE_DIR/obj"
+# Empty stand-in for the first build; gen_state.py writes the real one
+printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, LiveFieldList&) {}\n' \
+    > "$LIVE_DIR/obj/live_fields.cpp"
 verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
-    -CFLAGS -O2 \
+    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" \
     --Mdir "$LIVE_DIR/obj" -o dme_klr_live \
     -f files_cl \
     --top-module dme_klr_dashboard_tb \
@@ -51,6 +61,14 @@ verilator --cc --exe --build --timing -j 0 \
     -Wno-fatal -Wno-PINMISSING -Wno-IMPLICIT -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND \
     -Wno-REDEFMACRO -Wno-DEFOVERRIDE -Wno-CASEINCOMPLETE -Wno-LATCH -Wno-MULTIDRIVEN \
     "$@" \
-    "$LIVE_DIR/sim_main.cpp"
+    "$LIVE_DIR/sim_main.cpp" "$LIVE_DIR/obj/live_fields.cpp"
+
+# List the model's variables from the generated headers, then rebuild
+# that file, and Verilator's runtime with live_printf.h (only the runtime
+# prints: $display goes through its VL_PRINTF), and relink
+python3 "$LIVE_DIR/gen_state.py" "$LIVE_DIR/obj" Vdme_klr_dashboard_tb
+rm -f "$LIVE_DIR/obj/verilated.o"
+make -s -C "$LIVE_DIR/obj" -f Vdme_klr_dashboard_tb.mk \
+    OPT_GLOBAL="-Os -include $LIVE_DIR/live_printf.h" dme_klr_live
 
 echo "Built $LIVE_DIR/obj/dme_klr_live"

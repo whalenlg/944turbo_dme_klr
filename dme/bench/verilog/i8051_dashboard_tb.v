@@ -1491,7 +1491,8 @@ end
     // and AFM gets the same command AFM_LAG_NS later, just as the
     // scripted t=2000ms event below does.
     wire [7:0] tps_commanded = dme_klr_dashboard_tb.live_tps;
-    reg  [7:0] afm_commanded = 8'h28;
+    // public: after a snapshot load sim_main makes the lagged writes itself
+    reg  [7:0] afm_commanded /*verilator public_flat_rw*/ = 8'h28;
     always @(tps_commanded)
         afm_commanded <= #AFM_LAG_NS tps_commanded;
 `else
