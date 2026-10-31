@@ -41,7 +41,7 @@
 //  listing.
 //
 //  Snapshots: the sim saves one on every warning (and on "save" via
-//  /cmd) into obj/snapshots/<id>/ and prints SIM: [SNAP] saved ... dir=.
+//  /cmd) into <snapdir>/<id>/ and prints SIM: [SNAP] saved ... dir=.
 //  The bridge then adds manifest.json (each EPROM image's SHA-256, file
 //  name and disassembly workbook) and history.log.gz (the run's recent
 //  output, so the charts show the lead-up after a load), and sends
@@ -52,13 +52,13 @@
 //  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
 //
-//  Usage:  node bridge.mjs [--port 8951] [--sim obj/dme_klr_live]
+//  Usage:  node bridge.mjs [--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
 //                          [--dme-asm <dir>] [--klr-asm <dir>]
 //                          [--allow-origin <https://other.origin>]
 // ============================================================
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync, renameSync, cpSync, rmdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -325,7 +325,24 @@ function followRom(cpu, path) {
 }
 
 // ── Snapshots ────────────────────────────────────────────────
-const SNAP_DIR = join(dirname(SIM), 'snapshots');
+// Next to the other run output (run_dashboard_tests.sh's dash_logs), out
+// of the repo and safe from a clean of obj/: ../tmp/dme_klr/snapshots
+// beside the checkout. --snapdir <dir> puts them elsewhere.
+const SNAP_DIR = resolve(arg('snapdir', join(REPO, '..', 'tmp', 'dme_klr', 'snapshots')));
+mkdirSync(SNAP_DIR, { recursive: true });
+// Snapshots from before they moved out of obj/
+{
+  const old = join(dirname(SIM), 'snapshots');
+  let ids = [];
+  try { ids = readdirSync(old); } catch { /* none */ }
+  for (const id of ids) {
+    const to = join(SNAP_DIR, id);
+    if (existsSync(to)) continue;
+    try { renameSync(join(old, id), to); }
+    catch { cpSync(join(old, id), to, { recursive: true }); rmSync(join(old, id), { recursive: true, force: true }); }
+  }
+  if (ids.length) { try { rmdirSync(old); } catch { /* not empty: left as it is */ } }
+}
 const SNAP_HISTORY = 60_000;        // lines of the run kept with each snapshot
 const SNAP_UPLOAD_MAX = 64 << 20;
 const snapCfg = { auto: true, break: false };   // from SIM: [SNAPCFG]; kept across restarts

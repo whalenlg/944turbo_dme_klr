@@ -56,7 +56,9 @@ listing to one directory instead.
 Whenever the model prints a warning or error (a line with `[WARN]`,
 `WARNING` or `ERROR`, e.g. `DME: [WARN] ... INJ PW ... > one rev`, a dead-code
 entry, `ERROR: Unimplemented Opcode`), the sim saves a snapshot of the whole
-model into `obj/snapshots/<date>-t<ms>ms-<warning>/`, and the run carries on.
+model into `../tmp/dme_klr/snapshots/<date>-t<ms>ms-<warning>/` (beside the
+checkout, with `run_dashboard_tests.sh`'s `dash_logs`; `node bridge.mjs
+--snapdir <dir>` picks another place), and the run carries on.
 **SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
 dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that
 moment, so you can set breakpoints, step and change inputs from there.
