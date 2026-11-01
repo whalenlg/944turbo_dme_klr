@@ -917,6 +917,19 @@ TESTS = {
     'cl_ramp_to_3000_BOOST_STEP_OVERBOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x32,
                           'notes':'cl_ramp_to_3000 profile at AFM 0x7C with -DBOOST, MAP capped at 4 psi during the ramp; from 2950 rpm the KLR sees the throttle just past boost onset and boost steps +1 psi every second until the 0xF0 compliance cap (~15.7 psi) — KLR expected to detect the overboost and set DTC 3-2 (0x32, Boost Pressure Too High); real run: latched at t=25510ms'},
+    # cl_ramp_to_3000_BOOST_STEP_DOWN: the overboost test's mirror (klr_tb.v
+    #     -DBOOST_STEP_DOWN): from 2950 rpm, with the KLR throttle just past
+    #     boost onset, boost steps 4 psi -> 0 psi at 1 psi/s and holds. An
+    #     exploratory test: expect_ram33_value marks DTC 3-1 (0x31, boost too
+    #     low) as the anticipated code if one appears, without requiring one.
+    #     First real run (Verilator): steps from t=12603ms, 0 psi from
+    #     t=16603ms; the KLR raised CV duty (ram[41h] 0x39 -> 0xAF) and the
+    #     boost error settled at ram[60h]=0x26 (38 counts under a 0x9D
+    #     target), but no DTC: the underboost branch at 0x272 needs 64 or
+    #     more counts (vs more than 32 for overboost), roughly -3 psi here.
+    'cl_ramp_to_3000_BOOST_STEP_DOWN': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_ram33_value':0x31,
+                          'notes':'Same as cl_ramp_to_3000_BOOST_STEP_OVERBOOST, but from 2950 rpm boost steps down from 4 psi by 1 psi every second to 0 psi (1 bar) and holds — checks the KLR\'s response to boost falling below target (DTC 3-1, 0x31, Boost Pressure Too Low, if any)'},
     'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},

@@ -450,6 +450,15 @@ run_test cl_ramp_to_3000_BOOST_STEP_OVERBOOST \
     -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h7C -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
+# cl_ramp_to_3000_BOOST_STEP_DOWN: same as cl_ramp_to_3000_BOOST_STEP_OVERBOOST (AFM 0x7C, MAP
+# capped at 4 psi, KLR throttle just past boost onset from 2950 rpm), but the
+# steps go down: 4 psi -1 psi every second to 0 psi (1 bar), then hold.
+# Shows how the KLR reacts to boost falling below its target (DTC 3-1,
+# 0x31, boost too low?); see klr_tb.v BOOST_STEP_DOWN.
+run_test cl_ramp_to_3000_BOOST_STEP_DOWN \
+    -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DBOOST_STEP_DOWN \
+    -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h7C -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
 run_test cl_ramp_to_3000_BOOST \
     -DTEST_CL_RAMP_TO_3000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
@@ -1064,6 +1073,7 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_BOOST_OPEN_CIRCUIT) run_test cl_ramp_to_3000_BOOST_OPEN_CIRCUIT $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_OPEN_CIRCUIT -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_KLR_ADC0_NOISE_LOW) run_test cl_ramp_to_6000_KLR_ADC0_NOISE_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DKLR_ADC0_NOISE_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_3000_BOOST_STEP_OVERBOOST) run_test cl_ramp_to_3000_BOOST_STEP_OVERBOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h7C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_ramp_to_3000_BOOST_STEP_DOWN) run_test cl_ramp_to_3000_BOOST_STEP_DOWN $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DBOOST_STEP_DOWN -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h7C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_BOOST) run_test cl_ramp_to_3000_BOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_2100_BOOST_HIGH) run_test cl_ramp_to_2100_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_2100 -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_4500) run_test cl_ramp_to_4500 $IARG -DTEST_CL_RAMP_TO_4500 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h9A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
@@ -1175,7 +1185,7 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW"
             echo "               cl_ramp_to_2100_BOOST_HIGH"
             echo "               ramp_to_redline_KLR_TPS_HIGH tps_open_circuit"
-            echo "               cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST cl_ramp_to_3000_BOOST_OPEN_CIRCUIT cl_ramp_to_3000_BOOST_STEP_OVERBOOST"
+            echo "               cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST cl_ramp_to_3000_BOOST_OPEN_CIRCUIT cl_ramp_to_3000_BOOST_STEP_OVERBOOST cl_ramp_to_3000_BOOST_STEP_DOWN"
             echo "  Fuel:        ramp_to_3000_FQS0-7 ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
             echo "               cl_ramp_to_3000_FQS0..7 cl_ramp_to_6000_FQS0..7  (_FUEL_QUAL=00/3B/5A/75/81/91/9C/A7)"
             echo "  Idle:        cl_warm_idle cl_tippy_in warm_idle warm_idle_5s cold_start hot_idle idle_high_alt"
