@@ -909,6 +909,12 @@ TESTS = {
     #     require_ram33_value FAILS the run if DTC 3-2 never latches, since
     #     catching it is the whole point; the "KLR: [OVERBOOST]" lines in the
     #     full log give the boost level at each step.
+    #     First real run (Verilator): stepping started at t=18366ms (2700 rpm),
+    #     max held from t=30366ms, ram[52h] reached 0xF4 against a 0x91
+    #     target, and DTC 3-2 never latched: ram[41h] (CV duty) and ram[43h]
+    #     (throttle axis) stayed 0 at this part-throttle AFM (0x72, below the
+    #     0x77 boost onset), and with ram[41h]=0 the firmware resets the boost
+    #     error counter every pass (0x25A), so it never looks for overboost.
     'cl_ramp_to_3000_BOOST_STEP_OVERBOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x32,
                           'notes':'Same as cl_ramp_to_3000_BOOST, with the MAP reading capped at 4 psi during the ramp, then stepped +1 psi every second from 2700 rpm until the 0xF0 compliance cap (~15.7 psi) — KLR expected to detect the overboost and set DTC 3-2 (0x32, Boost Pressure Too High)'},

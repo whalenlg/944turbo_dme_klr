@@ -455,6 +455,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  point is to see at which boost level, if any, the firmware latches
     //  DTC 3-2 (0x32, boost too high) in ram[33h]; each step is logged as
     //  a "KLR: [OVERBOOST]" line with the firmware's own view of it.
+    //  The firmware only counts boost errors while ram[41h] (CV duty) is
+    //  non-zero (0x25A: otherwise the 35h event counter is reset every
+    //  pass), and ram[60h] (boost error) must read more than 32 counts of
+    //  overboost, so ram[41h]/[43h] (CV duty, throttle axis) are logged too.
     //  psi -> raw ch4: ram[52h] x = 1.22 * kPa - 4 (1 bar = 100 kPa, as
     //  in the MAP model above) and ch4 = x - 10, so ch4 = 108 + 8.41 * psi.
     //  The steps skip the 500 ms lag filter, so each one lands at once.
@@ -488,25 +492,28 @@ module klr_tb #(parameter EXT_STIM = 0) (
             if (EXT_STIM && rpm_in >= `OVERBOOST_STEP_RPM) begin
                 ob_stepping <= 1'b1;
                 ob_next_ns  <= $time + `OVERBOOST_STEP_NS;
-                $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, rpm_in, ob_psi, ob_start_adc,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end
         end else if (!ob_at_max && $time >= ob_next_ns) begin
             ob_next_ns <= ob_next_ns + `OVERBOOST_STEP_NS;
             ob_psi     <= ob_psi + 8'd1;
             if (ob_next_raw >= OB_ADC_MAX) begin
                 ob_at_max <= 1'b1;
-                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d psi -> max (ch4=%02h, ~15.7 psi), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d psi -> max (ch4=%02h, ~15.7 psi), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, ob_psi, OB_ADC_MAX, rpm_in,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end else begin
-                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h)  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h)  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, ob_psi, ob_psi + 8'd1, ob_next_raw[7:0], rpm_in,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end
         end
     end
