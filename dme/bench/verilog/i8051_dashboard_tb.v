@@ -404,7 +404,9 @@
   `define SKIP_LAMBDA_WARMUP
   `define CL_MODE
   `define AFM_CL_RAMP
+  `ifndef AFM_CL_TARGET               // a -DAFM_CL_TARGET on the command line wins
   `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72 (114)
+  `endif
   `ifndef SIM_TIME
   `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
   `endif

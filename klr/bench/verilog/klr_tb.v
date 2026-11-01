@@ -448,7 +448,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ── -DBOOST_STEP_OVERBOOST: stepped overboost hunt ─────────────
     //  Ramp phase: the modeled MAP reading, capped at OVERBOOST_START_PSI
     //  (default 4 psi). Once rpm_in first reaches OVERBOOST_STEP_RPM
-    //  (default 2700: in the boost model this ramp levels off at ~2760, reached by ~18 s) the
+    //  (default 2950; the test runs AFM 0x7C, which reaches 3000 rpm by ~13 s) the
     //  model is replaced by a flat OVERBOOST_START_PSI reading that steps
     //  up 1 psi every OVERBOOST_STEP_NS (default 1 s) until it reaches
     //  the 0xF0 compliance cap below (~15.7 psi), then holds there. The
@@ -466,7 +466,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
   `define OVERBOOST_START_PSI 4
 `endif
 `ifndef OVERBOOST_STEP_RPM
-  `define OVERBOOST_STEP_RPM 2700
+  `define OVERBOOST_STEP_RPM 2950
 `endif
 `ifndef OVERBOOST_STEP_NS
   `define OVERBOOST_STEP_NS 1000000000
@@ -492,10 +492,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
             if (EXT_STIM && rpm_in >= `OVERBOOST_STEP_RPM) begin
                 ob_stepping <= 1'b1;
                 ob_next_ns  <= $time + `OVERBOOST_STEP_NS;
-                $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, rpm_in, ob_psi, ob_start_adc,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41], top.i8048_core_1.ram[8'h3a],
                          top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end
         end else if (!ob_at_max && $time >= ob_next_ns) begin
@@ -503,16 +503,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
             ob_psi     <= ob_psi + 8'd1;
             if (ob_next_raw >= OB_ADC_MAX) begin
                 ob_at_max <= 1'b1;
-                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d psi -> max (ch4=%02h, ~15.7 psi), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d psi -> max (ch4=%02h, ~15.7 psi), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, ob_psi, OB_ADC_MAX, rpm_in,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41], top.i8048_core_1.ram[8'h3a],
                          top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end else begin
-                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h)  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[43]=%02h ram[33]=%02h",
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h)  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, ob_psi, ob_psi + 8'd1, ob_next_raw[7:0], rpm_in,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
-                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41], top.i8048_core_1.ram[8'h3a],
                          top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end
         end
@@ -747,8 +747,28 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
     // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
     // tps = 26 + (afm - 40) * (239 - 26) / (235 - 40) = 26 + (afm-40)*213/195
-    wire [15:0] _tps_angle_full = (tps_wiper > 8'd40)
-                               ? (16'd26 + ({8'd0, tps_wiper} - 16'd40) * 16'd213 / 16'd195)
+`ifdef BOOST
+`ifdef BOOST_STEP_OVERBOOST
+    // -DBOOST_STEP_OVERBOOST (see above): from the first boost step on, the
+    // KLR alone sees the throttle opened to OVERBOOST_KLR_TPS (AFM-wiper
+    // scale), just past boost onset, while the DME/AFM/RPM model stays on
+    // its ~3000 rpm part-throttle ramp. The firmware only watches for
+    // overboost while it is controlling boost (ram[43h] > 0, so ram[41h]
+    // CV duty > 0), which the ramp's own throttle never reaches. Just
+    // past onset the boost target (ram[51h]) is ~0x92, about the 4 psi
+    // the steps start from, so no underboost (DTC 3-1) builds up first.
+`ifndef OVERBOOST_KLR_TPS
+  `define OVERBOOST_KLR_TPS 8'hA0
+`endif
+    wire [7:0] klr_tps_in = ob_stepping ? `OVERBOOST_KLR_TPS : tps_wiper;
+`else
+    wire [7:0] klr_tps_in = tps_wiper;
+`endif
+`else
+    wire [7:0] klr_tps_in = tps_wiper;
+`endif
+    wire [15:0] _tps_angle_full = (klr_tps_in > 8'd40)
+                               ? (16'd26 + ({8'd0, klr_tps_in} - 16'd40) * 16'd213 / 16'd195)
                                : 16'd26;
     wire [7:0] _tps_raw_unclamped = _tps_angle_full[7:0];  // TPS wiper reading relative to full-scale reference
 
