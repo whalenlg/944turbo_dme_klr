@@ -398,8 +398,15 @@ initial begin
 `else
     // Let vcd.v's initial block open the file first: Verilator drops a
     // $dumpvars that runs before $dumpfile, and initial-block order
-    // between the two files isn't defined
+    // between the two files isn't defined. iverilog ignores any
+    // $dumpvars after t=0 ("$dumpvars ignored, previously called at
+    // simtime 0"), so there the wait is #0: still t=0, but after every
+    // initial block's undelayed statements, vcd.v's $dumpfile included.
+`ifdef VERILATOR
     #1;
+`else
+    #0;
+`endif
 `endif
 
     // ── Always-on: minimal signal set (small FST) ─────────────────

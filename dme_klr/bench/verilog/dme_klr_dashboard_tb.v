@@ -347,8 +347,14 @@ module dme_klr_dashboard_tb;
     // whichever of those opens the file first — no new $dumpfile call
     // needed here. #1: after vcd.v's $dumpfile — Verilator drops a
     // $dumpvars that comes first, and initial-block order isn't defined.
+    // iverilog ignores any $dumpvars after t=0, so there it's #0 (still
+    // t=0, after vcd.v's undelayed $dumpfile).
     initial begin
+`ifdef VERILATOR
         #1;
+`else
+        #0;
+`endif
         $dumpvars(1, tach_dme_to_klr);
         $dumpvars(1, ign_out_dme_to_klr);
         $dumpvars(1, klr_ign_out);
