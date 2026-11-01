@@ -444,6 +444,72 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [7:0] boost_adc4_final = boost_adc4_low;
 `elsif BOOST_HIGH
     wire [7:0] boost_adc4_final = boost_adc4_high;
+`elsif BOOST_STEP_OVERBOOST
+    // ── -DBOOST_STEP_OVERBOOST: stepped overboost hunt ─────────────
+    //  Ramp phase: the modeled MAP reading, capped at OVERBOOST_START_PSI
+    //  (default 4 psi). Once rpm_in first reaches OVERBOOST_STEP_RPM
+    //  (default 2700: in the boost model this ramp levels off at ~2760, reached by ~18 s) the
+    //  model is replaced by a flat OVERBOOST_START_PSI reading that steps
+    //  up 1 psi every OVERBOOST_STEP_NS (default 1 s) until it reaches
+    //  the 0xF0 compliance cap below (~15.7 psi), then holds there. The
+    //  point is to see at which boost level, if any, the firmware latches
+    //  DTC 3-2 (0x32, boost too high) in ram[33h]; each step is logged as
+    //  a "KLR: [OVERBOOST]" line with the firmware's own view of it.
+    //  psi -> raw ch4: ram[52h] x = 1.22 * kPa - 4 (1 bar = 100 kPa, as
+    //  in the MAP model above) and ch4 = x - 10, so ch4 = 108 + 8.41 * psi.
+    //  The steps skip the 500 ms lag filter, so each one lands at once.
+`ifndef OVERBOOST_START_PSI
+  `define OVERBOOST_START_PSI 4
+`endif
+`ifndef OVERBOOST_STEP_RPM
+  `define OVERBOOST_STEP_RPM 2700
+`endif
+`ifndef OVERBOOST_STEP_NS
+  `define OVERBOOST_STEP_NS 1000000000
+`endif
+    localparam [7:0] OB_ADC_MAX = 8'hF0;   // same cap as boost_adc4_capped below
+    reg        ob_stepping = 1'b0;
+    reg        ob_at_max   = 1'b0;
+    reg [7:0]  ob_psi      = `OVERBOOST_START_PSI;
+    reg [63:0] ob_next_ns  = 64'd0;
+    // Integer form of 108 + 8.4119 * psi, rounded (no reals, so it stays
+    // plain combinational logic in every simulator).
+    function automatic [15:0] ob_psi_to_adc(input [7:0] psi);
+        ob_psi_to_adc = (32'd1085000 + 32'd84119 * psi) / 32'd10000;
+    endfunction
+    wire [7:0]  ob_start_adc = ob_psi_to_adc(`OVERBOOST_START_PSI);
+    wire [15:0] ob_step_raw  = ob_psi_to_adc(ob_psi);
+    wire [15:0] ob_next_raw  = ob_psi_to_adc(ob_psi + 8'd1);
+    wire [7:0]  ob_step_adc  = (ob_step_raw >= OB_ADC_MAX) ? OB_ADC_MAX : ob_step_raw[7:0];
+    wire [7:0] boost_adc4_final = ob_stepping ? ob_step_adc :
+                                  (boost_adc4_raw > ob_start_adc) ? ob_start_adc : boost_adc4_raw;
+    always @(posedge clk) begin
+        if (!ob_stepping) begin
+            if (EXT_STIM && rpm_in >= `OVERBOOST_STEP_RPM) begin
+                ob_stepping <= 1'b1;
+                ob_next_ns  <= $time + `OVERBOOST_STEP_NS;
+                $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                         $time / 1000000, rpm_in, ob_psi, ob_start_adc,
+                         top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+            end
+        end else if (!ob_at_max && $time >= ob_next_ns) begin
+            ob_next_ns <= ob_next_ns + `OVERBOOST_STEP_NS;
+            ob_psi     <= ob_psi + 8'd1;
+            if (ob_next_raw >= OB_ADC_MAX) begin
+                ob_at_max <= 1'b1;
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d psi -> max (ch4=%02h, ~15.7 psi), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                         $time / 1000000, ob_psi, OB_ADC_MAX, rpm_in,
+                         top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+            end else begin
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h)  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[33]=%02h",
+                         $time / 1000000, ob_psi, ob_psi + 8'd1, ob_next_raw[7:0], rpm_in,
+                         top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
+                         top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h33]);
+            end
+        end
+    end
 `else
     wire [7:0] boost_adc4_final = boost_adc4_raw;
 `endif

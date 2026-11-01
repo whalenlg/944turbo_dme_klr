@@ -903,6 +903,15 @@ TESTS = {
     #     since triggering it is the entire point of these tests.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
+    # cl_ramp_to_3000_BOOST_STEP_OVERBOOST: overboost hunt. MAP capped at 4 psi
+    #     up the cl_ramp_to_3000 ramp, then from 2700 rpm stepped +1 psi/s to
+    #     the 0xF0 cap (~15.7 psi) and held (klr_tb.v -DBOOST_STEP_OVERBOOST).
+    #     require_ram33_value FAILS the run if DTC 3-2 never latches, since
+    #     catching it is the whole point; the "KLR: [OVERBOOST]" lines in the
+    #     full log give the boost level at each step.
+    'cl_ramp_to_3000_BOOST_STEP_OVERBOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x32,
+                          'notes':'Same as cl_ramp_to_3000_BOOST, with the MAP reading capped at 4 psi during the ramp, then stepped +1 psi every second from 2700 rpm until the 0xF0 compliance cap (~15.7 psi) — KLR expected to detect the overboost and set DTC 3-2 (0x32, Boost Pressure Too High)'},
     'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
