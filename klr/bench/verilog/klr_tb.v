@@ -463,13 +463,20 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //  in the MAP model above) and ch4 = x - 10, so ch4 = 108 + 8.41 * psi.
     //  The steps skip the 500 ms lag filter, so each one lands at once.
     //  With -DBOOST_STEP_DOWN as well, the steps go the other way: from
-    //  OVERBOOST_START_PSI down 1 psi per step to 0 psi (1 bar, ch4=0x6C),
-    //  then hold, to see what an underboost (DTC 3-1, 0x31) looks like.
+    //  OVERBOOST_START_PSI down 1 psi per step, through 0 psi (1 bar,
+    //  ch4=0x6C) into vacuum, to OVERBOOST_END_PSI (default -6 psi,
+    //  ch4=0x3B), then hold, to see what an underboost (DTC 3-1, 0x31)
+    //  takes: the firmware wants 64+ counts under target (0x272), about
+    //  -3 psi against the ~0x9D target just past boost onset. -6 psi keeps
+    //  ram[52h] (~0x45) above the 0x40 bad-sensor floor (DTC 3-3).
 `ifndef OVERBOOST_START_PSI
   `define OVERBOOST_START_PSI 4
 `endif
 `ifndef OVERBOOST_STEP_RPM
   `define OVERBOOST_STEP_RPM 2950
+`endif
+`ifndef OVERBOOST_END_PSI
+  `define OVERBOOST_END_PSI (-6)
 `endif
 `ifndef OVERBOOST_STEP_NS
   `define OVERBOOST_STEP_NS 1000000000
@@ -477,12 +484,15 @@ module klr_tb #(parameter EXT_STIM = 0) (
     localparam [7:0] OB_ADC_MAX = 8'hF0;   // same cap as boost_adc4_capped below
     reg        ob_stepping = 1'b0;
     reg        ob_at_max   = 1'b0;
-    reg [7:0]  ob_psi      = `OVERBOOST_START_PSI;
+    reg signed [7:0] ob_psi = `OVERBOOST_START_PSI;   // signed: the step-down goes into vacuum
     reg [63:0] ob_next_ns  = 64'd0;
     // Integer form of 108 + 8.4119 * psi, rounded (no reals, so it stays
     // plain combinational logic in every simulator).
-    function automatic [15:0] ob_psi_to_adc(input [7:0] psi);
-        ob_psi_to_adc = (32'd1085000 + 32'd84119 * psi) / 32'd10000;
+    // Valid down to about -12 psi, where the result would go negative.
+    function automatic [15:0] ob_psi_to_adc(input signed [7:0] psi);
+        integer v;
+        v = 1085000 + 84119 * psi;
+        ob_psi_to_adc = v / 10000;
     endfunction
     wire [7:0]  ob_start_adc = ob_psi_to_adc(`OVERBOOST_START_PSI);
     wire [15:0] ob_step_raw  = ob_psi_to_adc(ob_psi);
@@ -491,9 +501,9 @@ module klr_tb #(parameter EXT_STIM = 0) (
 `else
     localparam OB_DOWN = 1'b0;
 `endif
-    wire [7:0]  ob_next_psi  = OB_DOWN ? ob_psi - 8'd1 : ob_psi + 8'd1;
+    wire signed [7:0] ob_next_psi = OB_DOWN ? ob_psi - 8'sd1 : ob_psi + 8'sd1;
     wire [15:0] ob_next_raw  = ob_psi_to_adc(ob_next_psi);
-    wire        ob_next_last = OB_DOWN ? (ob_next_psi == 8'd0) : (ob_next_raw >= OB_ADC_MAX);
+    wire        ob_next_last = OB_DOWN ? (ob_next_psi <= `OVERBOOST_END_PSI) : (ob_next_raw >= OB_ADC_MAX);
     wire [7:0]  ob_step_adc  = (ob_step_raw >= OB_ADC_MAX) ? OB_ADC_MAX : ob_step_raw[7:0];
     wire [7:0] boost_adc4_final = ob_stepping ? ob_step_adc :
                                   (boost_adc4_raw > ob_start_adc) ? ob_start_adc : boost_adc4_raw;
@@ -513,8 +523,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
             ob_psi     <= ob_next_psi;
             if (ob_next_last && OB_DOWN) begin
                 ob_at_max <= 1'b1;
-                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> 0 psi (ch4=%02h), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
-                         $time / 1000000, ob_psi, ob_next_raw[7:0], rpm_in,
+                $display("KLR: [OVERBOOST] t=%0d ms  step: %0d -> %0d psi (ch4=%02h), holding  rpm=%0d  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
+                         $time / 1000000, ob_psi, ob_next_psi, ob_next_raw[7:0], rpm_in,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
                          top.i8048_core_1.ram[8'h60], top.i8048_core_1.ram[8'h41], top.i8048_core_1.ram[8'h3a],
                          top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);

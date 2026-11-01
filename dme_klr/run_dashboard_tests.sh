@@ -452,9 +452,10 @@ run_test cl_ramp_to_3000_BOOST_STEP_OVERBOOST \
 
 # cl_ramp_to_3000_BOOST_STEP_DOWN: same as cl_ramp_to_3000_BOOST_STEP_OVERBOOST (AFM 0x7C, MAP
 # capped at 4 psi, KLR throttle just past boost onset from 2950 rpm), but the
-# steps go down: 4 psi -1 psi every second to 0 psi (1 bar), then hold.
-# Shows how the KLR reacts to boost falling below its target (DTC 3-1,
-# 0x31, boost too low?); see klr_tb.v BOOST_STEP_DOWN.
+# steps go down: 4 psi -1 psi every second, through 0 psi (1 bar) into
+# vacuum to -6 psi (~22.6 s), then hold. Shows what it takes for the KLR to
+# flag boost below its target (DTC 3-1, 0x31; the firmware wants 64+ counts
+# under target, ~-3 psi here); see klr_tb.v BOOST_STEP_DOWN.
 run_test cl_ramp_to_3000_BOOST_STEP_DOWN \
     -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DBOOST_STEP_DOWN \
     -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h7C -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
