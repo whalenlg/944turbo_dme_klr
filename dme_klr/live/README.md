@@ -62,6 +62,9 @@ checkout, with `run_dashboard_tests.sh`'s `dash_logs`; `node bridge.mjs
 **SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
 dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that
 moment, so you can set breakpoints, step and change inputs from there.
+Breakpoints you've set before LOAD are kept, added to any the snapshot
+saved; for a regression TEST snapshot they take effect from its time on, so
+the run up to it doesn't stop on them.
 After a load the sim is paused at the snapshot's time, the live stats and
 the DME / KLR IRAM views show the restored RAM straight away, and any of
 RPM, AFM and boost that were on **auto** are pinned to the values they had

@@ -207,6 +207,19 @@ public:
         printf("SIM: [READY] %s\n", inputsLine().c_str());
         snapCfgLine();
         state("paused", "start");
+        // +bps=dme:024E,klr:0ABC: the breakpoints the dashboard had before a
+        // LOAD, added once the snapshot is in place (after the load, or at
+        // the +runto time, so the run up to it doesn't stop on them)
+        std::string keep = ctx_->commandArgsPlusMatch("bps=");
+        if (!keep.empty()) {
+            std::istringstream ks(keep.substr(keep.find('=') + 1));
+            std::string item;
+            while (std::getline(ks, item, ',')) {
+                auto c = item.find(':');
+                if (c == std::string::npos) continue;
+                keep_bps_[item.substr(0, c) == "klr"].insert(std::strtoul(item.c_str() + c + 1, nullptr, 16));
+            }
+        }
         std::string load = ctx_->commandArgsPlusMatch("load=");
         if (!load.empty()) loadSnapshot(load.substr(load.find('=') + 1));
         // +runto=<ns> [+runlabel=<text>]: run there and pause, then say
@@ -279,6 +292,7 @@ private:
                     runto_ = false;
                     printf("SIM: [SNAP] loaded t_ns=%llu exact=1 dir=%s\n",
                            static_cast<unsigned long long>(tNs()), runto_label_.c_str());
+                    keepBps();
                 }
                 state("paused", stop_reason_);
             }
@@ -592,6 +606,17 @@ private:
             return;
         }
         error("unknown input: " + name);
+    }
+
+    // The dashboard's breakpoints from before a LOAD (+bps=), added to
+    // whatever the snapshot saved
+    std::set<uint32_t> keep_bps_[2];
+    void keepBps() {
+        bp_dme_.insert(keep_bps_[0].begin(), keep_bps_[0].end());
+        bp_klr_.insert(keep_bps_[1].begin(), keep_bps_[1].end());
+        if (!keep_bps_[0].empty() || !keep_bps_[1].empty()) bpLine();
+        keep_bps_[0].clear();
+        keep_bps_[1].clear();
     }
 
     void breakpoint(std::istringstream& in) {
@@ -1042,6 +1067,7 @@ private:
         for (int c = 0; c < 2; ++c) if (!rom_arg_[c] && !roms[c].empty()) rom_[c] = roms[c];
         bp_dme_ = bps[0];
         bp_klr_ = bps[1];
+        keepBps();
         trace_dme_ = traces[0];
         trace_klr_ = traces[1];
         last_dme_ic_ = TB(live_dme_icount);
