@@ -109,7 +109,7 @@ def req_reason(d):
 
 def scan(name, log, fail, script, verdict='FAIL'):
     opener = gzip.open if str(log).endswith('.gz') else open
-    hits, last_ms = [], 0
+    hits, last_ms, saw_ds = [], 0, False
     interval = int(os.environ.get('DASH_INTERVAL_MS', '100'))
     seen = set()
     try:
@@ -119,6 +119,7 @@ def scan(name, log, fail, script, verdict='FAIL'):
                 m = T_MS.search(line)
                 if m:
                     last_ms = int(next(g for g in m.groups() if g))
+                    saw_ds = saw_ds or '[DS]' in line
                 if WARN.search(line) and not line.startswith('SIM: '):
                     k = kind_of(line)
                     if k in seen:
@@ -144,7 +145,7 @@ def scan(name, log, fail, script, verdict='FAIL'):
         hits = []
         if tm:
             hits.append((int(tm.group(1)), verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 1))
-        elif not warned:
+        elif not warned and saw_ds:   # a run with no [DS] (killed, crashed) has nothing to show
             hits.append((last_ms, verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 0))
 
     SNAPDIR.mkdir(parents=True, exist_ok=True)

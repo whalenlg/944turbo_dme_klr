@@ -238,6 +238,23 @@ declare -a PIDS=()
 declare -a PID_NAMES=()
 declare -a SIM_FAILED=()
 
+# Ctrl-C / kill: stop the running tests too. Background jobs in a script
+# ignore SIGINT, so without this they keep running after the runner is
+# gone, and a later run of the same test shares (and deletes) their log.
+kill_tree() {
+    local c
+    for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
+    kill -TERM "$1" 2>/dev/null
+}
+on_interrupt() {
+    trap - INT TERM
+    echo ""
+    echo "  Interrupted — stopping ${#PIDS[@]} running test(s): ${PID_NAMES[*]}"
+    for pid in "${PIDS[@]}"; do kill_tree "$pid"; done
+    exit 130
+}
+trap on_interrupt INT TERM
+
 reap_finished() {
     local NEW_PIDS=() NEW_NAMES=()
     for i in "${!PIDS[@]}"; do
