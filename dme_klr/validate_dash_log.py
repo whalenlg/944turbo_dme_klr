@@ -926,12 +926,9 @@ TESTS = {
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x31,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 75 (raw ADC, clamped at 0) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},
-    'cl_ramp_to_6000_BOOST_HIGH': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96, 'require_ram33_value':0x32,
-                          'notes':'Same as cl_ramp_to_6000_BOOST, boost input raised by 80 (raw ADC, saturating at 0xF0/240 — matches the firmware-compliance cap) — KLR expected to detect this and set DTC 3-2 (0x32, Boost Pressure Too High); has not yet been observed to actually fire despite several fault-injection approaches — see klr_tb.v boost_adc4_high comment for history'},
     'cl_ramp_to_2100_BOOST_HIGH': {'rpm_target': 2100, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'require_ram33_value':0x32,
-                          'notes':'Same fault injection as cl_ramp_to_6000_BOOST_HIGH (boost input raised by 80, saturating at 0xF0), but at a lower ~2100rpm ceiling — testing whether DTC 3-2 fires more readily away from the 6000-family\'s high-RPM/high-load operating point. AFM_CL_TARGET=0x5F (REFINED — see i8051_dashboard_tb.v TEST_CL_RAMP_TO_2100 calibration history; renamed from cl_ramp_to_2000_BOOST_HIGH when the target moved — 0x53 settled at ~1794rpm, 0x59 settled at ~1944rpm) — rpm_target here may still need adjusting once a real run confirms the actual settling point.'},
+                          'notes':'-DBOOST_HIGH fault injection (boost input raised by 80, saturating at 0xF0) at a ~2100rpm ceiling (a cl_ramp_to_6000 variant was removed: DTC 3-2 never fired there; cl_ramp_to_3000_BOOST_STEP_OVERBOOST is the test that latches it). AFM_CL_TARGET=0x5F (REFINED — see i8051_dashboard_tb.v TEST_CL_RAMP_TO_2100 calibration history; renamed from cl_ramp_to_2000_BOOST_HIGH when the target moved — 0x53 settled at ~1794rpm, 0x59 settled at ~1944rpm) — rpm_target here may still need adjusting once a real run confirms the actual settling point.'},
 
     # cl_ramp_to_4500: intermediate CL operating point, AFM_CL_TARGET
     # empirically calibrated (see i8051_dashboard_tb.v TEST_CL_RAMP_TO_4500
@@ -1232,15 +1229,6 @@ DME_FILE_OVERRIDES = {
         # explanation applies.
         'cl_ramp_to_redline':           {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
 
-        # NOT yet overridden — flagged, not resolved:
-        # cl_ramp_to_6000_BOOST_HIGH: KLR ram[33] never went non-zero
-        # (expected DTC 0x32). Unlike the entries above, this isn't a
-        # clean numeric recalibration — it's a fault-detection check
-        # that simply didn't fire, and root cause (KLR threshold
-        # difference vs. a genuinely different simulated boost profile
-        # under this DME's slower RPM ramp) isn't established. Needs
-        # investigation before deciding whether to relax or leave
-        # failing.
     },
 }
 
