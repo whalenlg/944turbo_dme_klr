@@ -108,6 +108,17 @@ compile_and_run_klr() {
 
     mkdir -p "$hexdir"
 
+    # Another run of this same test still going (an earlier regression
+    # that was stopped while its sim kept running): both would write and
+    # delete the same log, and one ends up validating an empty dash.log
+    local lock="${LOGDIR}/.${name}.pid" other
+    other=$(cat "$lock" 2>/dev/null)
+    if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null; then
+        echo "  SKIPPED: $name is already running (pid $other) — stop it first: kill $other" | tee -a "$LOGDIR/summary.log"
+        return 1
+    fi
+    echo $$ > "$lock"
+
     # Clean old output files for this test
     rm -f "$log" "$log.gz" "$LOGDIR/${name}.dash.log" "$vcdfile" "$fstfile"
     rm -f "${vcdfile}.gz"
