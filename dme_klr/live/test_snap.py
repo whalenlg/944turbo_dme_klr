@@ -9,7 +9,8 @@
 #  directory with request.json (test, its -D flags, ROM images, time and
 #  the line that triggered it). The live dashboard lists it with the
 #  other snapshots; LOAD builds the test with the live debugger's hooks
-#  (build_live.sh --test <name>) and runs it to that time, paused.
+#  (build_live.sh --test <name>) and runs it to 200 ms before that time
+#  (DMEKLR_SNAP_LEAD_MS), paused, so breakpoints catch the lead-up.
 #
 #  Usage:
 #    test_snap.py scan <test> <log[.gz]> [--fail|--warn <detail>] [--script <runner.sh>]
@@ -43,6 +44,9 @@ DMEKLR = LIVE.parent
 REPO = DMEKLR.parent
 SNAPDIR = Path(os.environ.get('DMEKLR_SNAPDIR') or REPO.parent / 'tmp' / 'dme_klr' / 'snapshots')
 MAX_PER_TEST = 5
+# A warning's or failure's request opens this long before it, so you can
+# set breakpoints and watch it build up (DMEKLR_SNAP_LEAD_MS to change)
+LEAD_MS = int(os.environ.get('DMEKLR_SNAP_LEAD_MS', '200'))
 
 
 def test_defines(name, script):
@@ -110,7 +114,6 @@ def req_reason(d):
 def scan(name, log, fail, script, verdict='FAIL'):
     opener = gzip.open if str(log).endswith('.gz') else open
     hits, last_ms, saw_ds = [], 0, False
-    interval = int(os.environ.get('DASH_INTERVAL_MS', '100'))
     seen = set()
     try:
         with opener(log, 'rt', errors='replace') as f:
@@ -125,11 +128,10 @@ def scan(name, log, fail, script, verdict='FAIL'):
                     if k in seen:
                         continue
                     seen.add(k)
-                    # Run to just after it: 1 ms past a line that carries
-                    # its own time (t=<ms>, rounded down), else to the next
-                    # [DS] after the last one seen
+                    # its own time (t=<ms>) when it has one, else the last
+                    # [DS] seen; the request opens LEAD_MS before that
                     own = re.search(r'\bt=(\d+)\s*ms', line)
-                    hits.append((last_ms, 'warn', line, k, 1 if own else interval))
+                    hits.append((int(own.group(1)) if own else last_ms, 'warn', line, k))
                     if len(hits) >= MAX_PER_TEST:
                         break
     except OSError as e:
@@ -144,9 +146,9 @@ def scan(name, log, fail, script, verdict='FAIL'):
         warned = bool(hits)
         hits = []
         if tm:
-            hits.append((int(tm.group(1)), verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 1))
+            hits.append((int(tm.group(1)), verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower()))
         elif not warned and saw_ds:   # a run with no [DS] (killed, crashed) has nothing to show
-            hits.append((last_ms, verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower(), 0))
+            hits.append((last_ms, verdict.lower(), f'{verdict} {name}: {fail}', verdict.lower()))
 
     SNAPDIR.mkdir(parents=True, exist_ok=True)
     if fail is None:
@@ -160,8 +162,8 @@ def scan(name, log, fail, script, verdict='FAIL'):
         return 0   # this verdict is already recorded
 
     defines = test_defines(name, script) or []
-    for t_ms, reason, line, k, after in hits:
-        write_request(name, script, defines, t_ms, (t_ms + after) * 1_000_000, reason, line, k,
+    for t_ms, reason, line, k in hits:
+        write_request(name, script, defines, t_ms, max(0, t_ms - LEAD_MS) * 1_000_000, reason, line, k,
                       'log' if fail is None else 'validator', str(Path(log).resolve()))
     return 0
 

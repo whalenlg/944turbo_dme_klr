@@ -128,8 +128,9 @@ They show in the dashboard's SNAPSHOTS list as **TEST** rows. **LOAD**
 builds that test with the debugger's hooks (`build_live.sh --test <name>`:
 the testbench's `LIVE_DEBUG` without `LIVE`, so its own stimulus stays; in
 `obj/tests/<name>/`, a few minutes the first time and reused after) and runs
-it to just after that moment, paused, so breakpoints, stepping and the RAM
-views work from there. Getting there takes as long as the sim needs to reach
+it to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
+to change it; a time you pick with `add` is used as is), paused, so
+breakpoints, stepping and the RAM views catch the lead-up to it. Getting there takes as long as the sim needs to reach
 that time. The input controls do nothing in a test run (its inputs follow
 the script), it can't be saved, and **RESTART** goes back to the live
 simulator.

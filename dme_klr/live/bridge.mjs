@@ -409,8 +409,10 @@ function snapInfo(id, full = false) {
     if (full) return { id, kind: 'test', ...req, built: testBuilt(req) };
     const roms = {};
     for (const cpu of ['dme', 'klr']) roms[cpu] = { name: basename(req.roms?.[cpu] ?? ''), sha256: null, workbook: null };
-    return { id, kind: 'test', test: req.test, t_ns: (req.t_ms ?? 0) * 1e6, created: req.created, reason: req.reason === 'fail' ? 'fail' : 'test',
-             label: req.test, trigger: `${req.test}: ${req.trigger}`, pc: null, inputs: null, roms, bytes: 0 };
+    // t_ns is where LOAD stops: a warning's or failure's opens before it
+    const early = req.t_ns < (req.t_ms ?? 0) * 1e6 ? `${req.t_ms} ms − ${((req.t_ms * 1e6 - req.t_ns) / 1e6).toFixed(0)} ms early · ` : '';
+    return { id, kind: 'test', test: req.test, t_ns: req.t_ns ?? (req.t_ms ?? 0) * 1e6, created: req.created, reason: req.reason === 'fail' ? 'fail' : 'test',
+             label: req.test, trigger: `${early}${req.test}: ${req.trigger}`, pc: null, inputs: null, roms, bytes: 0 };
   }
   const sj = readJson(join(dir, 'sim.json'));
   if (!sj || !existsSync(join(dir, 'state.bin'))) return null;
