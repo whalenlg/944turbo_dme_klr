@@ -119,6 +119,11 @@ function startSim(load = null) {
   const snapArgs = test ? ['+autosnap=0', `+runto=${test.runTo}`, `+runlabel=${test.id}`]
                         : [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
                            ...(load ? [`+load=${load.dir}`] : [])];
+  // The breakpoints set before a LOAD carry over (sim_main adds them once
+  // the snapshot is in place)
+  const keep = [...bpNow.dme.map(a => `dme:${a}`), ...bpNow.klr.map(a => `klr:${a}`)];
+  if (load && keep.length) snapArgs.push(`+bps=${keep.join(',')}`);
+  if (!load) bpNow = { dme: [], klr: [] };   // a plain restart starts without any
   const bin = test?.bin ?? SIM;
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
   sim = spawn(bin, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
@@ -134,6 +139,8 @@ function startSim(load = null) {
     if (st) simState = st[1];
     const rom = line.match(/^SIM: \[ROM\] (dme|klr) (.+)$/);
     if (rom) roms[rom[1]] = rom[2];
+    const bp = line.match(/^SIM: \[BP\] dme=(\S*) klr=(\S*)/);
+    if (bp && proc === sim) bpNow = { dme: bp[1].split(',').filter(Boolean), klr: bp[2].split(',').filter(Boolean) };
     const cfg = line.match(/^SIM: \[SNAPCFG\] auto=(\w+) break=(\w+)/);
     if (cfg) Object.assign(snapCfg, { auto: cfg[1] === 'on', break: cfg[2] === 'on' });
     const saved = line.match(/^SIM: \[SNAP\] saved t_ns=(\d+) reason=(\S+) dir=(.+)$/);
@@ -352,6 +359,7 @@ mkdirSync(SNAP_DIR, { recursive: true });
 }
 const SNAP_HISTORY = 60_000;        // lines of the run kept with each snapshot
 const SNAP_UPLOAD_MAX = 64 << 20;
+let bpNow = { dme: [], klr: [] };   // the running sim's breakpoints, from SIM: [BP]
 const snapCfg = { auto: true, break: false };   // from SIM: [SNAPCFG]; kept across restarts
 const ROM_BYTES = { dme: 8192, klr: 4096 };
 const snapId = id => /^[\w.+-]+$/.test(id ?? '') && !id.startsWith('.') ? id : null;
@@ -401,8 +409,10 @@ function snapInfo(id, full = false) {
     if (full) return { id, kind: 'test', ...req, built: testBuilt(req) };
     const roms = {};
     for (const cpu of ['dme', 'klr']) roms[cpu] = { name: basename(req.roms?.[cpu] ?? ''), sha256: null, workbook: null };
-    return { id, kind: 'test', test: req.test, t_ns: (req.t_ms ?? 0) * 1e6, created: req.created, reason: req.reason === 'fail' ? 'fail' : 'test',
-             label: req.test, trigger: `${req.test}: ${req.trigger}`, pc: null, inputs: null, roms, bytes: 0 };
+    // t_ns is where LOAD stops: a warning's or failure's opens before it
+    const early = req.t_ns < (req.t_ms ?? 0) * 1e6 ? `opens ${((req.t_ms * 1e6 - req.t_ns) / 1e6).toFixed(0)} ms before the event at ${req.t_ms} ms · ` : '';
+    return { id, kind: 'test', test: req.test, t_ns: req.t_ns ?? (req.t_ms ?? 0) * 1e6, created: req.created, reason: req.reason === 'fail' ? 'fail' : 'test',
+             label: req.test, trigger: `${early}${req.test}: ${req.trigger}`, pc: null, inputs: null, roms, bytes: 0 };
   }
   const sj = readJson(join(dir, 'sim.json'));
   if (!sj || !existsSync(join(dir, 'state.bin'))) return null;

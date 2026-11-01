@@ -62,6 +62,9 @@ checkout, with `run_dashboard_tests.sh`'s `dash_logs`; `node bridge.mjs
 **SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
 dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that
 moment, so you can set breakpoints, step and change inputs from there.
+Breakpoints you've set before LOAD are kept, added to any the snapshot
+saved; for a regression TEST snapshot they take effect from its time on, so
+the run up to it doesn't stop on them.
 After a load the sim is paused at the snapshot's time, the live stats and
 the DME / KLR IRAM views show the restored RAM straight away, and any of
 RPM, AFM and boost that were on **auto** are pinned to the values they had
@@ -125,8 +128,9 @@ They show in the dashboard's SNAPSHOTS list as **TEST** rows. **LOAD**
 builds that test with the debugger's hooks (`build_live.sh --test <name>`:
 the testbench's `LIVE_DEBUG` without `LIVE`, so its own stimulus stays; in
 `obj/tests/<name>/`, a few minutes the first time and reused after) and runs
-it to just after that moment, paused, so breakpoints, stepping and the RAM
-views work from there. Getting there takes as long as the sim needs to reach
+it to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
+to change it; a time you pick with `add` is used as is), paused, so
+breakpoints, stepping and the RAM views catch the lead-up to it. Getting there takes as long as the sim needs to reach
 that time. The input controls do nothing in a test run (its inputs follow
 the script), it can't be saved, and **RESTART** goes back to the live
 simulator.
