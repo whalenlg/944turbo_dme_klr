@@ -903,6 +903,20 @@ TESTS = {
     #     since triggering it is the entire point of these tests.
     'cl_ramp_to_3000_BOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'Same as cl_ramp_to_3000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
+    # cl_ramp_to_3000_BOOST_STEP_OVERBOOST: overboost hunt (klr_tb.v
+    #     -DBOOST_STEP_OVERBOOST). The cl_ramp_to_3000 ramp at AFM 0x7C with MAP
+    #     capped at 4 psi; at 2950 rpm the KLR's throttle opens just past boost
+    #     onset and boost steps +1 psi/s from 4 psi to the 0xF0 cap (~15.7 psi),
+    #     then holds. require_ram33_value FAILS the run if DTC 3-2 never latches.
+    #     Real run (Verilator): steps from t=12603ms, ram[60h] passed the
+    #     32-count overboost limit at ~10 psi (t=18603ms) but ram[41h] (CV duty)
+    #     sat at 0, which resets the 35h error counter every pass (0x25A); duty
+    #     came back non-zero at ~14 psi and DTC 3-2 latched at t=25510ms, ~1 s
+    #     into the max hold. At the stock 0x72 throttle the KLR never left
+    #     ram[43h]=0, never drove CV duty, and never set the code.
+    'cl_ramp_to_3000_BOOST_STEP_OVERBOOST': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x32,
+                          'notes':'cl_ramp_to_3000 profile at AFM 0x7C with -DBOOST, MAP capped at 4 psi during the ramp; from 2950 rpm the KLR sees the throttle just past boost onset and boost steps +1 psi every second until the 0xF0 compliance cap (~15.7 psi) — KLR expected to detect the overboost and set DTC 3-2 (0x32, Boost Pressure Too High); real run: latched at t=25510ms'},
     'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
