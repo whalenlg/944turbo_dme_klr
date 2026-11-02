@@ -3,5 +3,6 @@ export PATH=/opt/iverilog/bin:$PATH
 export PATH=/Users/Mike/coding_projects/944/DME_sim/gtkwave:$PATH
 export IVERILOG_VPI_MODULE_PATH=/opt/iverilog/lib
 export IVERILOG_DUMPER=fst
-source 8051venv/bin/activate
+# Optional: only activate the local venv when it exists.
+[ -f 8051venv/bin/activate ] && source 8051venv/bin/activate
 export PATH=$PATH:/Users/Mike/coding_projects/944/DME_sim
