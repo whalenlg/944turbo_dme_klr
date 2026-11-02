@@ -407,6 +407,11 @@ module dme_klr_dashboard_tb;
     //     still trips.
     //   KLR_IGN_IN_STUCK_LOW   → ign_in stuck 0 (its normal idle level)
     //     instead — unconfirmed against real hardware yet.
+    // A fault time can't sit in the continuous assign itself: Icarus does
+    // not re-evaluate an assign when only $time changes, so the fault
+    // would land at the next edge of the _gen signal, not at the fault
+    // time, while Verilator applies it on time. A flag clocked by dme_clk
+    // fires at the same clock in both.
     wire ext_trigger_gen = ~ign_out_dme_to_klr;  // DME A_5_KLR_ign_out → KLR trigger (inverted)
     wire ext_ign_gen     = ~tach_dme_to_klr;     // DME tach → KLR ign (inverted)
 
@@ -414,12 +419,16 @@ module dme_klr_dashboard_tb;
   `ifndef TRIGGER_LOSS_T_MS
   `define TRIGGER_LOSS_T_MS 3000
   `endif
-    wire ext_trigger = (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ? 1'b1 : ext_trigger_gen;
+    reg ext_trigger_lost = 1'b0;
+    always @(posedge dme_clk) if (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
+    wire ext_trigger = ext_trigger_lost ? 1'b1 : ext_trigger_gen;
 `elsif KLR_TRIGGER_STUCK_LOW
   `ifndef TRIGGER_LOSS_T_MS
   `define TRIGGER_LOSS_T_MS 3000
   `endif
-    wire ext_trigger = (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ? 1'b0 : ext_trigger_gen;
+    reg ext_trigger_lost = 1'b0;
+    always @(posedge dme_clk) if (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
+    wire ext_trigger = ext_trigger_lost ? 1'b0 : ext_trigger_gen;
 `else
     wire ext_trigger = ext_trigger_gen;
 `endif
@@ -428,12 +437,16 @@ module dme_klr_dashboard_tb;
   `ifndef IGN_IN_LOSS_T_MS
   `define IGN_IN_LOSS_T_MS 3000
   `endif
-    wire ext_ign = (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ? 1'b1 : ext_ign_gen;
+    reg ext_ign_lost = 1'b0;
+    always @(posedge dme_clk) if (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
+    wire ext_ign = ext_ign_lost ? 1'b1 : ext_ign_gen;
 `elsif KLR_IGN_IN_STUCK_LOW
   `ifndef IGN_IN_LOSS_T_MS
   `define IGN_IN_LOSS_T_MS 3000
   `endif
-    wire ext_ign = (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ? 1'b0 : ext_ign_gen;
+    reg ext_ign_lost = 1'b0;
+    always @(posedge dme_clk) if (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
+    wire ext_ign = ext_ign_lost ? 1'b0 : ext_ign_gen;
 `else
     wire ext_ign = ext_ign_gen;
 `endif
