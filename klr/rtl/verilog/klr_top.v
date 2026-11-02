@@ -144,8 +144,28 @@ module klr_system (
     //  Internal wires
     // ============================================================
 
-    // Crank-synchronised reset — trigger_in high holds CPU in reset
-    wire        res_n = ~trigger_in;
+    // Crank-synchronised reset — trigger_in high holds CPU in reset.
+    //
+    // Power-on reset: the 8049 also gets one reset at power-up, before
+    // the DME sends its first crank trigger. Without it the core's
+    // registers start as whatever the simulator gives them: Verilator
+    // zeroes them, so its KLR runs from pc=0 straight away, while
+    // Icarus leaves them X and the KLR sits dead until the first
+    // trigger (433 ms into battery_disconnected, where Verilator had
+    // already fired a spark at 337 ms). por_n holds reset for the first
+    // KLR_POR_CLKS clocks so both simulators start from the same
+    // reset state at t=0. Internal RAM is not cleared by reset (as on
+    // the real chip), so Icarus still shows X wherever the firmware
+    // reads RAM it has not written yet.
+`ifndef KLR_POR_CLKS
+`define KLR_POR_CLKS 16'd1100        // ~100 us at 11 MHz
+`endif
+    reg  [15:0] por_cnt;
+    initial por_cnt = 16'd0;
+    always @(posedge clk)
+        if (por_cnt != `KLR_POR_CLKS) por_cnt <= por_cnt + 16'd1;
+    wire        por_n = (por_cnt == `KLR_POR_CLKS);
+    wire        res_n = por_n & ~trigger_in;
 
     // CPU ports
     wire [7:0]  p1, p2;

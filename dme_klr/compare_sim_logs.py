@@ -905,6 +905,16 @@ def main():
         sys.exit(0)
 
     detail = "; ".join(issues)
+    # The iverilog KLR core reports when the firmware branches on X
+    # (uninitialised RAM; Icarus takes the not-taken path, Verilator sees
+    # 0). Differences from that point on are expected, so say so; the
+    # verdict itself is unchanged
+    xbr = [l for l in iv_lines if l.startswith("KLR: [XBRANCH]")]
+    if xbr:
+        ts = [m.group(1) for m in (_PHASE_T_RE.search(l) for l in xbr) if m]
+        detail += (f"; iverilog KLR branched on X in {len(xbr)} 100 ms window(s)"
+                   f"{' (' + ', '.join(ts[:5]) + (', ...' if len(ts) > 5 else '') + ' ms)' if ts else ''}"
+                   f" - see KLR: [XBRANCH]")
     is_near_match = all(i.startswith("NEAR-MATCH") for i in issues)
     verdict = "NEAR-MATCH" if is_near_match else "DIFF"
     print(f"{verdict}\t{args.name}\t{detail}")

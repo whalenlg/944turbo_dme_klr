@@ -2037,6 +2037,11 @@ interrupt_generator interrupt_generator_1 (
   `endif
 `endif
 
+// A fault time can't sit in the continuous assign itself: Icarus does not
+// re-evaluate an assign when only $time changes, so the fault would land
+// at the next edge of the _gen signal, not at the fault time, while
+// Verilator applies it on time. A clocked flag fires at the same clock in both.
+//
 // TEST_REF_SENSOR_LOSS: the reference (crank position) sensor wire
 // breaks/opens partway through the test — the generator underneath
 // keeps computing real RPM physics (so the engine model stays
@@ -2049,7 +2054,9 @@ interrupt_generator interrupt_generator_1 (
   `ifndef REF_LOSS_T_MS
   `define REF_LOSS_T_MS 3000
   `endif
-assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b1 : reference_sensor_gen;
+reg reference_sensor_lost = 1'b0;
+always @(posedge clk) if (`DME_MS >= `REF_LOSS_T_MS) reference_sensor_lost <= 1'b1;
+assign reference_sensor = reference_sensor_lost ? 1'b1 : reference_sensor_gen;
 // REF_SENSOR_STUCK_LOW: the opposite fault — the INT0 line shorted to
 // ground from REF_LOSS_T_MS onward (ref_sensor_stuck_low).
 // REF_SENSOR_ABSENT: no reference signal at all, from power-on — the
@@ -2062,7 +2069,9 @@ assign reference_sensor = 1'b1;
   `ifndef REF_LOSS_T_MS
   `define REF_LOSS_T_MS 3500
   `endif
-assign reference_sensor = (`DME_MS >= `REF_LOSS_T_MS) ? 1'b0 : reference_sensor_gen;
+reg reference_sensor_lost = 1'b0;
+always @(posedge clk) if (`DME_MS >= `REF_LOSS_T_MS) reference_sensor_lost <= 1'b1;
+assign reference_sensor = reference_sensor_lost ? 1'b0 : reference_sensor_gen;
 `else
 assign reference_sensor = reference_sensor_gen;
 `endif
@@ -2075,14 +2084,18 @@ assign reference_sensor = reference_sensor_gen;
   `ifndef SPEED_LOSS_T_MS
   `define SPEED_LOSS_T_MS 3000
   `endif
-assign speed_sensor = (`DME_MS >= `SPEED_LOSS_T_MS) ? 1'b1 : speed_sensor_gen;
+reg speed_sensor_lost = 1'b0;
+always @(posedge clk) if (`DME_MS >= `SPEED_LOSS_T_MS) speed_sensor_lost <= 1'b1;
+assign speed_sensor = speed_sensor_lost ? 1'b1 : speed_sensor_gen;
 // SPEED_SENSOR_STUCK_LOW: INT1 shorted to ground from SPEED_LOSS_T_MS
 // onward (speed_sensor_stuck_low).
 `elsif SPEED_SENSOR_STUCK_LOW
   `ifndef SPEED_LOSS_T_MS
   `define SPEED_LOSS_T_MS 3500
   `endif
-assign speed_sensor = (`DME_MS >= `SPEED_LOSS_T_MS) ? 1'b0 : speed_sensor_gen;
+reg speed_sensor_lost = 1'b0;
+always @(posedge clk) if (`DME_MS >= `SPEED_LOSS_T_MS) speed_sensor_lost <= 1'b1;
+assign speed_sensor = speed_sensor_lost ? 1'b0 : speed_sensor_gen;
 `else
 assign speed_sensor = speed_sensor_gen;
 `endif

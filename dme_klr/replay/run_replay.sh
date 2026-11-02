@@ -208,7 +208,7 @@ if [ -f "$RUN_DIR/sim.vcd" ]; then
         rm -f "$RUN_DIR/sim.vcd"
     fi
 fi
-grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]" \
+grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]|^KLR: \[XBRANCH\]" \
     "$OUT.log" > "$OUT.dash.log" || true
 # The log's own outputs at each row's sim time, for the dashboard's chart overlays
 python3 "$REPLAY_DIR/expect_to_dash.py" "$OUT.log" "$OUT.expect.csv" >> "$OUT.dash.log" \

@@ -1176,4 +1176,71 @@ end
 // mb_latch / pc[11] is the authoritative source.
 wire [11:0] rom_addr_phys = pc[11:0];
 
+// ─────────────────────────────────────────────────────────────
+// Branch-on-X report (Icarus only)
+//
+// Internal RAM is not cleared by /RESET, so the firmware can branch on
+// bytes it has not written yet (e.g. the timer ISR's DJNZ on
+// r2 = ram[26h]+1, r3, r5). Icarus keeps those X, and an `if` on X takes
+// the else path, so every DJNZ falls through as if it hit zero; Verilator
+// has 0 there and loops 256 times. The two logs then disagree
+// (battery_disconnected: a burst of spurious IGN_OUT pulses only in
+// Icarus). The real chip's RAM is random at power-up, so neither result
+// is "right": this marks where a log depends on uninitialised RAM. X is
+// left as X.
+//
+// Counted per 100 ms and printed as one KLR: [XBRANCH] line per window
+// that had any, so it stays readable when the firmware hits X every
+// engine cycle. Tagged XBRANCH rather than WARN on purpose: [WARN] lines
+// make test_snap.py file snapshot requests, and this fires in most
+// Icarus runs. Not compiled under Verilator, which has no X.
+// ─────────────────────────────────────────────────────────────
+`ifndef VERILATOR
+`define XBR_WINDOW_NS 64'd100_000_000
+reg  [63:0]   xbr_next;
+integer       xbr_n;
+reg  [11:0]   xbr_pc;
+reg  [8*8-1:0] xbr_first;
+reg           xbr_cond_x;
+reg  [8*8-1:0] xbr_name;
+initial begin
+    xbr_next = `XBR_WINDOW_NS;
+    xbr_n    = 0;
+end
+always @(posedge clk) begin
+    if ($time >= xbr_next) begin
+        if (xbr_n != 0)
+            $display("KLR: [XBRANCH] t=%0d ms  %0d branches on X in the last 100 ms (first: %0s at %03X) - uninitialised RAM/reg; Icarus takes the not-taken path, Verilator sees 0",
+                     $time / 1_000_000, xbr_n, xbr_first, xbr_pc);
+        xbr_n    = 0;
+        xbr_next = xbr_next + `XBR_WINDOW_NS;
+    end
+    if (res_n === 1'b1 && state_clk_en && state == 3'd5 && cycle_2) begin
+        xbr_cond_x = 1'b0;
+        xbr_name   = "";
+        casez (ir)
+            8'b11101???: begin xbr_cond_x = ^ram[rn_addr] === 1'bx; xbr_name = "DJNZ"; end
+            8'h12, 8'h32, 8'h52, 8'h72, 8'h92, 8'hB2, 8'hD2, 8'hF2:
+                         begin xbr_cond_x = acc[ir[7:5]] === 1'bx;  xbr_name = "JBb";  end
+            8'hC6:       begin xbr_cond_x = ^acc === 1'bx;          xbr_name = "JZ";   end
+            8'h96:       begin xbr_cond_x = ^acc === 1'bx;          xbr_name = "JNZ";  end
+            8'hB3:       begin xbr_cond_x = ^acc === 1'bx;          xbr_name = "JMPP"; end
+            8'hF6:       begin xbr_cond_x = psw[7] === 1'bx;        xbr_name = "JC";   end
+            8'hE6:       begin xbr_cond_x = psw[7] === 1'bx;        xbr_name = "JNC";  end
+            8'hB6:       begin xbr_cond_x = f0 === 1'bx;            xbr_name = "JF0";  end
+            8'h76:       begin xbr_cond_x = f1 === 1'bx;            xbr_name = "JF1";  end
+            8'h16:       begin xbr_cond_x = timer_flag === 1'bx;    xbr_name = "JTF";  end
+            default: ;
+        endcase
+        if (xbr_cond_x) begin
+            if (xbr_n == 0) begin
+                xbr_first = xbr_name;
+                xbr_pc    = pc - 12'd1;   // cycle_2: pc is at the operand byte
+            end
+            xbr_n = xbr_n + 1;
+        end
+    end
+end
+`endif
+
 endmodule
