@@ -68,6 +68,11 @@ FQS_TESTS = [
     ('ramp_to_3000',      'N/A',   -1),
 ]
 
+# FQS timing retard gate (DME 1C24, see jhnbyrn 951-KLR-PAGES ignition
+# timing overview): FQS bit 2 set (positions 4-7), RPM > 1600, and either
+# WOT (flags 23h.1) or load_idx (iram 0x49) > 0x50 (80).
+FQS_LOAD_MIN = 0x50
+
 # Also check RPM range to find steady-state
 RPM_STEADY = 5000  # prpm threshold for 6000RPM tests
 RPM_STEADY_3K = 2000  # prpm threshold for 3000RPM tests (engine peaks ~2880 RPM)
@@ -124,6 +129,8 @@ def parse_status_lines(path):
                     ('dwell',      r'dwell\(2F\)=0x([0-9a-fA-F]+)'),
                     ('timing_adv', r'timing_adv\(31\)=0x([0-9a-fA-F]+)'),
                     ('wu',         r'wu\(58:59\)=0x([0-9a-fA-F]+)'),
+                    ('load_idx',   r'load_idx\(49\)=0x([0-9a-fA-F]+)'),
+                    ('flags23',    r'\(23\)=0x([0-9a-fA-F]+)'),
                 ]:
                     mm = re.search(pat, line)
                     if mm:
@@ -146,7 +153,11 @@ def steady_state_stats(snapshots, rpm_min=RPM_STEADY):
         return None
     fuels = [s['fuel_ms'] for s in ss]
     rpms  = [s['rpm'] for s in ss]
+    loads = [s['load_idx'] for s in ss if 'load_idx' in s]
+    wots  = [(s['flags23'] >> 1) & 1 for s in ss if 'flags23' in s]
     return {
+        'load_avg': (sum(loads) / len(loads)) if loads else None,
+        'wot_frac': (sum(wots) / len(wots)) if wots else None,
         'n':        len(ss),
         'fuel_min': min(fuels),
         'fuel_max': max(fuels),
@@ -166,11 +177,12 @@ def main():
     print(f"  Steady-state = RPM ≥ {RPM_STEADY} (*_to_6000), ≥ {RPM_STEADY_3K} (*_to_3000)")
     print(f"  IV : {iv_dir}")
     print(f"  VL : {vl_dir}")
+    print(f"  FQS timing gate: FQS pos 4-7, RPM > 1600, and WOT or load_idx(49) > {FQS_LOAD_MIN}")
     print(f"{'='*80}\n")
 
     print(f"{'Test':<30} {'FQ_VAL':>6} {'Dec':>4}  "
-          f"{'IV fuel_ms':>12}  {'VL fuel_ms':>12}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>12}")
-    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*12}  {'-'*12}  {'-'*6}  {'-'*7}  {'-'*10}")
+          f"{'IV fuel_ms':>12}  {'VL fuel_ms':>12}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>12}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
+    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*12}  {'-'*12}  {'-'*6}  {'-'*7}  {'-'*10}  {'-'*8}  {'-'*4}  {'-'*8}")
 
     results = []
     for test, fq_hex, fq_dec in FQS_TESTS:
@@ -210,11 +222,23 @@ def main():
             timing_str = f"{iv_timing_adv:.1f}ht ({adv_deg:.1f}°)"
         else:
             timing_str = "  N/A"
+        load = iv_ss['load_avg'] if iv_ss else None
+        wot = iv_ss['wot_frac'] if iv_ss else None
+        load_str = f"{load:.0f}" if load is not None else "N/A"
+        wot_str = f"{wot*100:.0f}" if wot is not None else "N/A"
+        if load is None and wot is None:
+            gate_str = "?"
+        elif (wot or 0) >= 0.5:
+            gate_str = "open WOT"
+        elif load is not None and load > FQS_LOAD_MIN:
+            gate_str = "open"
+        else:
+            gate_str = "closed"
         # Suppress VL column if diff is implausibly large (>50%) — VL test not run yet
         if diff_pct is not None and abs(diff_pct) > 50:
             vl_str = "  (not run)"
             diff_str = "   N/A"
-        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>12}  {vl_str:>12}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>10}")
+        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>12}  {vl_str:>12}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>10}  {load_str:>8}  {wot_str:>4}  {gate_str}")
 
         results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
 
