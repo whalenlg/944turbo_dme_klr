@@ -181,8 +181,8 @@ def main():
     print(f"{'='*80}\n")
 
     print(f"{'Test':<30} {'FQ_VAL':>6} {'Dec':>4}  "
-          f"{'IV fuel_ms':>12}  {'VL fuel_ms':>12}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>12}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
-    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*12}  {'-'*12}  {'-'*6}  {'-'*7}  {'-'*10}  {'-'*8}  {'-'*4}  {'-'*8}")
+          f"{'IV fuel_ms':>17}  {'VL fuel_ms':>17}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>14}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
+    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*17}  {'-'*17}  {'-'*6}  {'-'*7}  {'-'*14}  {'-'*8}  {'-'*4}  {'-'*8}")
 
     results = []
     for test, fq_hex, fq_dec in FQS_TESTS:
@@ -238,7 +238,7 @@ def main():
         if diff_pct is not None and abs(diff_pct) > 50:
             vl_str = "  (not run)"
             diff_str = "   N/A"
-        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>12}  {vl_str:>12}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>10}  {load_str:>8}  {wot_str:>4}  {gate_str}")
+        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>17}  {vl_str:>17}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>14}  {load_str:>8}  {wot_str:>4}  {gate_str}")
 
         results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
 
