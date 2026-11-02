@@ -489,10 +489,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // Integer form of 108 + 8.4119 * psi, rounded (no reals, so it stays
     // plain combinational logic in every simulator).
     // Valid down to about -12 psi, where the result would go negative.
+    // One statement: plain Verilog-2001 (iverilog without -g2012) rejects a
+    // multi-statement function body. The integer constants keep it signed.
     function automatic [15:0] ob_psi_to_adc(input signed [7:0] psi);
-        integer v;
-        v = 1085000 + 84119 * psi;
-        ob_psi_to_adc = v / 10000;
+        ob_psi_to_adc = (1085000 + 84119 * psi) / 10000;
     endfunction
     wire [7:0]  ob_start_adc = ob_psi_to_adc(`OVERBOOST_START_PSI);
     wire [15:0] ob_step_raw  = ob_psi_to_adc(ob_psi);
