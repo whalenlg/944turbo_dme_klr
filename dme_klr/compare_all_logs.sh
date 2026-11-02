@@ -60,7 +60,7 @@ DASH_TESTS=(
     cl_ramp_to_6000
     cl_ramp_to_6000_BOOST
     cl_ramp_to_6000_BOOST_LOW
-    cl_ramp_to_6000_BOOST_ZERO
+    cl_wot_3000_BOOST_ZERO
     cl_ramp_to_6000_FQS0
     cl_ramp_to_6000_FQS1
     cl_ramp_to_6000_FQS2

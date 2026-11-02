@@ -855,12 +855,8 @@ TESTS = {
 
     # --- Boost model tests (klr_tb.v -DBOOST) — same base CL checks as
     #     cl_ramp_to_3000/cl_ramp_to_6000, plus DTC checks for the fault-
-    #     injection variants. Only the 6000 RPM boost-fault variants
-    #     (BOOST_ZERO, BOOST_HIGH, BOOST_LOW) are actually wired up as
-    #     runnable tests in run_dashboard_tests.sh / v_run_dashboard_tests.sh
-    #     — there is no 3000 RPM boost-fault variant, only the unmodified
-    #     cl_ramp_to_3000_BOOST baseline. Each of the three 6000 RPM
-    #     fault tests reliably triggers a specific KLR self-diagnostic
+    #     injection variants. Each fault test is meant to trigger a
+    #     specific KLR self-diagnostic
     #     (ram[33], "3-3"/"3-2"/"3-1" in the KLR Diag tab's X-Y notation) —
     #     require_ram33_value FAILS the test if that DTC never fires,
     #     since triggering it is the entire point of these tests.
@@ -900,9 +896,17 @@ TESTS = {
     'cl_ramp_to_6000_BOOST': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96,
                           'notes':'Same as cl_ramp_to_6000, with -DBOOST turbo boost ADC model active (unmodified — no fault injected)'},
-    'cl_ramp_to_6000_BOOST_ZERO': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'dwell_cap':96, 'require_ram33_value':0x33,
-                          'notes':'Same as cl_ramp_to_6000_BOOST, boost input forced to 0 (disconnected/failed sensor simulation) — KLR expected to detect this and set DTC 3-3 (0x33, Pressure Sensor In KLR Defective)'},
+    # cl_wot_3000_BOOST_ZERO (was cl_ramp_to_6000_BOOST_ZERO): the KLR's
+    #     bad-MAP check (0x22F) only counts while ram[44h] >= 0x1C (about
+    #     3500 rpm and below) and ram[43h] >= 0x18 (throttle nearly wide
+    #     open), 60 passes in a row on ram[30h]. The old uncapped 6000 rpm
+    #     ramp never had both at once; the 0x0A reading against a ~0xB9
+    #     target instead wrapped ram[60h] (0xAE, bit 7 set, so read as
+    #     overboost) and latched 3-2 at ~9 s. The throttle still goes to
+    #     WOT, but CL_RPM_MAX=3000 holds the engine at 3000 rpm.
+    'cl_wot_3000_BOOST_ZERO': {'rpm_target': 3000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'require_ram33_value':0x33,
+                          'notes':'Throttle to WOT as in cl_ramp_to_6000_BOOST with the engine model held at 3000 rpm (CL_RPM_MAX), boost input forced to 0 (shorted sensor) — KLR expected to detect this and set DTC 3-3 (0x33, Pressure Sensor In KLR Defective)'},
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x31,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 75 (raw ADC, clamped at 0) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},

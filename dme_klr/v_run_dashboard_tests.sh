@@ -555,9 +555,17 @@ run_test cl_ramp_to_6000_BOOST \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 -DAFM_CL_STEP_NS=28409091 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
-run_test cl_ramp_to_6000_BOOST_ZERO \
+# cl_wot_3000_BOOST_ZERO: MAP sensor shorted (KLR ch4 forced to 0, so ram[52h]
+# = 0x0A). The throttle opens to WOT as in cl_ramp_to_6000, but the engine
+# model's rev limiter is set to 3000 rpm (CL_RPM_MAX), like a loaded lug on a
+# dyno. The KLR's bad-MAP check (0x22F, DTC 3-3) only runs while ram[44h] >= 0x1C
+# (about 3500 rpm and below) AND ram[43h] >= 0x18 (throttle nearly wide open);
+# on the uncapped 6000 rpm ramp those never overlap, and the huge boost
+# shortfall instead wraps ram[60h] negative and latches 3-2 (overboost) at ~9 s.
+run_test cl_wot_3000_BOOST_ZERO \
     -DTEST_CL_RAMP_TO_6000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_ZERO -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 -DAFM_CL_STEP_NS=28409091 \
+    -DCL_RPM_MAX=3000 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000
 
 run_test cl_ramp_to_6000_BOOST_LOW \
@@ -1002,7 +1010,7 @@ if [ -n "$1" ]; then
         cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=47000000000 ;;
         cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_BOOST) run_test cl_ramp_to_6000_BOOST $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
-        cl_ramp_to_6000_BOOST_ZERO) run_test cl_ramp_to_6000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
+        cl_wot_3000_BOOST_ZERO) run_test cl_wot_3000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DCL_RPM_MAX=3000 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_ramp_to_6000_BOOST_LOW) run_test cl_ramp_to_6000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;
         cl_ramp_to_6000_FQS0) run_test cl_ramp_to_6000_FQS0 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h00" -DCL_FUEL_ENERGY_PCT=0 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_FQS1) run_test cl_ramp_to_6000_FQS1 $IARG -DTEST_CL_RAMP_TO_6000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" "-D_FUEL_QUAL=8'h3B" -DCL_FUEL_ENERGY_PCT=3 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
@@ -1086,7 +1094,7 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_3000_KLR_KNOCK_BLOCKED"
             echo "               cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
             echo "               cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW"
-            echo "               cl_ramp_to_5000_BOOST_LOW cl_ramp_to_6000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW"
+            echo "               cl_ramp_to_5000_BOOST_LOW cl_wot_3000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW"
             echo "               cl_ramp_to_2100_BOOST_HIGH"
             echo "               ramp_to_redline_KLR_TPS_HIGH tps_open_circuit"
             echo "               cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST cl_ramp_to_3000_BOOST_OPEN_CIRCUIT cl_ramp_to_3000_BOOST_STEP_OVERBOOST cl_ramp_to_3000_BOOST_STEP_DOWN"
