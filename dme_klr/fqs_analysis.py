@@ -163,7 +163,7 @@ def main():
 
     print(f"\n{'='*80}")
     print(f"  FQS Fuel Quality Sweep — Injection Pulse Width Analysis")
-    print(f"  Steady-state = RPM ≥ {RPM_STEADY}")
+    print(f"  Steady-state = RPM ≥ {RPM_STEADY} (*_to_6000), ≥ {RPM_STEADY_3K} (*_to_3000)")
     print(f"  IV : {iv_dir}")
     print(f"  VL : {vl_dir}")
     print(f"{'='*80}\n")
@@ -182,11 +182,13 @@ def main():
         # Extract steady-state timing_adv (iram[0x31]) from STATUS lines
         # This is the clean half-teeth measurement — no IGN delay noise
         HALF_TEETH_DEG = 360.0 / 264.0
+        # Use the same per-test RPM threshold as the fuel window, so the
+        # 3000 RPM families (which never reach RPM_STEADY) still get timing.
+        rpm_thresh = RPM_STEADY_3K if 'ramp_to_3000' in test else RPM_STEADY
         ss_adv = [s['timing_adv'] for s in iv_snaps
-                  if s.get('rpm',0) >= 5000 and 'timing_adv' in s]
+                  if s.get('rpm',0) >= rpm_thresh and 'timing_adv' in s]
         iv_timing_adv = (sum(ss_adv)/len(ss_adv)) if ss_adv else None
 
-        rpm_thresh = RPM_STEADY_3K if 'ramp_to_3000' in test else RPM_STEADY
         iv_ss = steady_state_stats(iv_snaps, rpm_thresh)
         vl_ss = steady_state_stats(vl_snaps, rpm_thresh)
 
