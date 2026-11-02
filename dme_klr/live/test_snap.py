@@ -85,6 +85,10 @@ def roms():
 
 
 WARN = re.compile(r'\[WARN\]|WARNING|ERROR')
+# The simulator's own notes about the testbench (Icarus "WARNING: file.v:390:
+# $readmemh(...): Not enough words", Verilator "%Warning-..."): not
+# something the firmware did, so no snapshot
+SIM_NOTE = re.compile(r'^(WARNING: \S+\.s?v:\d+:|%Warning)')
 T_MS = re.compile(r'\bt=(\d+)\s*ms|^(?:DME|KLR): \[DS\] (\d+),|^\[DS\] (\d+),')
 
 
@@ -123,7 +127,7 @@ def scan(name, log, fail, script, verdict='FAIL'):
                 if m:
                     last_ms = int(next(g for g in m.groups() if g))
                     saw_ds = saw_ds or '[DS]' in line
-                if WARN.search(line) and not line.startswith('SIM: '):
+                if WARN.search(line) and not line.startswith('SIM: ') and not SIM_NOTE.match(line):
                     k = kind_of(line)
                     if k in seen:
                         continue

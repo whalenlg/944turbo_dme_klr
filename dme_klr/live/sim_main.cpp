@@ -102,6 +102,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -705,6 +706,10 @@ private:
         if (line.find("[WARN]") == std::string::npos && line.find("WARNING") == std::string::npos
             && line.find("ERROR") == std::string::npos)
             return;
+        // the simulator's own notes about the testbench ($readmem, ...),
+        // not something the firmware did (same as test_snap.py)
+        static const std::regex sim_note(R"(^(WARNING: \S+\.s?v:\d+:|%Warning))");
+        if (std::regex_search(line, sim_note)) return;
         if (!auto_snap_ || save_) return;
         std::string kind = warnKind(line);
         uint64_t now = tNs();
