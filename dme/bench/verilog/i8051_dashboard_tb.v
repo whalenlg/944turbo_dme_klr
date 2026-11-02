@@ -2039,8 +2039,9 @@ interrupt_generator interrupt_generator_1 (
 
 // A fault time can't sit in the continuous assign itself: Icarus does not
 // re-evaluate an assign when only $time changes, so the fault would land
-// at the next edge of the _gen signal, not at the fault time, while
-// Verilator applies it on time. A clocked flag fires at the same clock in both.
+// at the next edge of the _gen signal, not at the fault time, while the
+// other simulator applies it on time. A clocked flag fires at the same
+// clock in both.
 //
 // TEST_REF_SENSOR_LOSS: the reference (crank position) sensor wire
 // breaks/opens partway through the test — the generator underneath
