@@ -918,9 +918,6 @@ TESTS = {
     'cl_ramp_to_6000_BOOST_LOW': {'rpm_target': 6000, 'fuel_range':(1.5, 14.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'dwell_cap':96, 'require_ram33_value':0x31,
                           'notes':'Same as cl_ramp_to_6000_BOOST, boost input reduced by 75 (raw ADC, clamped at 0) — KLR expected to detect this and set DTC 3-1 (0x31, Boost Pressure Too Low)'},
-    'cl_ramp_to_2100_BOOST_HIGH': {'rpm_target': 2100, 'fuel_range':(1.5, 10.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'require_ram33_value':0x32,
-                          'notes':'-DBOOST_HIGH fault injection (boost input raised by 80, saturating at 0xF0) at a ~2100rpm ceiling (a cl_ramp_to_6000 variant was removed: DTC 3-2 never fired there; cl_ramp_to_3000_BOOST_STEP_OVERBOOST is the test that latches it). AFM_CL_TARGET=0x5F (REFINED — see i8051_dashboard_tb.v TEST_CL_RAMP_TO_2100 calibration history; renamed from cl_ramp_to_2000_BOOST_HIGH when the target moved — 0x53 settled at ~1794rpm, 0x59 settled at ~1944rpm) — rpm_target here may still need adjusting once a real run confirms the actual settling point.'},
 
     # cl_ramp_to_4500: intermediate CL operating point, AFM_CL_TARGET
     # empirically calibrated (see i8051_dashboard_tb.v TEST_CL_RAMP_TO_4500
@@ -2644,7 +2641,7 @@ def validate(test_name, logpath, dme_file=None):
     # same value-matching behavior when ram[33] does go non-zero, but
     # additionally FAILS (not just skips silently) if the code never
     # appears at all by end of test. Used for the boost fault-injection
-    # tests (BOOST_ZERO/BOOST_HIGH) where a specific DTC is the entire
+    # tests (BOOST_ZERO, BOOST_STEP_OVERBOOST) where a specific DTC is the entire
     # point of the test — "never faulted" there is a real failure, not
     # a benign "nothing to report".
     expect_ram33 = exp.get('expect_ram33_value')

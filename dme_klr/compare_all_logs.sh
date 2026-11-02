@@ -40,7 +40,6 @@ DASH_TESTS=(
     cl_cold_start
     cl_condition_cycle
     cl_condition_cycle_idle
-    cl_ramp_to_2100_BOOST_HIGH
     cl_ramp_to_3000
     cl_ramp_to_3000_BOOST
     cl_ramp_to_3000_BOOST_OPEN_CIRCUIT

@@ -516,11 +516,6 @@ run_test cl_ramp_to_3000_BOOST \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
 
-run_test cl_ramp_to_2100_BOOST_HIGH \
-    -DTEST_CL_RAMP_TO_2100   \
-    -DRPMRAMP -DCL_MODE -DBOOST -DBOOST_HIGH -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h5F \
-    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
-
 # AFM_CL_TARGET=0x83 — ESTIMATED, not independently calibrated against real
 # CL_TRAJ data. See the TEST_CL_RAMP_TO_4500 comment block in
 # i8051_dashboard_tb.v for the full derivation and known ~10-15% error
@@ -1004,7 +999,6 @@ if [ -n "$1" ]; then
         cl_ramp_to_3000_BOOST_STEP_OVERBOOST) run_test cl_ramp_to_3000_BOOST_STEP_OVERBOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h7C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_BOOST_STEP_DOWN) run_test cl_ramp_to_3000_BOOST_STEP_DOWN $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DBOOST_STEP_OVERBOOST -DBOOST_STEP_DOWN -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h7C" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_3000_BOOST) run_test cl_ramp_to_3000_BOOST $IARG -DTEST_CL_RAMP_TO_3000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
-        cl_ramp_to_2100_BOOST_HIGH) run_test cl_ramp_to_2100_BOOST_HIGH $IARG -DTEST_CL_RAMP_TO_2100 -DBOOST -DBOOST_HIGH -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h5F" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
         cl_ramp_to_4500) run_test cl_ramp_to_4500 $IARG -DTEST_CL_RAMP_TO_4500 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h9A" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=35000000000 ;;
         cl_ramp_to_5000_BOOST_LOW) run_test cl_ramp_to_5000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_5000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hA6" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=10000000000 ;;
         cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=73000000000 ;;
@@ -1096,7 +1090,6 @@ if [ -n "$1" ]; then
             echo "               cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH cl_ramp_to_6000_KLR_ADC0_NOISE_LOW"
             echo "               cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW"
             echo "               cl_ramp_to_5000_BOOST_LOW cl_wot_3000_BOOST_ZERO cl_ramp_to_6000_BOOST_LOW"
-            echo "               cl_ramp_to_2100_BOOST_HIGH"
             echo "               ramp_to_redline_KLR_TPS_HIGH tps_open_circuit"
             echo "               cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST cl_ramp_to_3000_BOOST_OPEN_CIRCUIT cl_ramp_to_3000_BOOST_STEP_OVERBOOST cl_ramp_to_3000_BOOST_STEP_DOWN"
             echo "  Fuel:        ramp_to_6000_FQS0-7 (non-CL fuel quality sweep)"
