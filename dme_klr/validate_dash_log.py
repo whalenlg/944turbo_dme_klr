@@ -325,13 +325,19 @@ TESTS = {
                           'expect_fail_markers':['ENGINE SYNC never fired',
                                                   'AFTER-START ENRICH never began',
                                                   'FUEL CUT never cleared',
-                                                  'RPM never reached target'],
+                                                  'RPM never reached target',
+                                                  'INTERRUPT BLOCK never cleared'],
                           'notes':'No reference signal from power-on (P3.2 held high through cranking). Real '
                                   'run: the engine never starts. The DME measures cranking RPM from the speed '
                                   'sensor (STATUS prpm ~840) but ENGINE SYNC never fires, the INTERRUPT BLOCK '
                                   'set at t=2ms never clears and fuel cut never ends, so nothing is injected '
                                   'for the whole 8 s. Contrast ref_sensor_loss/ref_sensor_stuck_low, where '
-                                  'losing ref after sync is benign: the reference is needed to sync, not to run.'},
+                                  'losing ref after sync is benign: the reference is needed to sync, not to run. '
+                                  'FIRMWARE-CONFIRMED: the startup path (28PIN_DME_PERFORMANCE 0x2B5, mirrored at '
+                                  '0xCC0) spins on JNB IE0 (TCON.1, the INT0/P3.2 reference edge flag) and only '
+                                  'then does SETB EA; CLR 1Ch (IntBlock, iram[23h].4). With no ref edge it never '
+                                  'leaves that loop, so "INTERRUPT BLOCK never cleared" is part of the expected '
+                                  'fault signature, not a separate problem.'},
     'speed_sensor_stuck_low': {'rpm_target':  840, 'fuel_range':(0.0, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'expect_fail_markers':['A_2_dme_relay (P1.2) not held low',
                                                   'IGN_OUT stopped pulsing for',
