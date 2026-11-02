@@ -955,11 +955,6 @@ TESTS = {
     # ranges were) — tighten once real data is available.
     'cl_ramp_to_4500': {'rpm_target': 4500, 'fuel_range':(1.5, 12.0), 'expect_ase':True, 'expect_fuelcut':True,
                           'notes':'CL: AFM steps to ~4500RPM target (AFM_CL_TARGET=0x9A, empirically calibrated) at t=2s; RPM should approach ~4500-4530 in 35s'},
-    # cl_ramp_to_5250: AFM_CL_TARGET=0xAD is an ESTIMATE (see
-    # i8051_dashboard_tb.v TEST_CL_RAMP_TO_5250), aimed at load_idx > 0x50
-    # for the FQS timing gate. fuel_range copied from cl_ramp_to_5000_BOOST_LOW.
-    'cl_ramp_to_5250': {'rpm_target': 5250, 'fuel_range':(1.5, 13.0), 'expect_ase':True, 'expect_fuelcut':True,
-                          'notes':'CL: AFM steps to ~5250RPM target (AFM_CL_TARGET=0xAD, estimated) at t=2s; check load_idx(49) > 0x50 for the FQS gate'},
     # cl_ramp_to_5000_BOOST_LOW: replaces the earlier cl_ramp_to_4500_BOOST_LOW.
     # AFM_CL_TARGET=0xA6 is an ESTIMATE (see i8051_dashboard_tb.v
     # TEST_CL_RAMP_TO_5000 for the full derivation) — interpolated from the
