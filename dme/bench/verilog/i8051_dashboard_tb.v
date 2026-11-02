@@ -492,6 +492,35 @@
   `endif
 `endif
 
+// TEST_CL_RAMP_TO_5250: same structure as TEST_CL_RAMP_TO_4500/_5000, aimed
+// at the FQS timing gate (DME 1C24): part throttle needs load_idx (iram
+// 0x49) > 0x50 for FQS positions 4-7 to retard timing. cl_ramp_to_4500
+// (AFM 0x9A) settles at load_idx ~59; cl_ramp_to_6000 (0xD8) at ~136.
+// AFM_CL_TARGET=0xAD is an ESTIMATE: +7 counts over cl_ramp_to_5000's 0xA6 at the
+// same ~38.6 rpm/count local slope gives ~5250 rpm, and interpolating
+// load_idx linearly between 0x9A and 0xD8 puts it near 83. Unverified;
+// check the settled RPM and load_idx in the log. A -DAFM_CL_TARGET on the
+// command line wins, so the target can be bracketed without editing here.
+`ifdef TEST_CL_RAMP_TO_5250
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define CL_MODE
+  `define AFM_CL_RAMP
+  `ifndef AFM_CL_TARGET
+  `define AFM_CL_TARGET  8'hAD      // ~5250 RPM (ESTIMATED — see note above)
+  `endif
+  `ifndef SIM_TIME
+  `define SIM_TIME  35000000000     // 35s — matching the 4500/5000 duration
+  `endif
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 // TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
 // TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
 // time), then six sequential 7-second condition-cycle phases, each
