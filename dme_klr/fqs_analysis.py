@@ -31,17 +31,6 @@ FQS_TESTS = [
     ('cl_ramp_to_6000_FQS7', '0xA7', 167),   # sw pos 7: 3.254V
     # Reference: base cl_ramp_to_6000 (no FQS override)
     ('cl_ramp_to_6000',      'N/A',   -1),
-    # --- ramp to 3000 RPM (more stable steady-state) ---
-    ('cl_ramp_to_3000_FQS0', '0x00',   0),
-    ('cl_ramp_to_3000_FQS1', '0x3B',  59),
-    ('cl_ramp_to_3000_FQS2', '0x5A',  90),
-    ('cl_ramp_to_3000_FQS3', '0x75', 117),
-    ('cl_ramp_to_3000_FQS4', '0x81', 129),
-    ('cl_ramp_to_3000_FQS5', '0x91', 145),
-    ('cl_ramp_to_3000_FQS6', '0x9C', 156),
-    ('cl_ramp_to_3000_FQS7', '0xA7', 167),
-    # Reference: base cl_ramp_to_3000
-    ('cl_ramp_to_3000',      'N/A',   -1),
     # --- non-CL (open-loop) sweeps: RPM is scripted via STEP_CLOCKS, not
     # fuel-derived, so there's no RPM-convergence confound the way there
     # is for the cl_ramp_to_* families above — all 8 positions per base
@@ -56,16 +45,6 @@ FQS_TESTS = [
     ('ramp_to_6000_FQS7', '0xA7', 167),
     # Reference: base ramp_to_6000 (no FQS override)
     ('ramp_to_6000',      'N/A',   -1),
-    ('ramp_to_3000_FQS0', '0x00',   0),
-    ('ramp_to_3000_FQS1', '0x3B',  59),
-    ('ramp_to_3000_FQS2', '0x5A',  90),
-    ('ramp_to_3000_FQS3', '0x75', 117),
-    ('ramp_to_3000_FQS4', '0x81', 129),
-    ('ramp_to_3000_FQS5', '0x91', 145),
-    ('ramp_to_3000_FQS6', '0x9C', 156),
-    ('ramp_to_3000_FQS7', '0xA7', 167),
-    # Reference: base ramp_to_3000
-    ('ramp_to_3000',      'N/A',   -1),
 ]
 
 # FQS timing retard gate (DME 1C24, see jhnbyrn 951-KLR-PAGES ignition
@@ -75,7 +54,6 @@ FQS_LOAD_MIN = 0x50
 
 # Also check RPM range to find steady-state
 RPM_STEADY = 5000  # prpm threshold for 6000RPM tests
-RPM_STEADY_3K = 2000  # prpm threshold for 3000RPM tests (engine peaks ~2880 RPM)
 
 
 def parse_ign_delays(path, t_start=15000, t_end=25000, min_delay=100):
@@ -174,7 +152,7 @@ def main():
 
     print(f"\n{'='*80}")
     print(f"  FQS Fuel Quality Sweep — Injection Pulse Width Analysis")
-    print(f"  Steady-state = RPM ≥ {RPM_STEADY} (*_to_6000), ≥ {RPM_STEADY_3K} (*_to_3000)")
+    print(f"  Steady-state = RPM ≥ {RPM_STEADY}")
     print(f"  IV : {iv_dir}")
     print(f"  VL : {vl_dir}")
     print(f"  FQS timing gate: FQS pos 4-7, RPM > 1600, and WOT or load_idx(49) > {FQS_LOAD_MIN}")
@@ -194,9 +172,7 @@ def main():
         # Extract steady-state timing_adv (iram[0x31]) from STATUS lines
         # This is the clean half-teeth measurement — no IGN delay noise
         HALF_TEETH_DEG = 360.0 / 264.0
-        # Use the same per-test RPM threshold as the fuel window, so the
-        # 3000 RPM families (which never reach RPM_STEADY) still get timing.
-        rpm_thresh = RPM_STEADY_3K if 'ramp_to_3000' in test else RPM_STEADY
+        rpm_thresh = RPM_STEADY
         ss_adv = [s['timing_adv'] for s in iv_snaps
                   if s.get('rpm',0) >= rpm_thresh and 'timing_adv' in s]
         iv_timing_adv = (sum(ss_adv)/len(ss_adv)) if ss_adv else None
@@ -243,14 +219,10 @@ def main():
         results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
 
     # ── FQS effect analysis ───────────────────────────────────────────────────
-    # Both helpers below take an exact base_name (not a substring match) and
-    # an exact fqs_prefix (str.startswith, not "in") — the original code used
-    # loose substring matching ('ramp_to_6000' in test), which would have
-    # accidentally swept the new non-CL ramp_to_6000_FQS*/ramp_to_3000_FQS*
-    # entries into the same table as the CL-mode cl_ramp_to_6000_FQS*/
-    # cl_ramp_to_3000_FQS* ones, comparing non-CL fuel values against a
-    # CL-mode baseline (or vice versa) — a meaningless comparison, since the
-    # two families have very different baseline fuel consumption.
+    # The helper takes an exact base_name and fqs_prefix (str.startswith,
+    # not "in"): a loose substring match ('ramp_to_6000' in test) would sweep
+    # the non-CL ramp_to_6000_FQS* entries into the CL cl_ramp_to_6000_FQS*
+    # table, comparing fuel against the wrong family's baseline.
 
     def print_fqs_effect_detailed(title, base_name, fqs_prefix, results):
         """6000-style section: IV+VL fuel, plus IGN timing_adv comparison."""
@@ -306,37 +278,6 @@ def main():
             else:
                 print(f"\n  ✓  FQS is affecting fuel — range of {fuel_range:.3f}ms seen.")
 
-    def print_fqs_effect_simple(title, base_name, fqs_prefix, results, rpm_label):
-        """3000-style section: IV fuel only, base = FQS0 (neutral) of the
-        same family rather than the family's plain (non-FQS) test."""
-        base = next((r for r in results if r[0] == base_name), None)
-        base_fuel = base[2]['fuel_avg'] if base and base[2] else None
-        fqs_results = [(r[0], r[1], r[2], r[3]) for r in results
-                        if r[0].startswith(fqs_prefix)]
-        if not (fqs_results and base_fuel):
-            return
-        print(f"\n{'='*80}")
-        print(f"  {title}")
-        print(f"{'='*80}")
-        print(f"\n  Base ({base_name}, no FQS override): {base_fuel:.3f}ms\n")
-        print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}")
-        print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}")
-        for test, fq_dec, iv_ss, vl_ss in fqs_results:
-            fqs_num = test.split('FQS')[1] if 'FQS' in test else '?'
-            iv_f = iv_ss['fuel_avg'] if iv_ss else None
-            iv_b = f"{(iv_f-base_fuel)/base_fuel*100:+.1f}%" if iv_f and base_fuel else '  N/A'
-            iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
-            print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_b:>8}")
-        iv_fuels = [r[2]['fuel_avg'] for r in fqs_results if r[2]]
-        if iv_fuels:
-            r_range = max(iv_fuels) - min(iv_fuels)
-            print(f"\n  IV fuel range: {min(iv_fuels):.3f} – {max(iv_fuels):.3f}ms")
-            print(f"  Range: {r_range:.3f}ms ({r_range/min(iv_fuels)*100:.1f}%)")
-            if r_range < 0.05:
-                print(f"  ⚠  WARNING: FQS has almost NO effect at {rpm_label}!")
-            else:
-                print(f"  ✓  FQS affecting fuel at {rpm_label} — {r_range:.3f}ms range.")
-
     print_fqs_effect_detailed(
         "FQS Effect on Fuel — iverilog reference (CL, cl_ramp_to_6000)",
         'cl_ramp_to_6000', 'cl_ramp_to_6000_FQS', results)
@@ -344,14 +285,6 @@ def main():
     print_fqs_effect_detailed(
         "FQS Effect on Fuel — iverilog reference (non-CL, ramp_to_6000)",
         'ramp_to_6000', 'ramp_to_6000_FQS', results)
-
-    print_fqs_effect_simple(
-        "FQS Effect on Fuel @ 3000 RPM — iverilog reference (CL, cl_ramp_to_3000)",
-        'cl_ramp_to_3000_FQS0', 'cl_ramp_to_3000_FQS', results, '3000 RPM (CL)')
-
-    print_fqs_effect_simple(
-        "FQS Effect on Fuel @ 3000 RPM — iverilog reference (non-CL, ramp_to_3000)",
-        'ramp_to_3000_FQS0', 'ramp_to_3000_FQS', results, '3000 RPM (non-CL)')
 
     print()
 

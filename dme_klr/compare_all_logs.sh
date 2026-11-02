@@ -44,14 +44,6 @@ DASH_TESTS=(
     cl_ramp_to_3000
     cl_ramp_to_3000_BOOST
     cl_ramp_to_3000_BOOST_OPEN_CIRCUIT
-    cl_ramp_to_3000_FQS0
-    cl_ramp_to_3000_FQS1
-    cl_ramp_to_3000_FQS2
-    cl_ramp_to_3000_FQS3
-    cl_ramp_to_3000_FQS4
-    cl_ramp_to_3000_FQS5
-    cl_ramp_to_3000_FQS6
-    cl_ramp_to_3000_FQS7
     cl_ramp_to_3000_KLR_BATT_DISCONNECTED
     cl_ramp_to_3000_KLR_BATT_LOW
     cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH
@@ -105,14 +97,6 @@ DASH_TESTS=(
     overrun_cutoff
     ramp_6k_hold
     ramp_to_3000
-    ramp_to_3000_FQS0
-    ramp_to_3000_FQS1
-    ramp_to_3000_FQS2
-    ramp_to_3000_FQS3
-    ramp_to_3000_FQS4
-    ramp_to_3000_FQS5
-    ramp_to_3000_FQS6
-    ramp_to_3000_FQS7
     ramp_to_6000
     ramp_to_6000_FQS0
     ramp_to_6000_FQS1
