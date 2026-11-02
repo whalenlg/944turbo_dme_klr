@@ -12,7 +12,7 @@ Usage:
 
 Defaults:
     log_dir : ~/coding_projects/944/tmp/dme_klr/dash_logs   (iverilog)
-    tests   : the 8 cl_ramp_to_3000_FQS0-7 tests
+    tests   : the 8 cl_ramp_to_6000_FQS0-7 tests
 
 Steady-state RPM threshold defaults to 90% of the RPM implied by the test
 name (e.g. "...to_3000..." -> 2700, "...to_6000..." -> 5400); override with
@@ -71,8 +71,8 @@ def main():
                      default=str(Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'),
                      help='Directory containing <test>.dash.log files')
     ap.add_argument('tests', nargs='*',
-                     default=[f'cl_ramp_to_3000_FQS{i}' for i in range(8)],
-                     help='Test names to check (default: the 8 cl_ramp_to_3000 FQS tests)')
+                     default=[f'cl_ramp_to_6000_FQS{i}' for i in range(8)],
+                     help='Test names to check (default: the 8 cl_ramp_to_6000 FQS tests)')
     ap.add_argument('--rpm-thresh', type=float, default=None,
                      help='Override the steady-state RPM threshold for every test '
                           '(default: 90%% of the RPM guessed from each test name)')

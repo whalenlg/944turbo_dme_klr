@@ -32,7 +32,7 @@ Usage:
 
 Defaults:
     log_dir  : ~/coding_projects/944/tmp/dme_klr/dash_logs   (iverilog)
-    tests    : the 8 cl_ramp_to_3000_FQS0-7 tests
+    tests    : the 8 cl_ramp_to_6000_FQS0-7 tests
     expected : 0 3 -3 6 0 3 -3 6   (the standard FQS0-7 fuel_pct pattern)
 """
 
@@ -117,8 +117,8 @@ def main():
                      default=str(Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'),
                      help='Directory containing <test>.dash.log files')
     ap.add_argument('tests', nargs='*',
-                     default=[f'cl_ramp_to_3000_FQS{i}' for i in range(8)],
-                     help='Test names to check (default: the 8 cl_ramp_to_3000 FQS tests)')
+                     default=[f'cl_ramp_to_6000_FQS{i}' for i in range(8)],
+                     help='Test names to check (default: the 8 cl_ramp_to_6000 FQS tests)')
     ap.add_argument('--expected', nargs='+', type=float, default=None,
                      help='Expected fuel_pct per test, same order as tests '
                           '(default: 0 3 -3 6 0 3 -3 6, the standard FQS0-7 pattern)')
