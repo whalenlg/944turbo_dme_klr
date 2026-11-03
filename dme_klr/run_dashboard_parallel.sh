@@ -4,7 +4,8 @@
 #
 #  Runs all tests from run_dashboard_tests.sh with up to N
 #  workers, validates each .dash.log on completion, and
-#  writes a PASS/WARN/FAIL summary.
+#  writes a PASS/WARN/FAIL summary. Tests start longest first
+#  (by simulated time) so the run ends as soon as possible.
 #
 #  Usage:
 #    ./run_dashboard_parallel.sh <workers> [test1 test2 ... | GROUP1 GROUP2 ...]
@@ -167,6 +168,36 @@ if [ $# -gt 0 ]; then
 else
     TESTS=("${ALL_TESTS[@]}")
 fi
+
+# ── Longest first ────────────────────────────────────────────────────────────
+# Start the tests in order of simulated length, longest first, so a long
+# test can't be the last one to start while the other workers sit idle at
+# the end of the run. Each test's length comes from its single-test case
+# entry in $RUN_TESTS (the same entry the workers below run): SIM_TIME in
+# ns for run_test, --start-s/--end-s for run_replay_test. A test with no
+# SIM_TIME gets the testbench default of 40 s. Ties keep their order.
+sim_seconds_table() {
+    awk '
+        /^[[:space:]]+[A-Za-z0-9_]+\)[[:space:]]+run_(replay_)?test / {
+            name = $1; sub(/\)$/, "", name)
+            secs = 40
+            if (match($0, /-DSIM_TIME=[0-9]+/))
+                secs = substr($0, RSTART + 11, RLENGTH - 11) / 1e9
+            if (match($0, /--end-s [0-9.]+/)) {
+                secs = substr($0, RSTART + 8, RLENGTH - 8)
+                if (match($0, /--start-s [0-9.]+/))
+                    secs -= substr($0, RSTART + 10, RLENGTH - 10)
+            }
+            print name, secs
+        }' "$RUN_TESTS"
+}
+TESTS=($(
+    sim_seconds_table | awk '
+        NR == FNR { secs[$1] = $2; next }
+        { print ($1 in secs ? secs[$1] : 40), FNR, $1 }' - <(printf "%s\n" "${TESTS[@]}") |
+    sort -k1,1nr -k2,2n | awk '{ print $3 }'
+))
+
 TOTAL=${#TESTS[@]}
 START_TIME=$(date +%s)
 
