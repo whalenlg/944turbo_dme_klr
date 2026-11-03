@@ -172,14 +172,15 @@ log "Running: bash compare_all_logs.sh"
 bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log
 CMP_MATCH=$(grep -oE "MATCH=[0-9]+" /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
 CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
+CMP_NOTE=$(grep -oE "NOTE=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
 CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
 CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
 if [ "${CMP_DIFF:-0}" -eq 0 ]; then
-    ok "iverilog == Verilator — ${CMP_MATCH:-?} tests match"
+    ok "iverilog == Verilator — ${CMP_MATCH:-?} tests match${CMP_NOTE:+, ${CMP_NOTE} NOTE (X-init differences, expected)}"
 elif [ "${CMP_DIFF:-0}" -le 4 ]; then
-    warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
+    warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
 else
-    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see /tmp/compare.log)"
+    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see /tmp/compare.log)"
 fi
 
 log "Generating detailed compare_sim_logs.py reports for differing tests ..."

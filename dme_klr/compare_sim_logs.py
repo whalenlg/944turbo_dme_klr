@@ -7,12 +7,17 @@ Usage:
     python3 compare_sim_logs.py --dash <iv_log> <vl_log> [test_name]
 
 Exit codes:
-    0  MATCH  — outputs are functionally equivalent
-    1  DIFF   — meaningful differences found
-    2  ERROR  — one or both files missing / unreadable
+    0  MATCH       — outputs are functionally equivalent
+    0  NEAR-MATCH  — only near-match differences
+    0  NOTE        — differences, but they start where iverilog's KLR
+                     branched on X (uninitialised RAM; see X_NOTE_MARGIN_MS),
+                     so they are expected and not counted as a DIFF
+    1  DIFF        — meaningful differences found
+    2  ERROR       — one or both files missing / unreadable
 
 Output (one summary line + detail):
     MATCH  <name>  <detail>
+    NOTE   <name>  <detail>
     DIFF   <name>  <detail>
     ERROR  <name>  <detail>
 """
@@ -24,6 +29,20 @@ import statistics
 from collections import Counter
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+class Issue(str):
+    """An issue's text, plus t_ms: the sim time (ms) where that difference
+    first shows, or None when it has no single starting point (e.g. one log
+    has fewer snapshots because its run stopped early). main() uses t_ms to
+    tell differences that start with iverilog's X branches (NOTE) from the
+    rest (DIFF)."""
+    def __new__(cls, text, t_ms=None):
+        obj = super().__new__(cls, text)
+        obj.t_ms = t_ms
+        return obj
+
+def _row_t(seq, i):
+    return seq[i].get('t') if i < len(seq) else None
 
 def read_lines(path):
     try:
@@ -303,7 +322,7 @@ def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
         return []
     delta = abs(iv_n - vl_n)
     if delta > max(2, int(max(iv_n, vl_n) * 0.01)):
-        issues.append(f"{prefix}: count iv={iv_n} vl={vl_n}")
+        issues.append(Issue(f"{prefix}: count iv={iv_n} vl={vl_n}"))
     def count_mismatches(a_st, b_st):
         n = min(len(a_st), len(b_st))
         all_fields = set()
@@ -312,28 +331,33 @@ def compare_status_series(iv_st, vl_st, prefix, tolerance=0.01):
             all_fields.update(b_st[i].keys())
         all_fields.discard('t')
         mm = Counter()
+        first_t = None   # earliest qualifying mismatch over all fields
         for k in all_fields:
-            cnt = sum(qualifying_mismatch_mask(a_st, b_st, k, tolerance))
+            mask = qualifying_mismatch_mask(a_st, b_st, k, tolerance)
+            cnt = sum(mask)
             if cnt:
                 mm[k] = cnt
-        return mm
+                t = _row_t(a_st, mask.index(True))
+                if t is not None and (first_t is None or t < first_t):
+                    first_t = t
+        return mm, first_t
 
     # Try aligned comparison, then ±1 snapshot offset; use best (fewest mismatches)
-    field_mismatches = count_mismatches(iv_st, vl_st)
+    field_mismatches, first_t = count_mismatches(iv_st, vl_st)
     total = sum(field_mismatches.values())
     for offset in [1, -1]:
         if offset > 0:
-            mm2 = count_mismatches(iv_st[offset:], vl_st)
+            mm2, t2 = count_mismatches(iv_st[offset:], vl_st)
         else:
-            mm2 = count_mismatches(iv_st, vl_st[-offset:])
+            mm2, t2 = count_mismatches(iv_st, vl_st[-offset:])
         if sum(mm2.values()) < total:
-            field_mismatches = mm2
+            field_mismatches, first_t = mm2, t2
             total = sum(mm2.values())
 
     if field_mismatches:
         top = sorted(field_mismatches.items(), key=lambda x: -x[1])[:5]
-        issues.append(f"{prefix} field mismatches: " +
-                      ", ".join(f"{k}({n})" for k, n in top))
+        issues.append(Issue(f"{prefix} field mismatches: " +
+                            ", ".join(f"{k}({n})" for k, n in top), first_t))
     return issues
 
 _PHASE_T_RE = re.compile(r't=(\d+)\s*ms')
@@ -425,16 +449,34 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
             iv_p = iv_p[1:] if len(iv_p) > 1 else iv_p
             vl_p = vl_p[1:] if len(vl_p) > 1 else vl_p
     issues = []
+    first_t = first_phase_divergence_ms(iv_p, vl_p)
     _count_tol = 1 if prefix.startswith("KLR") else 0
     if abs(len(iv_p) - len(vl_p)) > max(_count_tol, int(max(len(iv_p),len(vl_p),1) * 0.01)):
-        issues.append(f"{prefix}: count iv={len(iv_p)} vl={len(vl_p)}")
+        issues.append(Issue(f"{prefix}: count iv={len(iv_p)} vl={len(vl_p)}", first_t))
     for i, ((a, a_raw), (b, b_raw)) in enumerate(zip(iv_p, vl_p)):
         if a != b:
-            issues.append(f"{prefix} diverges at entry {i}: iv={a!r} vl={b!r}")
+            issues.append(Issue(f"{prefix} diverges at entry {i}: iv={a!r} vl={b!r}", first_t))
             break
     if prefix.startswith("KLR"):
         issues.extend(compare_spark_delays(iv_p, vl_p, prefix))
     return issues
+
+def _raw_t(raw):
+    m = _PHASE_T_RE.search(raw)
+    return int(m.group(1)) if m else None
+
+def first_phase_divergence_ms(iv_p, vl_p):
+    """Sim time (ms) of the first entry where two normalised phase
+    sequences ((normalised, raw) pairs) part: the earlier of the two
+    entries there, or the first extra entry when one sequence is a
+    prefix of the other. None if they are identical."""
+    for (a, a_raw), (b, b_raw) in zip(iv_p, vl_p):
+        if a != b:
+            ts = [t for t in (_raw_t(a_raw), _raw_t(b_raw)) if t is not None]
+            return min(ts) if ts else None
+    n = min(len(iv_p), len(vl_p))
+    longer = iv_p if len(iv_p) > n else vl_p
+    return _raw_t(longer[n][1]) if len(longer) > n else None
 
 def compare_spark_delays(iv_p, vl_p, prefix):
     """Compare spark_delay as the median over SPARK_DELAY_WINDOW_MS windows
@@ -463,8 +505,9 @@ def compare_spark_delays(iv_p, vl_p, prefix):
     if not n:
         return []
     k = keys[mask.index(True)]
-    return [f"{prefix} spark_delay mismatches: {n} of {len(keys)} {SPARK_DELAY_WINDOW_MS} ms windows, "
-            f"first at t={k * SPARK_DELAY_WINDOW_MS} ms median iv={iv_w[k]:.3f} us vl={vl_w[k]:.3f} us"]
+    return [Issue(f"{prefix} spark_delay mismatches: {n} of {len(keys)} {SPARK_DELAY_WINDOW_MS} ms windows, "
+                  f"first at t={k * SPARK_DELAY_WINDOW_MS} ms median iv={iv_w[k]:.3f} us vl={vl_w[k]:.3f} us",
+                  k * SPARK_DELAY_WINDOW_MS)]
 
 def field_diff_rows(a_st, b_st, field, max_rows=20, tolerance=0.01, min_run=MIN_CONSECUTIVE_MISMATCH):
     """Return up to `max_rows` (index, t, a_val, b_val) tuples where `field`
@@ -711,7 +754,7 @@ def compare_ds_series(iv_ds, vl_ds, tolerance=0.01):
 
     delta_n = abs(iv_n - vl_n)
     if delta_n > max(2, int(iv_n * 0.01)):   # >1% count difference is notable
-        issues.append(f"snapshot count iv={iv_n} vl={vl_n} (delta={delta_n})")
+        issues.append(Issue(f"snapshot count iv={iv_n} vl={vl_n} (delta={delta_n})"))
 
     # Compare field-by-field on the overlapping prefix
     n_compare = min(iv_n, vl_n)
@@ -722,15 +765,24 @@ def compare_ds_series(iv_ds, vl_ds, tolerance=0.01):
     all_fields.discard('t')
 
     field_mismatches = Counter()
+    first_t = None
     for k in all_fields:
-        cnt = sum(qualifying_mismatch_mask(iv_ds[:n_compare], vl_ds[:n_compare], k, tolerance))
+        mask = qualifying_mismatch_mask(iv_ds[:n_compare], vl_ds[:n_compare], k, tolerance)
+        cnt = sum(mask)
         if cnt:
             field_mismatches[k] = cnt
+            t = _row_t(iv_ds, mask.index(True))
+            try:
+                t = int(t) if t is not None else None
+            except ValueError:
+                t = None
+            if t is not None and (first_t is None or t < first_t):
+                first_t = t
 
     if field_mismatches:
         top = sorted(field_mismatches.items(), key=lambda x: -x[1])[:5]
-        issues.append("field mismatches: " +
-                       ", ".join(f"{k}({n})" for k, n in top))
+        issues.append(Issue("field mismatches: " +
+                            ", ".join(f"{k}({n})" for k, n in top), first_t))
 
     return len(issues) == 0, issues
 
@@ -765,6 +817,11 @@ def compare_dash(iv_lines, vl_lines, name):
     _spurious = re.compile(r'spurious pulse filtered', re.IGNORECASE)
     def count_p(lines, p):
         return sum(1 for l in lines if l.startswith(p) and not _spurious.search(l))
+    _ts  = re.compile(r't=\d+\s*ms\s*')
+    _num = re.compile(r'(pulse_width|delay_from_ign_in|spark_delay|width)=[\d.]+')
+    def events(lines, p):
+        return [(_num.sub(lambda m: m.group(1) + '=N', _ts.sub('', l.strip())), l.strip())
+                for l in lines if l.startswith(p) and not _spurious.search(l)]
     for p in prefixes:
         iv_n = count_p(iv_lines, p)
         vl_n = count_p(vl_lines, p)
@@ -773,7 +830,13 @@ def compare_dash(iv_lines, vl_lines, name):
         delta = abs(iv_n - vl_n)
         threshold = max(2, int(max(iv_n, vl_n) * 0.01))
         if delta > threshold:
-            issues.append(f"{p}: iv={iv_n} vl={vl_n}")
+            # An event stream (PHASE) starts differing where its events
+            # first part; a snapshot stream (DS/STATUS/SEED) with a
+            # different count means a run stopped early, which has no
+            # start time and is never explained by X
+            t = first_phase_divergence_ms(events(iv_lines, p), events(vl_lines, p)) \
+                if "[PHASE]" in p else None
+            issues.append(Issue(f"{p}: iv={iv_n} vl={vl_n}", t))
 
     # Deep compare DME [DS] series
     iv_ds = extract_ds_fields(iv_lines, "DME: [DS]")
@@ -786,7 +849,7 @@ def compare_dash(iv_lines, vl_lines, name):
     vl_kds = extract_ds_fields(vl_lines, "KLR: [DS]")
     if iv_kds or vl_kds:
         ok2, kds_issues = compare_ds_series(iv_kds, vl_kds)
-        issues.extend(["KLR: " + i for i in kds_issues])
+        issues.extend([Issue("KLR: " + i, i.t_ms) for i in kds_issues])
 
     # DME [PHASE] sequence — timestamp-normalised comparison
     issues.extend(compare_phase_sequence(iv_lines, vl_lines, "DME: [PHASE]"))
@@ -844,6 +907,40 @@ def list_fields(iv_lines, vl_lines):
             else:
                 tag = ""
             print(f"  {f}{tag}")
+
+
+# ── X-init differences: NOTE instead of DIFF ─────────────────────────────────
+
+# A run whose first difference starts within this long after iverilog's
+# last KLR [XBRANCH] window is an X-init difference: Icarus took the
+# not-taken path on uninitialised KLR RAM where Verilator read 0, and the
+# two runs have followed different firmware paths since. The slowest
+# seen so far starts 110 ms after the last window (TPS_SUPPLY_LOW/LOST,
+# tps_deg at 310 ms); 500 ms leaves room for that. A difference that
+# starts later than this is reported as DIFF (e.g. cl_tippy_in's DME
+# timing_adv from 3488 ms, with XBRANCH only at 100/200 ms).
+X_NOTE_MARGIN_MS = 500
+
+def x_note_reason(issues, xbr_t):
+    """Why this run's differences count as X-init (a NOTE), or None (DIFF).
+
+    The whole run is a NOTE when its earliest difference starts at or
+    before the last [XBRANCH] window + X_NOTE_MARGIN_MS. Everything after
+    that point grows out of the same divergence (e.g. TPS_SUPPLY_LOW: KLR
+    tps_deg from 310 ms, DME fuel and wdog from ~2.3 s) and can't be told
+    apart from it in these logs. An issue with no start time (a snapshot
+    count difference: a run stopped early) is never X, so it keeps DIFF."""
+    if not xbr_t or not issues:
+        return None
+    ts = [getattr(i, 't_ms', None) for i in issues]
+    if any(t is None for t in ts):
+        return None
+    first, limit = min(ts), max(xbr_t) + X_NOTE_MARGIN_MS
+    if first > limit:
+        return None
+    return (f"X-init difference: the first difference (t={first} ms) starts within "
+            f"{X_NOTE_MARGIN_MS} ms of the last KLR [XBRANCH] window ({max(xbr_t)} ms), "
+            f"so it's expected and not counted as a DIFF")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -907,16 +1004,20 @@ def main():
     detail = "; ".join(issues)
     # The iverilog KLR core reports when the firmware branches on X
     # (uninitialised RAM; Icarus takes the not-taken path, Verilator sees
-    # 0). Differences from that point on are expected, so say so; the
-    # verdict itself is unchanged
+    # 0). Say so in the detail, and see x_note_reason() for when that
+    # makes the verdict NOTE instead of DIFF
     xbr = [l for l in iv_lines if l.startswith("KLR: [XBRANCH]")]
+    xbr_t = [int(m.group(1)) for m in (_PHASE_T_RE.search(l) for l in xbr) if m]
     if xbr:
-        ts = [m.group(1) for m in (_PHASE_T_RE.search(l) for l in xbr) if m]
+        ts = [str(t) for t in xbr_t]
         detail += (f"; iverilog KLR branched on X in {len(xbr)} 100 ms window(s)"
                    f"{' (' + ', '.join(ts[:5]) + (', ...' if len(ts) > 5 else '') + ' ms)' if ts else ''}"
                    f" - see KLR: [XBRANCH]")
     is_near_match = all(i.startswith("NEAR-MATCH") for i in issues)
-    verdict = "NEAR-MATCH" if is_near_match else "DIFF"
+    note = None if is_near_match else x_note_reason(issues, xbr_t)
+    if note:
+        detail += "; " + note
+    verdict = "NEAR-MATCH" if is_near_match else ("NOTE" if note else "DIFF")
     print(f"{verdict}\t{args.name}\t{detail}")
 
     if args.verbose:
@@ -927,7 +1028,7 @@ def main():
         if written and args.open_plot:
             open_in_preview(written)
 
-    sys.exit(0 if is_near_match else 1)
+    sys.exit(0 if is_near_match or note else 1)
 
 
 if __name__ == '__main__':

@@ -119,6 +119,7 @@ compare_with_iv() {
     case "$verdict" in
         MATCH)      colour="[32m" ;;
         NEAR-MATCH) colour="[33m" ;;
+        NOTE)       colour="[36m" ;;
         DIFF)       colour="[31m" ;;
         *)          colour="" ;;
     esac
