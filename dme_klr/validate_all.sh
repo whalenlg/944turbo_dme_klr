@@ -49,28 +49,23 @@ if [ ! -d "$LOGDIR" ]; then
     exit 2
 fi
 
-# Test list: use args if given, otherwise pull every key out of
-# validate_dash_log.py's TESTS dict so this script never drifts out
-# of sync with it. Scoped to JUST the TESTS dict (stops at its closing
-# '}') rather than scanning the whole file — validate_dash_log.py also
-# has a DME_FILE_OVERRIDES dict keyed by these same test names (for
-# per-firmware expected-value overrides), which a whole-file regex scan
-# would otherwise pick up as additional "tests", double-validating any
-# test that has an override registered.
+# Test list: use args if given, otherwise take every key of
+# validate_dash_log.py's TESTS dict so this script never drifts out of
+# sync with it. Imports the module and reads TESTS itself rather than
+# regex-scanning the source: a scan for "'name': {" also matched nested
+# dict-valued fields inside a test entry (e.g. cl_idle_controlled_by_isv's
+# 'expect_isv_recovery': {...}), which then showed up as a phantom test
+# with "No expectations defined" WARN. Reading the dict also leaves out
+# DME_FILE_OVERRIDES, which is keyed by the same test names.
 if [ "$#" -gt 0 ]; then
     TEST_NAMES=("$@")
 else
     TEST_NAMES=()
     while IFS= read -r line; do
         [ -n "$line" ] && TEST_NAMES+=("$line")
-    done < <(python3 -c "
-import re
-with open('$VALIDATOR') as f:
-    src = f.read()
-start = src.index('TESTS = {')
-end = src.index('\n}\n', start)
-tests_block = src[start:end]
-print('\n'.join(re.findall(r\"^\s*'([A-Za-z0-9_]+)':\s*\{\", tests_block, re.MULTILINE)))
+    done < <(cd "$SCRIPT_DIR" && python3 -c "
+import validate_dash_log
+print('\\n'.join(validate_dash_log.TESTS))
 ")
 fi
 
