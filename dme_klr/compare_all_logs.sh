@@ -12,9 +12,10 @@
 #  compare a subset.
 #
 #  Output:
-#    Prints MATCH/NEAR-MATCH/DIFF/SKIP per test.
+#    Prints MATCH/NEAR-MATCH/NOTE/DIFF/SKIP per test. NOTE = the
+#    differences start with iverilog's KLR X branches (expected, not a DIFF).
 #    Writes summary to $VL_DASH_DIR/compare_all.log
-#    Exit code 0 if all MATCH/NEAR-MATCH, 1 if any DIFF.
+#    Exit code 0 if all MATCH/NEAR-MATCH/NOTE, 1 if any DIFF.
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -158,7 +159,7 @@ printf "  Tests: %d\n" "${#TESTS[@]}"
 echo "============================================================"
 echo ""
 
-N_MATCH=0; N_NEAR=0; N_DIFF=0; N_SKIP=0
+N_MATCH=0; N_NEAR=0; N_NOTE=0; N_DIFF=0; N_SKIP=0
 
 for name in "${TESTS[@]}"; do
     iv_log="$IV_DIR/${name}${SUFFIX}"
@@ -199,6 +200,7 @@ for name in "${TESTS[@]}"; do
     case "$verdict" in
         MATCH)      colour="\033[32m"; N_MATCH=$(( N_MATCH + 1 )) ;;
         NEAR-MATCH) colour="\033[33m"; N_NEAR=$(( N_NEAR + 1 )) ;;
+        NOTE)       colour="\033[36m"; N_NOTE=$(( N_NOTE + 1 )) ;;
         DIFF)       colour="\033[31m"; N_DIFF=$(( N_DIFF + 1 )) ;;
         ERROR)      colour="\033[31m"; N_DIFF=$(( N_DIFF + 1 )) ;;
         *)          colour="";         N_SKIP=$(( N_SKIP + 1 )) ;;
@@ -215,14 +217,14 @@ SECS=$(( ELAPSED % 60 ))
 
 echo ""
 echo "============================================================"
-printf "  Complete — %dm%ds   MATCH=%d  NEAR=%d  DIFF=%d  SKIP=%d\n" \
-       "$MINS" "$SECS" "$N_MATCH" "$N_NEAR" "$N_DIFF" "$N_SKIP"
+printf "  Complete — %dm%ds   MATCH=%d  NEAR=%d  NOTE=%d  DIFF=%d  SKIP=%d\n" \
+       "$MINS" "$SECS" "$N_MATCH" "$N_NEAR" "$N_NOTE" "$N_DIFF" "$N_SKIP"
 echo "============================================================"
 echo ""
 
-# ── Sorted summary: DIFF first, then NEAR-MATCH, then MATCH ──
+# ── Sorted summary: DIFF first, then NOTE, NEAR-MATCH, MATCH ──
 if [ -f "$OUT_LOG" ]; then
-    for prefix in DIFF ERROR NEAR-MATCH MATCH SKIP; do
+    for prefix in DIFF ERROR NOTE NEAR-MATCH MATCH SKIP; do
         grep "^${prefix}" "$OUT_LOG" 2>/dev/null | \
             awk -F'\t' -v p="$prefix" '{printf "  %-12s %-26s %s\n", p, $2, $3}'
     done
