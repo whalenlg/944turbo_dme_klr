@@ -1391,7 +1391,12 @@ initial begin
     tippy_fired       = 1'b0;
 end
 
-always @(posedge reference_sensor) begin
+// Skip the t=0 edge: the generator's initial block sets int_0 to 1 at
+// t=0, and whether that first 0/X->1 step counts as a posedge differs
+// between simulators. Counting it put the tippy one crank (70 ms at
+// 840 RPM) earlier in the Verilator run of cl_tippy_in than in the
+// Icarus one (step at 1840 vs 1910 ms with identical RPM up to then).
+always @(posedge reference_sensor) if ($time != 0) begin
     if (!tippy_fired) begin
         tippy_crank_count <= tippy_crank_count + 8'd1;
         // Fire at crank #25 — well past fuel cut end (~15 cranks at 840 RPM)
