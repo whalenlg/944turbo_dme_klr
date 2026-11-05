@@ -305,7 +305,9 @@ compile_and_run_klr() {
     # dme_klr_dashboard_tb emits both DME: [DS] and (from its inlined
     # phase monitor) DME: [PHASE/STATUS/SEED].
     # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
-    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^KLR: \[SPARK\]|^DME: \[SEED\]|^DME: \[WARN\]|^DME: \[LKUP\]" "$log" > "$LOGDIR/${name}.dash.log"
+    # Which ROM images the run used (name + content hash), first, for the dashboard
+    python3 "$SCRIPT_DIR/rom_stamp.py" "$log" > "$LOGDIR/${name}.dash.log" || true
+    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^KLR: \[SPARK\]|^DME: \[SEED\]|^DME: \[WARN\]|^DME: \[LKUP\]" "$log" >> "$LOGDIR/${name}.dash.log"
     local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
