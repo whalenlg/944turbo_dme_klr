@@ -187,12 +187,31 @@ throttle opens, and the KLR boost-target table takes over from boost onset
 RPM is held at 840 until the firmware first reports EngineSync, as in the
 closed-loop tests.
 
+## Conditional breakpoints
+
+A PC breakpoint can carry a memory condition: it stops only if that PC is
+about to run **and** a RAM byte (DME iram / KLR ram, 00h-7Fh) or one bit of
+it compares true. In the dashboard, click **+if** on a breakpoint in the
+BREAKPOINTS row, pick the location (search by name or hex address, as the
+Timeline tab's memory picker; `21.3` for a bit), choose `==`, `!=`, `<` or
+`>` and a hex value. From a terminal:
+
+```
+bp add dme 024E if 37 > 14      stop at 024E only while iram[37h] > 14h
+bp add klr 0ABC if 21.0 == 1    stop at 0ABC only while bit 0 of ram[21h] is set
+bp add dme 024E                 the same breakpoint again, without a condition
+```
+
+The comparison is unsigned, made with RAM as it is when the instruction is
+fetched (before it executes). `SIM: [BP]` lists a conditional breakpoint as
+`024E@37>14` / `0ABC@21.0==1`; snapshots and LOAD keep the conditions.
+
 ## Commands
 
 The sim takes one command per line on stdin, so it also works straight from
 a terminal (`obj/dme_klr_live +vcd=/dev/null`). See the header of
 `sim_main.cpp` for the full list: `run`, `pause`, `step dme|klr [N]`,
-`until <ms>`, `set`, `bp add|del dme|klr <hex>`, `bp clear`, `snap`, `rom`,
+`until <ms>`, `set`, `bp add|del dme|klr <hex> [if <mem>[.<bit>] <op> <val>]`, `bp clear`, `snap`, `rom`,
 `trace dme|klr [N]`, `save [label]`, `load <dir>`, `autosnap on|off|max <n>`,
 `breakonwarn on|off`, `status`, `quit`. From a terminal, `+snapdir=<dir>`
 picks where snapshots go and `+load=<dir>` starts from one.
