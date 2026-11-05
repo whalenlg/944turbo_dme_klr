@@ -48,7 +48,7 @@ _asm_cfg() {   # <dme|klr> <repo>
         klr)
             _c_name=KLR; _c_dis="$2/klr/disassemble"; _c_roms="$2/bin_images/klr"; _c_size=4096
             _c_src=87KLR951.xlsx; _c_refimg=87KLR_951.mem; _c_reftag=87
-            _c_gen=build_klr_variant.py; _c_deps=(build_klr_variant.py dis8048.py)
+            _c_gen=build_klr_variant.py; _c_deps=(build_klr_variant.py dis8048.py klr_maps.py)
             _c_variants=(86:86KLR_951.mem:86KLR951.xlsx 89:89KLR_951.mem:89KLR951.xlsx)
             _c_default=87KLR_951.mem
             _c_files=(test_sim.hex asm_opcode_ins.hex asm_instr.hex asm_operands.hex
