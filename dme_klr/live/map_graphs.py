@@ -31,7 +31,7 @@ Decoding (performance ROM addresses; the 1986 and 1989 images match):
 """
 import argparse, hashlib, json, os, re, sys
 
-GEN_VERSION = 1
+GEN_VERSION = 2   # bump to redraw every cached image
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 DEFAULT_CACHE = os.path.abspath(os.path.join(REPO, '..', 'tmp', 'dme_klr', 'map_graphs'))
@@ -159,6 +159,7 @@ def draw_map(plt, np, m, title, path):
             ax.annotate(f'{raw:02X}', (xv, yv), textcoords='offset points', xytext=(0, 7), ha='center', fontsize=8)
         ax.set_xlabel(axis_label(x))
         ax.set_ylabel(zlabel)
+        ax.set_ylim(bottom=0)
         ax.grid(alpha=0.3)
         ax.set_title(title, fontsize=11)
         fig.text(0.5, 0.01, 'Breakpoints: ' + '  '.join(f'{r:02X}h' for r in x['raw'])
@@ -178,6 +179,7 @@ def draw_map(plt, np, m, title, path):
         a3.set_xlabel(axis_label(x))
         a3.set_ylabel(axis_label(y))
         a3.set_zlabel(zlabel)
+        a3.set_zlim(bottom=0)
         a3.view_init(elev=28, azim=-130)
         a3.set_title(title, fontsize=11)
         fig.colorbar(s, ax=a3, shrink=0.6, pad=0.1, label=zlabel)
@@ -226,6 +228,7 @@ def draw_table(plt, np, t, title, path):
         note = 'linear_lookup: the value of the bracket the input falls in (no interpolation). Breakpoints: ' \
                + '  '.join(f'{r:02X}h' for r in x['raw'])
     ax.set_ylabel('Result (raw)')
+    ax.set_ylim(bottom=0)
     ax.grid(alpha=0.3)
     ax.set_title(title, fontsize=11)
     fig.text(0.5, 0.01, note, ha='center', fontsize=8, color='#555')
