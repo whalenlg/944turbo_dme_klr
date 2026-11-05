@@ -331,6 +331,125 @@ module dme_klr_dashboard_tb;
                          spk_dme31, spk_dme57, spk_klr73, spk_klr3F);
         end
 
+    // ── Map and table lookups (dashboard MAPS tab) ───────────────────
+    // One line per lookup result, for the Numbered Maps and the Directly
+    // Addressed Tables of the DME disassembly:
+    //   DME: [LKUP] <ms>,M<map>,<result>,<xa>=<xv>[,<ya>=<yv>]
+    //   DME: [LKUP] <ms>,T<addr>,<result>,<xa>=<xv> | in=<index>
+    // M<map>: map_lookup (0x051D) with map number R2 (decimal, the
+    // workbook's Map column), its result the A it returns with (ret at
+    // 0x0577, same SP as the call). xa/xv (and ya/yv for a 3D map) are the
+    // iram address and value of each axis the map header names, read as
+    // the lookup starts. A lookup whose map number has no map (2Ah.2 set
+    // on return) is not logged.
+    // T<addr>: the directly addressed tables. linear_lookup (0x05CD, ret
+    // 0x05D9) on 112Eh / 1296h / 1124h logs its result and its axis
+    // input as <xa>=<xv>; a MOVC A,@A+DPTR with DPTR on 10F4h / 10FCh /
+    // 1104h / 1140h logs the byte read and in=<index> (A); 1140h + 10h
+    // and up is the 1150h table.
+    // <ms> has 3 decimals (us resolution), the other fields are hex. To
+    // keep the logs small a table is logged when its result changes, and
+    // otherwise once per DASH_INTERVAL_MS while it is used.
+    // Everything is worked out inside the instruction-start branch (no
+    // continuous assigns on iram / ROM: Icarus re-evaluates those on every
+    // RAM write, which made runs ~4x slower).
+    // (The LIVE_DEBUG block's LCPU/LROM macros aren't defined in a plain run)
+    `define LKCPU u_dme.i8051_top.u_cpu
+    `define LKROM u_dme.i8051_top.u_eprom.mem
+    reg  [7:0]  lk_r2   [0:127];   // pending map_lookup, by the SP of the call
+    reg  [31:0] lk_ax   [0:127];   // {xa, xv, ya, yv} at the call
+    reg         lk_3d   [0:127];
+    reg         lk_pend [0:127];
+    reg  [15:0] lk_ldp  [0:127];   // pending linear_lookup: table address
+    reg  [15:0] lk_lax  [0:127];   //   {xa, xv}
+    reg         lk_lpend[0:127];
+    reg  [7:0]  lk_last [0:263];   // last logged result: maps 0-255, tables 256+
+    reg  [63:0] lk_lt   [0:263];   // ...and when
+    reg         lk_seen [0:263];
+    integer     lk_i;
+    initial for (lk_i = 0; lk_i < 264; lk_i = lk_i + 1) lk_seen[lk_i] = 1'b0;
+    initial for (lk_i = 0; lk_i < 128; lk_i = lk_i + 1) begin lk_pend[lk_i] = 1'b0; lk_lpend[lk_i] = 1'b0; end
+
+    // Table slot (256+) for a T address, 0 if it isn't one
+    function [8:0] lk_slot(input [15:0] a);
+        case (a)
+            16'h10F4: lk_slot = 9'd256;  16'h10FC: lk_slot = 9'd257;
+            16'h1104: lk_slot = 9'd258;  16'h1124: lk_slot = 9'd259;
+            16'h112E: lk_slot = 9'd260;  16'h1140: lk_slot = 9'd261;
+            16'h1150: lk_slot = 9'd262;  16'h1296: lk_slot = 9'd263;
+            default:  lk_slot = 9'd0;
+        endcase
+    endfunction
+    // Log this result now? (changed, first, or DASH_INTERVAL_MS since the last)
+    function lk_due(input [8:0] s, input [7:0] v);
+        lk_due = !lk_seen[s] || lk_last[s] != v ||
+                 ($time - lk_lt[s]) >= (`DASH_INTERVAL_MS * 64'd1_000_000);
+    endfunction
+    reg [15:0] lk_pc, lk_dptr, lk_ma, lk_ta;
+    reg [6:0]  lk_sp;
+    reg [7:0]  lk_idx, lk_xa, lk_n, lk_ya, lk_v;
+    reg [8:0]  lk_s;
+    always @(posedge u_dme.i8051_top.u_cpu.clk)
+        if (u_dme.i8051_top.u_cpu.res_n && u_dme.i8051_top.u_cpu.osc_cnt == 4'd5 &&
+            !u_dme.i8051_top.u_cpu.cycle_2 && !u_dme.i8051_top.u_cpu.irq_pending) begin
+            lk_pc   = `LKCPU.pc;
+            lk_sp   = `LKCPU.sp[6:0];
+            lk_dptr = {`LKCPU.dph, `LKCPU.dpl};
+            if (lk_pc == 16'h051D) begin                        // map_lookup
+                // its own map address decode (0x0522-0x053E): idx = code[1090h
+                // + R2]; bit 0 = 3D; the map is at code[11E0h + idx&FE] : code[+1],
+                // its header: axis address, point count, the points, then the
+                // second axis' header for a 3D map
+                lk_idx = `LKROM[(16'h1090 + {8'd0, `LKCPU.iram[{3'b000, `LKCPU.psw[4:3], 3'd2}]}) & 16'h1FFF];
+                lk_ma  = {`LKROM[(16'h11E0 + {8'd0, lk_idx & 8'hFE}) & 16'h1FFF],
+                          `LKROM[(16'h11E1 + {8'd0, lk_idx & 8'hFE}) & 16'h1FFF]};
+                lk_xa  = `LKROM[lk_ma & 16'h1FFF];
+                lk_n   = `LKROM[(lk_ma + 16'd1) & 16'h1FFF];
+                lk_ya  = `LKROM[(lk_ma + 16'd2 + {8'd0, lk_n}) & 16'h1FFF];
+                lk_r2[lk_sp]   <= `LKCPU.iram[{3'b000, `LKCPU.psw[4:3], 3'd2}];
+                lk_3d[lk_sp]   <= lk_idx[0];
+                lk_ax[lk_sp]   <= {lk_xa, `LKCPU.iram[lk_xa[6:0]], lk_ya, `LKCPU.iram[lk_ya[6:0]]};
+                lk_pend[lk_sp] <= 1'b1;
+            end else if (lk_pc == 16'h0577 && lk_pend[lk_sp]) begin   // its ret
+                lk_pend[lk_sp] <= 1'b0;
+                lk_s = {1'b0, lk_r2[lk_sp]};
+                if (!`LKCPU.iram[7'h25][2] && lk_due(lk_s, `LKCPU.acc)) begin
+                    lk_seen[lk_s] <= 1'b1; lk_last[lk_s] <= `LKCPU.acc; lk_lt[lk_s] <= $time;
+                    if (lk_3d[lk_sp])
+                        $display("DME: [LKUP] %0.3f,M%0d,%02h,%02h=%02h,%02h=%02h", $time / 1.0e6,
+                                 lk_r2[lk_sp], `LKCPU.acc, lk_ax[lk_sp][31:24], lk_ax[lk_sp][23:16],
+                                 lk_ax[lk_sp][15:8], lk_ax[lk_sp][7:0]);
+                    else
+                        $display("DME: [LKUP] %0.3f,M%0d,%02h,%02h=%02h", $time / 1.0e6,
+                                 lk_r2[lk_sp], `LKCPU.acc, lk_ax[lk_sp][31:24], lk_ax[lk_sp][23:16]);
+                end
+            end else if (lk_pc == 16'h05CD) begin               // linear_lookup
+                lk_xa = `LKROM[lk_dptr & 16'h1FFF];
+                lk_ldp[lk_sp]   <= lk_dptr;
+                lk_lax[lk_sp]   <= {lk_xa, `LKCPU.iram[lk_xa[6:0]]};
+                lk_lpend[lk_sp] <= 1'b1;
+            end else if (lk_pc == 16'h05D9 && lk_lpend[lk_sp]) begin  // its ret
+                lk_lpend[lk_sp] <= 1'b0;
+                lk_s = lk_slot(lk_ldp[lk_sp]);
+                if (lk_s != 9'd0 && lk_due(lk_s, `LKCPU.acc)) begin
+                    lk_seen[lk_s] <= 1'b1; lk_last[lk_s] <= `LKCPU.acc; lk_lt[lk_s] <= $time;
+                    $display("DME: [LKUP] %0.3f,T%04h,%02h,%02h=%02h", $time / 1.0e6,
+                             lk_ldp[lk_sp], `LKCPU.acc, lk_lax[lk_sp][15:8], lk_lax[lk_sp][7:0]);
+                end
+            end else if ((lk_dptr == 16'h10F4 || lk_dptr == 16'h10FC ||
+                          lk_dptr == 16'h1104 || lk_dptr == 16'h1140) &&
+                         `LKROM[lk_pc & 16'h1FFF] == 8'h93) begin       // MOVC A,@A+DPTR
+                lk_ta = (lk_dptr == 16'h1140 && `LKCPU.acc >= 8'h10) ? 16'h1150 : lk_dptr;
+                lk_s  = lk_slot(lk_ta);
+                lk_v  = `LKROM[(lk_dptr + {8'd0, `LKCPU.acc}) & 16'h1FFF];
+                if (lk_due(lk_s, lk_v)) begin
+                    lk_seen[lk_s] <= 1'b1; lk_last[lk_s] <= lk_v; lk_lt[lk_s] <= $time;
+                    $display("DME: [LKUP] %0.3f,T%04h,%02h,in=%02h", $time / 1.0e6,
+                             lk_ta, lk_v, `LKCPU.acc - (lk_ta == 16'h1150 ? 8'h10 : 8'h00));
+                end
+            end
+        end
+
     // ── Always-on FST visibility for the interconnect above ──────────
     // klr_vcd_combined.v (compiled into this build, in files/files_cl)
     // was meant to add these to the FST but its module is never
