@@ -208,8 +208,10 @@ if [ -f "$RUN_DIR/sim.vcd" ]; then
         rm -f "$RUN_DIR/sim.vcd"
     fi
 fi
+# Which ROM images the run used (name + content hash), first, for the dashboard
+python3 "$REPLAY_DIR/../rom_stamp.py" "$OUT.log" > "$OUT.dash.log" || true
 grep -E "^DME: \[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^DME: \[SEED\]|^DME: \[WARN\]|^KLR: \[XBRANCH\]|^DME: \[LKUP\]" \
-    "$OUT.log" > "$OUT.dash.log" || true
+    "$OUT.log" >> "$OUT.dash.log" || true
 # The log's own outputs at each row's sim time, for the dashboard's chart overlays
 python3 "$REPLAY_DIR/expect_to_dash.py" "$OUT.log" "$OUT.expect.csv" >> "$OUT.dash.log" \
     || echo "  expect_to_dash.py failed; the dash.log has no expected-data overlay"

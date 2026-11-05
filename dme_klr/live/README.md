@@ -63,6 +63,13 @@ bridge runs it whenever the sim reports a DME image; an image it has drawn
 before is reused, so graphs are drawn once per ROM (about 20 s) and again
 only when its contents change. Needs `pip3 install matplotlib`.
 
+Each `.dash.log` from the run scripts starts with the ROM images the run used
+(`DME: [ROM] <file> sha=<hash> path=<path>`, from `dme_klr/rom_stamp.py`). When
+you open such a log, the dashboard asks the bridge for that image's graphs by
+hash, and the bridge finds the image in `bin_images/dme` or the uploaded ROMs and
+draws it if it hasn't yet. A log without the line (from before this) gets the
+loaded image's graphs, with a note saying the log doesn't name its ROM.
+
 To draw them without the bridge:
 
     python3 dme_klr/live/map_graphs.py bin_images/dme/28PIN_DME_PERFORMANCE.mem [more images] [--force]
