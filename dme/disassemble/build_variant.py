@@ -342,6 +342,54 @@ wd.append(['ASM colours: yellow = new/different in %s, blue = same code as %s bu
 for col, w in zip('ABCDEFG', (9, 9, 6, 46, 26, 60, 60)):
     wd.column_dimensions[col].width = w
 
+# ---- Numbered Maps: each image's own map addresses ------------------------------
+# code[1090h + n] indexes the address table at 11E0h (FFh = no map); the sheet's
+# Address column comes from the reference image, so rewrite it from the new one.
+def map_addr(img, n):
+    i = img[0x1090 + n]
+    if i == 0xFF:
+        return None
+    p = 0x11E0 + (i & 0xFE)
+    return (img[p] << 8) | img[p + 1]
+
+
+def map_numbers(v):
+    out = []
+    for part in re.split(r'[/,]', str(v or '')):
+        m = re.fullmatch(r'\s*(\d+)\s*(?:-\s*(\d+))?\s*', part)
+        if not m:
+            return []
+        a = int(m[1])
+        out += list(range(a, int(m[2] or a) + 1))
+    return out
+
+
+wm = wb['Numbered Maps']
+mc = wm.max_column + 1
+wm.cell(1, mc, '%s address' % REF).font = Font(bold=True)
+n_moved = 0
+for rr in range(2, wm.max_row + 1):
+    cell = wm.cell(rr, 4)
+    text = str(cell.value or '')
+    pairs = [(map_addr(ref, n), map_addr(b86, n)) for n in map_numbers(wm.cell(rr, 1).value)]
+    pairs = [(a, b) for a, b in pairs if a is not None and b is not None]
+    toks = re.findall(r'[0-9A-Fa-f]{4}h', text)
+    if not pairs or all(a == b for a, b in pairs):
+        continue
+    if len(toks) == len(pairs):
+        it = iter(pairs)
+        new = re.sub(r'[0-9A-Fa-f]{4}h', lambda m: '%04Xh' % next(it)[1], text)
+    else:
+        sub = {'%04X' % a: '%04Xh' % b for a, b in pairs}
+        new = re.sub(r'([0-9A-Fa-f]{4})h', lambda m: sub.get(m[1].upper(), m[0]), text)
+    if new != text:
+        cell.value = new
+        cell.fill = fill_changed
+        cell.font = Font(bold=True)
+        wm.cell(rr, mc, text)
+        n_moved += 1
+print('numbered maps at a different address', n_moved)
+
 wb.save(OUT)
 print('rows', len(rows_out), dict(stats), 'diff regions', len(merged),
       'new labels', sum(1 for l in lab86.values() if l.startswith(LABPFX)),
