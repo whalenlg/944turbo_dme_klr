@@ -170,7 +170,7 @@ function startSim(load = null) {
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
     if (rom) followRom(rom[1], rom[2]);
-    if (rom && (rom[1] === 'dme' || rom[1] === 'klr')) { loadedSha[rom[1]] = imageSha(rom[2]); drawMaps(rom[2], loadedSha[rom[1]], rom[1]); }
+    if (rom && (rom[1] === 'dme' || rom[1] === 'klr')) { loadedSha[rom[1]] = imageSha(rom[2]); drawMaps(rom[2], loadedSha[rom[1]], rom[1], true); }
   };
   createInterface({ input: proc.stdout }).on('line', onLine);
   createInterface({ input: proc.stderr }).on('line', onLine);
@@ -607,11 +607,20 @@ const mapQueue = [];
 let mapBusy = false;
 const loadedSha = { dme: null, klr: null };   // the images the sim has loaded
 
-function drawMaps(path, sha = imageSha(path), cpu = 'dme') {
+// recheck: run the generator again even for an image drawn before (each time
+// the sim reports its ROM), so graphs from an older map_graphs.py /
+// klr_map_graphs.py (GEN_VERSION) are redrawn after a pull without a bridge
+// restart; an up-to-date image comes back "cached" in a fraction of a second.
+function drawMaps(path, sha = imageSha(path), cpu = 'dme', recheck = false) {
   if (!path || !sha) return null;
   const key = `${cpu}:${sha}`;
   const job = mapJobs.get(key);
-  if (job && job.status !== 'error') return job;
+  if (job && job.status === 'generating') return job;
+  if (job && job.status === 'ready' && !recheck) return job;
+  if (job && job.status === 'ready') {
+    if (!mapQueue.includes(key)) { mapQueue.push(key); runMapQueue(); }
+    return job;
+  }
   const j = { cpu, status: 'generating', rom: basename(path), path, error: null, index: null };
   mapJobs.set(key, j);
   mapQueue.push(key);
@@ -658,6 +667,7 @@ function runMapQueue() {
 function mapsInfo(sha, cpu = 'dme') {
   const want = sha ?? loadedSha[cpu];
   const reply = (status, job = {}) => ({ status, sha: want, loaded: loadedSha[cpu], rom: job.rom ?? null, error: job.error ?? null,
+                                         version: job.index?.version ?? null,
                                          maps: job.index?.maps ?? {}, tables: job.index?.tables ?? {} });
   if (!want) return reply('none');
   let job = mapJobs.get(`${cpu}:${want}`);
