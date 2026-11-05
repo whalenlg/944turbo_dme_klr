@@ -113,7 +113,11 @@ compile_and_run_klr() {
     # delete the same log, and one ends up validating an empty dash.log
     local lock="${LOGDIR}/.${name}.pid" other
     other=$(cat "$lock" 2>/dev/null)
-    if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null; then
+    # The lock is never removed, so a stale pid can be reused by an
+    # unrelated process (macOS wraps pids quickly): only treat it as a
+    # live run if that pid is still running this same script.
+    if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null \
+       && ps -p "$other" -o command= 2>/dev/null | grep -q "${0##*/}"; then
         echo "  SKIPPED: $name is already running (pid $other) — stop it first: kill $other" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
