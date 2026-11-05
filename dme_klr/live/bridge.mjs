@@ -31,6 +31,18 @@
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
 //                     (dme rows also carry num: operands as raw addresses;
 //                     rows may carry desc from asm_full.json)
+//    GET  /maps/dme   graphs of the loaded DME image's maps and tables:
+//                     {status: none|generating|ready|error, sha, rom, error,
+//                      maps: {<n>: {file, addr, dim, bytes}}, tables: {<addr>: {...}}}
+//    GET  /maps/dme/<sha>/<file>.png   one graph
+//
+//  Map graphs: map_graphs.py draws every numbered map and directly
+//  addressed table of the DME image into <mapcache>/<sha>/, keyed by the
+//  SHA-256 of the image's contents, so they are drawn once per image and
+//  again only when its contents change. It runs on every SIM: [ROM] dme
+//  line; a cached image takes a fraction of a second. When the graphs are
+//  ready the bridge sends SIM: [MAPS] dme ready <sha>. Needs python3 with
+//  matplotlib.
 //
 //  Each listing follows the image in that CPU's EPROM: whenever the sim
 //  reports SIM: [ROM] dme|klr <path>, the image is matched (by content, then
@@ -54,7 +66,7 @@
 //  localhost or 127.0.0.1 may use it (see ALLOWED below).
 //
 //  Usage:  node bridge.mjs [--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
-//                          [--dme-asm <dir>] [--klr-asm <dir>]
+//                          [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>]
 //                          [--allow-origin <https://other.origin>]
 // ============================================================
 import { spawn, spawnSync } from 'node:child_process';
@@ -152,6 +164,7 @@ function startSim(load = null) {
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
     if (rom) followRom(rom[1], rom[2]);
+    if (rom && rom[1] === 'dme') drawMaps(rom[2]);
   };
   createInterface({ input: proc.stdout }).on('line', onLine);
   createInterface({ input: proc.stderr }).on('line', onLine);
@@ -549,6 +562,47 @@ function unpackBundle(buf) {
   return [200, JSON.stringify({ id })];
 }
 
+// ── Map graphs ───────────────────────────────────────────────
+// Beside the snapshots, out of the repo: ../tmp/dme_klr/map_graphs
+const MAP_CACHE = resolve(arg('mapcache', join(REPO, '..', 'tmp', 'dme_klr', 'map_graphs')));
+const MAP_GRAPHS = join(HERE, 'map_graphs.py');
+// The latest run of map_graphs.py for the DME image; again = a ROM line
+// came in while it was running, so it runs once more when done
+let maps = { status: 'none', path: null, sha: null, rom: null, error: null, index: null, again: false };
+
+function drawMaps(path) {
+  if (!path) return;
+  if (maps.status === 'generating') { maps.again = path; return; }
+  maps = { status: 'generating', path, sha: null, rom: basename(path), error: null, index: null, again: false };
+  console.log(`bridge: map graphs for ${basename(path)} -> ${MAP_CACHE}`);
+  const proc = spawn('python3', [MAP_GRAPHS, path, '--cache', MAP_CACHE], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '', err = '';
+  proc.stdout.on('data', d => { out += d; });
+  proc.stderr.on('data', d => { err += d; });
+  let finished = false;
+  const done = (error) => {
+    if (finished) return;
+    finished = true;
+    const m = out.trim().split('\n').pop()?.match(/^([0-9a-f]{16}) (.+) (cached|generated)$/);
+    if (!error && m) {
+      try {
+        maps = { ...maps, status: 'ready', sha: m[1], index: JSON.parse(readFileSync(join(m[2], 'index.json'), 'utf8')) };
+        console.log(`bridge: map graphs ${m[3]} for ${maps.rom} (${m[1]})`);
+        broadcast(`SIM: [MAPS] dme ready ${m[1]}`);
+      } catch (e) { error = `couldn't read the graph index: ${e.message}`; }
+    }
+    if (error || !m) {
+      maps = { ...maps, status: 'error', error: (error || err.trim() || out.trim() || 'map_graphs.py failed').slice(-2000) };
+      console.error(`bridge: map graphs failed: ${maps.error}`);
+    }
+    const again = maps.again;
+    maps.again = false;
+    if (again) drawMaps(again);
+  };
+  proc.on('error', e => done(`couldn't run python3: ${e.message}`));
+  proc.on('exit', code => { if (code !== null) done(code === 0 ? null : (err.trim() || `map_graphs.py exited with ${code}`)); });
+}
+
 // ── HTTP ─────────────────────────────────────────────────────
 // Only these page origins may use the bridge: the published dashboard
 // and a dev server on this machine (--allow-origin adds more). Requests
@@ -646,6 +700,19 @@ createServer((req, res) => {
       return text(204, '');
     }
     return text(405, 'method not allowed');
+  }
+  if (req.method === 'GET' && url.pathname === '/maps/dme') {
+    const { status, sha, rom, error, index } = maps;
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify({ status, sha, rom, error, maps: index?.maps ?? {}, tables: index?.tables ?? {} }));
+  }
+  const graph = url.pathname.match(/^\/maps\/dme\/([0-9a-f]{16})\/([MT][0-9A-F]{1,4}\.png)$/);
+  if (req.method === 'GET' && graph) {
+    const file = join(MAP_CACHE, graph[1], graph[2]);
+    if (!existsSync(file)) { res.writeHead(404, CORS); return res.end(); }
+    // Named by the image's hash, so a graph never changes
+    res.writeHead(200, { ...CORS, 'Content-Type': 'image/png', 'Cache-Control': 'max-age=31536000, immutable' });
+    return res.end(readFileSync(file));
   }
   if (req.method === 'GET' && url.pathname.startsWith('/asm/')) {
     const cpu = url.pathname.slice(5);
