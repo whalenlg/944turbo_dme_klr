@@ -16,6 +16,12 @@
 //                              "auto" (rpm/afm/boost follow the closed-loop
 //                              engine model, which tps drives)
 //    bp add|del dme|klr <hex>  set / clear a PC breakpoint
+//    bp add dme|klr <hex> if <mem>[.<bit>] <op> <val>
+//                              a breakpoint that stops only when that RAM
+//                              byte (DME iram / KLR ram, hex address) or
+//                              bit compares true: op ==, !=, < or >
+//                              (unsigned), val hex. Adding an existing
+//                              breakpoint again replaces its condition.
 //    bp clear                  clear all breakpoints
 //    snap                      emit a DS snapshot now (while paused too)
 //    trace dme|klr [N]         print the last N instruction addresses
@@ -58,7 +64,8 @@
 //    SIM: [STATE]  running|paused t_ns=<n> dme_pc=<hex> klr_pc=<hex> reason=<why>
 //    SIM: [TIME]   t_ns=<n> rate=<sim ms per wall s>     (while running, ~1/s)
 //    SIM: [INPUTS] name=val,...
-//    SIM: [BP]     dme=<hex,...> klr=<hex,...>
+//    SIM: [BP]     dme=<bp,...> klr=<bp,...>   (bp = <pc hex>, or with a condition
+//                  <pc>@<mem>[.<bit>]<op><val>, e.g. 024E@37==15, 0ABC@21.0!=1)
 //    SIM: [TRACE]  dme|klr <pc>/<ctx0>/<ctx1>/<ctx2>,...  (oldest first; ctx =
 //                  registers as each instruction was fetched, see the tb)
 //    SIM: [ROM]    dme|klr <path>                  (image in that EPROM: at start and
@@ -184,6 +191,10 @@ public:
                   " model variables, so snapshots can't be saved or loaded: rerun ./build_live.sh");
         afm_field_ = field({"TOP__dme_klr_dashboard_tb__u_dme.afm_commanded",
                             "TOP__dme_klr_dashboard_tb__u_dme.__PVT__afm_commanded"});
+        {
+            const char* rams[2] = {"u_cpu__DOT__iram", "i8048_core_1__DOT__ram"};
+            for (int c = 0; c < 2; ++c) { auto f = fieldsEnding(rams[c]); if (!f.empty()) ram_[c] = f[0]; }
+        }
         std::string dir = ctx_->commandArgsPlusMatch("snapdir=");
         if (!dir.empty()) snapdir_ = dir.substr(dir.find('=') + 1);
         if (*ctx_->commandArgsPlusMatch("autosnap=0")) auto_snap_ = false;
@@ -218,7 +229,8 @@ public:
             while (std::getline(ks, item, ',')) {
                 auto c = item.find(':');
                 if (c == std::string::npos) continue;
-                keep_bps_[item.substr(0, c) == "klr"].insert(std::strtoul(item.c_str() + c + 1, nullptr, 16));
+                uint32_t a; BpCond cond;
+                if (parseBpToken(item.substr(c + 1), a, cond)) keep_bps_[item.substr(0, c) == "klr"][a] = cond;
             }
         }
         std::string load = ctx_->commandArgsPlusMatch("load=");
@@ -264,7 +276,12 @@ private:
     bool stop_pending_ = false;
     uint64_t iter_ = 0;
 
-    std::set<uint32_t> bp_dme_, bp_klr_;
+    // A PC breakpoint, with an optional RAM condition: it stops only if
+    // ram[mem] (or bit `bit` of it) <op> val holds when that PC is fetched
+    struct BpCond { int mem = -1, bit = -1; char op = 0; uint8_t val = 0; };
+    using BpMap = std::map<uint32_t, BpCond>;
+    BpMap bp_dme_, bp_klr_;
+    const LiveField* ram_[2] = {nullptr, nullptr};   // DME iram, KLR ram (conditions read them)
     long step_dme_ = 0, step_klr_ = 0;
     double until_ns_ = -1;
 
@@ -303,14 +320,14 @@ private:
             last_dme_ic_ = TB(live_dme_icount);
             uint16_t pc = TB(live_dme_ipc);
             push(trace_dme_, {pc, TB(live_dme_ctx0), TB(live_dme_ctx1), TB(live_dme_ctx2)});
-            if (bp_dme_.count(pc)) return stop("bp dme " + hex(pc));
+            if (bpHit(0, bp_dme_, pc)) return stop("bp dme " + hex(pc));
             if (step_dme_ > 0 && --step_dme_ == 0) return stop("step dme");
         }
         if (TB(live_klr_icount) != last_klr_ic_) {
             last_klr_ic_ = TB(live_klr_icount);
             uint16_t pc = TB(live_klr_ipc);
             push(trace_klr_, {pc, TB(live_klr_ctx0), TB(live_klr_ctx1), 0});
-            if (bp_klr_.count(pc)) return stop("bp klr " + hex(pc));
+            if (bpHit(1, bp_klr_, pc)) return stop("bp klr " + hex(pc));
             if (step_klr_ > 0 && --step_klr_ == 0) return stop("step klr");
         }
         if (until_ns_ >= 0 && tNs() >= until_ns_) {
@@ -611,10 +628,10 @@ private:
 
     // The dashboard's breakpoints from before a LOAD (+bps=), added to
     // whatever the snapshot saved
-    std::set<uint32_t> keep_bps_[2];
+    BpMap keep_bps_[2];
     void keepBps() {
-        bp_dme_.insert(keep_bps_[0].begin(), keep_bps_[0].end());
-        bp_klr_.insert(keep_bps_[1].begin(), keep_bps_[1].end());
+        for (auto& [a, c] : keep_bps_[0]) bp_dme_[a] = c;   // the dashboard's condition wins
+        for (auto& [a, c] : keep_bps_[1]) bp_klr_[a] = c;
         if (!keep_bps_[0].empty() || !keep_bps_[1].empty()) bpLine();
         keep_bps_[0].clear();
         keep_bps_[1].clear();
@@ -632,11 +649,99 @@ private:
             unsigned long a = std::strtoul(addr.c_str(), &end, 16);
             if (addr.empty() || *end) return error("bad address: " + addr);
             auto& set = cpu == "dme" ? bp_dme_ : bp_klr_;
-            if (op == "add") set.insert(a); else set.erase(a);
+            BpCond cond;
+            std::string kw;
+            if (op == "add" && in >> kw) {
+                if (kw != "if") return error("bp add " + cpu + " <hex> [if <mem>[.<bit>] ==|!=|<|> <val>]");
+                std::string mem, rel, val;
+                in >> mem >> rel >> val;
+                std::string why;
+                if (!parseBpCond(mem, rel, val, cond, why)) return error("bp condition: " + why);
+                int c = cpu == "klr";
+                if (!ram_[c]) return error("bp condition: this build doesn't expose the " + cpu + " RAM: rerun ./build_live.sh");
+                if (static_cast<size_t>(cond.mem) >= ram_[c]->size)
+                    return error("bp condition: " + cpu + " RAM is only " + std::to_string(ram_[c]->size) + " bytes");
+            }
+            if (op == "add") set[a] = cond; else set.erase(a);
         } else if (op != "list") {
             return error("bp add|del|clear|list");
         }
         bpLine();
+    }
+
+    bool bpHit(int c, const BpMap& m, uint32_t pc) const {
+        auto it = m.find(pc);
+        if (it == m.end()) return false;
+        const BpCond& k = it->second;
+        if (k.mem < 0) return true;
+        if (!ram_[c] || static_cast<size_t>(k.mem) >= ram_[c]->size) return true;   // can't read: stop anyway
+        unsigned v = static_cast<const uint8_t*>(ram_[c]->ptr)[k.mem];
+        if (k.bit >= 0) v = (v >> k.bit) & 1;
+        switch (k.op) {
+            case '=': return v == k.val;
+            case '!': return v != k.val;
+            case '<': return v <  k.val;
+            case '>': return v >  k.val;
+        }
+        return true;
+    }
+
+    // mem "37" / "21.0" / "0x37" / "37h", rel ==|!=|<|> (or eq/ne/lt/gt), val hex
+    static bool parseBpCond(std::string mem, const std::string& rel, std::string val, BpCond& k, std::string& why) {
+        auto hexByte = [](std::string t, int& out) {
+            if (t.size() > 2 && (t[0] == '0') && (t[1] == 'x' || t[1] == 'X')) t = t.substr(2);
+            if (!t.empty() && (t.back() == 'h' || t.back() == 'H')) t.pop_back();
+            if (t.empty() || t.size() > 2) return false;
+            char* end = nullptr;
+            out = static_cast<int>(std::strtoul(t.c_str(), &end, 16));
+            return !*end;
+        };
+        k = BpCond{};
+        auto dot = mem.find('.');
+        if (dot != std::string::npos) {
+            std::string b = mem.substr(dot + 1);
+            if (b.size() != 1 || b[0] < '0' || b[0] > '7') return why = "bit must be 0-7", false;
+            k.bit = b[0] - '0';
+            mem = mem.substr(0, dot);
+        }
+        if (!hexByte(mem, k.mem)) return why = "bad RAM address: " + mem, false;
+        static const std::map<std::string, char> ops = {{"==", '='}, {"=", '='}, {"eq", '='}, {"!=", '!'}, {"ne", '!'},
+                                                         {"<", '<'}, {"lt", '<'}, {">", '>'}, {"gt", '>'}};
+        auto o = ops.find(rel);
+        if (o == ops.end()) return why = "op must be ==, !=, < or >", false;
+        k.op = o->second;
+        int v;
+        if (!hexByte(val, v)) return why = "bad value (hex byte): " + val, false;
+        if (k.bit >= 0 && v > 1) return why = "a bit compares with 0 or 1", false;
+        k.val = static_cast<uint8_t>(v);
+        return true;
+    }
+
+    // "024E" or "024E@37==15" / "024E@21.0!=1" (the [BP] line's form)
+    static bool parseBpToken(const std::string& t, uint32_t& a, BpCond& k) {
+        auto at = t.find('@');
+        std::string pc = t.substr(0, at);
+        char* end = nullptr;
+        a = static_cast<uint32_t>(std::strtoul(pc.c_str(), &end, 16));
+        if (pc.empty() || *end) return false;
+        k = BpCond{};
+        if (at == std::string::npos) return true;
+        std::string c = t.substr(at + 1);
+        auto o = c.find_first_of("=!<>");
+        if (o == std::string::npos) return false;
+        size_t len = (c[o] == '=' || c[o] == '!') ? 2 : 1;
+        std::string why;
+        return parseBpCond(c.substr(0, o), c.substr(o, len), c.substr(o + len), k, why);
+    }
+
+    static std::string bpToken(uint32_t a, const BpCond& k) {
+        std::string s = hex(a);
+        if (k.mem < 0) return s;
+        char b[24];
+        const char* op = k.op == '=' ? "==" : k.op == '!' ? "!=" : k.op == '<' ? "<" : ">";
+        if (k.bit >= 0) snprintf(b, sizeof b, "@%02X.%d%s%X", k.mem, k.bit, op, k.val);
+        else            snprintf(b, sizeof b, "@%02X%s%02X", k.mem, op, k.val);
+        return s + b;
     }
 
     // ── Snapshots ───────────────────────────────────────────
@@ -852,8 +957,8 @@ private:
             o << "afm " << afm_.size() << "\n";
             for (auto& a : afm_) o << a.due << " " << static_cast<int>(a.val) << "\n";
             o << "rom dme " << rom_[0] << "\n" << "rom klr " << rom_[1] << "\n";
-            for (auto a : bp_dme_) o << "bp dme " << hex(a) << "\n";
-            for (auto a : bp_klr_) o << "bp klr " << hex(a) << "\n";
+            for (auto& [a, k] : bp_dme_) o << "bp dme " << bpToken(a, k) << "\n";
+            for (auto& [a, k] : bp_klr_) o << "bp klr " << bpToken(a, k) << "\n";
             for (int c = 0; c < 2; ++c)
                 for (auto& st : c ? trace_klr_ : trace_dme_)
                     o << "trace " << (c ? "klr " : "dme ") << st.pc << " " << st.c0 << " " << st.c1 << " " << st.c2 << "\n";
@@ -901,9 +1006,9 @@ private:
             j << (i ? "," : "") << liveJson(in.name) << ":" << (in.can_auto && v == 0xFFFF ? "\"auto\"" : std::to_string(v));
         }
         j << "},\n\"breakpoints\":{\"dme\":[";
-        { bool first = true; for (auto a : bp_dme_) { j << (first ? "" : ",") << "\"" << hex(a) << "\""; first = false; } }
+        { bool first = true; for (auto& [a, k] : bp_dme_) { j << (first ? "" : ",") << liveJson(bpToken(a, k)); first = false; } }
         j << "],\"klr\":[";
-        { bool first = true; for (auto a : bp_klr_) { j << (first ? "" : ",") << "\"" << hex(a) << "\""; first = false; } }
+        { bool first = true; for (auto& [a, k] : bp_klr_) { j << (first ? "" : ",") << liveJson(bpToken(a, k)); first = false; } }
         j << "]},\n\"roms\":{\"dme\":" << romJson[0] << ",\"klr\":" << romJson[1] << "},\n";
         // CPU registers: the core's own scalars (no Verilator temporaries)
         const char* cores[2][2] = {{"dme", "u_cpu__DOT__"}, {"klr", "i8048_core_1__DOT__"}};
@@ -989,7 +1094,7 @@ private:
         std::vector<LiveDelay> delays;
         std::vector<Afm> afm;
         std::string roms[2];
-        std::set<uint32_t> bps[2];
+        BpMap bps[2];
         std::deque<Step> traces[2];
         std::vector<std::pair<std::string, size_t>> names;
         size_t total = 0;
@@ -1015,7 +1120,8 @@ private:
             } else if (word == "bp") {
                 std::string cpu, a;
                 ls >> cpu >> a;
-                bps[cpu == "klr"].insert(std::strtoul(a.c_str(), nullptr, 16));
+                uint32_t pc; BpCond k;
+                if (parseBpToken(a, pc, k)) bps[cpu == "klr"][pc] = k;
             } else if (word == "trace") {
                 std::string cpu;
                 Step st{};
@@ -1134,9 +1240,9 @@ private:
     }
 
     void bpLine() const {
-        auto join = [](const std::set<uint32_t>& s) {
+        auto join = [](const BpMap& s) {
             std::string o;
-            for (auto a : s) o += (o.empty() ? "" : ",") + hex(a);
+            for (auto& [a, k] : s) o += (o.empty() ? "" : ",") + bpToken(a, k);
             return o;
         };
         printf("SIM: [BP] dme=%s klr=%s\n", join(bp_dme_).c_str(), join(bp_klr_).c_str());
