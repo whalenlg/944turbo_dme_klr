@@ -450,6 +450,73 @@ module dme_klr_dashboard_tb;
             end
         end
 
+    // ── KLR map and table lookups (dashboard KLR MAPS tab) ───────────
+    // One line per result of the KLR's maps and tables (klr/disassemble/
+    // klr_maps.py, and the maps_index sheet of 87KLR951.xlsx):
+    //   KLR: [LKUP] <ms>,T<addr>,<result>,<xa>=<xv>[,<ya>=<yv>]
+    // T0C00 target boost map  (A after the 0C80h interpolation, at 0A95h;
+    //       51h = it - 57h), inputs 43h (throttle) and 44h (rpm index)
+    // T0B00 CV open-loop map  (A at 0A89h, to 68h), inputs 43h, 44h
+    // T0A00 rpm axis table    (A at the ret 0A81h, to 44h), inputs 24h
+    //       and bank 0 R7 (07h), which rpm_axis_lookup adds in
+    // T0925.. the rpm constants: one id per 9-byte entry (0925h, 092Eh,
+    //       ...), the value at the mov @r1,a (0916h), input 44h
+    // T0992 boost PID gain    (A at 0921h, to 6Bh), inputs 43h, 44h
+    // Each is logged when its result changes, otherwise once per
+    // DASH_INTERVAL_MS, like the DME lookups. A hook only fires if the ROM
+    // has the expected opcode at its address, so an image with other code
+    // there logs nothing for it.
+    `define KLKCPU u_klr.top.i8048_core_1
+    `define KLKROM u_klr.top.rom_1.rom
+    `define KLKREG(n) `KLKCPU.ram[(`KLKCPU.psw[4] ? 7'h18 : 7'h00) + 7'd n]
+    reg  [7:0]  klk_last [0:31];
+    reg  [63:0] klk_lt   [0:31];
+    reg         klk_seen [0:31];
+    initial for (lk_i = 0; lk_i < 32; lk_i = lk_i + 1) klk_seen[lk_i] = 1'b0;
+    function klk_due(input [4:0] s, input [7:0] v);
+        klk_due = !klk_seen[s] || klk_last[s] != v ||
+                  ($time - klk_lt[s]) >= (`DASH_INTERVAL_MS * 64'd1_000_000);
+    endfunction
+    reg [11:0] klk_pc;
+    reg [15:0] klk_ta;
+    reg [7:0]  klk_r2, klk_xa, klk_ya;
+    reg [4:0]  klk_s;
+    reg [1:0]  klk_n;      // inputs to print: 1 or 2
+    reg        klk_hit;
+    always @(posedge u_klr.top.i8048_core_1.clk)
+        if (`KLKCPU.res_n && `KLKCPU.state_clk_en && `KLKCPU.state == 3'd1 && !`KLKCPU.cycle_2) begin
+            klk_pc  = `KLKCPU.pc;
+            klk_hit = 1'b1;
+            klk_n   = 2'd2;
+            klk_xa  = 8'h43; klk_ya = 8'h44;
+            if (klk_pc == 12'hA95 && `KLKROM[12'hA95] == 8'h37) begin          // cpl a after the boost map
+                klk_ta = 16'h0C00; klk_s = 5'd0;
+            end else if (klk_pc == 12'hA89 && `KLKROM[12'hA89] == 8'hB9) begin // mov r1,#68h after the CV map
+                klk_ta = 16'h0B00; klk_s = 5'd1;
+            end else if (klk_pc == 12'hA81 && `KLKROM[12'hA81] == 8'h83) begin // ret of rpm_axis_lookup
+                klk_ta = 16'h0A00; klk_s = 5'd2; klk_xa = 8'h24; klk_ya = 8'h07;
+            end else if (klk_pc == 12'h921 && `KLKROM[12'h921] == 8'hB9) begin // mov r1,#6Bh after the gain read
+                klk_r2 = `KLKREG(2);
+                klk_ta = 16'h0900 + {8'd0, klk_r2} + 16'd1; klk_s = 5'd3;
+            end else if (klk_pc == 12'h916 && `KLKROM[12'h916] == 8'hA1) begin // mov @r1,a: one rpm constant
+                klk_r2 = `KLKREG(2) - 8'd9;                                     // r2 already points at the next entry
+                klk_ta = 16'h0900 + {8'd0, klk_r2};
+                klk_s  = 5'd4 + ((klk_r2 - 8'h25) / 8'd9 > 8'd27 ? 5'd27 : (klk_r2 - 8'h25) / 8'd9);
+                klk_xa = 8'h44; klk_n = 2'd1;
+            end else
+                klk_hit = 1'b0;
+            if (klk_hit && klk_due(klk_s, `KLKCPU.acc)) begin
+                klk_seen[klk_s] <= 1'b1; klk_last[klk_s] <= `KLKCPU.acc; klk_lt[klk_s] <= $time;
+                if (klk_n == 2'd2)
+                    $display("KLR: [LKUP] %0.3f,T%04h,%02h,%02h=%02h,%02h=%02h", $time / 1.0e6,
+                             klk_ta, `KLKCPU.acc, klk_xa, `KLKCPU.ram[klk_xa[6:0]],
+                             klk_ya, `KLKCPU.ram[klk_ya[6:0]]);
+                else
+                    $display("KLR: [LKUP] %0.3f,T%04h,%02h,%02h=%02h", $time / 1.0e6,
+                             klk_ta, `KLKCPU.acc, klk_xa, `KLKCPU.ram[klk_xa[6:0]]);
+            end
+        end
+
     // ── Always-on FST visibility for the interconnect above ──────────
     // klr_vcd_combined.v (compiled into this build, in files/files_cl)
     // was meant to add these to the FST but its module is never

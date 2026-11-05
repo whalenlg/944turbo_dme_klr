@@ -74,6 +74,16 @@ To draw them without the bridge:
 
     python3 dme_klr/live/map_graphs.py bin_images/dme/28PIN_DME_PERFORMANCE.mem [more images] [--force]
 
+The **KLR MAPS** tab does the same for the KLR: its target boost map (C00h),
+cycling valve open-loop map (B00h), boost PID gain (992h), rpm axis table
+(A00h) and the rpm-dependent constants at 925h, from the testbench's
+`KLR: [LKUP]` lines. **KLR RPM MAPS** draws them against the DME's engine
+speed at each lookup. The graphs come from `klr_map_graphs.py` (decoding in
+`klr/disassemble/klr_maps.py`, which also writes the map sheets of the KLR
+workbooks), served at `/maps/klr`, in the same cache:
+
+    python3 dme_klr/live/klr_map_graphs.py bin_images/klr/87KLR_951.mem [more images] [--force]
+
 ## Snapshots
 
 Whenever the model prints a warning or error (a line with `[WARN]`,

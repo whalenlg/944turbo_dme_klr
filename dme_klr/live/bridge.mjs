@@ -38,6 +38,9 @@
 //                     {status: none|generating|ready|error|unknown, sha, loaded,
 //                      rom, error, maps: {<n>: {file, addr, dim, bytes}}, tables: {<addr>: {...}}}
 //    GET  /maps/dme/<sha>/<file>.png   one graph
+//    GET  /maps/klr[?sha=<hash>], /maps/klr/<sha>/<file>.png   the same for
+//                     the KLR image (klr_map_graphs.py; tables only, keyed
+//                     by address: 0C00, 0B00, 0992, 0A00, 0925, ...)
 //
 //  Map graphs: map_graphs.py draws every numbered map and directly
 //  addressed table of the DME image into <mapcache>/<sha>/, keyed by the
@@ -167,7 +170,7 @@ function startSim(load = null) {
     if (FORWARD.test(line)) broadcast(line);
     else if (!line.startsWith('-Info')) console.log(line);
     if (rom) followRom(rom[1], rom[2]);
-    if (rom && rom[1] === 'dme') { loadedSha = imageSha(rom[2]); drawMaps(rom[2], loadedSha); }
+    if (rom && (rom[1] === 'dme' || rom[1] === 'klr')) { loadedSha[rom[1]] = imageSha(rom[2]); drawMaps(rom[2], loadedSha[rom[1]], rom[1]); }
   };
   createInterface({ input: proc.stdout }).on('line', onLine);
   createInterface({ input: proc.stderr }).on('line', onLine);
@@ -568,7 +571,7 @@ function unpackBundle(buf) {
 // ── Map graphs ───────────────────────────────────────────────
 // Beside the snapshots, out of the repo: ../tmp/dme_klr/map_graphs
 const MAP_CACHE = resolve(arg('mapcache', join(REPO, '..', 'tmp', 'dme_klr', 'map_graphs')));
-const MAP_GRAPHS = join(HERE, 'map_graphs.py');
+const MAP_GRAPHS = { dme: join(HERE, 'map_graphs.py'), klr: join(HERE, 'klr_map_graphs.py') };
 
 // An image's key: the start of the SHA-256 of its 8 KB as loaded (the
 // same as map_graphs.py and rom_stamp.py), so a renamed file keeps its key
@@ -579,10 +582,10 @@ function imageSha(path) {
     return img ? createHash('sha256').update(img).digest('hex').slice(0, 16) : null;
   } catch { return null; }
 }
-// DME images the bridge can draw for a log that names one by hash: the
-// repo's bin_images/dme and the ones uploaded through /rom
-function findDmeImage(sha) {
-  for (const dir of [IMAGES.dme, join(ROM_DIR, 'dme')]) {
+// Images the bridge can draw for a log that names one by hash: the repo's
+// bin_images/<cpu> and the ones uploaded through /rom
+function findImage(sha, cpu) {
+  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu)]) {
     let names = [];
     try { names = readdirSync(dir); } catch { continue; }
     for (const n of names) {
@@ -594,31 +597,36 @@ function findDmeImage(sha) {
   return null;
 }
 
-// One entry per image hash: { status: generating|ready|error, rom, path, error, index }.
-// map_graphs.py runs one image at a time; the rest wait in mapQueue.
+// One entry per CPU and image hash ('dme:<sha>' / 'klr:<sha>'):
+// { cpu, status: generating|ready|error, rom, path, error, index }.
+// map_graphs.py (DME) / klr_map_graphs.py (KLR) run one image at a time;
+// the rest wait in mapQueue. Both draw into MAP_CACHE/<sha>/ (the images
+// differ, so their hashes do).
 const mapJobs = new Map();
 const mapQueue = [];
 let mapBusy = false;
-let loadedSha = null;   // the DME image the sim has loaded
+const loadedSha = { dme: null, klr: null };   // the images the sim has loaded
 
-function drawMaps(path, sha = imageSha(path)) {
+function drawMaps(path, sha = imageSha(path), cpu = 'dme') {
   if (!path || !sha) return null;
-  const job = mapJobs.get(sha);
+  const key = `${cpu}:${sha}`;
+  const job = mapJobs.get(key);
   if (job && job.status !== 'error') return job;
-  const j = { status: 'generating', rom: basename(path), path, error: null, index: null };
-  mapJobs.set(sha, j);
-  mapQueue.push(sha);
+  const j = { cpu, status: 'generating', rom: basename(path), path, error: null, index: null };
+  mapJobs.set(key, j);
+  mapQueue.push(key);
   runMapQueue();
   return j;
 }
 
 function runMapQueue() {
   if (mapBusy || !mapQueue.length) return;
-  const sha = mapQueue.shift();
-  const job = mapJobs.get(sha);
+  const key = mapQueue.shift();
+  const job = mapJobs.get(key);
+  const sha = key.slice(4);
   mapBusy = true;
-  console.log(`bridge: map graphs for ${job.rom} (${sha}) -> ${MAP_CACHE}`);
-  const proc = spawn('python3', [MAP_GRAPHS, job.path, '--cache', MAP_CACHE], { stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log(`bridge: ${job.cpu} map graphs for ${job.rom} (${sha}) -> ${MAP_CACHE}`);
+  const proc = spawn('python3', [MAP_GRAPHS[job.cpu], job.path, '--cache', MAP_CACHE], { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '', finished = false;
   proc.stdout.on('data', d => { out += d; });
   proc.stderr.on('data', d => { err += d; });
@@ -631,7 +639,7 @@ function runMapQueue() {
         job.index = JSON.parse(readFileSync(join(m[2], 'index.json'), 'utf8'));
         job.status = 'ready';
         console.log(`bridge: map graphs ${m[3]} for ${job.rom} (${m[1]})`);
-        broadcast(`SIM: [MAPS] dme ready ${m[1]}`);
+        broadcast(`SIM: [MAPS] ${job.cpu} ready ${m[1]}`);
       } catch (e) { error = `couldn't read the graph index: ${e.message}`; }
     }
     if (error || !m) {
@@ -646,16 +654,16 @@ function runMapQueue() {
   proc.on('exit', code => { if (code !== null) done(code === 0 ? null : (err.trim() || `map_graphs.py exited with ${code}`)); });
 }
 
-// GET /maps/dme[?sha=<hash>]: the graphs of that image, or of the loaded one
-function mapsInfo(sha) {
-  const want = sha ?? loadedSha;
-  const reply = (status, job = {}) => ({ status, sha: want, loaded: loadedSha, rom: job.rom ?? null, error: job.error ?? null,
+// GET /maps/<cpu>[?sha=<hash>]: the graphs of that image, or of the loaded one
+function mapsInfo(sha, cpu = 'dme') {
+  const want = sha ?? loadedSha[cpu];
+  const reply = (status, job = {}) => ({ status, sha: want, loaded: loadedSha[cpu], rom: job.rom ?? null, error: job.error ?? null,
                                          maps: job.index?.maps ?? {}, tables: job.index?.tables ?? {} });
   if (!want) return reply('none');
-  let job = mapJobs.get(want);
+  let job = mapJobs.get(`${cpu}:${want}`);
   if (!job && sha) {
-    const path = findDmeImage(sha);
-    if (path) job = drawMaps(path, sha);
+    const path = findImage(sha, cpu);
+    if (path) job = drawMaps(path, sha, cpu);
     else {
       // Not on this machine any more, but drawn before
       try {
@@ -765,13 +773,14 @@ createServer((req, res) => {
     }
     return text(405, 'method not allowed');
   }
-  if (req.method === 'GET' && url.pathname === '/maps/dme') {
+  const mapsCpu = url.pathname.match(/^\/maps\/(dme|klr)$/);
+  if (req.method === 'GET' && mapsCpu) {
     const sha = url.searchParams.get('sha');
     if (sha !== null && !/^[0-9a-f]{16}$/.test(sha)) { res.writeHead(400, CORS); return res.end('sha must be 16 hex digits'); }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
-    return res.end(JSON.stringify(mapsInfo(sha)));
+    return res.end(JSON.stringify(mapsInfo(sha, mapsCpu[1])));
   }
-  const graph = url.pathname.match(/^\/maps\/dme\/([0-9a-f]{16})\/([MT][0-9A-F]{1,4}\.png)$/);
+  const graph = url.pathname.match(/^\/maps\/(?:dme|klr)\/([0-9a-f]{16})\/([MT][0-9A-F]{1,4}\.png)$/);
   if (req.method === 'GET' && graph) {
     const file = join(MAP_CACHE, graph[1], graph[2]);
     if (!existsSync(file)) { res.writeHead(404, CORS); return res.end(); }

@@ -12,6 +12,7 @@ so this works on its contiguous stretches of rows:
   highlighted. Where the new code is the same instruction sequence as the
   reference but moved, the label / description follow the code.
 * Differences in the gaps (maps, tables) are listed on the diff sheet.
+* The map sheets (klr_maps.py) are written again from the new image.
 """
 import difflib
 import re
@@ -254,6 +255,10 @@ wd.append(['%s image: %s' % (NEW, MEMNEW.split('/')[-1])])
 wd.append(['ASM colours: yellow = new/different in %s, blue = same code as %s but at a new address (labels/comments carried over)' % (NEW, REF)])
 for col, w in zip('ABCDEFG', (9, 9, 6, 16, 40, 60, 60)):
     wd.column_dimensions[col].width = w
+
+# ---- map sheets: from the new image, not the reference's -------------------------
+from klr_maps import write_sheets, load_image
+write_sheets(wb, load_image(MEMNEW), MEMNEW.split('/')[-1])
 
 wb.save(OUT)
 print('rows', len(out), dict(stats), 'diff regions', len(merged),
