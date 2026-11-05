@@ -89,8 +89,10 @@ for v in "${VARIANTS[@]}"; do
     fi
 
     echo ""
-    echo "== Running $v (${script##*/} ${RUN_ALL_ARGS[*]}) =="
-    "$script" "${RUN_ALL_ARGS[@]}"
+    # ${arr[@]+...} form: bash 3.2 (macOS /bin/bash) treats an empty array
+    # expansion as unbound under `set -u`, so guard it.
+    echo "== Running $v (${script##*/}${RUN_ALL_ARGS[@]+ ${RUN_ALL_ARGS[*]}}) =="
+    "$script" ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}
 
     dest="$COMPARE_DIR/$v"
     for sim_dir in dash_logs v_dash_logs; do
