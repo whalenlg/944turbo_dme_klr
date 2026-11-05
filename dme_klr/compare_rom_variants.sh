@@ -13,17 +13,23 @@
 #  variants so you can see at a glance which tests changed verdict.
 #
 #  Usage:
-#    ./compare_rom_variants.sh [--variants v1,v2,...] [run_all.sh args...]
+#    ./compare_rom_variants.sh [--variants v1,v2,...] [--diff-only] [run_all.sh args...]
 #
 #  Examples:
 #    ./compare_rom_variants.sh                    # 86,89,carpokes; both simulators
 #    ./compare_rom_variants.sh --iverilog 4        # iverilog only, 4 workers
 #    ./compare_rom_variants.sh --variants 86,89    # just those two
+#    ./compare_rom_variants.sh --diff-only         # re-diff archived results, no sims
 #
 #  --variants takes a comma-separated subset of: 86 89 carpokes (default:
 #  86,89,carpokes). Any other arguments are forwarded verbatim to
 #  run_all.sh for every variant run — e.g. --verilator, --iverilog, a
 #  worker count — so all variants are compared under identical conditions.
+#
+#  --diff-only skips the simulation runs and archiving and just rebuilds
+#  the diff tables from what is already under tmp/dme_klr/rom_compare/
+#  (run_all.sh args are ignored in that mode, except --verilator /
+#  --iverilog, which pick which side is diffed — as they do for a full run).
 #
 #  NOTE: run_all.sh itself starts with `git checkout main && git pull
 #  origin main`, so this runs that once per variant.
@@ -55,12 +61,16 @@ mkdir -p "$COMPARE_DIR"
 ALL_VARIANTS=(86 89 carpokes)
 VARIANTS=()
 RUN_ALL_ARGS=()
+DIFF_ONLY=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --variants)
             shift
             IFS=',' read -r -a VARIANTS <<< "${1:-}"
+            ;;
+        --diff-only)
+            DIFF_ONLY=1
             ;;
         *)
             RUN_ALL_ARGS+=("$1")
@@ -69,6 +79,22 @@ while [ $# -gt 0 ]; do
     shift
 done
 [ ${#VARIANTS[@]} -eq 0 ] && VARIANTS=("${ALL_VARIANTS[@]}")
+
+# Which simulator side(s) to archive and diff — same rule as run_all.sh:
+# --verilator / --iverilog restrict it, neither (or both) means both.
+# Without this, a --verilator run would still archive and diff whatever
+# stale dash_logs an earlier iverilog run left behind.
+_want_v=0; _want_iv=0
+for _a in ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}; do
+    case "$_a" in
+        --verilator) _want_v=1 ;;
+        --iverilog)  _want_iv=1 ;;
+    esac
+done
+[ "$_want_v" = "0" ] && [ "$_want_iv" = "0" ] && { _want_v=1; _want_iv=1; }
+SIM_DIRS=()
+[ "$_want_iv" = "1" ] && SIM_DIRS+=(dash_logs)
+[ "$_want_v"  = "1" ] && SIM_DIRS+=(v_dash_logs)
 
 variant_script() {
     case "$1" in
@@ -81,7 +107,10 @@ variant_script() {
 
 echo "== compare_rom_variants: ${VARIANTS[*]} =="
 
+[ "$DIFF_ONLY" = "1" ] && echo "   (--diff-only: using archived results in $COMPARE_DIR, no sims run)"
+
 for v in "${VARIANTS[@]}"; do
+    [ "$DIFF_ONLY" = "1" ] && break
     script="$(variant_script "$v")"
     if [ -z "$script" ] || [ ! -x "$script" ]; then
         echo "Unknown or missing variant script for '$v' — skipping (known: ${ALL_VARIANTS[*]})" >&2
@@ -95,7 +124,7 @@ for v in "${VARIANTS[@]}"; do
     "$script" ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}
 
     dest="$COMPARE_DIR/$v"
-    for sim_dir in dash_logs v_dash_logs; do
+    for sim_dir in "${SIM_DIRS[@]}"; do
         if [ -d "$_BASE/$sim_dir" ]; then
             echo "  archiving $sim_dir/*.log -> rom_compare/$v/$sim_dir/"
             mkdir -p "$dest/$sim_dir"
@@ -164,8 +193,8 @@ print(text)
 PYEOF
 }
 
-diff_side dash_logs "iverilog"
-diff_side v_dash_logs "Verilator"
+[ "$_want_iv" = "1" ] && diff_side dash_logs "iverilog"
+[ "$_want_v"  = "1" ] && diff_side v_dash_logs "Verilator"
 
 echo ""
 echo "== compare_rom_variants complete — results in $COMPARE_DIR =="
