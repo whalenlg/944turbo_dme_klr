@@ -51,6 +51,22 @@ matches none of them keeps the default `<cpu>/disassemble/` listing and
 shows **ASM: no workbook**. `--dme-asm <dir>` / `--klr-asm <dir>` pin a
 listing to one directory instead.
 
+## Map graphs
+
+Click a chart's title on the dashboard's **DME MAPS** tab to see that map or
+table as it is in the DME image the sim has loaded: 2D maps as a curve, 3D
+maps as a surface beside a grid of the raw values, `linear_lookup` tables as
+steps and MOVC tables as bars. `map_graphs.py` draws them all, one PNG each,
+into `../tmp/dme_klr/map_graphs/<sha>/` beside the checkout (`--mapcache
+<dir>` moves it), where `<sha>` is from the SHA-256 of the image's bytes. The
+bridge runs it whenever the sim reports a DME image; an image it has drawn
+before is reused, so graphs are drawn once per ROM (about 20 s) and again
+only when its contents change. Needs `pip3 install matplotlib`.
+
+To draw them without the bridge:
+
+    python3 dme_klr/live/map_graphs.py bin_images/dme/28PIN_DME_PERFORMANCE.mem [more images] [--force]
+
 ## Snapshots
 
 Whenever the model prints a warning or error (a line with `[WARN]`,
