@@ -28,7 +28,8 @@
 #
 #  --diff-only skips the simulation runs and archiving and just rebuilds
 #  the diff tables from what is already under tmp/dme_klr/rom_compare/
-#  (run_all.sh args are ignored in that mode).
+#  (run_all.sh args are ignored in that mode, except --verilator /
+#  --iverilog, which pick which side is diffed — as they do for a full run).
 #
 #  NOTE: run_all.sh itself starts with `git checkout main && git pull
 #  origin main`, so this runs that once per variant.
@@ -79,6 +80,22 @@ while [ $# -gt 0 ]; do
 done
 [ ${#VARIANTS[@]} -eq 0 ] && VARIANTS=("${ALL_VARIANTS[@]}")
 
+# Which simulator side(s) to archive and diff — same rule as run_all.sh:
+# --verilator / --iverilog restrict it, neither (or both) means both.
+# Without this, a --verilator run would still archive and diff whatever
+# stale dash_logs an earlier iverilog run left behind.
+_want_v=0; _want_iv=0
+for _a in ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}; do
+    case "$_a" in
+        --verilator) _want_v=1 ;;
+        --iverilog)  _want_iv=1 ;;
+    esac
+done
+[ "$_want_v" = "0" ] && [ "$_want_iv" = "0" ] && { _want_v=1; _want_iv=1; }
+SIM_DIRS=()
+[ "$_want_iv" = "1" ] && SIM_DIRS+=(dash_logs)
+[ "$_want_v"  = "1" ] && SIM_DIRS+=(v_dash_logs)
+
 variant_script() {
     case "$1" in
         86)       echo "$SCRIPT_DIR/run86.sh" ;;
@@ -107,7 +124,7 @@ for v in "${VARIANTS[@]}"; do
     "$script" ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}
 
     dest="$COMPARE_DIR/$v"
-    for sim_dir in dash_logs v_dash_logs; do
+    for sim_dir in "${SIM_DIRS[@]}"; do
         if [ -d "$_BASE/$sim_dir" ]; then
             echo "  archiving $sim_dir/*.log -> rom_compare/$v/$sim_dir/"
             mkdir -p "$dest/$sim_dir"
@@ -176,8 +193,8 @@ print(text)
 PYEOF
 }
 
-diff_side dash_logs "iverilog"
-diff_side v_dash_logs "Verilator"
+[ "$_want_iv" = "1" ] && diff_side dash_logs "iverilog"
+[ "$_want_v"  = "1" ] && diff_side v_dash_logs "Verilator"
 
 echo ""
 echo "== compare_rom_variants complete — results in $COMPARE_DIR =="
