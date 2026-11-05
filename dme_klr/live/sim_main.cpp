@@ -62,6 +62,8 @@
 //  Output lines added by this driver:
 //    SIM: [READY]  inputs=name=val,...
 //    SIM: [STATE]  running|paused t_ns=<n> dme_pc=<hex> klr_pc=<hex> reason=<why>
+//                  (a conditional breakpoint: reason=bp dme 024E if 37>14 (37=16),
+//                  the value it compared, hex, or 0/1 for a bit)
 //    SIM: [TIME]   t_ns=<n> rate=<sim ms per wall s>     (while running, ~1/s)
 //    SIM: [INPUTS] name=val,...
 //    SIM: [BP]     dme=<bp,...> klr=<bp,...>   (bp = <pc hex>, or with a condition
@@ -320,14 +322,14 @@ private:
             last_dme_ic_ = TB(live_dme_icount);
             uint16_t pc = TB(live_dme_ipc);
             push(trace_dme_, {pc, TB(live_dme_ctx0), TB(live_dme_ctx1), TB(live_dme_ctx2)});
-            if (bpHit(0, bp_dme_, pc)) return stop("bp dme " + hex(pc));
+            if (bpHit(0, bp_dme_, pc)) return stop("bp dme " + hex(pc) + bpWhy(0, bp_dme_, pc));
             if (step_dme_ > 0 && --step_dme_ == 0) return stop("step dme");
         }
         if (TB(live_klr_icount) != last_klr_ic_) {
             last_klr_ic_ = TB(live_klr_icount);
             uint16_t pc = TB(live_klr_ipc);
             push(trace_klr_, {pc, TB(live_klr_ctx0), TB(live_klr_ctx1), 0});
-            if (bpHit(1, bp_klr_, pc)) return stop("bp klr " + hex(pc));
+            if (bpHit(1, bp_klr_, pc)) return stop("bp klr " + hex(pc) + bpWhy(1, bp_klr_, pc));
             if (step_klr_ > 0 && --step_klr_ == 0) return stop("step klr");
         }
         if (until_ns_ >= 0 && tNs() >= until_ns_) {
@@ -684,6 +686,23 @@ private:
             case '>': return v >  k.val;
         }
         return true;
+    }
+
+    // A conditional breakpoint's stop reason adds the condition and the
+    // value it compared: "bp dme 024E if 37>14 (37=16)", "... if 21.0==1 (21.0=1)"
+    std::string bpWhy(int c, const BpMap& m, uint32_t pc) const {
+        auto it = m.find(pc);
+        if (it == m.end() || it->second.mem < 0) return "";
+        const BpCond& k = it->second;
+        std::string tok = bpToken(pc, k);
+        std::string cond = tok.substr(tok.find('@') + 1);
+        std::string loc = cond.substr(0, cond.find_first_of("=!<>"));
+        if (!ram_[c] || static_cast<size_t>(k.mem) >= ram_[c]->size) return " if " + cond;
+        unsigned v = static_cast<const uint8_t*>(ram_[c]->ptr)[k.mem];
+        char b[16];
+        if (k.bit >= 0) snprintf(b, sizeof b, "%u", (v >> k.bit) & 1);
+        else            snprintf(b, sizeof b, "%02X", v);
+        return " if " + cond + " (" + loc + "=" + b + ")";
     }
 
     // mem "37" / "21.0" / "0x37" / "37h", rel ==|!=|<|> (or eq/ne/lt/gt), val hex

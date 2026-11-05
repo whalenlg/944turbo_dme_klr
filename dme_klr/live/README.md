@@ -205,6 +205,9 @@ bp add dme 024E                 the same breakpoint again, without a condition
 The comparison is unsigned, made with RAM as it is when the instruction is
 fetched (before it executes). `SIM: [BP]` lists a conditional breakpoint as
 `024E@37>14` / `0ABC@21.0==1`; snapshots and LOAD keep the conditions.
+When one stops, the stop reason carries the value it compared:
+`SIM: [STATE] paused ... reason=bp dme 024E if 37>14 (37=16)`, which the
+dashboard shows beside STOPPED and on the breakpoint.
 
 ## Commands
 
