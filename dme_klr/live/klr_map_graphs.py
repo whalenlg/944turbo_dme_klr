@@ -27,7 +27,7 @@ REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(REPO, 'klr', 'disassemble'))
 import klr_maps as K  # noqa: E402
 
-GEN_VERSION = 1
+GEN_VERSION = 2   # bump to redraw every cached image
 DEFAULT_CACHE = os.path.abspath(os.path.join(REPO, '..', 'tmp', 'dme_klr', 'map_graphs'))
 
 
@@ -83,7 +83,25 @@ def draw_grid_map(plt, np, img, base, title, unit, conv, path, axis):
 def draw_gain(plt, np, img, title, path, axis):
     ga, gg = K.gain(img)
     g = np.array(gg, float)
-    fig, ax = plt.subplots(figsize=(11, 5), dpi=100)
+    fig = plt.figure(figsize=(16, 7.5), dpi=100)
+    # 3D: one bar per cell (no interpolation, so steps rather than a surface)
+    a3 = fig.add_subplot(1, 2, 1, projection='3d')
+    rpm = [col_rpm(axis, k, 8) for k in range(8)]
+    xs, ys = np.meshgrid(range(8), range(4))
+    xs, ys, zs = xs.ravel(), ys.ravel(), g.ravel()
+    cm = plt.get_cmap('viridis')
+    norm = (zs - zs.min()) / ((zs.max() - zs.min()) or 1)
+    a3.bar3d(xs - 0.4, ys - 0.4, np.zeros_like(zs), 0.8, 0.8, zs, color=cm(norm), edgecolor='k', linewidth=0.3, shade=True)
+    a3.set_xticks(range(8))
+    a3.set_xticklabels([f'{r:.0f}' for r in rpm], fontsize=7)
+    a3.set_yticks(range(4))
+    a3.set_yticklabels([f'{53 + 8 * r}°' for r in range(4)], fontsize=8)
+    a3.set_xlabel('~rpm (44h/8 column)')
+    a3.set_ylabel('throttle 3Ah (43h/8 row)')
+    a3.set_zlabel('6Bh gain (raw)')
+    a3.view_init(elev=32, azim=50)   # high-gain low-throttle row at the back, so it hides nothing
+    a3.set_title(title, fontsize=11)
+    ax = fig.add_subplot(1, 2, 2)
     ax.imshow(g, cmap='viridis', aspect='auto', origin='lower')
     for i in range(g.shape[0]):
         for j in range(g.shape[1]):
@@ -96,10 +114,10 @@ def draw_gain(plt, np, img, title, path, axis):
     ax.set_yticklabels([f'{8 * r}-{min(8 * r + 7, 28)} ({53 + 8 * r}-{min(60 + 8 * r, 81)}°)' for r in range(4)], fontsize=8)
     ax.set_xlabel('44h rpm index / ~rpm')
     ax.set_ylabel('43h throttle index (3Ah deg)')
-    ax.set_title(title, fontsize=11)
+    ax.set_title('Raw values (hex and bits)', fontsize=11)
     fig.text(0.5, 0.01, f'code[{ga:04X}h + (43h & 18h) + 44h/8] -> 6Bh, no interpolation; bit-packed.',
              ha='center', fontsize=8.5, color='#555')
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
     fig.savefig(path)
     plt.close(fig)
 
