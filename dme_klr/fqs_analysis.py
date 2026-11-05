@@ -8,12 +8,20 @@ injection pulse width.
 
 Usage:
     python3 fqs_analysis.py [log_dir_iv] [log_dir_vl]
+    python3 fqs_analysis.py --verilator          # Verilator logs only
+    python3 fqs_analysis.py --iverilog           # iverilog logs only
+    python3 fqs_analysis.py --iv-dir DIR --vl-dir DIR
 
 Defaults:
     iv: ~/coding_projects/944/tmp/dme_klr/dash_logs
     vl: ~/coding_projects/944/tmp/dme_klr/v_dash_logs
+
+The RPM / ign / load / WOT / FQS-gate columns come from the iverilog log
+when it has steady-state data, otherwise from the Verilator log (marked
+with a trailing '*').
 """
 
+import argparse
 import re
 import os
 import sys
@@ -146,39 +154,72 @@ def steady_state_stats(snapshots, rpm_min=RPM_STEADY):
     }
 
 
+DEFAULT_IV = Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'
+DEFAULT_VL = Path.home() / 'coding_projects/944/tmp/dme_klr/v_dash_logs'
+
+
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(
+        description="FQS sweep injection pulse width analysis (iverilog vs Verilator dash logs).")
+    ap.add_argument('iv_pos', nargs='?', metavar='log_dir_iv',
+                    help=f"iverilog dash_logs dir (default {DEFAULT_IV})")
+    ap.add_argument('vl_pos', nargs='?', metavar='log_dir_vl',
+                    help=f"Verilator dash_logs dir (default {DEFAULT_VL})")
+    ap.add_argument('--iv-dir', help="iverilog dash_logs dir (same as first positional)")
+    ap.add_argument('--vl-dir', help="Verilator dash_logs dir (same as second positional)")
+    sim = ap.add_mutually_exclusive_group()
+    sim.add_argument('--verilator', '-V', action='store_true',
+                     help="Verilator logs only; skip iverilog")
+    sim.add_argument('--iverilog', '-I', action='store_true',
+                     help="iverilog logs only; skip Verilator")
+    a = ap.parse_args(argv)
+    iv = a.iv_dir or a.iv_pos
+    vl = a.vl_dir or a.vl_pos
+    iv_dir = None if a.verilator else (Path(iv).expanduser() if iv else DEFAULT_IV)
+    vl_dir = None if a.iverilog else (Path(vl).expanduser() if vl else DEFAULT_VL)
+    for name, d in (('iverilog', iv_dir), ('Verilator', vl_dir)):
+        if d is not None and not d.is_dir():
+            print(f"warning: {name} log dir not found: {d}", file=sys.stderr)
+    return iv_dir, vl_dir
+
+
 def main():
-    iv_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'
-    vl_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.home() / 'coding_projects/944/tmp/dme_klr/v_dash_logs'
+    iv_dir, vl_dir = parse_args()
 
     print(f"\n{'='*80}")
     print(f"  FQS Fuel Quality Sweep — Injection Pulse Width Analysis")
     print(f"  Steady-state = RPM ≥ {RPM_STEADY}")
-    print(f"  IV : {iv_dir}")
-    print(f"  VL : {vl_dir}")
+    print(f"  IV : {iv_dir if iv_dir else '(skipped)'}")
+    print(f"  VL : {vl_dir if vl_dir else '(skipped)'}")
     print(f"  FQS timing gate: FQS pos 4-7, RPM > 1600, and WOT or load_idx(49) > {FQS_LOAD_MIN}")
+    print(f"  RPM/ign/load/WOT/gate from IV; '*' = taken from VL (no IV data)")
     print(f"{'='*80}\n")
 
     print(f"{'Test':<30} {'FQ_VAL':>6} {'Dec':>4}  "
-          f"{'IV fuel_ms':>17}  {'VL fuel_ms':>17}  {'Diff%':>6}  {'IV RPM':>7}  {'IV ign(mid)':>14}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
+          f"{'IV fuel_ms':>17}  {'VL fuel_ms':>17}  {'Diff%':>6}  {'RPM':>7}  {'ign(mid)':>14}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
     print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*17}  {'-'*17}  {'-'*6}  {'-'*7}  {'-'*14}  {'-'*8}  {'-'*4}  {'-'*8}")
 
     results = []
     for test, fq_hex, fq_dec in FQS_TESTS:
-        iv_path = iv_dir / f'{test}.dash.log'
-        vl_path = vl_dir / f'{test}.dash.log'
-
-        iv_snaps = parse_status_lines(iv_path)
-        vl_snaps = parse_status_lines(vl_path)
-        # Extract steady-state timing_adv (iram[0x31]) from STATUS lines
-        # This is the clean half-teeth measurement — no IGN delay noise
+        iv_snaps = parse_status_lines(iv_dir / f'{test}.dash.log') if iv_dir else []
+        vl_snaps = parse_status_lines(vl_dir / f'{test}.dash.log') if vl_dir else []
         HALF_TEETH_DEG = 360.0 / 264.0
         rpm_thresh = RPM_STEADY
-        ss_adv = [s['timing_adv'] for s in iv_snaps
-                  if s.get('rpm',0) >= rpm_thresh and 'timing_adv' in s]
-        iv_timing_adv = (sum(ss_adv)/len(ss_adv)) if ss_adv else None
 
         iv_ss = steady_state_stats(iv_snaps, rpm_thresh)
         vl_ss = steady_state_stats(vl_snaps, rpm_thresh)
+
+        # Reference sim for the RPM/ign/load/WOT/gate columns: iverilog when
+        # it has steady-state data, else Verilator (marked '*').
+        if iv_ss or not vl_ss:
+            ref_snaps, ref_ss, mark = iv_snaps, iv_ss, ''
+        else:
+            ref_snaps, ref_ss, mark = vl_snaps, vl_ss, '*'
+        # Extract steady-state timing_adv (iram[0x31]) from STATUS lines
+        # This is the clean half-teeth measurement — no IGN delay noise
+        ss_adv = [s['timing_adv'] for s in ref_snaps
+                  if s.get('rpm',0) >= rpm_thresh and 'timing_adv' in s]
+        ref_timing_adv = (sum(ss_adv)/len(ss_adv)) if ss_adv else None
 
         iv_str = f"{iv_ss['fuel_avg']:.3f}ms ({iv_ss['n']}pts)" if iv_ss else "  no data"
         vl_str = f"{vl_ss['fuel_avg']:.3f}ms ({vl_ss['n']}pts)" if vl_ss else "  no data"
@@ -190,18 +231,17 @@ def main():
             diff_pct = None
             diff_str = "   N/A"
 
-        iv_rpm = f"{iv_ss['rpm_avg']:.0f}" if iv_ss else "N/A"
-        vl_rpm = f"{vl_ss['rpm_avg']:.0f}" if vl_ss else "N/A"
+        rpm_str = f"{ref_ss['rpm_avg']:.0f}{mark}" if ref_ss else "N/A"
 
-        if iv_timing_adv is not None:
-            adv_deg = iv_timing_adv * HALF_TEETH_DEG
-            timing_str = f"{iv_timing_adv:.1f}ht ({adv_deg:.1f}°)"
+        if ref_timing_adv is not None:
+            adv_deg = ref_timing_adv * HALF_TEETH_DEG
+            timing_str = f"{ref_timing_adv:.1f}ht ({adv_deg:.1f}°){mark}"
         else:
             timing_str = "  N/A"
-        load = iv_ss['load_avg'] if iv_ss else None
-        wot = iv_ss['wot_frac'] if iv_ss else None
-        load_str = f"{load:.0f}" if load is not None else "N/A"
-        wot_str = f"{wot*100:.0f}" if wot is not None else "N/A"
+        load = ref_ss['load_avg'] if ref_ss else None
+        wot = ref_ss['wot_frac'] if ref_ss else None
+        load_str = f"{load:.0f}{mark}" if load is not None else "N/A"
+        wot_str = f"{wot*100:.0f}{mark}" if wot is not None else "N/A"
         if load is None and wot is None:
             gate_str = "?"
         elif (wot or 0) >= 0.5:
@@ -210,13 +250,15 @@ def main():
             gate_str = "open"
         else:
             gate_str = "closed"
+        if gate_str != "?":
+            gate_str += mark
         # Suppress VL column if diff is implausibly large (>50%) — VL test not run yet
         if diff_pct is not None and abs(diff_pct) > 50:
             vl_str = "  (not run)"
             diff_str = "   N/A"
-        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>17}  {vl_str:>17}  {diff_str:>6}  {iv_rpm:>7}  {timing_str:>14}  {load_str:>8}  {wot_str:>4}  {gate_str}")
+        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>17}  {vl_str:>17}  {diff_str:>6}  {rpm_str:>7}  {timing_str:>14}  {load_str:>8}  {wot_str:>4}  {gate_str}")
 
-        results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, iv_timing_adv))
+        results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, ref_timing_adv))
 
     # ── FQS effect analysis ───────────────────────────────────────────────────
     # The helper takes an exact base_name and fqs_prefix (str.startswith,
@@ -231,7 +273,8 @@ def main():
         print(f"{'='*80}")
 
         base = next((r for r in results if r[0] == base_name), None)
-        base_fuel = base[2]['fuel_avg'] if base and base[2] else None
+        base_iv = base[2]['fuel_avg'] if base and base[2] else None
+        base_vl = base[3]['fuel_avg'] if base and base[3] else None
         fqs_results = [(r[0], r[1], r[2], r[3], r[5] if len(r) > 5 else None)
                         for r in results if r[0].startswith(fqs_prefix)]
 
@@ -239,8 +282,10 @@ def main():
             print(f"\n  (no data for {fqs_prefix}*)")
             return
 
-        if base_fuel:
-            print(f"\n  Base ({base_name}, no FQS override): {base_fuel:.3f}ms\n")
+        if base_iv or base_vl:
+            b_iv = f"IV {base_iv:.3f}ms" if base_iv else "IV N/A"
+            b_vl = f"VL {base_vl:.3f}ms" if base_vl else "VL N/A"
+            print(f"\n  Base ({base_name}, no FQS override): {b_iv}, {b_vl}\n")
 
         print(f"  {'FQS':<5} {'Dec':>4}  {'IV fuel_ms':>10}  {'vs base':>8}  {'VL fuel_ms':>10}  {'vs base':>8}  {'IGN delay':>10}  {'vs FQS0':>18}")
         print(f"  {'-'*5} {'-'*4}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*18}")
@@ -251,8 +296,8 @@ def main():
             fqs_num = test.split('FQS')[1] if 'FQS' in test else '?'
             iv_f = iv_ss['fuel_avg'] if iv_ss else None
             vl_f = vl_ss['fuel_avg'] if vl_ss else None
-            iv_base = f"{(iv_f-base_fuel)/base_fuel*100:+.1f}%" if iv_f and base_fuel else "  N/A"
-            vl_base = f"{(vl_f-base_fuel)/base_fuel*100:+.1f}%" if vl_f and base_fuel else "  N/A"
+            iv_base = f"{(iv_f-base_iv)/base_iv*100:+.1f}%" if iv_f and base_iv else "  N/A"
+            vl_base = f"{(vl_f-base_vl)/base_vl*100:+.1f}%" if vl_f and base_vl else "  N/A"
             iv_str = f"{iv_f:.3f}ms" if iv_f else "  N/A"
             vl_str = f"{vl_f:.3f}ms" if vl_f else "  N/A"
             t_avg = iv_t
@@ -267,11 +312,13 @@ def main():
                 t_vs = "  N/A"
             print(f"  FQS{fqs_num:<2} {fq_dec:>4}  {iv_str:>10}  {iv_base:>8}  {vl_str:>10}  {vl_base:>8}  {t_str:>10}  {t_vs:>18}")
 
-        iv_fuels = [r[2]['fuel_avg'] for r in fqs_results if r[2]]
-        if iv_fuels:
-            fuel_range = max(iv_fuels) - min(iv_fuels)
-            print(f"\n  IV fuel range across FQS sweep: {min(iv_fuels):.3f} – {max(iv_fuels):.3f}ms")
-            print(f"  Range: {fuel_range:.3f}ms ({fuel_range/min(iv_fuels)*100:.1f}%)")
+        sim, fuels = 'IV', [r[2]['fuel_avg'] for r in fqs_results if r[2]]
+        if not fuels:
+            sim, fuels = 'VL', [r[3]['fuel_avg'] for r in fqs_results if r[3]]
+        if fuels:
+            fuel_range = max(fuels) - min(fuels)
+            print(f"\n  {sim} fuel range across FQS sweep: {min(fuels):.3f} – {max(fuels):.3f}ms")
+            print(f"  Range: {fuel_range:.3f}ms ({fuel_range/min(fuels)*100:.1f}%)")
             if fuel_range < 0.05:
                 print(f"\n  ⚠  WARNING: FQS has almost NO effect on fuel pulse width!")
                 print(f"     _FUEL_QUAL may not be connected to the fuel calculation.")
@@ -279,11 +326,11 @@ def main():
                 print(f"\n  ✓  FQS is affecting fuel — range of {fuel_range:.3f}ms seen.")
 
     print_fqs_effect_detailed(
-        "FQS Effect on Fuel — iverilog reference (CL, cl_ramp_to_6000)",
+        "FQS Effect on Fuel (CL, cl_ramp_to_6000)",
         'cl_ramp_to_6000', 'cl_ramp_to_6000_FQS', results)
 
     print_fqs_effect_detailed(
-        "FQS Effect on Fuel — iverilog reference (non-CL, ramp_to_6000)",
+        "FQS Effect on Fuel (non-CL, ramp_to_6000)",
         'ramp_to_6000', 'ramp_to_6000_FQS', results)
 
     print()
