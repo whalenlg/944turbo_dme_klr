@@ -1066,6 +1066,19 @@ DME_FILE_OVERRIDES = {
         'cl_ramp_to_6000_FQS5': {'fqs_fuel_baseline': 7.339},
         'cl_ramp_to_6000_FQS6': {'fqs_fuel_baseline': 7.339},
         'cl_ramp_to_6000_FQS7': {'fqs_fuel_baseline': 7.339},
+        # ramp_to_redline / ramp_to_redline_KLR_TPS_HIGH: this firmware
+        # keeps injecting at the sustained 6524 rpm redline (unlike the
+        # '86 image, see its block below) but settles at 9.91-9.99ms
+        # (avg 9.968ms) vs the reference image's 12.76-13.39ms — the
+        # same leaner-than-28PIN map seen in the 6000-family above, just
+        # a bigger gap at full load. Fuel rises smoothly with RPM through
+        # the ramp (1.6ms@1800, 4.4ms@4950, 9.8ms@6520) and holds flat at
+        # redline, and the value is identical with the '87 and '89 KLR
+        # images, so it's the DME map, not the model. Floor widened from
+        # 10.0 to 9.0 (~10% below the lowest sample, same margin
+        # approach as the 7.0 floor above).
+        'ramp_to_redline':              {'fuel_range': (9.0, 18.0)},
+        'ramp_to_redline_KLR_TPS_HIGH': {'fuel_range': (9.0, 18.0)},
     },
 
     # 28PIN_86DME.mem ('86 DME firmware variant): derived from one real
@@ -1161,6 +1174,44 @@ DME_FILE_OVERRIDES = {
 
     },
 }
+
+# ─── KLR firmware-variant overrides ─────────────────────────────────────────
+# Same idea as DME_FILE_OVERRIDES, keyed by the KLR ROM basename instead
+# (KLR_ROM_FILE, or the "KLR: [ROM]" line rom_stamp.py writes at the top
+# of each dash.log). Applied after the DME overrides.
+KLR_FILE_OVERRIDES = {
+    '89KLR_951.mem': {
+        # KLR_BATT_LOW / KLR_BATT_DISCONNECTED: the '87 KLR image answers
+        # the undervoltage fault by holding ign_out low for ~1-2.4s from
+        # t~7.1-7.5s (the "IGN_OUT stopped pulsing" signature in the base
+        # entries). The '89 KLR image doesn't: DTC 1-2 (0x12) still sets
+        # at t~210-310ms, but ignition keeps pulsing for the whole run
+        # (max gap 43ms). Confirmed by running BATT_LOW against the '89
+        # DME with both KLR images: '87 KLR shows a 2356ms gap at
+        # t=7510ms, '89 KLR shows none, and every DME-side value (fuel,
+        # ASE, sync, TPS bucket) is byte-identical between the two — so
+        # it's a KLR firmware difference, not broken fault injection.
+        # require_ram33_value=0x12 stays, and is what proves the fault
+        # reached the KLR firmware on this image.
+        'cl_ramp_to_3000_KLR_BATT_LOW':          {'expect_fail_markers': []},
+        'cl_ramp_to_3000_KLR_BATT_DISCONNECTED': {'expect_fail_markers': []},
+    },
+}
+
+
+def rom_files_from_log(lines):
+    """(dme_file, klr_file) from the [ROM] lines rom_stamp.py puts at the
+    top of a dash.log; None for any not found."""
+    dme = klr = None
+    for line in lines[:10]:
+        m = re.match(r'(DME|KLR): \[ROM\] (\S+)', line)
+        if m:
+            if m.group(1) == 'DME':
+                dme = m.group(2)
+            else:
+                klr = m.group(2)
+    return dme, klr
+
 
 # ─── Parsers ─────────────────────────────────────────────────────────────────
 
@@ -1587,7 +1638,7 @@ def validate_replay(test_name, logpath):
     return 0
 
 
-def validate(test_name, logpath, dme_file=None):
+def validate(test_name, logpath, dme_file=None, klr_file=None):
     if test_name.startswith('replay_'):
         return validate_replay(test_name, logpath)
     exp = TESTS.get(test_name)
@@ -1595,21 +1646,28 @@ def validate(test_name, logpath, dme_file=None):
         print(f"WARN\t{test_name}\tNo expectations defined — skipping checks")
         return 0
 
-    # Apply DME firmware-variant overrides on top of the base entry, if
-    # this test has any registered for the given DME_ROM_FILE. Merge onto
-    # a copy so TESTS itself is never mutated (important since this
-    # function can run in a loop / be called multiple times).
-    if dme_file:
-        dme_basename = os.path.basename(dme_file)
-        overrides = DME_FILE_OVERRIDES.get(dme_basename, {}).get(test_name)
-        if overrides:
-            exp = {**exp, **overrides}
-
     try:
         lines = open(logpath).readlines()
     except FileNotFoundError:
         print(f"FAIL\t{test_name}\tLog file not found: {logpath}")
         return 1
+
+    # Apply DME / KLR firmware-variant overrides on top of the base entry,
+    # if this test has any registered for the ROMs used. A ROM not given
+    # explicitly is taken from the dash.log's own [ROM] stamp. Merge onto
+    # a copy so TESTS itself is never mutated (important since this
+    # function can run in a loop / be called multiple times).
+    log_dme, log_klr = rom_files_from_log(lines)
+    dme_file = dme_file or log_dme
+    klr_file = klr_file or log_klr
+    if dme_file:
+        overrides = DME_FILE_OVERRIDES.get(os.path.basename(dme_file), {}).get(test_name)
+        if overrides:
+            exp = {**exp, **overrides}
+    if klr_file:
+        overrides = KLR_FILE_OVERRIDES.get(os.path.basename(klr_file), {}).get(test_name)
+        if overrides:
+            exp = {**exp, **overrides}
 
     # Also read raw log for KLR diagnostics (same path without .dash)
     raw_logpath = logpath.replace('.dash.log', '.log')
@@ -2856,4 +2914,4 @@ if __name__ == '__main__':
         print(f"Usage: {sys.argv[0]} <test_name> <dash.log> [dme_rom_file]", file=sys.stderr)
         sys.exit(2)
     dme_file_arg = sys.argv[3] if len(sys.argv) == 4 else os.environ.get('DME_ROM_FILE')
-    sys.exit(validate(sys.argv[1], sys.argv[2], dme_file_arg))
+    sys.exit(validate(sys.argv[1], sys.argv[2], dme_file_arg, os.environ.get('KLR_ROM_FILE')))
