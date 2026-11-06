@@ -1752,13 +1752,15 @@ wire [7:0] alt_switch = altitude_dynamic_cycle;
 wire [7:0] alt_switch = `_ALTITUDE;
 `endif
 wire alt_high = (alt_switch < 8'h80);
-// Boost loss after a fuel cut (combined DME+KLR build): the KLR's MAP
-// model gives the flow ratio MAP / table MAP while the turbo spools down
-// (klr_tb.v, afm_flow_ratio_x1000). The engine breathes the same volume
-// at lower manifold density, so mass flow drops by that ratio. The AFM
-// sits upstream of the turbo, at ambient density, so (unlike altitude)
-// it reads the whole drop: with the firmware's exponential
-// linearisation that is a shift of 32 ln(ratio) / ln(1.837) ADC counts.
+// Air flow after a fuel cut (combined DME+KLR build): the AFM models
+// here follow the throttle alone, i.e. the flow at the RPM and boost the
+// throttle settles at. During and after a cut the engine falls away from
+// that point, and the KLR model gives the flow ratio
+// (RPM x MAP) / (RPM x MAP at the start of the cut)
+// (klr_tb.v, afm_flow_ratio_x1000). The AFM sits upstream of the turbo,
+// at ambient density, so (unlike altitude) it reads the whole drop: with
+// the firmware's exponential linearisation that is a shift of
+// 32 ln(ratio) / ln(1.837) ADC counts.
 `ifdef DME_KLR_COMBINED
 integer boost_afm_shift;
 always @(*) begin
