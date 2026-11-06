@@ -82,6 +82,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // model below (ch4). Harmless if left unconnected/unused when
     // -DBOOST isn't defined.
     input  wire [31:0] rpm_in,
+    // DME fuel cut (iram[23h].5, coast or overload) — only meaningful when
+    // EXT_STIM=1. With no fuel there is no exhaust energy, so the -DBOOST
+    // model below lets the turbo spool down while it is set.
+    input  wire        fuel_cut,
     // Crank-position signals feeding the knock_signal_generator instance
     // below — only meaningful when EXT_STIM=1. Driven from the DME side
     // (u_dme.clk/tdc/speed_sensor) by dme_klr_dashboard_tb.v — klr_tb
@@ -98,6 +102,11 @@ module klr_tb #(parameter EXT_STIM = 0) (
     input  wire        tdc,
     input  wire        speed_sensor
 );
+
+    // MAP / table MAP while the turbo spools down after a fuel cut, x1000
+    // (see the -DBOOST model below); 1000 otherwise. Read by the DME's
+    // AFM model in the combined DME+KLR build.
+    integer afm_flow_ratio_x1000 = 1000;
 
     // ── Clock ─────────────────────────────────────────────
     parameter DELAY = `FRQ_SCALE / `KLR_FREQ;  // half-period ≈ 45 ns → ~11.1 MHz
@@ -342,7 +351,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     localparam real MAP_AREA_GAIN = 18.0;   // throttle area at onset vs closed
     localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
     localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
-    real map_load_frac, map_rpm, map_kpa, map_target;
+    real map_load_frac, map_rpm, map_kpa, map_target, map_target_fueled;
     always @(*) begin
         map_load_frac = (tps_wiper - MAP_AFM_IDLE) / (MAP_AFM_ONSET - MAP_AFM_IDLE);
         if (map_load_frac < 0.0) map_load_frac = 0.0;
@@ -352,9 +361,15 @@ module klr_tb #(parameter EXT_STIM = 0) (
         map_kpa = MAP_IDLE_KPA * (1.0 + MAP_AREA_GAIN * map_load_frac) * MAP_IDLE_RPM / map_rpm;
         if (map_kpa < MAP_FLOOR_KPA) map_kpa = MAP_FLOOR_KPA;
         if (map_kpa > MAP_ATM_KPA)   map_kpa = MAP_ATM_KPA;
-        map_target = (tps_wiper >= MAP_AFM_ONSET)
-                   ? boost_map_value
-                   : 1.22 * map_kpa - 4.0;
+        map_target_fueled = (tps_wiper >= MAP_AFM_ONSET)
+                          ? boost_map_value
+                          : 1.22 * map_kpa - 4.0;
+        // Fuel cut: no combustion, no exhaust energy, so the turbo makes
+        // no boost and MAP heads for the unboosted (throttle/RPM) value;
+        // the 500 ms lag filter below paces the spool-down (and the
+        // spool-up again once fuel returns).
+        map_target = (EXT_STIM && fuel_cut === 1'b1) ? 1.22 * map_kpa - 4.0
+                                                     : map_target_fueled;
     end
 
     // ── First-order lag filter on the boost target ───────────────────
@@ -380,6 +395,30 @@ module klr_tb #(parameter EXT_STIM = 0) (
     always @(posedge clk) begin
         boost_map_filtered <= boost_map_filtered
             + (map_target - boost_map_filtered) * ((2.0 * DELAY) / BOOST_LAG_TAU_NS);
+    end
+
+    // Air-flow ratio for the DME's AFM model (i8051_dashboard_tb.v,
+    // afm_at_alt). The CL model's AFM follows the throttle alone, which
+    // is calibrated with the boost the table gives. When the turbo spools
+    // down after a fuel cut, the engine breathes the same volume at a
+    // lower MAP, so mass flow drops by MAP / (the MAP the table would
+    // give). Applied from the start of a cut until boost has recovered
+    // to within 1% of the table again, so normal spool-up transients
+    // (and every existing test without a cut) are unchanged.
+    reg  cut_spool = 1'b0;
+    always @(posedge clk) begin
+        if (EXT_STIM && fuel_cut === 1'b1)
+            cut_spool <= 1'b1;
+        else if (boost_map_filtered >= 0.99 * map_target_fueled)
+            cut_spool <= 1'b0;
+    end
+    always @(*) begin
+        if (cut_spool && map_target_fueled > 0.0) begin
+            afm_flow_ratio_x1000 = $rtoi(1000.0 * (boost_map_filtered + 4.0) / (map_target_fueled + 4.0));
+            if (afm_flow_ratio_x1000 > 1000) afm_flow_ratio_x1000 = 1000;
+            if (afm_flow_ratio_x1000 < 100)  afm_flow_ratio_x1000 = 100;
+        end else
+            afm_flow_ratio_x1000 = 1000;
     end
 
     // Reverse the ADC-read routine's +10 offset (see header comment) —

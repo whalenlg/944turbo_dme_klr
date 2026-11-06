@@ -647,6 +647,7 @@ module dme_klr_dashboard_tb;
         .full_load       ( full_load_klr       ),  // KLR WOT flag → DME
         .tps_wiper       ( throttle_pos        ),  // throttle → KLR TPS angle ch7
         .rpm_in          ( u_dme.ref_rpm       ),  // DME tick-measured RPM (reg [31:0]) → KLR -DBOOST map (unused if -DBOOST undefined)
+        .fuel_cut        ( u_dme.i8051_top.u_cpu.iram[7'h23][5] ),  // DME fuel cut → KLR -DBOOST model (turbo spools down)
         .dme_clk         ( dme_clk             ),  // → KLR's knock_signal_generator (crank-synced knock_sensor waveform)
         .tdc             ( tdc                 ),  // → KLR's knock_signal_generator
         .speed_sensor    ( u_dme.speed_sensor  )   // → KLR's knock_signal_generator
