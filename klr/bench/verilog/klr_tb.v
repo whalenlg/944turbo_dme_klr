@@ -103,7 +103,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     input  wire        speed_sensor
 );
 
-    // MAP / table MAP while the turbo spools down after a fuel cut, x1000
+    // Engine air flow after a fuel cut relative to before it, x1000
     // (see the -DBOOST model below); 1000 otherwise. Read by the DME's
     // AFM model in the combined DME+KLR build.
     integer afm_flow_ratio_x1000 = 1000;
@@ -398,23 +398,42 @@ module klr_tb #(parameter EXT_STIM = 0) (
     end
 
     // Air-flow ratio for the DME's AFM model (i8051_dashboard_tb.v,
-    // afm_at_alt). The CL model's AFM follows the throttle alone, which
-    // is calibrated with the boost the table gives. When the turbo spools
-    // down after a fuel cut, the engine breathes the same volume at a
-    // lower MAP, so mass flow drops by MAP / (the MAP the table would
-    // give). Applied from the start of a cut until boost has recovered
-    // to within 1% of the table again, so normal spool-up transients
-    // (and every existing test without a cut) are unchanged.
+    // afm_at_alt). The CL model's AFM follows the throttle alone: it is
+    // the flow at the RPM and boost that throttle settles at. A fuel cut
+    // takes the engine away from that point, and the AFM, which measures
+    // the air the engine actually pumps, must follow. At a fixed throttle
+    // the engine breathes a fixed volume per rev, so mass flow goes as
+    // RPM x manifold density (MAP, absolute: kPa ~ x + 4 in the scale
+    // above). The cut's first clock latches RPM and MAP as the
+    // reference; from then on the ratio is
+    //     (rpm / rpm_ref) * (MAP / MAP_ref)
+    // so a falling RPM and a spooling-down turbo both lower the AFM
+    // reading. It holds until fuel is back and the engine has recovered
+    // to the reference flow, so normal transients (and every existing
+    // test without a cut) are unchanged.
     reg  cut_spool = 1'b0;
+    real cut_rpm_ref = 0.0, cut_map_ref = 0.0;
+    real cut_rpm_now, cut_ratio;
+    always @(*) begin
+        cut_rpm_now = rpm_in;
+        if (cut_rpm_now < MAP_MIN_RPM) cut_rpm_now = MAP_MIN_RPM;
+        cut_ratio = (cut_spool && cut_rpm_ref > 0.0)
+                  ? (cut_rpm_now * (boost_map_filtered + 4.0)) / (cut_rpm_ref * (cut_map_ref + 4.0))
+                  : 1.0;
+    end
     always @(posedge clk) begin
-        if (EXT_STIM && fuel_cut === 1'b1)
+        if (EXT_STIM && fuel_cut === 1'b1) begin
+            if (!cut_spool) begin
+                cut_rpm_ref <= cut_rpm_now;
+                cut_map_ref <= boost_map_filtered;
+            end
             cut_spool <= 1'b1;
-        else if (boost_map_filtered >= 0.99 * map_target_fueled)
+        end else if (cut_ratio >= 0.99)
             cut_spool <= 1'b0;
     end
     always @(*) begin
-        if (cut_spool && map_target_fueled > 0.0) begin
-            afm_flow_ratio_x1000 = $rtoi(1000.0 * (boost_map_filtered + 4.0) / (map_target_fueled + 4.0));
+        if (cut_spool) begin
+            afm_flow_ratio_x1000 = $rtoi(1000.0 * cut_ratio);
             if (afm_flow_ratio_x1000 > 1000) afm_flow_ratio_x1000 = 1000;
             if (afm_flow_ratio_x1000 < 100)  afm_flow_ratio_x1000 = 100;
         end else
