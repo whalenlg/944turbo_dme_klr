@@ -31,14 +31,16 @@
 //    GET  /asm/klr    klr_vcd.v asm_debug group): [{a,label,instr,ops,bytes}]
 //                     (dme rows also carry num: operands as raw addresses;
 //                     rows may carry desc from asm_full.json)
-//    GET  /maps/dme[?sha=<hash>]  graphs of a DME image's maps and tables:
-//                     the loaded image's, or the one with that content hash
-//                     (a dash.log's DME: [ROM] line, see rom_stamp.py; found
-//                     in bin_images/dme or the uploaded images, drawn if new)
+//    GET  /maps/dme[?sha=<hash>|?name=<file>]  graphs of a DME image's maps
+//                     and tables: the loaded image's, or the one with that
+//                     content hash (a dash.log's DME: [ROM] line, see
+//                     rom_stamp.py) or file name (a full sim log's "DME: ROM
+//                     loaded from" line); found in bin_images/dme or the
+//                     uploaded images, drawn if new
 //                     {status: none|generating|ready|error|unknown, sha, loaded,
 //                      rom, error, maps: {<n>: {file, addr, dim, bytes}}, tables: {<addr>: {...}}}
 //    GET  /maps/dme/<sha>/<file>.png   one graph
-//    GET  /maps/klr[?sha=<hash>], /maps/klr/<sha>/<file>.png   the same for
+//    GET  /maps/klr[?sha=<hash>|?name=<file>], /maps/klr/<sha>/<file>.png   the same for
 //                     the KLR image (klr_map_graphs.py; tables only, keyed
 //                     by address: 0C00, 0B00, 0992, 0A00, 0925, ...)
 //
@@ -597,6 +599,15 @@ function findImage(sha, cpu) {
   return null;
 }
 
+// The same by file name, for a log that names its image but has no hash
+function findImageByName(name, cpu) {
+  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu)]) {
+    const p = join(dir, name);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
 // One entry per CPU and image hash ('dme:<sha>' / 'klr:<sha>'):
 // { cpu, status: generating|ready|error, rom, path, error, index }.
 // map_graphs.py (DME) / klr_map_graphs.py (KLR) run one image at a time;
@@ -663,8 +674,16 @@ function runMapQueue() {
   proc.on('exit', code => { if (code !== null) done(code === 0 ? null : (err.trim() || `map_graphs.py exited with ${code}`)); });
 }
 
-// GET /maps/<cpu>[?sha=<hash>]: the graphs of that image, or of the loaded one
-function mapsInfo(sha, cpu = 'dme') {
+// GET /maps/<cpu>[?sha=<hash>|?name=<file>]: the graphs of that image, or of the loaded one
+function mapsInfo(sha, cpu = 'dme', name = null) {
+  if (!sha && name) {
+    const path = findImageByName(name, cpu);
+    const s = path && imageSha(path);
+    if (!s) return { status: 'unknown', sha: null, name, loaded: loadedSha[cpu], rom: name, error: null,
+                     version: null, maps: {}, tables: {} };
+    sha = s;
+    if (!mapJobs.get(`${cpu}:${sha}`)) drawMaps(path, sha, cpu);
+  }
   const want = sha ?? loadedSha[cpu];
   const reply = (status, job = {}) => ({ status, sha: want, loaded: loadedSha[cpu], rom: job.rom ?? null, error: job.error ?? null,
                                          version: job.index?.version ?? null,
@@ -787,8 +806,11 @@ createServer((req, res) => {
   if (req.method === 'GET' && mapsCpu) {
     const sha = url.searchParams.get('sha');
     if (sha !== null && !/^[0-9a-f]{16}$/.test(sha)) { res.writeHead(400, CORS); return res.end('sha must be 16 hex digits'); }
+    // A file name only, never a path: looked up in bin_images/<cpu> and the uploads
+    const name = url.searchParams.get('name');
+    if (name !== null && !/^[\w.+-]+\.(mem|bin)$/i.test(name)) { res.writeHead(400, CORS); return res.end('name must be an image file name'); }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
-    return res.end(JSON.stringify(mapsInfo(sha, mapsCpu[1])));
+    return res.end(JSON.stringify(mapsInfo(sha, mapsCpu[1], name)));
   }
   const graph = url.pathname.match(/^\/maps\/(?:dme|klr)\/([0-9a-f]{16})\/([MT][0-9A-F]{1,4}\.png)$/);
   if (req.method === 'GET' && graph) {
