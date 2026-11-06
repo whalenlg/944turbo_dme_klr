@@ -1752,11 +1752,30 @@ wire [7:0] alt_switch = altitude_dynamic_cycle;
 wire [7:0] alt_switch = `_ALTITUDE;
 `endif
 wire alt_high = (alt_switch < 8'h80);
+// Boost loss after a fuel cut (combined DME+KLR build): the KLR's MAP
+// model gives the flow ratio MAP / table MAP while the turbo spools down
+// (klr_tb.v, afm_flow_ratio_x1000). The engine breathes the same volume
+// at lower manifold density, so mass flow drops by that ratio. The AFM
+// sits upstream of the turbo, at ambient density, so (unlike altitude)
+// it reads the whole drop: with the firmware's exponential
+// linearisation that is a shift of 32 ln(ratio) / ln(1.837) ADC counts.
+`ifdef DME_KLR_COMBINED
+integer boost_afm_shift;
+always @(*) begin
+    if (dme_klr_dashboard_tb.u_klr.afm_flow_ratio_x1000 >= 1000)
+        boost_afm_shift = 0;
+    else
+        boost_afm_shift = $rtoi(32.0 * $ln(dme_klr_dashboard_tb.u_klr.afm_flow_ratio_x1000 / 1000.0) / $ln(1.837) - 0.5);
+end
+`else
+localparam integer boost_afm_shift = 0;
+`endif
 function automatic [7:0] afm_at_alt;
     input [7:0] afm;
+    input signed [31:0] boost_shift;   // boost_afm_shift, passed in so @(*) sees it
     integer v;
     begin
-        v = afm + (alt_high ? alt_afm_shift : 0);
+        v = afm + (alt_high ? alt_afm_shift : 0) + boost_shift;
         afm_at_alt = v < 0 ? 8'd0 : v > 255 ? 8'd255 : v[7:0];
     end
 endfunction
@@ -1767,7 +1786,7 @@ endfunction
 // normal idle-switch / KLR full_load logic below unless live_dme_tps
 // pins it (16'hFFFF = follow that logic), as the log replay does.
 always @(*) begin
-        adc_ch0 = (dme_klr_dashboard_tb.live_afm == 16'hFFFF) ? afm_at_alt(afm_effective) : afm_effective;  // a pinned AFM is the sensor reading itself
+        adc_ch0 = (dme_klr_dashboard_tb.live_afm == 16'hFFFF) ? afm_at_alt(afm_effective, boost_afm_shift) : afm_effective;  // a pinned AFM is the sensor reading itself
         adc_ch1 = dme_klr_dashboard_tb.live_battery;
         adc_ch2 = dme_klr_dashboard_tb.live_airtemp;
         adc_ch3 = dme_klr_dashboard_tb.live_coolant;
@@ -1784,11 +1803,11 @@ always @(*) begin
 `elsif AFM_SHORT_TO_GROUND
         adc_ch0 = 8'h00;  // AFM wiper shorted to ground (afm_short_to_ground)
 `elsif AFM_CL_RAMP
-        adc_ch0 = afm_at_alt(afm_cl);
+        adc_ch0 = afm_at_alt(afm_cl, boost_afm_shift);
 `elsif AFM_TIPPY
-        adc_ch0 = afm_at_alt(afm_tippy);
+        adc_ch0 = afm_at_alt(afm_tippy, boost_afm_shift);
 `else
-        adc_ch0 = afm_at_alt(afm_wiper);
+        adc_ch0 = afm_at_alt(afm_wiper, boost_afm_shift);
 `endif
 `ifdef DME_BATT_DISCONNECTED
         adc_ch1 = 8'h00;  // battery sense open — reads no voltage (battery_disconnected)
