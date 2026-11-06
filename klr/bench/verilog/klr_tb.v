@@ -392,9 +392,20 @@ module klr_tb #(parameter EXT_STIM = 0) (
     real boost_map_filtered;
     localparam real BOOST_LAG_TAU_NS = 500_000_000.0;  // ~500ms time constant
     initial boost_map_filtered = 0.0;
+    // During a fuel cut there is no exhaust energy to keep the turbo
+    // spinning, and the compressor is still pumping the engine's air, so
+    // it slows and MAP falls much faster than the 500 ms spool-up lag:
+    // BOOST_CUT_TAU_MS (default 150 ms) paces the spool-down instead.
+`ifndef BOOST_CUT_TAU_MS
+  `define BOOST_CUT_TAU_MS 150
+`endif
+    localparam real BOOST_CUT_TAU_NS = `BOOST_CUT_TAU_MS * 1_000_000.0;
+    real boost_lag_tau_ns;
+    always @(*) boost_lag_tau_ns = (EXT_STIM && fuel_cut === 1'b1 && map_target < boost_map_filtered)
+                                   ? BOOST_CUT_TAU_NS : BOOST_LAG_TAU_NS;
     always @(posedge clk) begin
         boost_map_filtered <= boost_map_filtered
-            + (map_target - boost_map_filtered) * ((2.0 * DELAY) / BOOST_LAG_TAU_NS);
+            + (map_target - boost_map_filtered) * ((2.0 * DELAY) / boost_lag_tau_ns);
     end
 
     // Air-flow ratio for the DME's AFM model (i8051_dashboard_tb.v,
