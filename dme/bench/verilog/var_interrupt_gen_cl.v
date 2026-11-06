@@ -669,6 +669,13 @@ module var_interrupt_generator_cl (
 
                 // ── Torque update ─────────────────────────────────
                 fuel_sample = {`CL_IRAM(8'h4B), `CL_IRAM(8'h4A)};
+                // Fuel cut (iram[23h].5, coast or overload): fire_inj is
+                // skipped (ROM 016Ch), so nothing is injected, but the
+                // firmware keeps computing 4B:4A. An overload cut at full
+                // load leaves it at ~10 ms, which kept the engine pegged
+                // at the rev limiter with no fuel going in.
+                if (`CL_IRAM(8'h23) & 8'h20)
+                    fuel_sample = 0;
                 fuel_pulse_prev <= fuel_sample;
                 fuel_ms_x100    <= fuel_sample / 5;
 
@@ -676,9 +683,8 @@ module var_interrupt_generator_cl (
                 // FuelOffCoast (iram[23h].5) used to clamp here too, but
                 // that just froze RPM during a real overrun fuel cut
                 // instead of letting it coast down. It now falls through
-                // to the normal branch below: fuel_sample already reads
-                // the real (near-zero, during a genuine cut) injector
-                // pulse width, so combustion nets negative against
+                // to the normal branch below: fuel_sample is zeroed during
+                // a cut (above), so combustion nets negative against
                 // friction there and RPM decays on its own, floored by
                 // CL_RPM_MIN same as any other low-RPM condition.
                 if (!synced_once) begin
