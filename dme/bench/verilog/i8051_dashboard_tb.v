@@ -1937,6 +1937,9 @@ wire o2_pins_low;
         integer fuel, load;
         fuel = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4B], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4A]};
         load = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h46], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h47]};
+        // fuel cut (23h.5): fire_inj is skipped, so nothing is injected
+        // whatever 4B:4A says, and the exhaust goes lean
+        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23][5]) fuel = 0;
         // the real air per stroke: at altitude the firmware's load comes
         // from an AFM reading flow x sqrt(rho) while the real air is x rho
         // (see "Altitude: air density"), a further x sqrt(rho)
