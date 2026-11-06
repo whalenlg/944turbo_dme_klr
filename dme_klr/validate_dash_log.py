@@ -1079,6 +1079,17 @@ DME_FILE_OVERRIDES = {
         # approach as the 7.0 floor above).
         'ramp_to_redline':              {'fuel_range': (9.0, 18.0)},
         'ramp_to_redline_KLR_TPS_HIGH': {'fuel_range': (9.0, 18.0)},
+        # airtemp_fail / airtemp_open_circuit: on this firmware the air
+        # temp fault leaves idle ~13% (short) / ~2% (open) richer than
+        # warm_idle_5s, and the sensor reads rich (R3e=0, 24h.6=1) from the
+        # end of the cranking fuel cut to the end of the 5 s run. Lambda is
+        # working: 1Bh walks down 0x80 -> 0x72/0x73 the whole time, it just
+        # never trims far enough to cross back lean in 5 s. These used to
+        # pass as 'ok' only because the lean->rich crossing after the
+        # cranking cut was counted as switching (Verilator and iverilog
+        # alike, 2026-11-05/06 run89 logs).
+        'airtemp_fail':                 {'expect_o2': 'rich_or_disconnected'},
+        'airtemp_open_circuit':         {'expect_o2': 'rich_or_disconnected'},
     },
 
     # 28PIN_86DME.mem ('86 DME firmware variant): derived from one real
@@ -1490,7 +1501,20 @@ def detect_o2_status(rows):
     # "After startup" = everything past the same startup window used
     # elsewhere in this script for steady-state windows (last/first 20%,
     # min 10 snapshots) — here taken from the start rather than the end.
-    skip = min(len(rows), max(10, len(rows) // 5))
+    skip = max(10, len(rows) // 5)
+    # The cranking fuel cut (23h.5, held until the firmware starts
+    # injecting) burns no fuel in the engine model, so the O2 sensor reads
+    # lean until it ends and then crosses to wherever the running mixture
+    # puts it. That one crossing is not "switching": when a cut starts
+    # inside the startup window, start judging a few snapshots after it
+    # ends, if that is later. (Snapshots before cranking read 23h.5 clear,
+    # and a later overrun cut is not a startup cut, so neither counts.)
+    O2_SETTLE_ROWS = 5
+    cut_start = next((i for i, r in enumerate(rows[:skip]) if r.get('fuelcut')), None)
+    if cut_start is not None:
+        cut_end = next((i for i in range(cut_start, len(rows)) if not rows[i].get('fuelcut')), len(rows))
+        skip = max(skip, cut_end + O2_SETTLE_ROWS)
+    skip = min(len(rows), skip)
     post_startup = rows[skip:]
     o2_vals = [r['o2_val'] for r in post_startup]
     if not o2_vals:
