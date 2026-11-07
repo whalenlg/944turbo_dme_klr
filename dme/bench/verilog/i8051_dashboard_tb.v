@@ -1958,9 +1958,10 @@ wire o2_pins_low;
         integer fuel, load;
         fuel = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4B], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h4A]};
         load = {i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h46], i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h47]};
-        // fuel cut (23h.5): fire_inj is skipped, so nothing is injected
-        // whatever 4B:4A says, and the exhaust goes lean
-        if (i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23][5]) fuel = 0;
+        // fuel cut (23h.5) or rev limit: fire_inj is skipped, so nothing
+        // is injected whatever 4B:4A says, and the exhaust goes lean.
+        // No firing for 2+ of the usual firing intervals means skipped.
+        if (i8051_dashboard_tb.inj_skipping) fuel = 0;
         // the real air per stroke: at altitude the firmware's load comes
         // from an AFM reading flow x sqrt(rho) while the real air is x rho
         // (see "Altitude: air density"), a further x sqrt(rho)
@@ -2684,6 +2685,34 @@ initial begin : deadchk_init
     integer i;
     for (i = 0; i < 64; i = i + 1) deadchk_n[i] = 0;
 end
+// ── Injector firings ──────────────────────────────────────────
+// Every fire_inj passes ROM 01D2h (clr P1.0), both the normal path from
+// 01BEh and the held-open reload from 0154h. The ext0 handler skips it
+// (jc 01DEh at 016Eh) on a fuel cut (23h.5) or above the rev limit
+// (ENGINE_RPM_RAW 37h > ROM 1171h, 6480 rpm) -- the rev limit sets no
+// flag, so the engine and O2 models count firings instead of reading
+// 23h.5. Same address in the 86, 89 and performance images.
+integer     inj_fire_count = 0;
+reg  [63:0] inj_fire_t  = 0;   // $time of the last firing
+reg  [63:0] inj_fire_dt = 0;   // interval between the last two
+reg         inj_at_fire = 1'b0;
+always @(posedge i8051_top.u_cpu.clk) begin : inj_fire_counter
+    if (i8051_top.u_cpu.res_n && i8051_top.u_cpu.osc_cnt == 4'd5 &&
+        !i8051_top.u_cpu.cycle_2 && !i8051_top.u_cpu.irq_pending) begin
+        if (i8051_top.u_cpu.pc == 16'h01D2 && !inj_at_fire) begin
+            inj_fire_count <= inj_fire_count + 1;
+            inj_fire_dt    <= (inj_fire_t != 0) ? $time - inj_fire_t : 0;
+            inj_fire_t     <= $time;
+        end
+        inj_at_fire <= (i8051_top.u_cpu.pc == 16'h01D2);
+    end
+end
+// Fuel not going in: a fuel cut (23h.5), or no firing for more than 2 of
+// the usual firing intervals (the rev limiter). Feeds the KLR's turbo
+// model in the combined build.
+reg inj_skipping = 1'b0;
+always #10_000 inj_skipping = i8051_top.u_cpu.iram[7'h23][5] === 1'b1 ||
+                              (inj_fire_dt != 0 && $time - inj_fire_t > 2 * inj_fire_dt);
 always @(posedge i8051_top.u_cpu.clk) begin : dead_code_check
     reg [15:0] pc;
     integer    idx, n;
