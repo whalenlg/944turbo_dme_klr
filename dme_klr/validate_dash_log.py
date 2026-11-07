@@ -1182,10 +1182,14 @@ DME_FILE_OVERRIDES = {
         # KLR-input-loss tests' IGN_OUT signature.
         'ramp_to_redline':             {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
         'ramp_to_redline_KLR_TPS_HIGH': {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
-        # cl_ramp_to_redline: same signature (RPM settled=6684, above the
-        # non-CL siblings' 6524 even) — same persistent-redline-fuel-cut
-        # explanation applies.
-        'cl_ramp_to_redline':           {'expect_fail_markers': ['No injected fuel snapshots in steady state']},
+        # cl_ramp_to_redline: this image's overload cut (21h.1 lockout,
+        # 0C06h-0C53h) trips at ~5.4 s, before redline. Since the engine
+        # model burns nothing during a cut (#180) and the AFM and boost
+        # follow the engine down (#183/#184), the lockout holds load near
+        # its lowered threshold (49h ~8C-9D) and RPM settles ~5400-5800
+        # (max 5827) instead of reaching the rev limiter; fuel is injected
+        # between cuts (avg ~8.1 ms), and the dwell follows that RPM.
+        'cl_ramp_to_redline':           {'rpm_target': 5500, 'dwell_cap': 82},
 
     },
 }
