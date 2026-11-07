@@ -432,8 +432,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
                   ? (cut_rpm_now * (boost_map_filtered + 4.0)) / (cut_rpm_ref * (cut_map_ref + 4.0))
                   : 1.0;
     end
+    // Only for cuts with the throttle past boost onset (overload, rev
+    // limit): there the AFM model's value is the flow at the RPM and boost
+    // the engine was making. A closed-throttle overrun cut is different:
+    // the AFM model already reads the idle flow the engine falls back to,
+    // and scaling it by RPM as well starves idle after the cut (stall).
+    // A throttle back below onset ends the correction the same way.
     always @(posedge clk) begin
-        if (EXT_STIM && fuel_cut === 1'b1) begin
+        if (tps_wiper < MAP_AFM_ONSET)
+            cut_spool <= 1'b0;
+        else if (EXT_STIM && fuel_cut === 1'b1) begin
             if (!cut_spool) begin
                 cut_rpm_ref <= cut_rpm_now;
                 cut_map_ref <= boost_map_filtered;
