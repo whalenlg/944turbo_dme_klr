@@ -978,7 +978,13 @@ TESTS = {
                           'ign_delay_baseline':2811.0, 'fqs_fuel_floor':5.0, 'fqs_fuel_baseline':8.032,
                           'notes':'FQS pos7: +6% fuel, -2.77° timing',
                           'dwell_cap':96},  # estimated from RPM-scaling trend — not directly confirmed from a real log
-    'cl_ramp_to_redline':{'expect_o2':'rich_or_disconnected', 'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
+    # O2 'ok': RPM settles on the rev limiter (37h > ROM 1171h = 6480), where
+    # the jc at 016Eh skips fire_inj on the revs above it. The engine and O2
+    # models burn nothing on a skipped rev (inj_fire_count, #185), so the
+    # sensor swings lean/rich and switches. Before #185 they burnt the held
+    # ~11 ms every rev and the sensor sat rich. The 86 image's overload cut
+    # (23h.5) cycles below the limit and switches it the same way.
+    'cl_ramp_to_redline':{'expect_o2':'ok', 'rpm_target': 6500, 'fuel_range':(1.5, 18.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to max at t=2s; RPM should approach redline in 40s',
                           'dwell_cap':97},   # estimated from RPM-scaling trend (90@6000, 96@6440, 97@6524) — not directly confirmed from a real log
     'cl_ac_halfway':     {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
