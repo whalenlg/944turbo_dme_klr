@@ -420,6 +420,7 @@ module var_interrupt_generator_cl (
     integer rpm_fp_min;
     integer rpm_fp_max;
     reg [15:0] fuel_pulse_prev;
+    integer    inj_fire_seen = 0;   // `CL_TB.inj_fire_count at the last torque update
     integer    fuel_ms_x100;
 
     // ── Pre-sync clamp target (crank ramp when enabled) ────────────
@@ -674,8 +675,12 @@ module var_interrupt_generator_cl (
                 // firmware keeps computing 4B:4A. An overload cut at full
                 // load leaves it at ~10 ms, which kept the engine pegged
                 // at the rev limiter with no fuel going in.
-                if (`CL_IRAM(8'h23) & 8'h20)
+                // The rev limiter (37h > ROM 1171h) skips fire_inj the
+                // same way (jc 01DEh at 016Eh) but sets no flag, so also
+                // zero the fuel when nothing fired since the last update.
+                if ((`CL_IRAM(8'h23) & 8'h20) || `CL_TB.inj_fire_count == inj_fire_seen)
                     fuel_sample = 0;
+                inj_fire_seen <= `CL_TB.inj_fire_count;
                 fuel_pulse_prev <= fuel_sample;
                 fuel_ms_x100    <= fuel_sample / 5;
 
