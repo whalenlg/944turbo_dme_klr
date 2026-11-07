@@ -229,8 +229,16 @@ TESTS = {
                                   'idle controller settles at a different integral value to hold 840rpm because '
                                   'the false-hot coolant reading skews the enrichment/mixture target. Shifts '
                                   'from 0x3B (baseline) to 0x41 for this fault, untouched by tps_fail.'},
+    # O2 'rich_or_disconnected' (airtemp_fail and airtemp_open_circuit):
+    # the air temp fault leaves idle richer than warm_idle_5s and the
+    # sensor reads rich (R3e=0, 24h.6=1) from the end of the cranking fuel
+    # cut to the end of the 5 s run. Lambda is working (1Bh walks 0x80 ->
+    # 0x73) but never trims far enough to cross back lean in 5 s. These
+    # passed as 'ok' only while the lean->rich crossing after the cranking
+    # cut counted as switching (until 7cfd3f3). Same on the PERFORMANCE
+    # and '89 images.
     'airtemp_fail':      {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
-                          'expect_isv_loop_active':True,
+                          'expect_isv_loop_active':True, 'expect_o2':'rich_or_disconnected',
                           'notes':'Same reasoning as coolant_fail — fuel_range alone does not prove the fault. '
                                   'The same ISV integral term (iram[0x7D]) shifts from 0x3B (baseline) to 0x72 '
                                   'for this fault (a much larger shift than coolant_fail\'s 0x41, consistent '
@@ -290,6 +298,7 @@ TESTS = {
                                   'the KLR battery input stays nominal, so no KLR DTC.'},
     'airtemp_open_circuit': {'rpm_target':  840, 'fuel_range':(1.5, 3.5), 'expect_ase':True,  'expect_fuelcut':True,
                           'expect_iram_bytes':[(0x12, (0x02, 0xFF), 'AIRTEMP(12)')], 'expect_isv_loop_active':True,
+                          'expect_o2':'rich_or_disconnected',   # see airtemp_fail
                           'notes':'Air temp ch2 forced to 0xFF (open NTC). Real run: the firmware linearises it '
                                   'in place to 0x02 (coldest end; a snapshot between conversions catches the raw '
                                   '0xFF), where warm_idle_5s shows 0x5D/0x9E. Fuel only moves ~2% (1.885 vs 1.849 ms), so the 12h '
@@ -1085,17 +1094,6 @@ DME_FILE_OVERRIDES = {
         # approach as the 7.0 floor above).
         'ramp_to_redline':              {'fuel_range': (9.0, 18.0)},
         'ramp_to_redline_KLR_TPS_HIGH': {'fuel_range': (9.0, 18.0)},
-        # airtemp_fail / airtemp_open_circuit: on this firmware the air
-        # temp fault leaves idle ~13% (short) / ~2% (open) richer than
-        # warm_idle_5s, and the sensor reads rich (R3e=0, 24h.6=1) from the
-        # end of the cranking fuel cut to the end of the 5 s run. Lambda is
-        # working: 1Bh walks down 0x80 -> 0x72/0x73 the whole time, it just
-        # never trims far enough to cross back lean in 5 s. These used to
-        # pass as 'ok' only because the lean->rich crossing after the
-        # cranking cut was counted as switching (Verilator and iverilog
-        # alike, 2026-11-05/06 run89 logs).
-        'airtemp_fail':                 {'expect_o2': 'rich_or_disconnected'},
-        'airtemp_open_circuit':         {'expect_o2': 'rich_or_disconnected'},
     },
 
     # 28PIN_86DME.mem ('86 DME firmware variant): derived from one real
