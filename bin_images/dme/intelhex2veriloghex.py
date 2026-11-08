@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 
 def convert_intel_hex_to_byte_per_line(input_file, output_file):
