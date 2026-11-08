@@ -5,10 +5,15 @@ All addresses and extended linear address records are preserved.
 """
 
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__.strip() + '\n\nusage: hex2binconvert.py <input.hex> <output.hex>').strip())
+    sys.exit(0)
 from pathlib import Path
 
 if len(sys.argv) != 3:
-    print("Usage: python3 ihex_to_16byte.py input.hex output.hex")
+    print("Usage: python3 hex2binconvert.py input.hex output.hex")
     sys.exit(1)
 
 infile  = Path(sys.argv[1])

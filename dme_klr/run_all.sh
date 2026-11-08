@@ -23,7 +23,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,14s/^# \{0,1\}//p' "$0"; }
+usage() { sed -n '3,14s/^# \{0,2\}//p' "$0"; }
 for arg in "$@"; do
     case "$arg" in
         --verilator) _want_verilator=1 ;;

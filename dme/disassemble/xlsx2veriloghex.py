@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import pandas as pd
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: xlsx2veriloghex.py <input.xlsx> <output.hex> [array_size]').strip())
+    sys.exit(0)
 import os
 
 def parse_addr(addr_str):
@@ -13,7 +18,7 @@ def parse_addr(addr_str):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python extract_labels.py <input.xlsx> <output.hex> [array_size]")
+        print("Usage: xlsx2veriloghex.py <input.xlsx> <output.hex> [array_size]")
         sys.exit(1)
 
     input_file = sys.argv[1]

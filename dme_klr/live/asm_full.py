@@ -22,6 +22,11 @@ import json
 import os
 import sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
+
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -28,6 +28,16 @@
 #           and 87KLR_951.mem — same images as v_run_dashboard_tests.sh)
 #          DASH_INTERVAL_MS (default 100)
 # ============================================================
+
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 set -e
 
 LIVE_DIR="$(cd "$(dirname "$0")" && pwd)"

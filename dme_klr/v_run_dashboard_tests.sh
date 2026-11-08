@@ -27,6 +27,15 @@
 #  Typical sizes at 100ms: 5s test ~25KB, 25s test ~120KB.
 # ============================================================
 
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
 source "$SCRIPT_DIR/asm_select.sh"

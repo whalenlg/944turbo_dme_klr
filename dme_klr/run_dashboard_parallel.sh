@@ -39,6 +39,15 @@
 #  v_run_dashboard_tests.sh always strips them before compiling.
 # ============================================================
 
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 USE_VERILATOR=0
 RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"

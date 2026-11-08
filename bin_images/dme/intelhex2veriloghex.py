@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: intelhex2veriloghex.py <input_file.hex> <output_file.txt>').strip())
+    sys.exit(0)
+
 def convert_intel_hex_to_byte_per_line(input_file, output_file):
     try:
         with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
@@ -37,7 +42,7 @@ def convert_intel_hex_to_byte_per_line(input_file, output_file):
 if __name__ == "__main__":
     # Check if correct number of arguments are provided
     if len(sys.argv) != 3:
-        print("Usage: python script_name.py <input_file.hex> <output_file.txt>")
+        print("Usage: intelhex2veriloghex.py <input_file.hex> <output_file.txt>")
     else:
         input_name = sys.argv[1]
         output_name = sys.argv[2]

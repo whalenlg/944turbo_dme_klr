@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import pandas as pd
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: xlsxmembyte2veriloghex.py <input.xlsx> <output.hex>').strip())
+    sys.exit(0)
 import os
 
 def parse_hex(val):
@@ -11,7 +16,7 @@ def parse_hex(val):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python extract_byte_mem_32.py <input.xlsx> <output.hex>")
+        print("Usage: xlsxmembyte2veriloghex.py <input.xlsx> <output.hex>")
         sys.exit(1)
 
     input_file = sys.argv[1]

@@ -59,6 +59,16 @@
 #  a 4-core container (the default 14 s window takes roughly 15 minutes),
 #  about 4 with iverilog (roughly 75 minutes).
 # ============================================================
+
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 set -e
 
 REPLAY_DIR="$(cd "$(dirname "$0")" && pwd)"

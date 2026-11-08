@@ -18,6 +18,15 @@
 #    Exit code 0 if all MATCH/NEAR-MATCH/NOTE, 1 if any DIFF.
 # ============================================================
 
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPARE="$SCRIPT_DIR/compare_sim_logs.py"
 

@@ -13,6 +13,11 @@ usage: build_variant.py <src.xlsx> <new .mem> <reference .bin the src sheet was 
 import difflib
 import re
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
 from collections import Counter, defaultdict
 
 import openpyxl

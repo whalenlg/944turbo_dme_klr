@@ -20,6 +20,7 @@
 #    ./compare_rom_variants.sh --iverilog 4        # iverilog only, 4 workers
 #    ./compare_rom_variants.sh --variants 86,89    # just those two
 #    ./compare_rom_variants.sh --diff-only         # re-diff archived results, no sims
+#    ./compare_rom_variants.sh --help              # this text
 #
 #  --variants takes a comma-separated subset of: 86 89 carpokes (default:
 #  86,89,carpokes). Any other arguments are forwarded verbatim to
@@ -49,6 +50,19 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --help / -h: print the header comment above and exit before anything
+# else runs: before the output directories are created, and before the
+# argument loop below, which would forward it to run_all.sh and start a
+# full simulation run.
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            sed -n '3,/^# =====/{ /^# =====/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+    esac
+done
 
 # Same relative resolution run_dashboard_tests.sh/run_dashboard_parallel.sh
 # use, so this lands exactly where those scripts write their logs
