@@ -1,7 +1,9 @@
 #!/bin/bash
 # ======================================================================
 #  validate_all.sh — runs validate_dash_log.py against every test's
-#  dash log and prints a pass/warn/fail summary.
+#  dash log and prints a pass/warn/fail summary. Log-replay tests
+#  (replay_wot_60s) are included: their verdict comes from the
+#  <name>.report.txt that check_replay.py wrote beside the dash log.
 #
 #  Usage:
 #      ./validate_all.sh                    # iverilog logs, every test
@@ -67,6 +69,17 @@ else
 import validate_dash_log
 print('\\n'.join(validate_dash_log.TESTS))
 ")
+    # Log-replay tests (replay_wot_60s, ...) have no TESTS entry: their
+    # verdict comes from check_replay.py's <name>.report.txt, which
+    # validate_dash_log.py reads for any replay_* name. Take them from the
+    # run_replay_test case entries of the runner that wrote these logs, so
+    # a new replay test is picked up without editing this script.
+    RUNNER="$SCRIPT_DIR/run_dashboard_tests.sh"
+    [ "$LOGSUBDIR" = "v_dash_logs" ] && RUNNER="$SCRIPT_DIR/v_run_dashboard_tests.sh"
+    while IFS= read -r line; do
+        [ -n "$line" ] && TEST_NAMES+=("$line")
+    done < <(awk '/^[[:space:]]+[A-Za-z0-9_]+\)[[:space:]]+run_replay_test / {
+                      name = $1; sub(/\)$/, "", name); print name }' "$RUNNER" 2>/dev/null)
 fi
 
 if [ "${#TEST_NAMES[@]}" -eq 0 ]; then
