@@ -2,6 +2,12 @@
 # Best-effort annotated linear disassembly for 8051 ROM (no external libs)
 # Saves 28PIN_DME_PERFORMANCE_annotated.asm
 from pathlib import Path
+import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: asm.py  (no arguments)\n\nReads 28PIN_DME_PERFORMANCE.bin from the current directory and writes\n28PIN_DME_PERFORMANCE_annotated.asm, a best-effort annotated 8051 disassembly.').strip())
+    sys.exit(0)
 
 infile = '28PIN_DME_PERFORMANCE.bin'
 outfile = '28PIN_DME_PERFORMANCE_annotated.asm'

@@ -14,6 +14,16 @@
 #  Exit code: 0 if no FAILs, 1 if any test FAILed (log missing counts
 #  as FAIL, matching validate_dash_log.py's own exit behavior).
 # ======================================================================
+
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

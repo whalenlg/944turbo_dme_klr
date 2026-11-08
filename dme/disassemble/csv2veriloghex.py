@@ -2,6 +2,11 @@
 import csv
 import sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: csv2veriloghex.py <input.csv> <output.hex>').strip())
+    sys.exit(0)
+
 WORD_BYTES = 16
 
 def parse_addr(s):

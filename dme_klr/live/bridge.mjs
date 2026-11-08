@@ -77,6 +77,17 @@
 //                          [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>]
 //                          [--allow-origin <https://other.origin>]
 // ============================================================
+
+// -h / --help: print the header comment above and exit before anything runs.
+if (process.argv.slice(2).some(a => a === '-h' || a === '--help')) {
+  // (readFileSync is imported below; import declarations are hoisted.)
+  const lines = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1);
+  const end = lines.findIndex(l => !l.startsWith('//'));
+  console.log(lines.slice(0, end).filter(l => !l.startsWith('// ===='))
+    .map(l => l.replace(/^\/\/ {0,2}/, '')).join('\n').trimEnd());
+  process.exit(0);
+}
+
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, rmSync, statSync, renameSync, cpSync, rmdirSync, watch } from 'node:fs';

@@ -17,6 +17,11 @@ so this works on its contiguous stretches of rows:
 import difflib
 import re
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
 from collections import Counter
 
 import openpyxl

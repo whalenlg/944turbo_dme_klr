@@ -2,6 +2,15 @@
 # poll_updates.sh
 # Polls for git updates in 944turbo_dme_klr, then runs the build/test pipeline.
 
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 REPO_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr"
 KLR_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr/klr"
 DME_CORE_DIR="/Users/mike/coding_projects/DME_sim/dme"

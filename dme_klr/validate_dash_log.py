@@ -15,6 +15,11 @@ Output (one line per verdict, tab-separated):
 
 import sys, re, os
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
+
 # ─── Per-test expectations ──────────────────────────────────────────────────
 # fuel_range     : (min_ms, max_ms) of steady-state injected fuel
 # rpm_target     : expected final RPM (tolerance ±10%)

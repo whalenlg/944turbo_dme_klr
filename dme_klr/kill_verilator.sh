@@ -12,6 +12,15 @@
 #    ./kill_verilator.sh -n       # dry run (show what would be killed)
 # ============================================================
 
+# -h / --help: print the header comment above and exit before anything runs.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
 FORCE=0
 DRY_RUN=0
 for arg in "$@"; do

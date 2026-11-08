@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print(('usage: disassemble48.py <input.bin>  (MCS-48 linear disassembly to stdout)').strip())
+    sys.exit(0)
+
 # Full 256-opcode lookup table for fixed instructions
 BASE_OPCODES = {
     0x00: "NOP",    0x02: "OUTL BUS, A", 0x03: "ADD A, #data", 0x05: "EN I",
@@ -93,6 +98,6 @@ def disassemble(data):
         pc += bytes_used
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2: print("Usage: python disasm.py input.bin")
+    if len(sys.argv) < 2: print("Usage: disassemble48.py input.bin")
     else:
         with open(sys.argv[1], "rb") as f: disassemble(f.read())

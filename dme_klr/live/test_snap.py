@@ -36,6 +36,13 @@ import re
 import shlex
 import shutil
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    from itertools import takewhile
+    hdr = takewhile(lambda l: l.startswith('#'), open(__file__).readlines()[1:])
+    print(''.join(l[3:] or '\n' for l in hdr if not l.startswith('# ===')).rstrip())
+    sys.exit(0)
 import time
 from pathlib import Path
 

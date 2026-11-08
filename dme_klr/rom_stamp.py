@@ -17,6 +17,11 @@ the file can't be read. The run scripts put these at the top of every
 """
 import hashlib, os, re, sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'live'))
 from map_graphs import load_image  # noqa: E402  (no matplotlib needed for this)
 

@@ -23,6 +23,11 @@ import csv
 import re
 import sys
 
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
+
 ROW_RE = re.compile(r'^SIM: \[ROW\] idx=(\d+) log_ms=([\d.]+) t_ns=(\d+)')
 FIELDS = ['ign_adv', 'klr_retard', 'inj_ms', 'dwell_ms', 'icv_pct',
           'rpm', 'full_load', 'knocking', 'knock_cnt', 'map_psi']

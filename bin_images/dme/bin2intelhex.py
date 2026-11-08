@@ -4,14 +4,19 @@ Convert a raw binary file into an Intel HEX file, using 16-byte
 data records (type 00), with extended linear address (type 04)
 records emitted whenever the 64KB segment changes.
 
-Usage: python3 bin_to_ihex.py input.bin output.hex [start_address_hex]
+Usage: python3 bin2intelhex.py input.bin output.hex [start_address_hex]
 """
 
 import sys
+
+# -h / --help: print usage and exit before anything else runs.
+if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
+    print((__doc__).strip())
+    sys.exit(0)
 from pathlib import Path
 
 if len(sys.argv) not in (3, 4):
-    print("Usage: python3 bin_to_ihex.py input.bin output.hex [start_address_hex]")
+    print("Usage: python3 bin2intelhex.py input.bin output.hex [start_address_hex]")
     sys.exit(1)
 
 infile  = Path(sys.argv[1])
