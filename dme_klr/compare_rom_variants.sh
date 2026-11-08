@@ -43,6 +43,13 @@
 #  keep this lightweight; re-run a single variant if you need those for
 #  a specific test.)
 #
+#  A side is archived only if that variant's run wrote a fresh
+#  validation.log for it (newer than the run's start); otherwise the
+#  existing archive is left untouched — so a run that died early, or
+#  only printed usage, can't overwrite good results with stale logs.
+#  When a side is archived, the archive it replaces is kept as
+#  rom_compare/<variant>/<side>.prev/ (one generation).
+#
 #  Diff tables are written to:
 #    tmp/dme_klr/rom_compare/diff_dash_logs.log     (iverilog)
 #    tmp/dme_klr/rom_compare/diff_v_dash_logs.log   (Verilator)
@@ -135,17 +142,30 @@ for v in "${VARIANTS[@]}"; do
     # ${arr[@]+...} form: bash 3.2 (macOS /bin/bash) treats an empty array
     # expansion as unbound under `set -u`, so guard it.
     echo "== Running $v (${script##*/}${RUN_ALL_ARGS[@]+ ${RUN_ALL_ARGS[*]}}) =="
+    # Stamp the start of this variant's run: a side is archived only if
+    # its validation.log is newer than this, i.e. this run produced it.
+    stamp="$COMPARE_DIR/.run_start_$v"
+    touch "$stamp"
     "$script" ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}
+    rc=$?
 
     dest="$COMPARE_DIR/$v"
     for sim_dir in "${SIM_DIRS[@]}"; do
-        if [ -d "$_BASE/$sim_dir" ]; then
-            echo "  archiving $sim_dir/*.log -> rom_compare/$v/$sim_dir/"
-            mkdir -p "$dest/$sim_dir"
-            rm -f "$dest/$sim_dir"/*.log 2>/dev/null || true
-            cp "$_BASE/$sim_dir"/*.log "$dest/$sim_dir/" 2>/dev/null || true
+        if [ ! -f "$_BASE/$sim_dir/validation.log" ] || \
+           [ ! "$_BASE/$sim_dir/validation.log" -nt "$stamp" ]; then
+            echo "  NOT archiving $sim_dir: no new validation.log from this run" \
+                 "(exit $rc) — keeping rom_compare/$v/$sim_dir/ as it was" >&2
+            continue
         fi
+        echo "  archiving $sim_dir/*.log -> rom_compare/$v/$sim_dir/"
+        if [ -d "$dest/$sim_dir" ]; then
+            rm -rf "$dest/$sim_dir.prev"
+            mv "$dest/$sim_dir" "$dest/$sim_dir.prev"
+        fi
+        mkdir -p "$dest/$sim_dir"
+        cp "$_BASE/$sim_dir"/*.log "$dest/$sim_dir/" 2>/dev/null || true
     done
+    rm -f "$stamp"
 done
 
 # ── Diff table per simulator side ────────────────────────────────────────
