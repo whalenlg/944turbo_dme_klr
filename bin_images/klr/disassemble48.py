@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 
 # Full 256-opcode lookup table for fixed instructions
