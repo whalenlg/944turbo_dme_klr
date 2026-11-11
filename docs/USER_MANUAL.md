@@ -27,6 +27,7 @@ Contents
 8. [Charts, Timeline and Maps in detail](#8-charts-timeline-and-maps-in-detail)
 9. [ROM images](#9-rom-images)
 10. [Reference](#10-reference)
+11. [Credits](#11-credits)
 
 ---
 
@@ -704,3 +705,19 @@ ROM.
 | Snapshot LOAD refused (red under the list) | It was saved by a different build. Reproduce it from its INFO |
 | TEST LOAD fails with a build error | Shown as `SIM: [ERROR] building test …`. Run `./build_live.sh --test <name>` in a terminal to see the whole message |
 | `No map lookups in this log` | The log predates the `[LKUP]` lines. Re-run the test |
+
+---
+
+## 11. Credits
+
+This work is based on multiple public references, including
+https://jhnbyrn.github.io
+https://sourceforge.net/p/opendme
+https://www.carpokes.com
+
+Special thanks to users &#64;tom and &#64;johnb at Carpokes for their
+contributions and feedback during development.
+
+---
+
+Copyright 2026 Michael Whalen. No affiliation with Dr. Ing. h.c. F. Porsche AG or any of its affiliates.
