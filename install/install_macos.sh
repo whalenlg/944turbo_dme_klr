@@ -7,7 +7,7 @@
 #    - Xcode Command Line Tools: clang/clang++ (C++20), make, git
 #    - Homebrew, if it isn't installed (asks first)
 #    - brew: verilator, icarus-verilog, gtkwave, node, python
-#    - a Python venv at <repo>/8051venv with install/requirements.txt
+#    - a Python venv at <repo>/944venv with install/requirements.txt
 #      (openpyxl, pandas, matplotlib, numpy)
 #  then runs install/check_toolchain.sh. Safe to run again: anything
 #  already installed is left as it is (use --upgrade to update it).
@@ -34,7 +34,7 @@ set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
-VENV="$REPO_DIR/8051venv"
+VENV="$REPO_DIR/944venv"
 DASHBOARD_URL="https://github.com/whalenlg/dme-dashboard.git"
 
 UPGRADE=0; DASHBOARD=0; GTKWAVE=1; YES=0; DRY=0
@@ -117,7 +117,7 @@ fi
 
 # ── 4. Python venv with the repo's packages ──────────────────────────────
 #   Homebrew's Python refuses system-wide pip installs (PEP 668), so the
-#   packages go in <repo>/8051venv, the venv asm_select.sh already looks for.
+#   packages go in <repo>/944venv, the venv asm_select.sh already looks for.
 step "Python packages (venv at $VENV)"
 PY="python3"
 [ "$DRY" = 1 ] || PY="$(brew --prefix)/bin/python3"
@@ -149,10 +149,13 @@ fi
 
 cat <<EOF
 
-Done. In each new terminal, activate the Python venv before running the
-repo's scripts (they call python3):
+Done. In each new terminal, before running the repo's scripts (they call
+python3), activate the Python venv and set the output folder:
 
-    source $VENV/bin/activate
+    source $REPO_DIR/setup
+
+Build output and logs go to \$DMEKLR_TMP, by default $(cd "$REPO_DIR/.." && pwd)/tmp
+(set DMEKLR_TMP to put them elsewhere; see docs/USER_MANUAL.md, section 1).
 
 Then, for example:
     cd $REPO_DIR/klr && ./run_klr_regression

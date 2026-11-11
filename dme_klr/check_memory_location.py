@@ -24,8 +24,8 @@ Examples:
     python3 check_memory_location.py 0x31 dash_logs v_dash_logs
 
 Defaults to both the iverilog and Verilator log directories:
-    ~/coding_projects/944/tmp/dme_klr/dash_logs
-    ~/coding_projects/944/tmp/dme_klr/v_dash_logs
+    $DMEKLR_TMP/dme_klr/dash_logs
+    $DMEKLR_TMP/dme_klr/v_dash_logs
 """
 import sys
 
@@ -34,6 +34,7 @@ if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
     print((__doc__).strip())
     sys.exit(0)
 from pathlib import Path
+from dmeklr_paths import IV_LOGS, VL_LOGS  # DMEKLR_TMP (see paths.sh)
 
 
 def parse_addr(s):
@@ -102,8 +103,8 @@ def main():
 
     addr = parse_addr(sys.argv[1])
     log_dirs = sys.argv[2:] if len(sys.argv) > 2 else [
-        str(Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'),
-        str(Path.home() / 'coding_projects/944/tmp/dme_klr/v_dash_logs'),
+        str(IV_LOGS),
+        str(VL_LOGS),
     ]
 
     logs = find_logs(log_dirs)

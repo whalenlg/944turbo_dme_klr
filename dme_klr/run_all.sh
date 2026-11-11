@@ -52,6 +52,9 @@ echo "== git pull origin main =="
 (cd "$ROOT" && git pull origin main)
 
 DME_KLR="$ROOT/dme_klr"
+source "$ROOT/paths.sh"          # DMEKLR_TMP: where the suites write
+RUNLOG="$DMEKLR_TMP/run_all"      # this script's own step logs
+mkdir -p "$RUNLOG"
 PASS=0; WARN=0; FAIL=0
 START_TIME=$(date +%s)
 # Summaries older than this marker are from a previous run and must not be
@@ -79,26 +82,26 @@ log "Workers: $WORKERS  Mode: $MODE_DESC"
 hdr "1/5  i8048 KLR Regression"
 cd "$ROOT/klr"
 log "Running: bash run_klr_regression"
-bash run_klr_regression 2>&1 > /tmp/run_klr_regression.log || true
-if grep -q "ALL TESTS PASSED" /tmp/run_klr_regression.log; then
-    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_klr_regression.log | grep -o '[0-9]*' | tail -1)
+bash run_klr_regression 2>&1 > "$RUNLOG/run_klr_regression.log" || true
+if grep -q "ALL TESTS PASSED" "$RUNLOG/run_klr_regression.log"; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' "$RUNLOG/run_klr_regression.log" | grep -o '[0-9]*' | tail -1)
     ok "i8048 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_klr_regression.log | grep -o '[0-9]*' | tail -1)
-    fail "i8048 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_klr_regression.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' "$RUNLOG/run_klr_regression.log" | grep -o '[0-9]*' | tail -1)
+    fail "i8048 regression — ${FAILED:-?} test(s) FAILED (see $RUNLOG/run_klr_regression.log)"
 fi
 
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
 hdr "2/5  i8051 DME Regression"
 cd "$ROOT/dme"
 log "Running: bash run_dme_regression"
-bash run_dme_regression 2>&1 > /tmp/run_dme_regression.log || true
-if grep -q "ALL TESTS PASSED" /tmp/run_dme_regression.log; then
-    TOTAL=$(grep -o 'Total: *[0-9]*' /tmp/run_dme_regression.log | grep -o '[0-9]*' | tail -1)
+bash run_dme_regression 2>&1 > "$RUNLOG/run_dme_regression.log" || true
+if grep -q "ALL TESTS PASSED" "$RUNLOG/run_dme_regression.log"; then
+    TOTAL=$(grep -o 'Total: *[0-9]*' "$RUNLOG/run_dme_regression.log" | grep -o '[0-9]*' | tail -1)
     ok "i8051 regression — $TOTAL tests passed"
 else
-    FAILED=$(grep -o 'FAILED: *[0-9]*' /tmp/run_dme_regression.log | grep -o '[0-9]*' | tail -1)
-    fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see /tmp/run_dme_regression.log)"
+    FAILED=$(grep -o 'FAILED: *[0-9]*' "$RUNLOG/run_dme_regression.log" | grep -o '[0-9]*' | tail -1)
+    fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see $RUNLOG/run_dme_regression.log)"
 fi
 
 # ── 3. Verilator full suite ───────────────────────────────────────────────────
@@ -107,9 +110,9 @@ if [ "$RUN_VERILATOR" = "1" ]; then
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator --all) ..."
     log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
-    bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee /tmp/vl_suite.log
+    bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee "$RUNLOG/vl_suite.log"
     log "Verilator test suite completed"
-    VL_SUMMARY_LOG=~/coding_projects/944/tmp/dme_klr/v_dash_logs/parallel_summary.log
+    VL_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
     [ "$VL_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
         VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$VL_SUMMARY_LOG" 2>/dev/null | tail -1)
@@ -136,9 +139,9 @@ if [ "$RUN_IVERILOG" = "1" ]; then
     cd "$DME_KLR"
     log "Running iverilog suite (--all) ..."
     log "Running: bash run_dashboard_parallel.sh $WORKERS"
-    bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee /tmp/iv_suite.log
+    bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee "$RUNLOG/iv_suite.log"
     log "iverilog test suite completed"
-    IV_SUMMARY_LOG=~/coding_projects/944/tmp/dme_klr/dash_logs/parallel_summary.log
+    IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
     IV_SUMMARY=""
     [ "$IV_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
         IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$IV_SUMMARY_LOG" 2>/dev/null | tail -1)
@@ -169,26 +172,26 @@ fi
 cd "$DME_KLR"
 log "Comparing iverilog vs Verilator logs ..."
 log "Running: bash compare_all_logs.sh"
-bash compare_all_logs.sh 2>&1 | tee /tmp/compare.log
-CMP_MATCH=$(grep -oE "MATCH=[0-9]+" /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
-CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
-CMP_NOTE=$(grep -oE "NOTE=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
-CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
-CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  /tmp/compare.log | tail -1 | grep -oE "[0-9]+")
+bash compare_all_logs.sh 2>&1 | tee "$RUNLOG/compare.log"
+CMP_MATCH=$(grep -oE "MATCH=[0-9]+" "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
+CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
+CMP_NOTE=$(grep -oE "NOTE=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
+CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
+CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
 if [ "${CMP_DIFF:-0}" -eq 0 ]; then
     ok "iverilog == Verilator — ${CMP_MATCH:-?} tests match${CMP_NOTE:+, ${CMP_NOTE} NOTE (X-init differences, expected)}"
 elif [ "${CMP_DIFF:-0}" -le 4 ]; then
     warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
 else
-    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see /tmp/compare.log)"
+    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see $RUNLOG/compare.log)"
 fi
 
 log "Generating detailed compare_sim_logs.py reports for differing tests ..."
-IV_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/dash_logs"
-VL_DASH_DIR="$HOME/coding_projects/944/tmp/dme_klr/v_dash_logs"
-DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' /tmp/compare.log | sort -u)
+IV_DASH_DIR="$DMEKLR_TMP/dme_klr/dash_logs"
+VL_DASH_DIR="$DMEKLR_TMP/dme_klr/v_dash_logs"
+DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$RUNLOG/compare.log" | sort -u)
 if [ -n "$DIFF_TESTS" ]; then
-    > /tmp/compare_detail.log
+    > "$RUNLOG/compare_detail.log"
     for t in $DIFF_TESTS; do
         iv_log="$IV_DASH_DIR/${t}.dash.log"
         vl_log="$VL_DASH_DIR/${t}.dash.log"
@@ -199,19 +202,19 @@ if [ -n "$DIFF_TESTS" ]; then
                 python3 "$DME_KLR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$t" \
                     -v --plot --plot-dir "$IV_DASH_DIR"
                 echo ""
-            } 2>&1 | tee -a /tmp/compare_detail.log
+            } 2>&1 | tee -a "$RUNLOG/compare_detail.log"
         else
             warn "  skipping $t (log file missing: $iv_log or $vl_log)"
         fi
     done
-    log "Per-test detail: /tmp/compare_detail.log   Plots: $IV_DASH_DIR"
+    log "Per-test detail: $RUNLOG/compare_detail.log   Plots: $IV_DASH_DIR"
 else
     log "No differing tests — skipping detailed compare_sim_logs.py reports"
 fi
 
 log "Running FQS analysis ..."
 log "Running: python3 fqs_analysis.py"
-python3 fqs_analysis.py 2>&1 | tee /tmp/fqs_analysis.log
+python3 fqs_analysis.py 2>&1 | tee "$RUNLOG/fqs_analysis.log"
 echo ""
 
 # ── Summary ───────────────────────────────────────────────────────────────────

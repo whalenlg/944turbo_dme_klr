@@ -250,8 +250,11 @@ module i2764_eprom (
     // file — both default to the existing path if not overridden.
     //   -DDME_ROM_DIR=\"../../bin_images/dme/\"
     //   -DDME_ROM_FILE=\"SOME_OTHER_IMAGE.mem\"
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
     `ifndef DME_ROM_DIR
-    `define DME_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/"
+    `define DME_ROM_DIR {`DMEKLR_REPO, "bin_images/dme/"}
     `endif
     `ifndef DME_ROM_FILE
     `define DME_ROM_FILE "28PIN_DME_PERFORMANCE.mem"

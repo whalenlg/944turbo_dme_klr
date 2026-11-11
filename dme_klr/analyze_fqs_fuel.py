@@ -31,7 +31,7 @@ Usage:
     python3 analyze_fqs_fuel.py [log_dir] [test1 test2 ...] [--expected p0 p1 ...]
 
 Defaults:
-    log_dir  : ~/coding_projects/944/tmp/dme_klr/dash_logs   (iverilog)
+    log_dir  : $DMEKLR_TMP/dme_klr/dash_logs   (iverilog)
     tests    : the 8 cl_ramp_to_6000_FQS0-7 tests
     expected : 0 3 -3 6 0 3 -3 6   (the standard FQS0-7 fuel_pct pattern)
 """
@@ -40,6 +40,7 @@ import re
 import sys
 import argparse
 from pathlib import Path
+from dmeklr_paths import IV_LOGS, VL_LOGS  # DMEKLR_TMP (see paths.sh)
 
 
 def guess_rpm_target(test_name):
@@ -114,7 +115,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('log_dir', nargs='?',
-                     default=str(Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'),
+                     default=str(IV_LOGS),
                      help='Directory containing <test>.dash.log files')
     ap.add_argument('tests', nargs='*',
                      default=[f'cl_ramp_to_6000_FQS{i}' for i in range(8)],

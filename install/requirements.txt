@@ -1,5 +1,5 @@
 # Python packages the repo's scripts import (everything else they use is in
-# the standard library). Installed by install_macos.sh into 8051venv/, and by
+# the standard library). Installed by install_macos.sh into 944venv/, and by
 # install_arch.sh from pacman (python-matplotlib, python-numpy, ...).
 #
 #   pandas      - reading the disassembly workbooks: dme/disassemble/xlsx*.py

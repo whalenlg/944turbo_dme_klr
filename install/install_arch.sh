@@ -13,7 +13,7 @@
 #  --needed skips what is already installed and up to date.
 #
 #  Usage:  install/install_arch.sh [options]
-#    --venv             put the Python packages in a venv at <repo>/8051venv
+#    --venv             put the Python packages in a venv at <repo>/944venv
 #                       (pip, install/requirements.txt) instead of pacman
 #    --with-dashboard   also clone whalenlg/dme-dashboard into <repo>/dashboard
 #                       and run npm install there (to run the page locally)
@@ -37,7 +37,7 @@ set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
-VENV="$REPO_DIR/8051venv"
+VENV="$REPO_DIR/944venv"
 DASHBOARD_URL="https://github.com/whalenlg/dme-dashboard.git"
 MIN_VERILATOR=5.038
 
@@ -125,7 +125,7 @@ fi
 
 echo
 echo "Done."
-[ "$USE_VENV" = 1 ] && printf 'In each new terminal, first:  source %s/bin/activate\n' "$VENV"
+[ "$USE_VENV" = 1 ] && printf 'In each new terminal, first:  source %s/setup\n' "$REPO_DIR"
 cat <<EOF
 For example:
     cd $REPO_DIR/klr && ./run_klr_regression

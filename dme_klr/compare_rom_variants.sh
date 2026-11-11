@@ -74,8 +74,9 @@ done
 # Same relative resolution run_dashboard_tests.sh/run_dashboard_parallel.sh
 # use, so this lands exactly where those scripts write their logs
 # regardless of where the repo happens to be checked out.
-_BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
-         { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
+mkdir -p "$DMEKLR_TMP/dme_klr"
+_BASE="$DMEKLR_TMP/dme_klr"
 COMPARE_DIR="$_BASE/rom_compare"
 mkdir -p "$COMPARE_DIR"
 

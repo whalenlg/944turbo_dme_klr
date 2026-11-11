@@ -8,11 +8,11 @@
 #  requirements.txt, and git. Run by install_macos.sh and install_arch.sh
 #  when they finish; safe to run on its own at any time.
 #
-#  Python is checked with this repo's 8051venv/bin/python when that venv
+#  Python is checked with this repo's 944venv/bin/python when that venv
 #  exists (the one install_macos.sh makes), otherwise with python3. When
 #  the venv exists but isn't active in this shell, it says so: the repo's
 #  scripts call python3, so they only see the venv's packages once it is
-#  activated (source 8051venv/bin/activate).
+#  activated (source setup, or source 944venv/bin/activate).
 #
 #  Run it before installing, too: it changes nothing, and shows what is
 #  already there and what the install scripts would add.
@@ -128,7 +128,7 @@ fi
 
 # ── Python and its packages ───────────────────────────────────────────────
 PY=python3
-[ -x "$REPO_DIR/8051venv/bin/python" ] && PY="$REPO_DIR/8051venv/bin/python"
+[ -x "$REPO_DIR/944venv/bin/python" ] && PY="$REPO_DIR/944venv/bin/python"
 if command -v "$PY" >/dev/null 2>&1; then
     ok "python3" "$("$PY" --version 2>&1 | awk '{print $2}')  ($PY)"
     for _m in openpyxl pandas matplotlib numpy; do
@@ -139,9 +139,9 @@ else
     bad "python3" "Python 3"
 fi
 VENV_INACTIVE=0
-if [ "$PY" != python3 ] && [ "${VIRTUAL_ENV:-}" != "$REPO_DIR/8051venv" ]; then
+if [ "$PY" != python3 ] && [ "${VIRTUAL_ENV:-}" != "$REPO_DIR/944venv" ]; then
     VENV_INACTIVE=1
-    printf "  ${YELLOW}note${NC}     %-12s %s\n" "8051venv" "not active in this shell; run: source $REPO_DIR/8051venv/bin/activate"
+    printf "  ${YELLOW}note${NC}     %-12s %s\n" "944venv" "not active in this shell; run: source $REPO_DIR/setup"
 fi
 
 if command -v git >/dev/null 2>&1; then
@@ -155,7 +155,7 @@ if [ "$MISSING" -eq 0 ]; then
     echo -e "${GREEN}Everything required is installed.${NC}"
     if [ "$VENV_INACTIVE" = 1 ]; then
         echo "Activate the venv before running the scripts (in every new terminal):"
-        echo "    source $REPO_DIR/8051venv/bin/activate"
+        echo "    source $REPO_DIR/setup"
     fi
     exit 0
 fi

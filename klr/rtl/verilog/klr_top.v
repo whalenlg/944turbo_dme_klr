@@ -393,8 +393,11 @@ module klr_eprom (
     // file — both default to the existing path if not overridden.
     //   -DKLR_ROM_DIR=\"../../bin_images/klr/\"
     //   -DKLR_ROM_FILE=\"89KLR_951.mem\"
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
     `ifndef KLR_ROM_DIR
-    `define KLR_ROM_DIR "/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/"
+    `define KLR_ROM_DIR {`DMEKLR_REPO, "bin_images/klr/"}
     `endif
     `ifndef KLR_ROM_FILE
     `define KLR_ROM_FILE "87KLR_951.mem"

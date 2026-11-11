@@ -13,8 +13,8 @@ Usage:
     python3 fqs_analysis.py --iv-dir DIR --vl-dir DIR
 
 Defaults:
-    iv: ~/coding_projects/944/tmp/dme_klr/dash_logs
-    vl: ~/coding_projects/944/tmp/dme_klr/v_dash_logs
+    iv: $DMEKLR_TMP/dme_klr/dash_logs
+    vl: $DMEKLR_TMP/dme_klr/v_dash_logs
 
 The RPM / ign / load / WOT / FQS-gate columns come from the iverilog log
 when it has steady-state data, otherwise from the Verilator log (marked
@@ -26,6 +26,7 @@ import re
 import os
 import sys
 from pathlib import Path
+from dmeklr_paths import IV_LOGS, VL_LOGS  # DMEKLR_TMP (see paths.sh)
 
 # FQS test definitions
 FQS_TESTS = [
@@ -154,8 +155,8 @@ def steady_state_stats(snapshots, rpm_min=RPM_STEADY):
     }
 
 
-DEFAULT_IV = Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'
-DEFAULT_VL = Path.home() / 'coding_projects/944/tmp/dme_klr/v_dash_logs'
+DEFAULT_IV = IV_LOGS
+DEFAULT_VL = VL_LOGS
 
 
 def parse_args(argv=None):

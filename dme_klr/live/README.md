@@ -61,7 +61,8 @@ Click a chart's title on the dashboard's **DME MAPS** tab to see that map or
 table as it is in the DME image the sim has loaded: 2D maps as a curve, 3D
 maps as a surface beside a grid of the raw values, `linear_lookup` tables as
 steps and MOVC tables as bars. `map_graphs.py` draws them all, one PNG each,
-into `../tmp/dme_klr/map_graphs/<sha>/` beside the checkout (`--mapcache
+into `$DMEKLR_TMP/dme_klr/map_graphs/<sha>/` (by default `../tmp` beside the
+checkout, see `paths.sh`; `--mapcache
 <dir>` moves it), where `<sha>` is from the SHA-256 of the image's bytes. The
 bridge runs it whenever the sim reports a DME image; an image it has drawn
 before is reused, so graphs are drawn once per ROM (about 20 s) and again
@@ -93,8 +94,7 @@ workbooks), served at `/maps/klr`, in the same cache:
 Whenever the model prints a warning or error (a line with `[WARN]`,
 `WARNING` or `ERROR`, e.g. `DME: [WARN] ... INJ PW ... > one rev`, a dead-code
 entry, `ERROR: Unimplemented Opcode`), the sim saves a snapshot of the whole
-model into `../tmp/dme_klr/snapshots/<date>-t<ms>ms-<warning>/` (beside the
-checkout, with `run_dashboard_tests.sh`'s `dash_logs`; `node bridge.mjs
+model into `$DMEKLR_TMP/dme_klr/snapshots/<date>-t<ms>ms-<warning>/` (with `run_dashboard_tests.sh`'s `dash_logs`; `node bridge.mjs
 --snapdir <dir>` picks another place), and the run carries on.
 **SAVE NOW** in the dashboard (or `save [label]`) takes one by hand. The
 dashboard's **SNAPSHOTS** row lists them; **LOAD** restarts the sim from that

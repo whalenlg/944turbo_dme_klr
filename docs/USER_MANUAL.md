@@ -43,6 +43,10 @@ Python with its packages. Run the one for your system from the top of the
 checkout. Both are safe to run again; what is already installed is left
 alone.
 
+The checkout can be anywhere and have any name: every script finds the repo
+from its own location. Where the build output and logs go is one setting,
+`DMEKLR_TMP`; see [Install location and output folder](#install-location-and-output-folder).
+
 ### Before installing
 
 Run the check script first. It changes nothing; it lists each tool the repo
@@ -64,7 +68,7 @@ system upgrade (`pacman -Syu`), so expect that.
 git clone https://github.com/whalenlg/944turbo_dme_klr.git
 cd 944turbo_dme_klr
 install/install_macos.sh
-source 8051venv/bin/activate     # in every new terminal, before the scripts
+source setup                     # in every new terminal, before the scripts
 ```
 
 It installs, in order:
@@ -76,9 +80,9 @@ It installs, in order:
    question).
 3. The Homebrew formulae `verilator`, `icarus-verilog`, `gtkwave`, `node`
    and `python`.
-4. A Python virtual environment at `8051venv/` in the repo, with the packages
+4. A Python virtual environment at `944venv/` in the repo, with the packages
    in `install/requirements.txt`. You must activate it in each new terminal;
-   see [The Python venv](#the-python-venv-8051venv) below.
+   see [The Python venv](#the-python-venv-944venv) below.
 
 | Option | Effect |
 |---|---|
@@ -107,27 +111,29 @@ Python packages come from pacman, so there is no venv to activate.
 
 | Option | Effect |
 |---|---|
-| `--venv` | Install the Python packages with pip into `8051venv/` instead of from pacman (then `source 8051venv/bin/activate` as on macOS) |
+| `--venv` | Install the Python packages with pip into `944venv/` instead of from pacman (then `source 944venv/bin/activate` as on macOS) |
 | `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
 | `--no-gtkwave` | Skip GTKWave |
 | `-y`, `--yes` | Pass `--noconfirm` to pacman |
 | `-n`, `--dry-run` | Print the commands without running them |
 
-### The Python venv (`8051venv`)
+### The Python venv (`944venv`)
 
 The repo's Python scripts need four packages beyond the standard library:
 openpyxl, pandas, matplotlib and numpy (`install/requirements.txt`). On
 macOS these are installed into a Python virtual environment, a private
-copy of Python with its own packages, in the folder `8051venv/` at the top
+copy of Python with its own packages, in the folder `944venv/` at the top
 of the checkout. It is required on macOS because Homebrew's Python refuses
 `pip install` into the system Python.
 
 **Activate it in every new terminal** before running any of the repo's
-scripts:
+scripts. `source setup` at the top of the checkout does that (and sets the
+output folder, see below); `source 944venv/bin/activate` activates just the
+venv:
 
 ```sh
 cd 944turbo_dme_klr
-source 8051venv/bin/activate     # the prompt now starts with (8051venv)
+source setup                    # the prompt now starts with (944venv)
 ```
 
 Why this matters: the test scripts, `build_live.sh` and the live bridge
@@ -135,7 +141,7 @@ Why this matters: the test scripts, `build_live.sh` and the live bridge
 `python3`. Until the venv is active, `python3` is Homebrew's or Apple's,
 which doesn't have the packages, and you get errors such as
 `ModuleNotFoundError: No module named 'pandas'` or a MAPS tab with no
-graphs. Only `asm_select.sh` finds `8051venv/bin/python` on its own.
+graphs. Only `asm_select.sh` finds `944venv/bin/python` on its own.
 Start the bridge from a terminal where the venv is active.
 
 Other things to know:
@@ -143,14 +149,59 @@ Other things to know:
 | Task | Command |
 |---|---|
 | Leave the venv | `deactivate` |
-| Activate it automatically | Add `source ~/path/to/944turbo_dme_klr/8051venv/bin/activate` to `~/.zshrc` |
-| Check it | `install/check_toolchain.sh` reports `8051venv not active in this shell` when it exists but isn't active |
-| Rebuild it (after a Homebrew Python upgrade breaks it) | `rm -rf 8051venv && install/install_macos.sh` |
+| Activate it automatically | Add `source /path/to/your/checkout/setup` to `~/.zshrc` (or `~/.bashrc`) |
+| Check it | `install/check_toolchain.sh` reports `944venv not active in this shell` when it exists but isn't active |
+| Rebuild it (after a Homebrew Python upgrade breaks it) | `rm -rf 944venv && install/install_macos.sh` |
 | Use it on Arch | `install/install_arch.sh --venv` (by default Arch uses pacman's packages and needs no venv) |
 
 The folder is git-ignored. You don't need it at all if your `python3`
 already has the four packages, for example installed some other way: the
 check script tells you.
+
+### Install location and output folder
+
+**The checkout.** Clone it wherever you like, under any folder name. The
+scripts, the testbenches and the bridge all work out where the repo is from
+their own location; nothing in the repo names a fixed path. (The run
+scripts pass the repo's path to the Verilog as `-DDMEKLR_REPO`, so the
+testbenches find the ROM images and disassembly tables wherever the
+checkout is.)
+
+**The output folder, `DMEKLR_TMP`.** Builds, logs, snapshots and caches are
+kept out of the checkout, in one folder. By default it is `tmp/` **beside**
+the checkout, i.e. `<checkout>/../tmp`: for a checkout at
+`~/work/944turbo_dme_klr` that is `~/work/tmp`. It is created when first
+needed. To put it somewhere else, set `DMEKLR_TMP` to an absolute path
+before running anything, for example in `~/.zshrc`:
+
+```sh
+export DMEKLR_TMP="$HOME/dmeklr-output"
+```
+
+Every script honours it: the shell scripts through `paths.sh`, the Python
+tools through `dme_klr/dmeklr_paths.py`, and the bridge (`node bridge.mjs`)
+from its environment.
+
+| Under `$DMEKLR_TMP` | Written by |
+|---|---|
+| `dme_klr/dash_logs/`, `dme_klr/iverilog_vvp/` | `run_dashboard_tests.sh` (iverilog) |
+| `dme_klr/v_dash_logs/` and the Verilator builds | `v_run_dashboard_tests.sh` |
+| `dme_klr/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
+| `dme_klr/rom_compare/` | `compare_rom_variants.sh` |
+| `dme_klr/snapshots/`, `dme_klr/map_graphs/` | the live bridge (`--snapdir` / `--mapcache` override each) |
+| `klr/`, `dme/` | the i8048 and i8051 CPU regressions |
+| `run_all/` | `run_all.sh`'s own step logs |
+
+The Python analysis tools (`fqs_analysis.py`, `check_memory_location.py`,
+`compare_sim_logs.py`, …) read their default log folders from the same place.
+If you change `DMEKLR_TMP`, existing logs stay where they were: move them
+across or point the tools at them with their directory arguments.
+
+**`setup`.** `source setup` in a terminal sets `DMEKLR_REPO` and
+`DMEKLR_TMP`, activates `944venv/` when it exists, puts a locally built
+Icarus Verilog in `/opt/iverilog` and a GTKWave in `<checkout>/gtkwave/`
+ahead of the system ones when they are there, and adds the checkout to
+`PATH`. It works from bash and zsh.
 
 ### Checking an install
 
@@ -180,7 +231,7 @@ Everything the repo uses outside the standard tools every Unix system has
 | git | any | Cloning; `run_all.sh` pulls `main` first | Xcode Command Line Tools | `git` |
 | Verilator | **5.038 or newer** | `v_run_dashboard_tests.sh`, `run_dashboard_parallel.sh --verilator`, `replay/run_replay.sh`, the live simulator (`live/build_live.sh`) | `verilator` | `verilator` |
 | Icarus Verilog (`iverilog`, `vvp`) | 12 or newer | `run_dashboard_tests.sh`, the i8048 and i8051 CPU regressions (`klr/run_klr_regression`, `dme/run_dme_regression`), the replay's reference run | `icarus-verilog` | `iverilog` |
-| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump | `gtkwave` | `gtkwave` |
+| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump; its `vcd2fst` / `fst2vcd` convert them (`--vcd` runs, the replay, `extract_table_access.py`) | `gtkwave` | `gtkwave` |
 | Node.js | **18 or newer** | The live-sim bridge, `dme_klr/live/bridge.mjs` (standard library only, no `npm install` needed) | `node` | `nodejs` |
 | npm | comes with Node | Running the dashboard from a checkout of `dme-dashboard` | `node` | `npm` |
 | Python | 3.9 or newer | All the `.py` tools: disassembly tables, log validation and comparison, replay, map graphs | `python` | `python` |
@@ -198,10 +249,8 @@ npm, and `--with-dashboard` sets that up.
 
 ### Notes
 
-- **Where the output goes.** The test scripts write their builds and logs to
-  `tmp/dme_klr/` next to the checkout, not inside it (`dme_klr/../../tmp`).
-  `run_all.sh` reads its summaries from `~/coding_projects/944/tmp/`, so for
-  that script clone the repo into `~/coding_projects/944/`.
+- **Where the output goes.** In `$DMEKLR_TMP`, by default `tmp/` beside the
+  checkout; see [Install location and output folder](#install-location-and-output-folder).
 - **Older Verilator.** The live simulator and the Verilator tests need
   5.038 or newer. Homebrew and Arch both ship newer releases; on another
   Linux whose package is older, build it from source
@@ -256,10 +305,10 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 
 | Script (in `dme_klr/`) | Writes | Notes |
 |---|---|---|
-| `./run_dashboard_tests.sh <test>` | `../../tmp/dme_klr/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
-| `./v_run_dashboard_tests.sh <test>` | `../../tmp/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
+| `./run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
+| `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
-| `replay/run_replay.sh` | `../../tmp/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
+| `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
 smaller value gives finer playback and larger logs.
@@ -745,7 +794,8 @@ with each clock's phase approximated (`exact=0`, well under a microsecond). To
 share a moment with someone whose build differs, send them the INFO (inputs,
 ROMs, time) instead.
 
-Snapshots live in `../tmp/dme_klr/snapshots/` beside the checkout
+Snapshots live in `$DMEKLR_TMP/dme_klr/snapshots/` (by default `tmp/` beside the
+checkout, see section 1)
 (`node bridge.mjs --snapdir <dir>` to move them).
 
 ---
@@ -1068,7 +1118,7 @@ isn't, so the project uses both.
 ### iverilog (Icarus Verilog): the accuracy reference
 
 `./run_dashboard_tests.sh` runs the regression on iverilog. Logs go to
-`tmp/dme_klr/dash_logs/`.
+`$DMEKLR_TMP/dme_klr/dash_logs/`.
 
 - **Exact event timing.** iverilog is an event-driven simulator that follows
   the Verilog scheduling rules closely, including `#` delays inside the
@@ -1088,7 +1138,7 @@ isn't, so the project uses both.
 ### Verilator: the fast simulator
 
 `./v_run_dashboard_tests.sh` runs the same tests on Verilator. Logs go to
-`tmp/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
+`$DMEKLR_TMP/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
 Verilator build.
 
 - **Speed.** Verilator compiles the model to optimised C++, so it runs about

@@ -372,9 +372,11 @@ function followRom(cpu, path) {
 
 // ── Snapshots ────────────────────────────────────────────────
 // Next to the other run output (run_dashboard_tests.sh's dash_logs), out
-// of the repo and safe from a clean of obj/: ../tmp/dme_klr/snapshots
-// beside the checkout. --snapdir <dir> puts them elsewhere.
-const SNAP_DIR = resolve(arg('snapdir', join(REPO, '..', 'tmp', 'dme_klr', 'snapshots')));
+// of the repo and safe from a clean of obj/: $DMEKLR_TMP/dme_klr/snapshots,
+// by default ../tmp/dme_klr/snapshots beside the checkout (see paths.sh).
+// --snapdir <dir> puts them elsewhere.
+const TMP_ROOT = resolve(process.env.DMEKLR_TMP || join(REPO, '..', 'tmp'));
+const SNAP_DIR = resolve(arg('snapdir', join(TMP_ROOT, 'dme_klr', 'snapshots')));
 mkdirSync(SNAP_DIR, { recursive: true });
 // Snapshots from before they moved out of obj/
 {
@@ -582,8 +584,8 @@ function unpackBundle(buf) {
 }
 
 // ── Map graphs ───────────────────────────────────────────────
-// Beside the snapshots, out of the repo: ../tmp/dme_klr/map_graphs
-const MAP_CACHE = resolve(arg('mapcache', join(REPO, '..', 'tmp', 'dme_klr', 'map_graphs')));
+// Beside the snapshots, out of the repo: $DMEKLR_TMP/dme_klr/map_graphs
+const MAP_CACHE = resolve(arg('mapcache', join(TMP_ROOT, 'dme_klr', 'map_graphs')));
 const MAP_GRAPHS = { dme: join(HERE, 'map_graphs.py'), klr: join(HERE, 'klr_map_graphs.py') };
 
 // An image's key: the start of the SHA-256 of its 8 KB as loaded (the

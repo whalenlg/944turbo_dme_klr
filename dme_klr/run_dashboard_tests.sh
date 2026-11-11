@@ -17,10 +17,10 @@
 #  interval override): --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
 #  Added on top of whatever the named test already compiles with.
 #
-#  Output: ../../tmp/dme_klr/dash_logs/<test>.log.gz    (full sim output, gzipped)
+#  Output: $DMEKLR_TMP/dme_klr/dash_logs/<test>.log.gz    (full sim output, gzipped)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/dash_logs/vcd/<test>.vcd.gz
-#          ../../tmp/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
+#          $DMEKLR_TMP/dme_klr/dash_logs/vcd/<test>.vcd.gz
+#          $DMEKLR_TMP/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -38,13 +38,15 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 source "$SCRIPT_DIR/asm_select.sh"
 
 # ── Mode: dashboard-only ─────────────────────────────────────────────────────
 MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
-VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+mkdir -p "$DMEKLR_TMP/dme_klr"
+VVP_DIR="$DMEKLR_TMP/dme_klr"
 IVDIR="$VVP_DIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
 LOGDIR="$VVP_DIR/dash_logs"
 VCDDIR="$LOGDIR/vcd"
@@ -183,6 +185,7 @@ compile_and_run_klr() {
     [ -n "$DME_ROM_FILE" ] && rom_overrides+=("-DDME_ROM_FILE=\"${DME_ROM_FILE}\"")
     [ -n "$KLR_ROM_DIR"  ] && rom_overrides+=("-DKLR_ROM_DIR=\"${KLR_ROM_DIR}\"")
     [ -n "$KLR_ROM_FILE" ] && rom_overrides+=("-DKLR_ROM_FILE=\"${KLR_ROM_FILE}\"")
+    dmeklr_vdefs rom_overrides
     dme_asm_select rom_overrides || return 1
     klr_asm_select rom_overrides || return 1
 
@@ -192,8 +195,8 @@ compile_and_run_klr() {
     # used, this records what the shell environment asked for; the two
     # should always agree, but having both makes it easy to tell if they
     # ever don't (e.g. a stale build not picking up an env var change).
-    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
-    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
+    echo "  DME ROM: ${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
 
     iverilog -o "$vvp" \
         -f "$files_list" \

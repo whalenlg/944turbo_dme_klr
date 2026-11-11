@@ -27,6 +27,7 @@ import re
 import argparse
 import statistics
 from collections import Counter
+from dmeklr_paths import IV_LOGS, VL_LOGS  # DMEKLR_TMP (see paths.sh)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -965,10 +966,10 @@ def main():
                               'simulation time. Combine with --field to plot just '
                               'one field. Files are named "<name>_DME_diff.jpg" / "<name>_KLR_diff.jpg" '
                               'inside --plot-dir.')
-    parser.add_argument('--plot-dir', default='/Users/Mike/coding_projects/944/tmp/dme_klr/dash_logs',
+    parser.add_argument('--plot-dir', default=str(IV_LOGS),
                          metavar='DIR',
                          help='Directory to write --plot JPEGs into (created if missing). '
-                              'Default: /Users/Mike/coding_projects/944/tmp/dme_klr/dash_logs')
+                              'Default: $DMEKLR_TMP/dme_klr/dash_logs')
     parser.add_argument('--open', dest='open_plot', action='store_true',
                          help='After --plot writes the JPEGs, open them in macOS Preview.')
     parser.add_argument('--list-fields', action='store_true',

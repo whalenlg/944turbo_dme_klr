@@ -1,8 +1,31 @@
-export PATH=/opt/iverilog/bin:$PATH
-#export PATH=/opt/homebrew/Cellar/gtkwave/3.3.121/bin:$PATH
-export PATH=/Users/Mike/coding_projects/944/DME_sim/gtkwave:$PATH
-export IVERILOG_VPI_MODULE_PATH=/opt/iverilog/lib
+# shellcheck shell=bash
+# ============================================================
+#  setup — per-terminal environment for this checkout
+#
+#  Usage:  source setup        (from anywhere: source /path/to/checkout/setup)
+#
+#  - sets DMEKLR_REPO and DMEKLR_TMP (paths.sh); set DMEKLR_TMP before
+#    sourcing this to put the build output and logs somewhere else
+#  - activates the Python venv 944venv/ when it exists (install_macos.sh
+#    makes it)
+#  - puts a locally built Icarus Verilog in /opt/iverilog, and a GTKWave
+#    in <checkout>/gtkwave, ahead of the system ones when they exist
+#  - adds the checkout to PATH
+# ============================================================
+
+if [ -n "${BASH_SOURCE[0]:-}" ]; then _dmeklr_here="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then eval '_dmeklr_here="${(%):-%x}"'
+else _dmeklr_here="$0"; fi
+source "$(cd "$(dirname "$_dmeklr_here")" && pwd)/paths.sh"
+
+if [ -d /opt/iverilog/bin ]; then
+    export PATH="/opt/iverilog/bin:$PATH"
+    export IVERILOG_VPI_MODULE_PATH=/opt/iverilog/lib
+fi
+[ -d "$DMEKLR_REPO/gtkwave" ] && export PATH="$DMEKLR_REPO/gtkwave:$PATH"
 export IVERILOG_DUMPER=fst
-# Optional: only activate the local venv when it exists.
-[ -f 8051venv/bin/activate ] && source 8051venv/bin/activate
-export PATH=$PATH:/Users/Mike/coding_projects/944/DME_sim
+
+[ -f "$DMEKLR_REPO/944venv/bin/activate" ] && source "$DMEKLR_REPO/944venv/bin/activate"
+
+case ":$PATH:" in *":$DMEKLR_REPO:"*) ;; *) export PATH="$PATH:$DMEKLR_REPO" ;; esac
+unset _dmeklr_here

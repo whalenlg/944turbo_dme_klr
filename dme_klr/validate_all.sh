@@ -48,7 +48,8 @@ else
 fi
 
 # Same log location convention as run_dashboard_tests.sh / v_run_dashboard_tests.sh
-VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null && pwd)"
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
+VVP_DIR="$(cd "$DMEKLR_TMP/dme_klr" 2>/dev/null && pwd)"
 LOGDIR="$VVP_DIR/$LOGSUBDIR"
 
 if [ ! -f "$VALIDATOR" ]; then
