@@ -896,7 +896,7 @@ isn't, so the project uses both.
   X). This is how start-up bugs and reliance on power-on RAM contents are
   found. A real chip's RAM powers up with whatever is in it, so X is the
   honest model of "you can't count on this value".
-- **The cost is speed.** It is many times slower than Verilator, so the full
+- **The cost is speed.** It is about 10x slower than Verilator, so the full
   regression takes a long time.
 
 ### Verilator: the fast simulator
@@ -905,8 +905,8 @@ isn't, so the project uses both.
 `tmp/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
 Verilator build.
 
-- **Speed.** Verilator compiles the model to optimised C++, so it runs many
-  times faster than iverilog. That is what makes the live simulator and its
+- **Speed.** Verilator compiles the model to optimised C++, so it runs about
+  10x faster than iverilog. That is what makes the live simulator and its
   debugger usable (about 20 simulated ms per wall-clock second while
   tracing) and keeps a full regression run short.
 - **Two-state logic.** There is no X: every register and RAM byte starts at
