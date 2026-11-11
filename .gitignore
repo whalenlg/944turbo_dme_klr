@@ -21,3 +21,4 @@ __pycache__/
 # generated DME/KLR disassembly tables and workbook backups (dme_klr/asm_select.sh)
 **/disassemble/asm_*/
 **/disassemble/*.prev.xlsx
+8051venv/

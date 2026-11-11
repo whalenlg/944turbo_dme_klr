@@ -10,31 +10,158 @@ It works in two ways:
 | What you can do | Scrub and play back through the run, read RAM, ports and flags, chart anything against time or RPM | Everything in log review, plus run / pause / step, PC and memory-condition breakpoints, change the engine inputs, save and reload whole-model snapshots, swap ROM images |
 | Needs | Only a browser | The bridge and the live simulator built on your machine |
 
-The two meet in [section 6](#6-debugging-a-log-at-a-chosen-time): you find a
+The two meet in [section 7](#7-debugging-a-log-at-a-chosen-time): you find a
 moment of interest in a log, then have the simulator re-run that same test up
 to that time and stop, so you can set breakpoints and step through the
 firmware from there.
 
 Contents
 
-1. [Setting up](#1-setting-up)
-2. [The screen](#2-the-screen)
-3. [Log review](#3-log-review)
-4. [Live simulation](#4-live-simulation)
-5. [The code debugger](#5-the-code-debugger)
-6. [Debugging a log at a chosen time](#6-debugging-a-log-at-a-chosen-time)
-7. [Snapshots](#7-snapshots)
-8. [Charts, Timeline and Maps in detail](#8-charts-timeline-and-maps-in-detail)
-9. [ROM images](#9-rom-images)
-10. [Reference](#10-reference)
-11. [Credits](#11-credits)
+1. [Install](#1-install)
+2. [Setting up](#2-setting-up)
+3. [The screen](#3-the-screen)
+4. [Log review](#4-log-review)
+5. [Live simulation](#5-live-simulation)
+6. [The code debugger](#6-the-code-debugger)
+7. [Debugging a log at a chosen time](#7-debugging-a-log-at-a-chosen-time)
+8. [Snapshots](#8-snapshots)
+9. [Charts, Timeline and Maps in detail](#9-charts-timeline-and-maps-in-detail)
+10. [ROM images](#10-rom-images)
+11. [Reference](#11-reference)
+12. [Credits](#12-credits)
 - [Appendix A. Regression tests](#appendix-a-regression-tests)
 - [Appendix B. iverilog and Verilator](#appendix-b-iverilog-and-verilator)
 - [Appendix C. How the closed-loop models work](#appendix-c-how-the-closed-loop-models-work)
 
 ---
 
-## 1. Setting up
+## 1. Install
+
+Two scripts in `install/` set up everything this repo needs on a fresh
+machine: the C++ compiler, Verilator, Icarus Verilog, GTKWave, Node.js and
+Python with its packages. Run the one for your system from the top of the
+checkout. Both are safe to run again; what is already installed is left
+alone.
+
+### macOS (Homebrew)
+
+```sh
+git clone https://github.com/whalenlg/944turbo_dme_klr.git
+cd 944turbo_dme_klr
+install/install_macos.sh
+source 8051venv/bin/activate     # in every new terminal, before the scripts
+```
+
+It installs, in order:
+
+1. The **Xcode Command Line Tools** (`clang++`, `make`, `git`). If they are
+   missing it opens Apple's installer and stops; run the script again when
+   that finishes.
+2. **Homebrew**, if `brew` isn't found (it asks first; `--yes` skips the
+   question).
+3. The Homebrew formulae `verilator`, `icarus-verilog`, `gtkwave`, `node`
+   and `python`.
+4. A Python virtual environment at `8051venv/` in the repo, with the packages
+   in `install/requirements.txt`. Homebrew's Python doesn't allow
+   system-wide `pip install`, so the packages live in this venv, which the
+   repo's scripts already look for (`asm_select.sh` uses it directly). The
+   other scripts call `python3`, so activate the venv first, as above. The
+   folder is git-ignored.
+
+| Option | Effect |
+|---|---|
+| `--upgrade` | `brew upgrade` the formulae that are already installed |
+| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and run `npm install` there |
+| `--no-gtkwave` | Skip GTKWave |
+| `-y`, `--yes` | Don't ask before installing Homebrew |
+| `-n`, `--dry-run` | Print the commands without running them |
+
+Apple Silicon and Intel Macs both work.
+
+### Arch Linux (pacman)
+
+```sh
+git clone https://github.com/whalenlg/944turbo_dme_klr.git
+cd 944turbo_dme_klr
+install/install_arch.sh
+```
+
+It runs one `sudo pacman -Syu --needed` with `base-devel`, `git`,
+`verilator`, `iverilog`, `gtkwave`, `nodejs`, `npm`, `python`,
+`python-openpyxl`, `python-pandas`, `python-matplotlib` and
+`python-numpy`, all from the official repositories. `-Syu` upgrades the
+rest of the system too, because Arch doesn't support partial upgrades. The
+Python packages come from pacman, so there is no venv to activate.
+
+| Option | Effect |
+|---|---|
+| `--venv` | Install the Python packages with pip into `8051venv/` instead of from pacman (then `source 8051venv/bin/activate` as on macOS) |
+| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
+| `--no-gtkwave` | Skip GTKWave |
+| `-y`, `--yes` | Pass `--noconfirm` to pacman |
+| `-n`, `--dry-run` | Print the commands without running them |
+
+### Checking an install
+
+Both scripts finish by running `install/check_toolchain.sh`, which you can
+also run on its own at any time. It prints each tool with its version and
+exits non-zero if anything required is missing or too old:
+
+```
+  ok       c++          Apple clang version 17.0.0
+  ok       make         GNU Make 3.81
+  ok       verilator    5.040
+  ok       iverilog     12.0 (stable)
+  ok       gtkwave      /opt/homebrew/bin/gtkwave
+  ok       node         24.4.0
+  ...
+```
+
+### Dependencies
+
+Everything the repo uses outside the standard tools every Unix system has
+(bash, awk, sed, grep, gzip, …):
+
+| Dependency | Version | Used for | macOS | Arch |
+|---|---|---|---|---|
+| C++ compiler with C++20 | Apple clang 14+ or GCC 10+ | Compiling the Verilator models; `--timing` needs C++20 coroutines | Xcode Command Line Tools | `base-devel` (gcc) |
+| make | any (macOS's 3.81 is fine) | Verilator's generated build | Xcode Command Line Tools | `base-devel` |
+| git | any | Cloning; `run_all.sh` pulls `main` first | Xcode Command Line Tools | `git` |
+| Verilator | **5.038 or newer** | `v_run_dashboard_tests.sh`, `run_dashboard_parallel.sh --verilator`, `replay/run_replay.sh`, the live simulator (`live/build_live.sh`) | `verilator` | `verilator` |
+| Icarus Verilog (`iverilog`, `vvp`) | 12 or newer | `run_dashboard_tests.sh`, the i8048 and i8051 CPU regressions (`klr/run_klr_regression`, `dme/run_dme_regression`), the replay's reference run | `icarus-verilog` | `iverilog` |
+| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump | `gtkwave` | `gtkwave` |
+| Node.js | **18 or newer** | The live-sim bridge, `dme_klr/live/bridge.mjs` (standard library only, no `npm install` needed) | `node` | `nodejs` |
+| npm | comes with Node | Running the dashboard from a checkout of `dme-dashboard` | `node` | `npm` |
+| Python | 3.9 or newer | All the `.py` tools: disassembly tables, log validation and comparison, replay, map graphs | `python` | `python` |
+| openpyxl | 3.1+ | Reading and writing the disassembly workbooks (`*.xlsx`), replay stimulus | pip (venv) | `python-openpyxl` |
+| pandas | 2.0+ | Turning disassembly workbooks into the hex tables the testbenches load (`dme/disassemble/xlsx*.py`, run by the KLR regression and `asm_select.sh`), `live/asm_full.py` | pip (venv) | `python-pandas` |
+| matplotlib | 3.7+ | The ROM map graphs on the dashboard's MAPS tabs (`live/map_graphs.py`, `live/klr_map_graphs.py`), `compare_sim_logs.py --plot` | pip (venv) | `python-matplotlib` |
+| numpy | 1.24+ | The 3-D map graphs | pip (venv) | `python-numpy` |
+
+The Python packages are listed in `install/requirements.txt` for anyone
+installing them another way (`pip install -r install/requirements.txt`).
+
+The dashboard itself needs nothing installed: use the published page (see
+[section 2](#2-setting-up)). Only running it from a local checkout needs
+npm, and `--with-dashboard` sets that up.
+
+### Notes
+
+- **Where the output goes.** The test scripts write their builds and logs to
+  `tmp/dme_klr/` next to the checkout, not inside it (`dme_klr/../../tmp`).
+  `run_all.sh` reads its summaries from `~/coding_projects/944/tmp/`, so for
+  that script clone the repo into `~/coding_projects/944/`.
+- **Older Verilator.** The live simulator and the Verilator tests need
+  5.038 or newer. Homebrew and Arch both ship newer releases; on another
+  Linux whose package is older, build it from source
+  (https://verilator.org/guide/latest/install.html).
+- **Other Linux distributions.** Install the same things with your package
+  manager (the table above has what each is for), then run
+  `install/check_toolchain.sh`.
+
+---
+
+## 2. Setting up
 
 ### The dashboard
 
@@ -60,16 +187,16 @@ From `dme_klr/live/` in this repo:
 node bridge.mjs      # Node 18+; starts the sim and serves http://127.0.0.1:8951
 ```
 
+(Section 1 installs all of these.)
+
 Leave `bridge.mjs` running, then press **LIVE** in the dashboard. The bridge
 listens only on 127.0.0.1 and only answers pages from `whalenlg.github.io`,
 `localhost` or `127.0.0.1` (`--allow-origin <origin>` adds another).
 
-Optional extras:
-
-| For | Install |
-|---|---|
-| The ROM graphs on the MAPS tabs | `pip3 install matplotlib` |
-| Regenerating full-length operands after editing a disassembly workbook (`python3 dme_klr/live/asm_full.py`) | `pip3 install pandas openpyxl` |
+The ROM graphs on the MAPS tabs need matplotlib, and regenerating
+full-length operands after editing a disassembly workbook
+(`python3 dme_klr/live/asm_full.py`) needs pandas and openpyxl. The install
+scripts in [section 1](#1-install) put all three in place.
 
 Rebuild with `./build_live.sh` after any change to the Verilog, the testbench
 or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
@@ -79,7 +206,7 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | Script (in `dme_klr/`) | Writes | Notes |
 |---|---|---|
 | `./run_dashboard_tests.sh <test>` | `../../tmp/dme_klr/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
-| `./v_run_dashboard_tests.sh <test>` | `../../tmp/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 6) |
+| `./v_run_dashboard_tests.sh <test>` | `../../tmp/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `../../tmp/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
 
@@ -92,7 +219,7 @@ the right map graphs.
 
 ---
 
-## 2. The screen
+## 3. The screen
 
 ![Log review: DME OVERVIEW](manual/log-overview.png)
 
@@ -120,17 +247,17 @@ the right map graphs.
 | **DME RPM CHARTS** | The same series as scatter plots against engine speed |
 | **DME PHASE** | The DME's `[PHASE]` events (resets, sync, mode changes) as a list |
 | **DME DIAG** | The diagnostic stream the DME would send (`send_diag_p2` pages), as a table and a chart |
-| **DME MAPS / DME RPM MAPS** | Every numbered map and directly addressed table lookup the firmware made, against time or against RPM (section 8) |
+| **DME MAPS / DME RPM MAPS** | Every numbered map and directly addressed table lookup the firmware made, against time or against RPM (section 9) |
 | **KLR OVERVIEW** | KLR state and the boost-control view (target boost from the map compared with the measured value) |
 | **KLR PORTS / KLR IRAM** | The 8048's ports and its 64 bytes of RAM |
 | **KLR CHARTS / KLR RPM CHARTS** | Knock retard, coil pulse, knock output and count, boost, full load and more, against time or RPM |
 | **KLR PHASE / KLR DIAG** | KLR events and diagnostics |
 | **KLR MAPS / KLR RPM MAPS** | The KLR's boost, cycling-valve, PID-gain and RPM tables |
-| **TIMELINE** | DME and KLR on one time axis, plus your own picks of any RAM byte, bit or map (section 8) |
+| **TIMELINE** | DME and KLR on one time axis, plus your own picks of any RAM byte, bit or map (section 9) |
 
 ---
 
-## 3. Log review
+## 4. Log review
 
 ### Opening a log
 
@@ -175,12 +302,12 @@ that moment.
 Log review is usually the first step of a debug session:
 
 1. Open the log and look at **DME CHARTS**, **KLR CHARTS** or **TIMELINE**.
-2. Drag across the region of interest to zoom in (section 8). Click the event
+2. Drag across the region of interest to zoom in (section 9). Click the event
    to put the scrubber on it.
 3. Check **DME IRAM** / **KLR IRAM** and the flags there. Note the time from
    the scrubber (`t=… ms`) and the RAM locations involved.
 4. To see *which code* produced it, take that time to the simulator
-   ([section 6](#6-debugging-a-log-at-a-chosen-time)).
+   ([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
 ### Replay logs: recorded against simulated
 
@@ -193,11 +320,11 @@ one.
 
 ---
 
-## 4. Live simulation
+## 5. Live simulation
 
 ### Connecting
 
-Start `node bridge.mjs` (section 1), then do one of these:
+Start `node bridge.mjs` (section 2), then do one of these:
 
 * press **LIVE ○** in the header, or **LIVE SIM** in the load-log dialog
 * open the page with `?live`, or `?live=<bridge url>` for a bridge on
@@ -227,14 +354,14 @@ running you see **● OFFLINE** and a red note telling you how to start it.
 | **✕ DISCONNECT** | Leave live mode. The sim keeps running in the bridge |
 
 Step, RUN TO and breakpoints are in the **DME CODE** and **KLR CODE** windows
-(section 5).
+(section 6).
 
 **ROM IMAGES**: the image in each EPROM and the disassembly workbook its
-listing comes from. See [section 9](#9-rom-images).
+listing comes from. See [section 10](#10-rom-images).
 
 **SNAPSHOTS**: save, list and reload whole-model snapshots, and open
-regression tests at a chosen time. See sections [6](#6-debugging-a-log-at-a-chosen-time)
-and [7](#7-snapshots).
+regression tests at a chosen time. See sections [7](#7-debugging-a-log-at-a-chosen-time)
+and [8](#8-snapshots).
 
 **SIM INPUTS**: the engine model's inputs. The engine runs on the closed-loop
 model. The throttle is the input, AFM follows it about 250 ms later, and RPM
@@ -262,7 +389,7 @@ warning.
 `CUT`, `REV LIMIT`), fuel command, AFM, TPS, load, boost, DME spark interval,
 KLR ignition pulse and the overload timer, each with its min and max. A tile
 turns red on a fault condition. **CHARTS** shows or hides a chart of each
-one, and the charts zoom like any other (section 8).
+one, and the charts zoom like any other (section 9).
 
 ### Pop-out windows
 
@@ -286,7 +413,7 @@ timeline and both code debuggers across your screens while the sim runs.
 
 ---
 
-## 5. The code debugger
+## 6. The code debugger
 
 Open **DME CODE ↗** or **KLR CODE ↗** (row 3 of the tabs). Each opens a
 window with the run bar, the breakpoints, the stack, the disassembly and the
@@ -410,11 +537,11 @@ curl -X POST --data 'bp add dme 024E if 37 > 14' http://127.0.0.1:8951/cmd
 curl -X POST --data 'until 2500' http://127.0.0.1:8951/cmd
 ```
 
-The full list is in [section 10](#10-reference).
+The full list is in [section 11](#11-reference).
 
 ---
 
-## 6. Debugging a log at a chosen time
+## 7. Debugging a log at a chosen time
 
 A log is a record of a run. To step through the code behind it you need the
 simulator to **run the same stimulus up to the same moment and stop there**.
@@ -433,7 +560,7 @@ stepping, the RAM views) but keeps its own scripted stimulus. It is then run
 to the time you give and paused. From that point it is the same run as the
 log.
 
-**1. Find the time in the log.** Load the test's `.dash.log` (section 3) and
+**1. Find the time in the log.** Load the test's `.dash.log` (section 4) and
 put the scrubber on the event. Note the time and pick a start a little
 **before** it, so your breakpoints catch the lead-up. For example, the event
 is at 2700 ms, so start at 2500 ms.
@@ -464,7 +591,7 @@ then press **+ ADD**. A purple **TEST** row appears:
 **5. Debug.** Open **DME CODE** / **KLR CODE**. Then:
 
 * set PC breakpoints, with memory conditions on the RAM locations you
-  noticed in the log (section 5)
+  noticed in the log (section 6)
 * **RUN** to the first hit, **STEP** through it, read the values column,
   CAME FROM, STACK and trace
 * use **RUN TO** to go to a later time
@@ -525,7 +652,7 @@ The live sim is deterministic for the same inputs, so to get back to a moment:
 
 ---
 
-## 7. Snapshots
+## 8. Snapshots
 
 A snapshot holds **the whole model**: both CPUs' registers, RAM and pipeline
 state, the EPROMs, ADCs, timers, the engine, AFM, O2 and knock models, the
@@ -547,7 +674,7 @@ gives the same run as the original from that moment on.
 | **✕** | Delete it |
 
 The coloured tag on each row tells you its kind: **WARN** / **FAIL** (red),
-**MANUAL** (blue), **UPLOAD** (amber) and **TEST** (purple, section 6).
+**MANUAL** (blue), **UPLOAD** (amber) and **TEST** (purple, section 7).
 
 After a LOAD:
 
@@ -572,7 +699,7 @@ Snapshots live in `../tmp/dme_klr/snapshots/` beside the checkout
 
 ---
 
-## 8. Charts, Timeline and Maps in detail
+## 9. Charts, Timeline and Maps in detail
 
 ### Zoom and navigation (every chart)
 
@@ -640,7 +767,7 @@ psi / inHg.
 
 ---
 
-## 9. ROM images
+## 10. ROM images
 
 The **ROM IMAGES** row (live mode) shows the `.mem` image in each EPROM and
 the workbook its listing comes from (`ASM: disassembleperformance.xlsx`).
@@ -665,7 +792,7 @@ test scripts.
 
 ---
 
-## 10. Reference
+## 11. Reference
 
 ### URL parameters
 
@@ -720,7 +847,7 @@ ROM.
 
 ---
 
-## 11. Credits
+## 12. Credits
 
 This work is based on multiple public references, including
 https://jhnbyrn.github.io
@@ -741,8 +868,8 @@ These are the tests in the full regression run (`./run_dashboard_tests.sh`
 with no name, or `./v_run_dashboard_tests.sh` for the Verilator build; both
 have the same list). Run one by name with `./run_dashboard_tests.sh <name>`.
 Each one writes `<name>.dash.log`, which you open in the dashboard as in
-[section 3](#3-log-review), and any of them can be opened live at a chosen
-time from a SNAPSHOTS **TEST** row ([section 6](#6-debugging-a-log-at-a-chosen-time)).
+[section 4](#4-log-review), and any of them can be opened live at a chosen
+time from a SNAPSHOTS **TEST** row ([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
 "Idle" tests ramp the engine from 100 rpm cranking to an 840 rpm warm idle
 unless the description says otherwise. "CL" (closed-loop) tests use the
@@ -878,7 +1005,7 @@ once the fault has shown up.
 
 | Test | Time | What it checks |
 |---|---|---|
-| `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 3](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
+| `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 4](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
 
 
 ## Appendix B. iverilog and Verilator
