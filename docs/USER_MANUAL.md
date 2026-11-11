@@ -30,6 +30,7 @@ Contents
 11. [Credits](#11-credits)
 - [Appendix A. Regression tests](#appendix-a-regression-tests)
 - [Appendix B. iverilog and Verilator](#appendix-b-iverilog-and-verilator)
+- [Appendix C. How the closed-loop models work](#appendix-c-how-the-closed-loop-models-work)
 
 ---
 
@@ -942,6 +943,107 @@ A DIFF means the two simulators disagree about the model itself, so treat
 the iverilog result as the reference and check what Verilator is
 simplifying. A NOTE points at firmware that depends on RAM it never set,
 which is worth a look in the debugger even though the test passes.
+
+
+## Appendix C. How the closed-loop models work
+
+In a closed-loop (CL) test the engine responds to the firmware: the DME's
+own fuel decides the RPM, the RPM and throttle decide the air, and the
+sensors report what the engine is doing. Nothing in the loop is scripted
+except the driver (the throttle command) and any fault the test injects.
+The plain `ramp_to_*` tests are open loop: there the testbench sets RPM on a
+fixed ramp and the firmware's output doesn't change it.
+
+The models live in `dme/bench/verilog/var_interrupt_gen_cl.v` (engine,
+crank signals, AFM), `dme/bench/verilog/i8051_dashboard_tb.v` (DME inputs,
+O2 sensor) and `klr/bench/verilog/klr_tb.v` / `knock_gen.v` (KLR inputs,
+boost, knock). The numbers below are the defaults; most can be changed
+with a `-D` define.
+
+### The loop
+
+```
+ driver throttle ──► TPS / AFM ──► DME firmware ──► injector pulse (4B:4A)
+                        ▲                                   │
+                        │                                   ▼
+         MAP, O2, KLR ◄─┴──── RPM ◄──── torque balance (once per rev)
+```
+
+### Engine (RPM)
+
+Once per crank revolution, on the reference pulse, the model does a
+torque balance:
+
+- **Fuel.** It reads the pulse width the firmware just computed
+  (iram 4B:4A). If nothing was injected since the last update (fuel cut,
+  iram 23h bit 5, or the rev limiter skipping the injection) the fuel is 0.
+- **Combustion** is air-limited. The fuel the cylinder's air could burn at
+  stoich is the firmware's own load per stroke (iram 46:47) times 1.025. The
+  burned fuel is the smaller of that and the injected fuel, so fuel past
+  stoich (full-load enrichment, a rich mixture) adds no torque, and a lean
+  mixture loses torque. At altitude the air is scaled down further for the
+  thinner air.
+- **Friction** is a base value, plus a term that rises with RPM squared,
+  plus a cubic term above 4000 rpm, plus extra load when the AC is on. These
+  were fitted to three settled operating points (idle, about 2850 rpm and
+  about 6650 rpm), which is what makes the engine settle at a speed for a
+  given throttle instead of climbing to the limiter.
+- **RPM** changes by combustion minus friction, divided by an inertia
+  factor, and is clamped between 400 rpm (stall) and 6800 rpm (rev limiter,
+  or `CL_RPM_MAX`).
+
+Before the firmware reports engine sync (iram 21h bit 0) RPM is held at
+idle. `cl_cold_start` instead ramps from cranking speed up to idle so the
+firmware sees a real crank.
+
+### Crank signals
+
+From the current RPM the model generates the two crank inputs the real
+car has: the **speed sensor** (flywheel teeth, to DME P3.3/INT1) and the
+**reference sensor** (once per rev, to P3.2/INT0). The tooth period follows
+RPM, so everything timed off the crank (ignition, injection, dwell) moves
+with it. Fault tests stop, short or remove these signals at a set time.
+
+### DME inputs
+
+| Input | How it's modelled |
+|---|---|
+| **AFM** (ADC ch0) | Ramp tests: the driver's throttle command steps at 2 s and the AFM slews toward it about 250 ms behind the throttle (air takes time to follow). Idle tests: throttle closed, AFM at the idle base plus the idle valve's bypass air. Overrun fuel cut: AFM scales down with the falling RPM and boost |
+| **Throttle switch** (ch6) | Closed (0x99, about 3.0 V) when the throttle is at idle; off-idle or full-load levels when it opens. The KLR's full-load line reaches ch6 through the real board's RC filter (about 4.7 ms) |
+| **Battery** (ch1) | Fixed at 0xD8 unless a test lowers or disconnects it |
+| **Air temp / coolant** (ch2 / ch3) | Fixed raw sensor values for the test (warm: coolant 0x31 ≈ 85 °C, air 0x9E ≈ 20 °C); the firmware linearises them |
+| **Altitude** (ch4) | Fixed (0xF8 = sea level). At altitude the AFM reads flow × √(air density), as a flap meter does |
+| **Fuel quality** (ch7) | Fixed per test (the FQS0 to FQS7 positions) |
+| **O2 sensor** (P1 comparators) | Follows the mixture the firmware actually delivers: injected fuel ÷ load, rich above 1.025. The result passes through 150 ms of exhaust delay and a 30 ms sensor lag between 100 mV (lean) and 850 mV (rich), then the two comparators at 450 and 550 mV. With no injection the exhaust reads lean. This lets the lambda integrator (iram 1Bh) cycle around stoich as on the car |
+| **AC, cat** (T1, T0) | On/off per test, or switched at set times in the condition-cycle tests |
+
+### KLR inputs
+
+| Input | How it's modelled |
+|---|---|
+| **Crank trigger** (`trigger_in`) | The DME's KLR ignition output, which resets the KLR CPU every cycle, as on the car |
+| **DME ignition** (`ign_in`) | The DME's tach pulse |
+| **Throttle angle** (ch7) | Follows the throttle (the AFM without the idle valve's bypass air), clamped at the sensor's legal maximum 0xDB, and ratiometric to the TPS supply (ch3, normally 0xFF) |
+| **Battery** (ch1) | Fixed at 0xD8 unless a test lowers or disconnects it |
+| **MAP / boost** (ch4) | Below boost onset it is manifold vacuum from throttle and RPM (about 42 kPa at warm idle, down to about 25 kPa on a closed-throttle overrun, up to 1 bar at onset). Above onset it follows the KLR's own boost target map at the current RPM and throttle. A 500 ms lag stands in for turbo spool; during a fuel cut the turbo spools down faster (150 ms) |
+| **Knock** (ch5, ch0) | `knock_sum` (ch5) is the knock comparator: a base sensor level, raised when the KLR's own self-test fires or a knock test injects pulses. `knock_noise` (ch0) is a rolling average of the sensor level, the KLR's noise reference |
+| **Full load** (P1.5 out) | The KLR's WOT flag to the DME. It pulses high on every KLR reset, as the real port floats high, and the DME's RC filter averages that out |
+
+### Live mode
+
+The live simulator runs the same closed-loop model. The controls on the
+main page override single inputs (throttle, RPM, boost, battery and so on);
+an input left on **auto** follows the model. Pinning RPM replaces the torque
+balance's result, so the engine holds that speed whatever the fuel is.
+
+### Limits
+
+The models are fitted to a handful of settled operating points, not to a
+full engine map. Targets between those points (for example
+`cl_ramp_to_4500` and `cl_ramp_to_5000`) were tuned by trial runs, so check
+the settled RPM in the log rather than assuming the target. Fuel-quality
+positions change the firmware's fuel and timing but not the engine model's
+torque, since the 951's fuel-quality plug selects octane rather than energy.
 
 
 ---
