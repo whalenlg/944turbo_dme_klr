@@ -43,6 +43,21 @@ Python with its packages. Run the one for your system from the top of the
 checkout. Both are safe to run again; what is already installed is left
 alone.
 
+### Before installing
+
+Run the check script first. It changes nothing; it lists each tool the repo
+needs, with the version you already have, and marks what is missing or too
+old:
+
+```sh
+install/check_toolchain.sh
+```
+
+To see exactly what an install script would do without running anything,
+add `--dry-run` (`install/install_macos.sh --dry-run`,
+`install/install_arch.sh --dry-run`). On Arch the install runs a full
+system upgrade (`pacman -Syu`), so expect that.
+
 ### macOS (Homebrew)
 
 ```sh
@@ -62,11 +77,8 @@ It installs, in order:
 3. The Homebrew formulae `verilator`, `icarus-verilog`, `gtkwave`, `node`
    and `python`.
 4. A Python virtual environment at `8051venv/` in the repo, with the packages
-   in `install/requirements.txt`. Homebrew's Python doesn't allow
-   system-wide `pip install`, so the packages live in this venv, which the
-   repo's scripts already look for (`asm_select.sh` uses it directly). The
-   other scripts call `python3`, so activate the venv first, as above. The
-   folder is git-ignored.
+   in `install/requirements.txt`. You must activate it in each new terminal;
+   see [The Python venv](#the-python-venv-8051venv) below.
 
 | Option | Effect |
 |---|---|
@@ -100,6 +112,45 @@ Python packages come from pacman, so there is no venv to activate.
 | `--no-gtkwave` | Skip GTKWave |
 | `-y`, `--yes` | Pass `--noconfirm` to pacman |
 | `-n`, `--dry-run` | Print the commands without running them |
+
+### The Python venv (`8051venv`)
+
+The repo's Python scripts need four packages beyond the standard library:
+openpyxl, pandas, matplotlib and numpy (`install/requirements.txt`). On
+macOS these are installed into a Python virtual environment, a private
+copy of Python with its own packages, in the folder `8051venv/` at the top
+of the checkout. It is required on macOS because Homebrew's Python refuses
+`pip install` into the system Python.
+
+**Activate it in every new terminal** before running any of the repo's
+scripts:
+
+```sh
+cd 944turbo_dme_klr
+source 8051venv/bin/activate     # the prompt now starts with (8051venv)
+```
+
+Why this matters: the test scripts, `build_live.sh` and the live bridge
+(`node bridge.mjs`, which runs the map-graph scripts) all call plain
+`python3`. Until the venv is active, `python3` is Homebrew's or Apple's,
+which doesn't have the packages, and you get errors such as
+`ModuleNotFoundError: No module named 'pandas'` or a MAPS tab with no
+graphs. Only `asm_select.sh` finds `8051venv/bin/python` on its own.
+Start the bridge from a terminal where the venv is active.
+
+Other things to know:
+
+| Task | Command |
+|---|---|
+| Leave the venv | `deactivate` |
+| Activate it automatically | Add `source ~/path/to/944turbo_dme_klr/8051venv/bin/activate` to `~/.zshrc` |
+| Check it | `install/check_toolchain.sh` reports `8051venv not active in this shell` when it exists but isn't active |
+| Rebuild it (after a Homebrew Python upgrade breaks it) | `rm -rf 8051venv && install/install_macos.sh` |
+| Use it on Arch | `install/install_arch.sh --venv` (by default Arch uses pacman's packages and needs no venv) |
+
+The folder is git-ignored. You don't need it at all if your `python3`
+already has the four packages, for example installed some other way: the
+check script tells you.
 
 ### Checking an install
 

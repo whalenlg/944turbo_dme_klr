@@ -9,7 +9,13 @@
 #  when they finish; safe to run on its own at any time.
 #
 #  Python is checked with this repo's 8051venv/bin/python when that venv
-#  exists (the one install_macos.sh makes), otherwise with python3.
+#  exists (the one install_macos.sh makes), otherwise with python3. When
+#  the venv exists but isn't active in this shell, it says so: the repo's
+#  scripts call python3, so they only see the venv's packages once it is
+#  activated (source 8051venv/bin/activate).
+#
+#  Run it before installing, too: it changes nothing, and shows what is
+#  already there and what the install scripts would add.
 #
 #  Usage:  install/check_toolchain.sh
 #  Exit:   0 when every required tool is present (GTKWave is optional),
@@ -132,6 +138,11 @@ if command -v "$PY" >/dev/null 2>&1; then
 else
     bad "python3" "Python 3"
 fi
+VENV_INACTIVE=0
+if [ "$PY" != python3 ] && [ "${VIRTUAL_ENV:-}" != "$REPO_DIR/8051venv" ]; then
+    VENV_INACTIVE=1
+    printf "  ${YELLOW}note${NC}     %-12s %s\n" "8051venv" "not active in this shell; run: source $REPO_DIR/8051venv/bin/activate"
+fi
 
 if command -v git >/dev/null 2>&1; then
     ok "git" "$(git --version | awk '{print $3}')"
@@ -142,8 +153,9 @@ fi
 echo
 if [ "$MISSING" -eq 0 ]; then
     echo -e "${GREEN}Everything required is installed.${NC}"
-    if [ "$PY" != python3 ]; then
-        echo "Before running the scripts in a new terminal:  source $REPO_DIR/8051venv/bin/activate"
+    if [ "$VENV_INACTIVE" = 1 ]; then
+        echo "Activate the venv before running the scripts (in every new terminal):"
+        echo "    source $REPO_DIR/8051venv/bin/activate"
     fi
     exit 0
 fi
