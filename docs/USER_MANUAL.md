@@ -29,6 +29,7 @@ Contents
 10. [Reference](#10-reference)
 11. [Credits](#11-credits)
 - [Appendix A. Regression tests](#appendix-a-regression-tests)
+- [Appendix B. iverilog and Verilator](#appendix-b-iverilog-and-verilator)
 
 ---
 
@@ -870,6 +871,77 @@ once the fault has shown up.
 | Test | Time | What it checks |
 |---|---|---|
 | `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 3](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
+
+
+## Appendix B. iverilog and Verilator
+
+The same Verilog model (both CPUs, the ADCs, the engine and sensor models)
+is run by two different simulators. Each one is good at something the other
+isn't, so the project uses both.
+
+### iverilog (Icarus Verilog): the accuracy reference
+
+`./run_dashboard_tests.sh` runs the regression on iverilog. Logs go to
+`tmp/dme_klr/dash_logs/`.
+
+- **Exact event timing.** iverilog is an event-driven simulator that follows
+  the Verilog scheduling rules closely, including `#` delays inside the
+  testbench and sensor models. Edge-to-edge timing (ignition, injection,
+  sensor pulses, ADC conversion) comes out the way the source describes it.
+- **Worst-case start-up states.** iverilog has four-state logic: every
+  register and RAM byte starts as **X** (unknown) until something writes it.
+  If the firmware reads a location it never initialised and branches on it,
+  iverilog shows that, and the KLR core prints a `KLR: [XBRANCH]` line for
+  each 100 ms in which it happened (the core takes the not-taken path on an
+  X). This is how start-up bugs and reliance on power-on RAM contents are
+  found. A real chip's RAM powers up with whatever is in it, so X is the
+  honest model of "you can't count on this value".
+- **The cost is speed.** It is many times slower than Verilator, so the full
+  regression takes a long time.
+
+### Verilator: the fast simulator
+
+`./v_run_dashboard_tests.sh` runs the same tests on Verilator. Logs go to
+`tmp/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
+Verilator build.
+
+- **Speed.** Verilator compiles the model to optimised C++, so it runs many
+  times faster than iverilog. That is what makes the live simulator and its
+  debugger usable (about 20 simulated ms per wall-clock second while
+  tracing) and keeps a full regression run short.
+- **Two-state logic.** There is no X: every register and RAM byte starts at
+  a known value (zero), so the firmware never sees an "unknown" read. Runs
+  are repeatable, but an uninitialised read that iverilog would flag simply
+  reads 0 here and goes unnoticed.
+- **Slightly different timing.** Verilator orders events within a time
+  step in its own way, and because it starts from known values it settles
+  sooner than iverilog. In a few tests (`cl_tippy_in`, for example) it
+  reaches a fast transient a little earlier and stays about a snapshot
+  ahead for the rest of the run. That is a simulator difference, not a
+  model one.
+
+### How the two are used together
+
+1. Develop and debug on Verilator: live mode, breakpoints, quick single-test
+   reruns.
+2. Run the regression on iverilog as the reference for timing and start-up
+   behaviour.
+3. Compare the two. `v_run_dashboard_tests.sh` compares each test with its
+   iverilog log when one exists, and `compare_all_logs.sh` compares a whole
+   set. Each test gets a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| **MATCH** | The two logs agree |
+| **NEAR-MATCH** | Only small differences inside the allowed tolerance |
+| **NOTE** | The logs differ, but the difference starts within 500 ms of iverilog's last `KLR: [XBRANCH]`: the firmware branched on an uninitialised value (X on iverilog, 0 on Verilator) and the two runs took different paths from there. Expected, not a failure, but worth knowing about |
+| **DIFF** | A real difference to look into |
+| **ROM-MISMATCH** | The two logs used different ROM images, so they aren't compared |
+
+A DIFF means the two simulators disagree about the model itself, so treat
+the iverilog result as the reference and check what Verilator is
+simplifying. A NOTE points at firmware that depends on RAM it never set,
+which is worth a look in the debugger even though the test passes.
 
 
 ---
