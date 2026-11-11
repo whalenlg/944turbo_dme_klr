@@ -48,6 +48,8 @@ the browser.
 
 ### The live simulator (for live mode and code debugging)
 
+> **Note:** This mode is not yet supported for end user installation.
+
 From `dme_klr/live/` in this repo:
 
 ```sh
