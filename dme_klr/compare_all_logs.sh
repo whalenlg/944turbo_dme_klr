@@ -6,16 +6,29 @@
 #  simulation logs using compare_sim_logs.py.
 #
 #  Usage:
-#    ./compare_all_logs.sh [test1 test2 ...]
+#    ./compare_all_logs.sh [--variant 86|89|carpokes]
+#                          [--iv-dir DIR] [--vl-dir DIR] [test1 test2 ...]
 #
-#  By default compares all known tests.  Pass test names to
-#  compare a subset.
+#  By default compares all known tests in tmp/dme_klr/dash_logs
+#  (iverilog) against tmp/dme_klr/v_dash_logs (Verilator).  Pass
+#  test names to compare a subset.
+#
+#  --variant V   compare the results compare_rom_variants.sh archived
+#                for variant V: tmp/dme_klr/rom_compare/V/dash_logs vs
+#                tmp/dme_klr/rom_compare/V/v_dash_logs
+#  --iv-dir DIR  iverilog log directory (overrides the default/--variant)
+#  --vl-dir DIR  Verilator log directory (overrides the default/--variant)
 #
 #  Output:
-#    Prints MATCH/NEAR-MATCH/NOTE/DIFF/SKIP per test. NOTE = the
-#    differences start with iverilog's KLR X branches (expected, not a DIFF).
-#    Writes summary to $VL_DASH_DIR/compare_all.log
-#    Exit code 0 if all MATCH/NEAR-MATCH/NOTE, 1 if any DIFF.
+#    Prints MATCH/NEAR-MATCH/NOTE/DIFF/ROM-MISMATCH/SKIP per test.
+#    NOTE = the differences start with iverilog's KLR X branches
+#    (expected, not a DIFF). ROM-MISMATCH = the two logs' [ROM] lines
+#    name different DME or KLR images (e.g. the shared log folders hold
+#    different variants after compare_rom_variants.sh), so they are
+#    not compared.
+#    Writes summary to <Verilator log dir>/compare_all.log
+#    Exit code 0 if all MATCH/NEAR-MATCH/NOTE, 1 if any DIFF or
+#    ROM-MISMATCH.
 # ============================================================
 
 # -h / --help: print the header comment above and exit before anything runs.
@@ -36,6 +49,42 @@ BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
 
 IV_DASH_DIR="$BASE/dash_logs"
 VL_DASH_DIR="$BASE/v_dash_logs"
+
+# ── Options: --variant / --iv-dir / --vl-dir; the rest are test names ──
+VARIANT=""; IV_OVERRIDE=""; VL_OVERRIDE=""
+_names=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --variant)   VARIANT="${2:?--variant needs 86, 89 or carpokes}"; shift 2 ;;
+        --variant=*) VARIANT="${1#*=}"; shift ;;
+        --iv-dir)    IV_OVERRIDE="${2:?--iv-dir needs a directory}"; shift 2 ;;
+        --iv-dir=*)  IV_OVERRIDE="${1#*=}"; shift ;;
+        --vl-dir)    VL_OVERRIDE="${2:?--vl-dir needs a directory}"; shift 2 ;;
+        --vl-dir=*)  VL_OVERRIDE="${1#*=}"; shift ;;
+        -*)          echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
+        *)           _names+=("$1"); shift ;;
+    esac
+done
+set -- ${_names[@]+"${_names[@]}"}
+
+if [ -n "$VARIANT" ]; then
+    IV_DASH_DIR="$BASE/rom_compare/$VARIANT/dash_logs"
+    VL_DASH_DIR="$BASE/rom_compare/$VARIANT/v_dash_logs"
+fi
+[ -n "$IV_OVERRIDE" ] && IV_DASH_DIR="$IV_OVERRIDE"
+[ -n "$VL_OVERRIDE" ] && VL_DASH_DIR="$VL_OVERRIDE"
+for _d in "$IV_DASH_DIR" "$VL_DASH_DIR"; do
+    [ -d "$_d" ] || { echo "No such log directory: $_d" >&2; exit 2; }
+done
+
+# Prints "<DME rom> <sha> | <KLR rom> <sha>" from a log's [ROM] lines
+# (empty for older logs written before the [ROM] line existed).
+rom_id() {
+    local dme klr
+    dme=$(grep -m1 '^DME: \[ROM\]' "$1" 2>/dev/null | awk '{print $3, $4}')
+    klr=$(grep -m1 '^KLR: \[ROM\]' "$1" 2>/dev/null | awk '{print $3, $4}')
+    [ -n "$dme$klr" ] && echo "$dme | $klr"
+}
 
 # ── All known tests ───────────────────────────────────────────
 DASH_TESTS=(
@@ -168,7 +217,7 @@ printf "  Tests: %d\n" "${#TESTS[@]}"
 echo "============================================================"
 echo ""
 
-N_MATCH=0; N_NEAR=0; N_NOTE=0; N_DIFF=0; N_SKIP=0
+N_MATCH=0; N_NEAR=0; N_NOTE=0; N_DIFF=0; N_ROM=0; N_SKIP=0
 
 for name in "${TESTS[@]}"; do
     iv_log="$IV_DIR/${name}${SUFFIX}"
@@ -200,6 +249,16 @@ for name in "${TESTS[@]}"; do
         continue
     fi
 
+    # Only compare logs that ran the same ROM images.
+    iv_rom=$(rom_id "$iv_log"); vl_rom=$(rom_id "$vl_log")
+    if [ -n "$iv_rom" ] && [ -n "$vl_rom" ] && [ "$iv_rom" != "$vl_rom" ]; then
+        detail="iv: $iv_rom   vl: $vl_rom"
+        printf "  \033[35m%-10s\033[0m %-26s %s\n" "ROM-MISMATCH" "$name" "$detail"
+        printf "ROM-MISMATCH\t%s\t%s\n" "$name" "$detail" >> "$OUT_LOG"
+        N_ROM=$(( N_ROM + 1 ))
+        continue
+    fi
+
     result=$(python3 "$COMPARE" "$MODE" "$iv_log" "$vl_log" "$name" 2>&1)
     rc=$?
     verdict=$(echo "$result" | cut -f1)
@@ -226,14 +285,20 @@ SECS=$(( ELAPSED % 60 ))
 
 echo ""
 echo "============================================================"
-printf "  Complete — %dm%ds   MATCH=%d  NEAR=%d  NOTE=%d  DIFF=%d  SKIP=%d\n" \
-       "$MINS" "$SECS" "$N_MATCH" "$N_NEAR" "$N_NOTE" "$N_DIFF" "$N_SKIP"
+printf "  Complete — %dm%ds   MATCH=%d  NEAR=%d  NOTE=%d  DIFF=%d  ROM-MISMATCH=%d  SKIP=%d\n" \
+       "$MINS" "$SECS" "$N_MATCH" "$N_NEAR" "$N_NOTE" "$N_DIFF" "$N_ROM" "$N_SKIP"
 echo "============================================================"
+if [ "$N_ROM" -gt 0 ]; then
+    echo ""
+    echo "  $N_ROM test(s) ran different ROM images in iverilog and Verilator,"
+    echo "  so they were not compared. Re-run the stale side, or compare an"
+    echo "  archived variant: ./compare_all_logs.sh --variant 86|89|carpokes"
+fi
 echo ""
 
 # ── Sorted summary: DIFF first, then NOTE, NEAR-MATCH, MATCH ──
 if [ -f "$OUT_LOG" ]; then
-    for prefix in DIFF ERROR NOTE NEAR-MATCH MATCH SKIP; do
+    for prefix in DIFF ERROR ROM-MISMATCH NOTE NEAR-MATCH MATCH SKIP; do
         grep "^${prefix}" "$OUT_LOG" 2>/dev/null | \
             awk -F'\t' -v p="$prefix" '{printf "  %-12s %-26s %s\n", p, $2, $3}'
     done
@@ -243,4 +308,4 @@ echo ""
 echo "  Full results: $OUT_LOG"
 echo ""
 
-[ "$N_DIFF" -gt 0 ] && exit 1 || exit 0
+[ $(( N_DIFF + N_ROM )) -gt 0 ] && exit 1 || exit 0
