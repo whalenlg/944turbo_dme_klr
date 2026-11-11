@@ -92,7 +92,8 @@ the right map graphs.
 
 * **Header.** The file name, the ROM images the log names, the count of
   STATUS and PHASE records, the **LIVE** button (connect to or leave the
-  simulator) and **LOAD LOG**.
+  simulator), **LOAD LOG** and **MANUAL ↗**, which opens this manual in
+  a new tab.
 * **Tab rows.** Row 1 holds the DME tabs, row 2 the KLR tabs, and row 3 holds
   **TIMELINE** (DME and KLR together). In live mode it also holds **DME CODE**
   and **KLR CODE**.
