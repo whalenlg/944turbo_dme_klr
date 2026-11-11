@@ -720,4 +720,4 @@ contributions and feedback during development.
 
 ---
 
-Copyright 2026 Michael Whalen
+Copyright 2026 Michael Whalen. No affiliation with Dr. Ing. h.c. F. Porsche AG or any of its affiliates.
