@@ -657,6 +657,8 @@ the workbook its listing comes from (`ASM: disassembleperformance.xlsx`).
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
 
+  > **Note:** Reloading the browser page resets the images to the defaults.
+
 To build or run with other images from the start, set `DME_ROM_DIR` /
 `DME_ROM_FILE` / `KLR_ROM_DIR` / `KLR_ROM_FILE` for `build_live.sh` or the
 test scripts.
