@@ -677,6 +677,8 @@ test scripts.
 
 ### Simulator commands
 
+> **Note:** These have not been tested in this release.
+
 Typed into `obj/dme_klr_live` or posted to `http://127.0.0.1:8951/cmd`, one
 per line:
 
