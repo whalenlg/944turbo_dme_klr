@@ -86,9 +86,9 @@ def test_defines(name, script):
 def roms():
     return {
         'dme': os.environ.get('DME_ROM_DIR', str(REPO / 'bin_images' / 'dme') + '/')
-               + os.environ.get('DME_ROM_FILE', '28PIN_DME_PERFORMANCE.mem'),
+               + os.environ.get('DME_ROM_FILE', '89DME_951pin.mem'),
         'klr': os.environ.get('KLR_ROM_DIR', str(REPO / 'bin_images' / 'klr') + '/')
-               + os.environ.get('KLR_ROM_FILE', '87KLR_951.mem'),
+               + os.environ.get('KLR_ROM_FILE', '89KLR_951.mem'),
     }
 
 

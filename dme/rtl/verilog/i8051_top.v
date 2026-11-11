@@ -257,7 +257,7 @@ module i2764_eprom (
     `define DME_ROM_DIR {`DMEKLR_REPO, "bin_images/dme/"}
     `endif
     `ifndef DME_ROM_FILE
-    `define DME_ROM_FILE "28PIN_DME_PERFORMANCE.mem"
+    `define DME_ROM_FILE "89DME_951pin.mem"
     `endif
     integer i;
     initial begin

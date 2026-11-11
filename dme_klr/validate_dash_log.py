@@ -1018,7 +1018,10 @@ TESTS = {
 
 # ─── DME firmware-variant overrides ─────────────────────────────────────────
 # The fuel_range/baseline values in TESTS above were calibrated against the
-# default DME firmware image (28PIN_DME_PERFORMANCE.mem). Since run scripts
+# CarPokes performance image (28PIN_DME_PERFORMANCE.mem, run_carpokes.sh),
+# the default until the stock '89 images (89DME_951pin.mem / 89KLR_951.mem)
+# took over. The '89 entries below therefore apply to a default run (found
+# from the log's [ROM] lines). Since run scripts
 # can now select a different DME ROM via DME_ROM_FILE (see run_dashboard_
 # tests.sh / v_run_dashboard_tests.sh), a genuinely different firmware image
 # can have a genuinely different fuel map — that's expected, not a bug, but
@@ -1029,8 +1032,9 @@ TESTS = {
 # these fields on top of the base TESTS[test_name] entry (only the listed
 # fields are overridden; everything else keeps its default). Which DME file
 # was used is determined by (in priority order): the --dme-file argument,
-# then the DME_ROM_FILE environment variable, then falling back to no
-# override (i.e. the values calibrated for the default 28PIN firmware).
+# then the DME_ROM_FILE environment variable, then the "DME: [ROM]" line at
+# the top of the dash.log, then falling back to no override (i.e. the
+# values calibrated for the 28PIN performance image).
 #
 # 89DME_951pin.mem: derived from one real validation run (2026 — see
 # conversation/commit history) against the 6000-family. Steady-state fuel

@@ -133,7 +133,7 @@ TPS_STATUS_CODE = {'Idle': 0, 'Off Idle': 1, 'Full Load': 2}
 KLR_TPS_BY_STATUS = {'Idle': 0x28, 'Off Idle': 0x60, 'Full Load': 0xD8}
 
 DEFAULT_ROM = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           '..', '..', 'bin_images', 'dme', '28PIN_DME_PERFORMANCE.mem')
+                           '..', '..', 'bin_images', 'dme', '89DME_951pin.mem')
 
 
 def clamp8(x):
@@ -261,7 +261,7 @@ def main():
                     help='raw counts taken off the MAP byte (default 0; 10 for a '
                          "log of the KLR's ram[52h], which is ADC + 10)")
     ap.add_argument('--dme-rom', default=os.environ.get('DME_ROM') or DEFAULT_ROM,
-                    help='DME ROM .mem for the NTC maps (default: 28PIN_DME_PERFORMANCE.mem)')
+                    help='DME ROM .mem for the NTC maps (default: 89DME_951pin.mem)')
     ap.add_argument('--afm-vref', type=float, default=5.0,
                     help="the DME's AFM reference voltage: the AFM is ratiometric, "
                          "so its ADC reads V_afm / V_ref x 255 (default 5.0)")

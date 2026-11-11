@@ -195,8 +195,8 @@ compile_and_run_klr() {
     # used, this records what the shell environment asked for; the two
     # should always agree, but having both makes it easy to tell if they
     # ever don't (e.g. a stale build not picking up an env var change).
-    echo "  DME ROM: ${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
-    echo "  KLR ROM: ${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
+    echo "  DME ROM: ${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}${DME_ROM_FILE:-89DME_951pin.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}${KLR_ROM_FILE:-89KLR_951.mem}"
 
     iverilog -o "$vvp" \
         -f "$files_list" \

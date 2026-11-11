@@ -21,7 +21,7 @@
 #  89KLR_951.mem              89KLR951.xlsx                  asm_89/
 #
 #  An unset ROM file means the one i8051_top.v / klr_top.v default to
-#  (28PIN_DME_PERFORMANCE.mem / 87KLR_951.mem).
+#  (89DME_951pin.mem / 89KLR_951.mem).
 #
 #  disassembleperformance.xlsx and 87KLR951.xlsx are the hand-annotated
 #  sources. The other workbooks are generated from them (build_variant.py /
@@ -42,7 +42,7 @@ _asm_cfg() {   # <dme|klr> <repo>
             _c_src=disassembleperformance.xlsx; _c_refimg=28PIN_DME_PERFORMANCE.bin; _c_reftag=perf
             _c_gen=build_variant.py; _c_deps=(build_variant.py dis8051.py)
             _c_variants=(1986:28PIN_86DME.mem:disassemble1986.xlsx 1989:89DME_951pin.mem:disassemble1989.xlsx)
-            _c_default=28PIN_DME_PERFORMANCE.mem
+            _c_default=89DME_951pin.mem
             _c_files=(test_sim.hex asm_opcode_ins.hex asm_instr.hex asm_operand_mapped.hex
                       asm_operands_numeric.hex asm_full.json) ;;
         klr)
@@ -50,7 +50,7 @@ _asm_cfg() {   # <dme|klr> <repo>
             _c_src=87KLR951.xlsx; _c_refimg=87KLR_951.mem; _c_reftag=87
             _c_gen=build_klr_variant.py; _c_deps=(build_klr_variant.py dis8048.py klr_maps.py)
             _c_variants=(86:86KLR_951.mem:86KLR951.xlsx 89:89KLR_951.mem:89KLR951.xlsx)
-            _c_default=87KLR_951.mem
+            _c_default=89KLR_951.mem
             _c_files=(test_sim.hex asm_opcode_ins.hex asm_instr.hex asm_operands.hex
                       asm_operands_numeric.hex asm_full.json) ;;
     esac
