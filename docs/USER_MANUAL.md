@@ -28,6 +28,9 @@ Contents
 9. [ROM images](#9-rom-images)
 10. [Reference](#10-reference)
 11. [Credits](#11-credits)
+- [Appendix A. Regression tests](#appendix-a-regression-tests)
+- [Appendix B. iverilog and Verilator](#appendix-b-iverilog-and-verilator)
+- [Appendix C. How the closed-loop models work](#appendix-c-how-the-closed-loop-models-work)
 
 ---
 
@@ -47,6 +50,8 @@ Log review needs nothing else. Everything the page does with a log happens in
 the browser.
 
 ### The live simulator (for live mode and code debugging)
+
+> **Note:** This mode is not yet supported for end user installation.
 
 From `dme_klr/live/` in this repo:
 
@@ -203,6 +208,9 @@ bar, so a reload reconnects. On connecting, the bridge replays the run so far,
 so the charts are complete even if you open the page late. If the bridge isn't
 running you see **● OFFLINE** and a red note telling you how to start it.
 
+> **Note:** Page load errors have been observed in this version. Reloading
+> the page resolves the issue and updates to the current running state.
+
 ![Live mode main page](manual/live-main.png)
 
 ### The main page
@@ -291,7 +299,7 @@ instruction trace for that CPU.
 | Control | Does |
 |---|---|
 | **▶ RUN / ⏸ PAUSE** | As on the main page |
-| *N* + **STEP DME** / **STEP KLR** | Run *N* instructions of this CPU, then pause (the other CPU runs alongside) |
+| *N* + **STEP DME** / **STEP KLR** | Run until this CPU has executed *N* instructions, then pause the whole simulation. Both CPUs share one simulated clock, so the other CPU only advances over that same short interval (a few instructions at most) and stops at the same moment |
 | *ms* + **RUN TO** (or Enter) | Run until that simulated time, then pause |
 
 The window title also shows the state and time, so you can tell where the
@@ -434,7 +442,7 @@ is at 2700 ms, so start at 2500 ms.
 
 **3. Add the test at that time.** Open the **SNAPSHOTS** list (click its
 title). In the **TEST** row type the test's name (as the scripts know it, e.g.
-`cl_ramp_to_3000`) and the time in ms, optionally a label in the label box,
+`cl_ramp_to_3000`; [Appendix A](#appendix-a-regression-tests) lists them all) and the time in ms, optionally a label in the label box,
 then press **+ ADD**. A purple **TEST** row appears:
 
 ![A TEST row added at 2500 ms, being built](manual/live-test-building.png)
@@ -649,6 +657,8 @@ the workbook its listing comes from (`ASM: disassembleperformance.xlsx`).
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
 
+  > **Note:** Reloading the browser page resets the images to the defaults.
+
 To build or run with other images from the start, set `DME_ROM_DIR` /
 `DME_ROM_FILE` / `KLR_ROM_DIR` / `KLR_ROM_FILE` for `build_live.sh` or the
 test scripts.
@@ -666,6 +676,8 @@ test scripts.
 | `?live=<url>` | Connect to a bridge elsewhere |
 
 ### Simulator commands
+
+> **Note:** These have not been tested in this release.
 
 Typed into `obj/dme_klr_live` or posted to `http://127.0.0.1:8951/cmd`, one
 per line:
@@ -717,6 +729,326 @@ https://www.carpokes.com
 
 Special thanks to users &#64;tom and &#64;johnb at Carpokes for their
 contributions and feedback during development.
+
+---
+
+## Appendix A. Regression tests
+
+These are the tests in the full regression run (`./run_dashboard_tests.sh`
+with no name, or `./v_run_dashboard_tests.sh` for the Verilator build; both
+have the same list). Run one by name with `./run_dashboard_tests.sh <name>`.
+Each one writes `<name>.dash.log`, which you open in the dashboard as in
+[section 3](#3-log-review), and any of them can be opened live at a chosen
+time from a SNAPSHOTS **TEST** row ([section 6](#6-debugging-a-log-at-a-chosen-time)).
+
+"Idle" tests ramp the engine from 100 rpm cranking to an 840 rpm warm idle
+unless the description says otherwise. "CL" (closed-loop) tests use the
+engine model in which the firmware's own fuel and ignition set the RPM, and
+include the KLR's boost model; the plain `ramp_to_*` tests drive RPM
+directly from the testbench instead. Time is simulated seconds.
+
+### Idle
+
+| Test | Time | What it checks |
+|---|---|---|
+| `warm_idle` | 60 s | Baseline warm idle; the reference run the other idle tests are compared with |
+| `warm_idle_5s` | 5 s | Same warm idle over the same 5 s window as the sensor-fault tests, for side-by-side comparison |
+| `cold_start` | 60 s | Cold engine start with the lambda warm-up left on |
+| `hot_idle` | 25 s | Idle with a very hot coolant reading |
+| `idle_battery_low` | 5 s | Idle with a low battery voltage reading |
+| `idle_high_alt` | 5 s | Idle with the altitude sensor at the high-altitude end of its range |
+| `altitude_disconnected` | 5 s | Altitude sensor open circuit (reads 0xFF, an impossible "below sea level" value). No DTC expected |
+| `idle_poor_fuel` | 5 s | Idle with the worst fuel-quality reading (0xA7, same as FQS7) |
+| `fuel_qual_disconnected` | 5 s | Fuel-quality sensor open circuit (0xFF). No DTC expected |
+| `ac_on_idle` | 10 s | Idle with the AC compressor on |
+| `warmup_enrichment` | 60 s | Cold idle with lambda warm-up, to watch warm-up enrichment taper off |
+| `dme_klr_warm_idle` | 60 s | Warm idle as a combined DME + KLR check |
+
+### Closed-loop drive cycles
+
+| Test | Time | What it checks |
+|---|---|---|
+| `cl_warm_idle` | 60 s | Closed-loop warm idle |
+| `cl_cold_start` | 60 s | Closed-loop cold start with a real cranking ramp and no lambda warm-up skip |
+| `cl_tippy_in` | 20 s | A sudden throttle blip at idle, for acceleration enrichment, then back to idle |
+| `cl_ramp_to_3000` | 30 s | Throttle opens to settle near 3000 rpm |
+| `cl_ramp_to_3000_BOOST` | 30 s | The same ramp, kept as the boost-model reference |
+| `cl_ramp_to_4500` | 35 s | Throttle opens to settle near 4500 rpm |
+| `cl_ramp_to_6000` | 40 s | Throttle opens to settle near 6000 rpm |
+| `cl_ramp_to_6000_BOOST` | 40 s | The 6000 rpm ramp with a faster throttle opening |
+| `cl_ramp_to_redline` | 15 s | Throttle to redline, to see the rev limiter |
+| `cl_condition_cycle` | 73 s | Ramp to 3000 rpm, then six 7 s phases, one at a time: cold air, cold coolant, high altitude, no cat, AC on, low battery |
+| `cl_condition_cycle_idle` | 47 s | The same six phases at idle |
+| `cl_ac_halfway` | 20 s | Warm closed-loop idle with the AC switched on halfway through |
+| `cl_idle_controlled_by_isv` | 45 s | As `cl_ac_halfway`, but with the idle valve's bypass air modelled so the firmware's idle control has to bring RPM back |
+| `overrun_cutoff` | 50 s | Hold about 2100 rpm, then lift off: the firmware should cut fuel while coasting and bring it back near idle |
+
+### Open-loop RPM sweeps, ignition and idle valve
+
+| Test | Time | What it checks |
+|---|---|---|
+| `ramp_to_3000` | 10 s | RPM ramp to 3000 |
+| `ramp_to_6000` | 40 s | RPM ramp to 6000 |
+| `ramp_to_6300` | 15 s | RPM ramp to 6300 |
+| `ramp_to_redline` | 10 s | RPM ramp to 6500 |
+| `ramp_6k_hold` | 15 s | Ramp to 6000 rpm and hold there |
+| `ignition_timing` | 15 s | Ignition advance across a fast ramp to 6000 rpm |
+| `dwell_scaling` | 15 s | Coil dwell across a slow ramp to 6000 rpm |
+| `isv_cold_idle` | 60 s | Idle valve opening and closing during a cold idle |
+| `isv_load_droop` | 12 s | RPM dips to 650 for 0.5 s at 5 s, to see the idle valve respond |
+
+### Fuel-quality sweeps
+
+| Test | Time | What it checks |
+|---|---|---|
+| `cl_ramp_to_6000_FQS0` … `FQS7` | 40 s each | `cl_ramp_to_6000` with the fuel-quality input stepped through eight values (0x00 to 0xA7) and the engine model's fuel energy adjusted to match |
+| `ramp_to_6000_FQS0` … `FQS7` | 40 s each | `ramp_to_6000` with the same eight fuel-quality values |
+
+### Knock
+
+| Test | Time | What it checks |
+|---|---|---|
+| `ramp_to_6000_knock` | 40 s | Knock pulses on one cylinder for 10 cycles halfway through, then RPM ramps back down, to see the KLR retard and recover |
+| `knock_sensor_defect` | 40 s | Broken connection to the knock circuit (noise level forced low), so the KLR should flag a knock sensor fault |
+| `knock_sensor_short_to_ground` | 40 s | Knock sensor signal shorted to ground |
+| `cl_ramp_to_3000_KLR_KNOCK_BLOCKED` | 30 s | The broken knock connection during a closed-loop ramp to 3000 rpm |
+| `cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH` | 10 s | KLR knock noise-level input reading high |
+| `cl_ramp_to_6000_KLR_ADC0_NOISE_LOW` | 10 s | KLR knock noise-level input stuck at 0x80 |
+
+### DME sensor faults
+
+| Test | Time | What it checks |
+|---|---|---|
+| `afm_open_circuit` | 5 s | Air-flow meter signal lost |
+| `afm_short_to_ground` | 5 s | Air-flow meter wiper shorted to ground (0x00) |
+| `battery_disconnected` | 5 s | DME battery sense open (0x00), unlike `idle_battery_low` which is only low |
+| `coolant_fail` | 5 s | Coolant sensor shorted (0x00, reads as very hot) |
+| `coolant_open_circuit` | 5 s | Coolant sensor open (0xFF) |
+| `airtemp_fail` | 5 s | Air temperature sensor shorted (0x00) |
+| `airtemp_open_circuit` | 5 s | Air temperature sensor open (0xFF) |
+| `tps_fail` | 5 s | DME throttle/idle input held at mid-scale (0x80) |
+| `tps_ch6_short_to_ground` | 5 s | DME throttle/idle input shorted to ground (0x00) |
+| `tps_ch6_open_circuit` | 5 s | DME throttle/idle input open (0xFF) |
+| `o2_baseline` | 25 s | Normal oxygen sensor, the reference for the three below |
+| `o2_disconnected` | 25 s | Oxygen sensor disconnected (flat signal) |
+| `o2_rich_stuck` | 25 s | Oxygen sensor stuck reading rich |
+| `o2_lean_stuck` | 25 s | Oxygen sensor stuck reading lean |
+| `ref_sensor_loss` | 8 s | Reference (crank position) sensor signal stops at 3.5 s while the engine keeps running |
+| `ref_sensor_stuck_low` | 8 s | Reference sensor shorted to ground from 3.5 s |
+| `ref_sensor_missing_at_start` | 8 s | No reference signal from power-on, so the DME has to sync on the speed sensor alone |
+| `speed_sensor_loss` | 8 s | Speed (flywheel tooth) sensor signal stops at 3.5 s |
+| `speed_sensor_stuck_low` | 8 s | Speed sensor shorted to ground from 3.5 s |
+
+### KLR sensor and wiring faults
+
+Unless shown otherwise these run the `cl_ramp_to_3000` profile, cut short
+once the fault has shown up.
+
+| Test | Time | What it checks |
+|---|---|---|
+| `tps_open_circuit` | 10 s | KLR throttle sensor open (0xFF) at idle; expect DTC 4-2 |
+| `ramp_to_redline_KLR_TPS_HIGH` | 10 s | `ramp_to_redline` with the throttle sensor allowed past its legal maximum; expect DTC 4-2 |
+| `cl_ramp_to_3000_TPS0` | 8 s | KLR throttle sensor shorted to ground (0x00) |
+| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW` | 8 s | KLR throttle sensor supply voltage low |
+| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST` | 8 s | KLR throttle sensor supply gone (0x00) |
+| `cl_ramp_to_3000_KLR_BATT_LOW` | 11 s | KLR battery reading low |
+| `cl_ramp_to_3000_KLR_BATT_DISCONNECTED` | 11 s | KLR battery sense open (reads 0) |
+| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH` | 6 s | Crank reference wire to the KLR stuck high from 3 s, holding the KLR in reset |
+| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW` | 6 s | The same wire stuck low, so the KLR never re-syncs to TDC (not yet confirmed on a real car) |
+| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH` | 6 s | DME ignition signal to the KLR stuck high from 3 s |
+| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW` | 6 s | The same signal stuck low (not yet confirmed on a real car) |
+| `cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH` | 10 s | KLR-to-DME full-load wire stuck at the full-throttle level during a part-throttle ramp |
+| `cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW` | 10 s | The full-load wire stuck low, so the DME never sees full throttle |
+
+### Boost
+
+| Test | Time | What it checks |
+|---|---|---|
+| `cl_ramp_to_3000_BOOST_OPEN_CIRCUIT` | 10 s | Boost (MAP) sensor open (0xFF) |
+| `cl_ramp_to_3000_BOOST_STEP_OVERBOOST` | 30 s | Boost held at 4 psi, then raised 1 psi a second, to find where the KLR sets DTC 3-2 (overboost) |
+| `cl_ramp_to_3000_BOOST_STEP_DOWN` | 30 s | Boost lowered 1 psi a second from 4 psi into vacuum, to find where the KLR sets DTC 3-1 (boost too low) |
+| `cl_ramp_to_5000_BOOST_LOW` | 10 s | Boost reading lower than normal (a boost leak) on a ramp to 5000 rpm |
+| `cl_ramp_to_6000_BOOST_LOW` | 20 s | The same low boost on a ramp to 6000 rpm |
+| `cl_wot_3000_BOOST_ZERO` | 12 s | Boost sensor shorted (0x00) at full throttle with the rev limiter set to 3000 rpm; expect DTC 3-3 at about 9.4 s |
+
+### Log replay (single-test only)
+
+| Test | Time | What it checks |
+|---|---|---|
+| `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 3](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
+
+
+## Appendix B. iverilog and Verilator
+
+The same Verilog model (both CPUs, the ADCs, the engine and sensor models)
+is run by two different simulators. Each one is good at something the other
+isn't, so the project uses both.
+
+### iverilog (Icarus Verilog): the accuracy reference
+
+`./run_dashboard_tests.sh` runs the regression on iverilog. Logs go to
+`tmp/dme_klr/dash_logs/`.
+
+- **Exact event timing.** iverilog is an event-driven simulator that follows
+  the Verilog scheduling rules closely, including `#` delays inside the
+  testbench and sensor models. Edge-to-edge timing (ignition, injection,
+  sensor pulses, ADC conversion) comes out the way the source describes it.
+- **Worst-case start-up states.** iverilog has four-state logic: every
+  register and RAM byte starts as **X** (unknown) until something writes it.
+  If the firmware reads a location it never initialised and branches on it,
+  iverilog shows that, and the KLR core prints a `KLR: [XBRANCH]` line for
+  each 100 ms in which it happened (the core takes the not-taken path on an
+  X). This is how start-up bugs and reliance on power-on RAM contents are
+  found. A real chip's RAM powers up with whatever is in it, so X is the
+  honest model of "you can't count on this value".
+- **The cost is speed.** It is about 10x slower than Verilator, so the full
+  regression takes a long time.
+
+### Verilator: the fast simulator
+
+`./v_run_dashboard_tests.sh` runs the same tests on Verilator. Logs go to
+`tmp/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
+Verilator build.
+
+- **Speed.** Verilator compiles the model to optimised C++, so it runs about
+  10x faster than iverilog. That is what makes the live simulator and its
+  debugger usable (about 20 simulated ms per wall-clock second while
+  tracing) and keeps a full regression run short.
+- **Two-state logic.** There is no X: every register and RAM byte starts at
+  a known value (zero), so the firmware never sees an "unknown" read. Runs
+  are repeatable, but an uninitialised read that iverilog would flag simply
+  reads 0 here and goes unnoticed.
+- **Slightly different timing.** Verilator orders events within a time
+  step in its own way, and because it starts from known values it settles
+  sooner than iverilog. In a few tests (`cl_tippy_in`, for example) it
+  reaches a fast transient a little earlier and stays about a snapshot
+  ahead for the rest of the run. That is a simulator difference, not a
+  model one.
+
+### How the two are used together
+
+1. Develop and debug on Verilator: live mode, breakpoints, quick single-test
+   reruns.
+2. Run the regression on iverilog as the reference for timing and start-up
+   behaviour.
+3. Compare the two. `v_run_dashboard_tests.sh` compares each test with its
+   iverilog log when one exists, and `compare_all_logs.sh` compares a whole
+   set. Each test gets a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| **MATCH** | The two logs agree |
+| **NEAR-MATCH** | Only small differences inside the allowed tolerance |
+| **NOTE** | The logs differ, but the difference starts within 500 ms of iverilog's last `KLR: [XBRANCH]`: the firmware branched on an uninitialised value (X on iverilog, 0 on Verilator) and the two runs took different paths from there. Expected, not a failure, but worth knowing about |
+| **DIFF** | A real difference to look into |
+| **ROM-MISMATCH** | The two logs used different ROM images, so they aren't compared |
+
+A DIFF means the two simulators disagree about the model itself, so treat
+the iverilog result as the reference and check what Verilator is
+simplifying. A NOTE points at firmware that depends on RAM it never set,
+which is worth a look in the debugger even though the test passes.
+
+
+## Appendix C. How the closed-loop models work
+
+In a closed-loop (CL) test the engine responds to the firmware: the DME's
+own fuel decides the RPM, the RPM and throttle decide the air, and the
+sensors report what the engine is doing. Nothing in the loop is scripted
+except the driver (the throttle command) and any fault the test injects.
+The plain `ramp_to_*` tests are open loop: there the testbench sets RPM on a
+fixed ramp and the firmware's output doesn't change it.
+
+The models live in `dme/bench/verilog/var_interrupt_gen_cl.v` (engine,
+crank signals, AFM), `dme/bench/verilog/i8051_dashboard_tb.v` (DME inputs,
+O2 sensor) and `klr/bench/verilog/klr_tb.v` / `knock_gen.v` (KLR inputs,
+boost, knock). The numbers below are the defaults; most can be changed
+with a `-D` define.
+
+### The loop
+
+```
+ driver throttle ──► TPS / AFM ──► DME firmware ──► injector pulse (4B:4A)
+                        ▲                                   │
+                        │                                   ▼
+         MAP, O2, KLR ◄─┴──── RPM ◄──── torque balance (once per rev)
+```
+
+### Engine (RPM)
+
+Once per crank revolution, on the reference pulse, the model does a
+torque balance:
+
+- **Fuel.** It reads the pulse width the firmware just computed
+  (iram 4B:4A). If nothing was injected since the last update (fuel cut,
+  iram 23h bit 5, or the rev limiter skipping the injection) the fuel is 0.
+- **Combustion** is air-limited. The fuel the cylinder's air could burn at
+  stoich is the firmware's own load per stroke (iram 46:47) times 1.025. The
+  burned fuel is the smaller of that and the injected fuel, so fuel past
+  stoich (full-load enrichment, a rich mixture) adds no torque, and a lean
+  mixture loses torque. At altitude the air is scaled down further for the
+  thinner air.
+- **Friction** is a base value, plus a term that rises with RPM squared,
+  plus a cubic term above 4000 rpm, plus extra load when the AC is on. These
+  were fitted to three settled operating points (idle, about 2850 rpm and
+  about 6650 rpm), which is what makes the engine settle at a speed for a
+  given throttle instead of climbing to the limiter.
+- **RPM** changes by combustion minus friction, divided by an inertia
+  factor, and is clamped between 400 rpm (stall) and 6800 rpm (rev limiter,
+  or `CL_RPM_MAX`).
+
+Before the firmware reports engine sync (iram 21h bit 0) RPM is held at
+idle. `cl_cold_start` instead ramps from cranking speed up to idle so the
+firmware sees a real crank.
+
+### Crank signals
+
+From the current RPM the model generates the two crank inputs the real
+car has: the **speed sensor** (flywheel teeth, to DME P3.3/INT1) and the
+**reference sensor** (once per rev, to P3.2/INT0). The tooth period follows
+RPM, so everything timed off the crank (ignition, injection, dwell) moves
+with it. Fault tests stop, short or remove these signals at a set time.
+
+### DME inputs
+
+| Input | How it's modelled |
+|---|---|
+| **AFM** (ADC ch0) | Ramp tests: the driver's throttle command steps at 2 s and the AFM slews toward it about 250 ms behind the throttle (air takes time to follow). Idle tests: throttle closed, AFM at the idle base plus the idle valve's bypass air. Overrun fuel cut: AFM scales down with the falling RPM and boost |
+| **Throttle switch** (ch6) | Closed (0x99, about 3.0 V) when the throttle is at idle; off-idle or full-load levels when it opens. The KLR's full-load line reaches ch6 through the real board's RC filter (about 4.7 ms) |
+| **Battery** (ch1) | Fixed at 0xD8 unless a test lowers or disconnects it |
+| **Air temp / coolant** (ch2 / ch3) | Fixed raw sensor values for the test (warm: coolant 0x31 ≈ 85 °C, air 0x9E ≈ 20 °C); the firmware linearises them |
+| **Altitude** (ch4) | Fixed (0xF8 = sea level). At altitude the AFM reads flow × √(air density), as a flap meter does |
+| **Fuel quality** (ch7) | Fixed per test (the FQS0 to FQS7 positions) |
+| **O2 sensor** (P1 comparators) | Follows the mixture the firmware actually delivers: injected fuel ÷ load, rich above 1.025. The result passes through 150 ms of exhaust delay and a 30 ms sensor lag between 100 mV (lean) and 850 mV (rich), then the two comparators at 450 and 550 mV. With no injection the exhaust reads lean. This lets the lambda integrator (iram 1Bh) cycle around stoich as on the car |
+| **AC, cat** (T1, T0) | On/off per test, or switched at set times in the condition-cycle tests |
+
+### KLR inputs
+
+| Input | How it's modelled |
+|---|---|
+| **Crank trigger** (`trigger_in`) | The DME's KLR ignition output, which resets the KLR CPU every cycle, as on the car |
+| **DME ignition** (`ign_in`) | The DME's tach pulse |
+| **Throttle angle** (ch7) | Follows the throttle (the AFM without the idle valve's bypass air), clamped at the sensor's legal maximum 0xDB, and ratiometric to the TPS supply (ch3, normally 0xFF) |
+| **Battery** (ch1) | Fixed at 0xD8 unless a test lowers or disconnects it |
+| **MAP / boost** (ch4) | Below boost onset it is manifold vacuum from throttle and RPM (about 42 kPa at warm idle, down to about 25 kPa on a closed-throttle overrun, up to 1 bar at onset). Above onset it follows the KLR's own boost target map at the current RPM and throttle. A 500 ms lag stands in for turbo spool; during a fuel cut the turbo spools down faster (150 ms) |
+| **Knock** (ch5, ch0) | `knock_sum` (ch5) is the knock comparator: a base sensor level, raised when the KLR's own self-test fires or a knock test injects pulses. `knock_noise` (ch0) is a rolling average of the sensor level, the KLR's noise reference |
+| **Full load** (P1.5 out) | The KLR's WOT flag to the DME. It pulses high on every KLR reset, as the real port floats high, and the DME's RC filter averages that out |
+
+### Live mode
+
+The live simulator runs the same closed-loop model. The controls on the
+main page override single inputs (throttle, RPM, boost, battery and so on);
+an input left on **auto** follows the model. Pinning RPM replaces the torque
+balance's result, so the engine holds that speed whatever the fuel is.
+
+### Limits
+
+The models are fitted to a handful of settled operating points, not to a
+full engine map. Targets between those points (for example
+`cl_ramp_to_4500` and `cl_ramp_to_5000`) were tuned by trial runs, so check
+the settled RPM in the log rather than assuming the target. Fuel-quality
+positions change the firmware's fuel and timing but not the engine model's
+torque, since the 951's fuel-quality plug selects octane rather than energy.
+
 
 ---
 
