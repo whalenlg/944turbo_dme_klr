@@ -25,8 +25,8 @@
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
 #
-#  Env: DMEKLR_SNAPDIR (default ../tmp/dme_klr/snapshots beside the
-#       checkout, as the bridge uses), DME_ROM_DIR / DME_ROM_FILE /
+#  Env: DMEKLR_SNAPDIR (default $DMEKLR_TMP/dme_klr/snapshots, as the
+#       bridge uses; see paths.sh), DME_ROM_DIR / DME_ROM_FILE /
 #       KLR_ROM_DIR / KLR_ROM_FILE, DASH_INTERVAL_MS
 # ============================================================
 import gzip
@@ -49,7 +49,8 @@ from pathlib import Path
 LIVE = Path(__file__).resolve().parent
 DMEKLR = LIVE.parent
 REPO = DMEKLR.parent
-SNAPDIR = Path(os.environ.get('DMEKLR_SNAPDIR') or REPO.parent / 'tmp' / 'dme_klr' / 'snapshots')
+TMP_ROOT = Path(os.environ.get('DMEKLR_TMP') or REPO.parent / 'tmp')   # see paths.sh
+SNAPDIR = Path(os.environ.get('DMEKLR_SNAPDIR') or TMP_ROOT / 'dme_klr' / 'snapshots')
 MAX_PER_TEST = 5
 # A warning's or failure's request opens this long before it, so you can
 # set breakpoints and watch it build up (DMEKLR_SNAP_LEAD_MS to change)

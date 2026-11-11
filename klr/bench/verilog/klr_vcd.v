@@ -379,8 +379,11 @@ always @(negedge `KLR_TB_PATH.res_n) begin
         $display("KLR:     *** Reset during 2-cycle instruction (cycle_2=1) — instruction was mid-execution ***");
 `endif // KLR_DEBUG
 end
+`ifndef DMEKLR_TMP
+`define DMEKLR_TMP ""    // DMEKLR_TMP, with a trailing slash; set by the run scripts (paths.sh)
+`endif
 `ifndef VCD_FILE
-  `define VCD_FILE "../../tmp/klr/fst/951klr.fst"
+  `define VCD_FILE {`DMEKLR_TMP, "klr/fst/951klr.fst"}
 `endif
 
 initial begin
@@ -455,11 +458,14 @@ initial begin
     // time (dme_klr/asm_select.sh does this for images with their own
     // workbook, e.g. -DKLR_ASM_DIR=\".../klr/disassemble/asm_89/\").
     // The RAM symbol map is the same for every image and stays here.
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
 `ifndef KLR_ASM_DIR
-`define KLR_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/"
+`define KLR_ASM_DIR {`DMEKLR_REPO, "klr/disassemble/"}
 `endif
     $readmemh({`KLR_ASM_DIR, "test_sim.hex"},             debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/memory_byte_map.hex", memory_byte_map);
+    $readmemh({`DMEKLR_REPO, "klr/disassemble/memory_byte_map.hex"}, memory_byte_map);
     $readmemh({`KLR_ASM_DIR, "asm_opcode_ins.hex"},       opcode);
     $readmemh({`KLR_ASM_DIR, "asm_instr.hex"},            instr);
     $readmemh({`KLR_ASM_DIR, "asm_operands.hex"},         ops);

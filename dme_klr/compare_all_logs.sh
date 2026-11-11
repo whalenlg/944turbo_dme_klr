@@ -44,8 +44,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPARE="$SCRIPT_DIR/compare_sim_logs.py"
 
 # ── Log directories (mirror v_run_dashboard_tests.sh) ────────
-BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
-        { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
+mkdir -p "$DMEKLR_TMP/dme_klr"
+BASE="$DMEKLR_TMP/dme_klr"
 
 IV_DASH_DIR="$BASE/dash_logs"
 VL_DASH_DIR="$BASE/v_dash_logs"

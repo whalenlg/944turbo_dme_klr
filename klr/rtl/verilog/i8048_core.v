@@ -92,8 +92,11 @@ wire is_2_cycle =
 
 wire next_cycle_state = (cycle_2 == 0 && is_2_cycle) ? 1'b1 : 1'b0;
 
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
 initial
-   $readmemh("/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/op_ins8048.hex",opinstr);
+   $readmemh({`DMEKLR_REPO, "bin_images/klr/op_ins8048.hex"},opinstr);
 
 `ifdef KLR_DEBUG
     // Tight-loop suppression for KLR_DEBUG's per-instruction prints — see

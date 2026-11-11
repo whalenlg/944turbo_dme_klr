@@ -639,12 +639,15 @@ $dumpvars(1,`TB.tdc);
     // (dme_klr/asm_select.sh does this for ROMs with their own
     // workbook, e.g. -DDME_ASM_DIR=\".../dme/disassemble/asm_1986/\").
     // The RAM symbol maps are the same for every image and stay here.
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
 `ifndef DME_ASM_DIR
-`define DME_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/"
+`define DME_ASM_DIR {`DMEKLR_REPO, "dme/disassemble/"}
 `endif
     $readmemh({`DME_ASM_DIR, "test_sim.hex"},debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/memory_byte_map.hex",memory_byte_map);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/dme/disassemble/memory_bit_map.hex",memory_bit_map);
+    $readmemh({`DMEKLR_REPO, "dme/disassemble/memory_byte_map.hex"},memory_byte_map);
+    $readmemh({`DMEKLR_REPO, "dme/disassemble/memory_bit_map.hex"},memory_bit_map);
     $readmemh({`DME_ASM_DIR, "asm_opcode_ins.hex"},opcode);
     $readmemh({`DME_ASM_DIR, "asm_instr.hex"},instr);
  //   $readmemh({`DME_ASM_DIR, "asm_operands.hex"},ops);

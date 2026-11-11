@@ -1,0 +1,15 @@
+# Python packages the repo's scripts import (everything else they use is in
+# the standard library). Installed by install_macos.sh into 944venv/, and by
+# install_arch.sh from pacman (python-matplotlib, python-numpy, ...).
+#
+#   pandas      - reading the disassembly workbooks: dme/disassemble/xlsx*.py
+#                 (run by the KLR regression and asm_select.sh), live/asm_full.py
+#   openpyxl    - the .xlsx engine for pandas, and the workbook scripts that
+#                 use it directly (build_variant.py, replay/xlsx_to_stim.py, ...)
+#   matplotlib  - map graphs on the dashboard's MAPS tabs (live/map_graphs.py,
+#                 live/klr_map_graphs.py), compare_sim_logs.py --plot
+#   numpy       - the 3-D map graphs
+openpyxl>=3.1
+pandas>=2.0
+matplotlib>=3.7
+numpy>=1.24

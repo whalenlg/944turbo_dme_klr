@@ -17,10 +17,10 @@
 #  iverilog-oriented per-instruction $display flood that was never
 #  meant to run under Verilator. Use run_dashboard_tests.sh for those.
 #
-#  Output: ../../tmp/dme_klr/v_dash_logs/<test>.log.gz    (full sim output, gzipped)
+#  Output: $DMEKLR_TMP/dme_klr/v_dash_logs/<test>.log.gz    (full sim output, gzipped)
 #                                                 <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          ../../tmp/dme_klr/v_dash_logs/vcd/<test>.vcd
-#          ../../tmp/dme_klr/v_dash_logs/hex/<test>/{rom,ram}_out.hex
+#          $DMEKLR_TMP/dme_klr/v_dash_logs/vcd/<test>.vcd
+#          $DMEKLR_TMP/dme_klr/v_dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -38,12 +38,14 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 source "$SCRIPT_DIR/asm_select.sh"
 
 # ── Mode: dashboard-only ─────────────────────────────────────────────────────
 MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
-VVP_DIR="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+mkdir -p "$DMEKLR_TMP/dme_klr"
+VVP_DIR="$DMEKLR_TMP/dme_klr"
 VLTDIR="$VVP_DIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
 LOGDIR="$VVP_DIR/v_dash_logs"
 VCDDIR="$LOGDIR/vcd"
@@ -246,13 +248,14 @@ compile_and_run_klr() {
     [ -n "$DME_ROM_FILE" ] && rom_overrides+=("-DDME_ROM_FILE=\"${DME_ROM_FILE}\"")
     [ -n "$KLR_ROM_DIR"  ] && rom_overrides+=("-DKLR_ROM_DIR=\"${KLR_ROM_DIR}\"")
     [ -n "$KLR_ROM_FILE" ] && rom_overrides+=("-DKLR_ROM_FILE=\"${KLR_ROM_FILE}\"")
+    dmeklr_vdefs rom_overrides
     dme_asm_select rom_overrides || return 1
     klr_asm_select rom_overrides || return 1
 
     # Record what was actually requested here too — see the matching
     # note in run_dashboard_tests.sh.
-    echo "  DME ROM: ${DME_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
-    echo "  KLR ROM: ${KLR_ROM_DIR:-/Users/Mike/coding_projects/944/DME_sim/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
+    echo "  DME ROM: ${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+    echo "  KLR ROM: ${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}${KLR_ROM_FILE:-87KLR_951.mem}"
 
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \

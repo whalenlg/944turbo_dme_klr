@@ -1,3 +1,7 @@
-mkdir -p ../../tmp/dme
-iverilog -I bench/verilog -o ../../tmp/dme/dme_reg.vvp bench/verilog/i8051_regression_tb.v rtl/verilog/i8051_core.v
-vvp ../../tmp/dme/dme_reg.vvp
+#!/bin/bash
+cd "$(dirname "$0")" || exit 1
+source ../paths.sh          # DMEKLR_TMP
+OUT="$DMEKLR_TMP/dme"
+mkdir -p "$OUT"
+iverilog -I bench/verilog -o "$OUT/dme_reg.vvp" bench/verilog/i8051_regression_tb.v rtl/verilog/i8051_core.v
+vvp "$OUT/dme_reg.vvp"

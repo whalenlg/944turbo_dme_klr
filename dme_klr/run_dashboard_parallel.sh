@@ -52,8 +52,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 USE_VERILATOR=0
 RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
 VALIDATE="$SCRIPT_DIR/validate_dash_log.py"
-_BASE="$(cd "$SCRIPT_DIR" && cd ../../tmp/dme_klr 2>/dev/null || \
-         { mkdir -p ../../tmp/dme_klr && cd ../../tmp/dme_klr; } && pwd)"
+source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
+mkdir -p "$DMEKLR_TMP/dme_klr"
+_BASE="$DMEKLR_TMP/dme_klr"
 # LOGDIR is simulator-dependent — set after --verilator is parsed below
 
 export DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"

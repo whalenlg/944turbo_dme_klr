@@ -11,10 +11,10 @@ for _arg in "$@"; do
     esac
 done
 
-REPO_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr"
-KLR_DIR="/Users/mike/coding_projects/DME_sim/944turbo_dme_klr/klr"
-DME_CORE_DIR="/Users/mike/coding_projects/DME_sim/dme"
-DME_DIR="/Users/mike/coding_projects/DME_sim/dme_klr"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # this checkout, wherever it is
+KLR_DIR="$REPO_DIR/klr"
+DME_CORE_DIR="$REPO_DIR/dme"
+DME_DIR="$REPO_DIR/dme_klr"
 POLL_INTERVAL=300  # seconds (5 minutes)
 
 log() {

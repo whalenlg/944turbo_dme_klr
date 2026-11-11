@@ -25,12 +25,13 @@ Examples:
     python3 check_all_memory_locations.py dash_logs v_dash_logs
 
 Defaults to both the iverilog and Verilator log directories:
-    ~/coding_projects/944/tmp/dme_klr/dash_logs
-    ~/coding_projects/944/tmp/dme_klr/v_dash_logs
+    $DMEKLR_TMP/dme_klr/dash_logs
+    $DMEKLR_TMP/dme_klr/v_dash_logs
 """
 import sys
 import argparse
 from pathlib import Path
+from dmeklr_paths import IV_LOGS, VL_LOGS  # DMEKLR_TMP (see paths.sh)
 
 
 def parse_addr(s):
@@ -108,8 +109,8 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('log_dirs', nargs='*', default=[
-        str(Path.home() / 'coding_projects/944/tmp/dme_klr/dash_logs'),
-        str(Path.home() / 'coding_projects/944/tmp/dme_klr/v_dash_logs'),
+        str(IV_LOGS),
+        str(VL_LOGS),
     ])
     ap.add_argument('--lo', default='0x00', help='Low address, inclusive (default 0x00)')
     ap.add_argument('--hi', default='0x7F', help='High address, inclusive (default 0x7F)')

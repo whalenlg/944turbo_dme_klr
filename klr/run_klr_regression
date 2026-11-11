@@ -1,11 +1,15 @@
 #!/bin/bash
 #python3 ../dme/disassemble/csv2veriloghex.py ../dme/disassemble/test_sim.csv ../dme/disassemble/test_sim.hex 
 #python3 hex2mem48.py  89KLR_951.hex 89KLR_951.mem
-mkdir -p ../../tmp/klr/fst
-rm -f ../../tmp/klr/i8048_regression_tb.vvp
+cd "$(dirname "$0")" || exit 1
+source ../paths.sh          # DMEKLR_REPO, DMEKLR_TMP
+VDEFS=(); dmeklr_vdefs VDEFS
+OUT="$DMEKLR_TMP/klr"
+mkdir -p "$OUT/fst"
+rm -f "$OUT/i8048_regression_tb.vvp"
 
-iverilog -o ../../tmp/klr/i8048_regression_tb.vvp -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
-vvp ../../tmp/klr/i8048_regression_tb.vvp +fst=../../tmp/klr/fst/i8048_regression_tb.fst
+iverilog -o "$OUT/i8048_regression_tb.vvp" "${VDEFS[@]}" -I bench/verilog bench/verilog/i8048_core_tb.v rtl/verilog/i8048_core.v
+vvp "$OUT/i8048_regression_tb.vvp" +fst="$OUT/fst/i8048_regression_tb.fst"
 # 4096 = the KLR i8048 core's address space (klr_vcd.v's debug_msg/opcode/
 # instr/ops/opsnums[0:4095]) — smaller than the DME 8051's 8192-word space
 # these scripts default to, so it must be passed explicitly here.

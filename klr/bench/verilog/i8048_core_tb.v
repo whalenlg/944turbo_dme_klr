@@ -85,6 +85,10 @@
 
 `include "timescale.v"
 
+`ifndef DMEKLR_TMP
+`define DMEKLR_TMP ""    // DMEKLR_TMP, with a trailing slash; set by the run scripts (paths.sh)
+`endif
+
 module i8048_core_tb;
 
     // -------------------------------------------------------------------------
@@ -318,7 +322,7 @@ module i8048_core_tb;
     // MAIN TEST SEQUENCE
     // -------------------------------------------------------------------------
     initial begin
-        $dumpfile("../../tmp/klr/fst/i8048_regression_tb.fst");
+        $dumpfile({`DMEKLR_TMP, "klr/fst/i8048_regression_tb.fst"});
         $dumpvars(0, i8048_core_tb);
 
         pass_count = 0; fail_count = 0; test_num = 0;

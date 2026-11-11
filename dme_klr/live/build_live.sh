@@ -83,8 +83,10 @@ else
 fi
 
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
+source "$REPO_DIR/paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
+dmeklr_vdefs ASM_DEFS
 dme_asm_select ASM_DEFS
 klr_asm_select ASM_DEFS
 

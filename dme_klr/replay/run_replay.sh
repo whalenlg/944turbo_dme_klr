@@ -40,9 +40,9 @@
 #        NTC conversions use the same DME image)
 #        REBUILD=1 forces a rebuild
 #
-#  Output: ../../tmp/dme_klr/replay/dash_logs/ (iverilog) or
-#          ../../tmp/dme_klr/replay/v_dash_logs/ (Verilator), relative to
-#          dme_klr/, so the two can run in parallel:
+#  Output: $DMEKLR_TMP/dme_klr/replay/dash_logs/ (iverilog) or
+#          $DMEKLR_TMP/dme_klr/replay/v_dash_logs/ (Verilator), see paths.sh,
+#          so the two can run in parallel:
 #          <name>.{stim,expect}.csv
 #          <name>.log        (full sim output)
 #          <name>.dash.log   (DS lines plus the log's expected outputs as
@@ -113,7 +113,8 @@ NAME="${NAME:-$(basename "$XLSX" .xlsx)}"
 # iverilog and Verilator results go to separate folders, as with
 # run_dashboard_tests.sh (dash_logs) and v_run_dashboard_tests.sh
 # (v_dash_logs), so both can run at once
-REPLAY_OUT="$(cd "$REPO_DIR/.." && pwd)/tmp/dme_klr/replay"
+source "$REPO_DIR/paths.sh"   # DMEKLR_TMP
+REPLAY_OUT="$DMEKLR_TMP/dme_klr/replay"
 if [ -z "$OUT_DIR" ]; then
     if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
 fi
@@ -129,6 +130,7 @@ KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
 source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
+dmeklr_vdefs ASM_DEFS
 dme_asm_select ASM_DEFS || exit 1
 klr_asm_select ASM_DEFS || exit 1
 # DASH_INTERVAL_MS is effectively never: the only snapshots are the

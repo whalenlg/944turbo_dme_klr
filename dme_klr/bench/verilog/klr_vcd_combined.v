@@ -228,11 +228,14 @@ initial begin
     last_msg  = "FFFF";
     msg_count = 1;
     call_depth = 0;
+`ifndef DMEKLR_REPO
+`define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
+`endif
 `ifndef KLR_ASM_DIR
-`define KLR_ASM_DIR "/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/"
+`define KLR_ASM_DIR {`DMEKLR_REPO, "klr/disassemble/"}
 `endif
     $readmemh({`KLR_ASM_DIR, "test_sim.hex"},             debug_msg);
-    $readmemh("/Users/Mike/coding_projects/944/DME_sim/klr/disassemble/memory_byte_map.hex", memory_byte_map);
+    $readmemh({`DMEKLR_REPO, "klr/disassemble/memory_byte_map.hex"}, memory_byte_map);
     $readmemh({`KLR_ASM_DIR, "asm_opcode_ins.hex"},       opcode);
     $readmemh({`KLR_ASM_DIR, "asm_instr.hex"},            instr);
     $readmemh({`KLR_ASM_DIR, "asm_operands.hex"},         ops);

@@ -123,7 +123,7 @@ _asm_select() {   # <dme|klr> <array name>
                 sleep 1; _waited=$((_waited + 1))
                 [ "$_waited" -ge 600 ] && { echo "  asm_select: stale lock $_lock, remove it and retry" >&2; return 1; }
             done
-            local _py="$_repo/8051venv/bin/python"
+            local _py="$_repo/944venv/bin/python"
             [ -x "$_py" ] || _py=python3
             local _gens="$_repo/dme/disassemble"   # xlsx -> hex table scripts
             local _rc=0 _v _vtag _mem _out

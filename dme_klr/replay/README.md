@@ -55,8 +55,9 @@ about an hour under Verilator and several hours under iverilog.
 | `expect_to_dash.py` | places each played log row's expected outputs at its sim time (from the `SIM: [ROW]` lines) as `REPLAY: [EXPECT]` lines, which `run_replay.sh` appends to `<name>.dash.log` |
 | `run_replay.sh` | build if stale, convert, run, check |
 
-Outputs land in `../../tmp/dme_klr/replay/dash_logs/` for iverilog runs and
-`../../tmp/dme_klr/replay/v_dash_logs/` for Verilator runs (the same split as
+Outputs land in `$DMEKLR_TMP/dme_klr/replay/dash_logs/` for iverilog runs and
+`$DMEKLR_TMP/dme_klr/replay/v_dash_logs/` for Verilator runs (`DMEKLR_TMP` is
+`../tmp` beside the checkout unless you set it, see `paths.sh`; the same split as
 `run_dashboard_tests.sh` / `v_run_dashboard_tests.sh`), so the two can run at
 the same time. Each run's `.dash.log` loads into the dashboard like any other,
 and carries the log's outputs too: the dashboard draws them as dashed
