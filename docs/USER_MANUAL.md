@@ -296,7 +296,7 @@ instruction trace for that CPU.
 | Control | Does |
 |---|---|
 | **▶ RUN / ⏸ PAUSE** | As on the main page |
-| *N* + **STEP DME** / **STEP KLR** | Run *N* instructions of this CPU, then pause (the other CPU runs alongside) |
+| *N* + **STEP DME** / **STEP KLR** | Run until this CPU has executed *N* instructions, then pause the whole simulation. Both CPUs share one simulated clock, so the other CPU only advances over that same short interval (a few instructions at most) and stops at the same moment |
 | *ms* + **RUN TO** (or Enter) | Run until that simulated time, then pause |
 
 The window title also shows the state and time, so you can tell where the
