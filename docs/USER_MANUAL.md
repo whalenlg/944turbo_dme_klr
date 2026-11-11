@@ -734,6 +734,9 @@ contributions and feedback during development.
 
 ## Appendix A. Regression tests
 
+> **Note:** The full test suite will be provided in a future release that
+> also supports local live mode simulation.
+
 These are the tests in the full regression run (`./run_dashboard_tests.sh`
 with no name, or `./v_run_dashboard_tests.sh` for the Verilator build; both
 have the same list). Run one by name with `./run_dashboard_tests.sh <name>`.
