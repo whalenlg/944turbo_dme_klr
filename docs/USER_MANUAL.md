@@ -205,6 +205,9 @@ bar, so a reload reconnects. On connecting, the bridge replays the run so far,
 so the charts are complete even if you open the page late. If the bridge isn't
 running you see **● OFFLINE** and a red note telling you how to start it.
 
+> **Note:** Page load errors have been observed in this version. Reloading
+> the page resolves the issue and updates to the current running state.
+
 ![Live mode main page](manual/live-main.png)
 
 ### The main page
