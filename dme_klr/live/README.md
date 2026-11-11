@@ -12,6 +12,10 @@ node bridge.mjs          # starts the sim, serves http://127.0.0.1:8951 (this Ma
 
 Then open the dashboard and press **LIVE**.
 
+For how to use the dashboard (log review, live mode, the code debugger and
+opening a regression test at a chosen time), see the
+[user manual](../../docs/USER_MANUAL.md).
+
 ## ROM images
 
 `build_live.sh` compiles in the default images (`DME_ROM_FILE` /
