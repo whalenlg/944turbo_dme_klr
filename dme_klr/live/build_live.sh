@@ -53,6 +53,7 @@ DMEKLR_DIR="$(cd "$LIVE_DIR/.." && _pwd)"
 REPO_DIR="$(cd "$DMEKLR_DIR/.." && _pwd)"
 
 source "$REPO_DIR/paths.sh"   # DMEKLR_REPO (C:/... on Windows), DMEKLR_TMP
+dmeklr_rom_mem || exit 1   # a .bin/.hex DME_ROM_FILE / KLR_ROM_FILE -> .mem
 DME_ROM_DIR="${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}"
 DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
 KLR_ROM_DIR="${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}"

@@ -59,3 +59,27 @@ dmeklr_vdefs() {
     local _arr="${1:-rom_overrides}"
     eval "$_arr+=(\"-DDMEKLR_REPO=\\\"\$DMEKLR_REPO/\\\"\" \"-DDMEKLR_TMP=\\\"\$DMEKLR_TMP/\\\"\")"
 }
+
+# dmeklr_rom_mem: DME_ROM_FILE / KLR_ROM_FILE may name a raw binary (.bin)
+# or an Intel HEX file instead of a .mem: convert it (bin_images/rom2mem.py)
+# to $DMEKLR_TMP/roms/<cpu>/<name>.mem, once and again whenever the image
+# is newer, and point DME_ROM_DIR/FILE (KLR_...) there. A .mem, or an
+# unset name, is left alone. Returns 1 if a conversion fails.
+dmeklr_rom_mem() {
+    local _cpu _CPU _dir _file _src _out _py
+    _py="$DMEKLR_REPO/944venv/bin/python"; [ -x "$_py" ] || _py=python3
+    for _cpu in dme klr; do
+        _CPU="$(echo "$_cpu" | tr a-z A-Z)"
+        eval "_dir=\"\${${_CPU}_ROM_DIR:-}\" _file=\"\${${_CPU}_ROM_FILE:-}\""
+        case "$_file" in ""|*.mem|*.MEM) continue ;; esac
+        _src="${_dir:-$DMEKLR_REPO/bin_images/$_cpu/}$_file"
+        [ -f "$_src" ] || { echo "dmeklr_rom_mem: $_CPU ROM $_src not found" >&2; return 1; }
+        _out="$DMEKLR_TMP/roms/$_cpu/${_file%.*}.mem"
+        if [ ! -f "$_out" ] || [ "$_src" -nt "$_out" ]; then
+            mkdir -p "$DMEKLR_TMP/roms/$_cpu"
+            "$_py" "$DMEKLR_REPO/bin_images/rom2mem.py" "$_src" "$_out" --cpu "$_cpu" >&2 || return 1
+        fi
+        eval "${_CPU}_ROM_DIR=\"\$DMEKLR_TMP/roms/\$_cpu/\" ${_CPU}_ROM_FILE=\"\${_file%.*}.mem\""
+        export "${_CPU}_ROM_DIR" "${_CPU}_ROM_FILE"
+    done
+}

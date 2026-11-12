@@ -1183,14 +1183,32 @@ psi / inHg.
 The **ROM IMAGES** row (live mode) shows the `.mem` image in each EPROM and
 the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
 
-* **LOAD .mem** (while paused) loads another image into that CPU. With
+* **LOAD .mem** (while paused) loads another image into that CPU (a
+  `.mem`, `.bin` or `.hex`, see below). With
   **RESTART AFTER LOAD** ticked (the default) the sim restarts at t=0 on it.
   Unticked, the image is swapped in place and the CPU carries on from its PC
   and RAM.
+* The bridge takes a `.mem` image, a raw binary (`.bin`) or an Intel HEX
+  file (`.hex`). A `.bin` or `.hex` is converted to a `.mem` as it is saved.
+  An image larger than the EPROM (8192 bytes for the DME, 4096 for the KLR)
+  is refused.
 * The listing follows the image. Known images (the '86, '89 and performance
   DME, and the '86, '87 and '89 KLR) are matched by content or file name to
-  their workbook. An unknown one shows **ASM: no workbook** in amber, and the
-  listing may not line up with the code.
+  their workbook.
+* An image of your own gets a workbook made for it the first time it loads:
+  `dme/disassemble/variants/<name>.xlsx` (KLR: `klr/disassemble/variants/`),
+  built from the reference workbook (`disassembleperformance.xlsx`,
+  `87KLR951.xlsx`) the same way the '86 and '89 workbooks are. Rows whose
+  code is the same as the reference keep all their annotations; the rest
+  are disassembled from the new bytes and highlighted. The listing then
+  comes from it (`ASM: variants/<name>.xlsx`). Annotate it like any other
+  workbook; it is rebuilt only when the reference workbook, its generator
+  or the image changes (the old copy is kept as `<name>.prev.xlsx`), so
+  copy your notes into the reference workbook if they should survive that.
+  The `variants/` workbooks aren't git-ignored, so you can commit them.
+  This needs bash and Python with pandas and openpyxl; without them an
+  unknown image shows **ASM: no workbook** in amber, and the listing may not
+  line up with the code.
 * The bridge refuses a KLR image loaded into the DME.
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
@@ -1199,7 +1217,24 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
 
 To build or run with other images from the start, set `DME_ROM_DIR` /
 `DME_ROM_FILE` / `KLR_ROM_DIR` / `KLR_ROM_FILE` for `build_live.sh` or the
-test scripts.
+test scripts, for example:
+
+```sh
+DME_ROM_DIR=~/roms/ DME_ROM_FILE=my_chip.bin ./v_run_dashboard_tests.sh warm_idle_5s
+```
+
+The file may be a `.mem`, `.bin` or `.hex`. A `.bin` or `.hex` is converted
+to `$DMEKLR_TMP/roms/<cpu>/<name>.mem` first (again whenever the image is
+newer), and an image of your own gets its `variants/` workbook as above, so
+the tests' instruction traces line up with its code.
+
+To convert an image yourself:
+
+```sh
+python3 bin_images/rom2mem.py my_chip.bin [my_chip.mem] [--cpu dme|klr]
+```
+
+`--cpu` checks that the image fits that CPU's EPROM.
 
 ### From ROM image to assembly view
 

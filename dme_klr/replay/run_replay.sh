@@ -114,6 +114,7 @@ NAME="${NAME:-$(basename "$XLSX" .xlsx)}"
 # run_dashboard_tests.sh (dash_logs) and v_run_dashboard_tests.sh
 # (v_dash_logs), so both can run at once
 source "$REPO_DIR/paths.sh"   # DMEKLR_TMP
+dmeklr_rom_mem || exit 1   # a .bin/.hex DME_ROM_FILE / KLR_ROM_FILE -> .mem
 REPLAY_OUT="$DMEKLR_TMP/dme_klr/replay"
 if [ -z "$OUT_DIR" ]; then
     if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi

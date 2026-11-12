@@ -12,8 +12,9 @@
 //                      — see sim_main.cpp)
 //    POST /restart    kill the sim and start a fresh one at t=0 (with
 //                     the ROM images currently loaded)
-//    POST /rom?cpu=dme|klr&name=<file.mem>[&reset=1]
-//                     body = a $readmemh .mem image. Only while the sim is
+//    POST /rom?cpu=dme|klr&name=<file.mem|.bin|.hex>[&reset=1]
+//                     body = a $readmemh .mem image, a raw binary (.bin) or
+//                     an Intel HEX file (saved as <name>.mem). Only while the sim is
 //                     paused. Saved under obj/roms/<cpu>/, then loaded into
 //                     the running sim (CPU keeps its PC and RAM), or with
 //                     reset=1 the sim restarts at t=0 on the new image.
@@ -212,14 +213,46 @@ const ROM_DIR = join(dirname(SIM), 'roms');
 const ROM_MAX = 1 << 20;   // a full 8 KB image is ~24 KB of text
 
 // POST /rom: check, save, then load into the sim. Returns [status, text].
+// Bytes of an Intel HEX file (data records 00, extended addresses 02/04)
+function parseIntelHex(text) {
+  const data = new Map();
+  let base = 0;
+  for (const [n, raw] of text.split(/\r?\n/).entries()) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] !== ':' || !/^:[0-9A-Fa-f]+$/.test(line)) throw new Error(`line ${n + 1}: not an Intel HEX record`);
+    const rec = Buffer.from(line.slice(1), 'hex');
+    if (rec.reduce((a, b) => a + b, 0) & 0xFF) throw new Error(`line ${n + 1}: bad checksum`);
+    const [count, hi, lo, kind] = rec;
+    if (kind === 0) for (let i = 0; i < count; i++) data.set(base + (hi << 8 | lo) + i, rec[4 + i]);
+    else if (kind === 1) break;
+    else if (kind === 2) base = (rec[4] << 8 | rec[5]) << 4;
+    else if (kind === 4) base = (rec[4] << 8 | rec[5]) << 16;
+  }
+  const out = Buffer.alloc(data.size ? Math.max(...data.keys()) + 1 : 0, 0xFF);
+  for (const [a, b] of data) out[a] = b;
+  return out;
+}
+
 function loadRom(url, body) {
   const cpu = url.searchParams.get('cpu');
-  const name = basename(url.searchParams.get('name') ?? '');
+  let name = basename(url.searchParams.get('name') ?? '');
   if (cpu !== 'dme' && cpu !== 'klr') return [400, 'cpu must be dme or klr'];
-  if (!/^[\w.+ -]+\.mem$/i.test(name)) return [400, 'ROM image must be a .mem file'];
+  if (!/^[\w.+ -]+\.(mem|bin|hex|ihx)$/i.test(name)) return [400, 'ROM image must be a .mem, .bin or Intel HEX (.hex) file'];
   if (simState === 'running') return [409, 'pause the simulation before loading a ROM'];
+  // A raw binary or Intel HEX image is saved as the .mem the sim loads
+  if (!/\.mem$/i.test(name)) {
+    const size = cpu === 'dme' ? 8192 : 4096;
+    let bytes;
+    try { bytes = /\.(hex|ihx)$/i.test(name) ? parseIntelHex(body.toString('latin1')) : body; }
+    catch (e) { return [400, `${name}: ${e.message}`]; }
+    if (!bytes.length) return [400, `${name} is empty`];
+    if (bytes.length > size) return [400, `${name} is ${bytes.length} bytes, more than the ${cpu.toUpperCase()} EPROM's ${size}`];
+    body = Buffer.from(Array.from(bytes, b => b.toString(16).toUpperCase().padStart(2, '0') + '\n').join(''));
+    name = name.replace(/\.[^.]+$/, '.mem');
+  }
   if (cpu === 'dme') {
-    const klr = klrImageName(name, body);
+    const klr = klrImageName(name, body.toString('latin1'));
     if (klr) return [400, `${name} is ${klr === name ? 'a KLR image' : `the KLR image ${klr}`}, not a DME image. `
                         + `Load it with the KLR LOAD .mem button, and pick a DME image (e.g. 28PIN_86DME.mem) for the DME.`];
   }
@@ -364,13 +397,22 @@ function followRom(cpu, path) {
   const CPU = cpu.toUpperCase();
   const img = knownImage(cpu, path);
   let dir = dflt, workbook = '-';
-  if (img) {
-    // Same helper as the run scripts: regenerates stale workbooks/tables
-    const r = existsSync(ASM_SELECT)
-      ? spawnSync('bash', ['-c', `source "$1" && ${cpu}_asm_select _arr >&2 && printf %s "$${CPU}_ASM_SEL"`, '_', ASM_SELECT],
-                  { env: { ...process.env, [`${CPU}_ROM_FILE`]: img.name, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
-                    stdio: ['ignore', 'pipe', 'inherit'] })
-      : { status: -1, stdout: '' };
+  // Same helper as the run scripts: regenerates stale workbooks/tables. An
+  // image without a workbook of its own gets one made from the reference
+  // workbook (<cpu>/disassemble/variants/<name>.xlsx), see asm_select.sh.
+  const env = img ? { [`${CPU}_ROM_FILE`]: img.name }
+                  : { [`${CPU}_ROM_DIR`]: dirname(path).replace(/\\/g, '/') + '/', [`${CPU}_ROM_FILE`]: basename(path) };
+  const r = existsSync(ASM_SELECT) && /\.mem$/i.test(path)
+    ? spawnSync('bash', ['-c', `source "$1" && ${cpu}_asm_select _arr >&2 && printf %s "$${CPU}_ASM_SEL"`, '_', ASM_SELECT],
+                { env: { ...process.env, ...env, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
+                  stdio: ['ignore', 'pipe', 'inherit'] })
+    : { status: -1, stdout: '' };
+  if (!img) {
+    if (r.status === 0 && r.stdout.trim()) {
+      dir = resolve(r.stdout.trim());
+      workbook = `variants/${basename(dir).replace(/^asm_/, '')}.xlsx`;
+    }
+  } else {
     const sub = LITE_TABLES?.[cpu]?.[img.name];
     if (r.status === 0 && r.stdout.trim()) {
       dir = resolve(r.stdout.trim());
@@ -861,12 +903,16 @@ createServer((req, res) => {
     return res.end(JSON.stringify(ASM[cpu]));
   }
   if (req.method === 'POST' && (url.pathname === '/cmd' || url.pathname === '/restart' || url.pathname === '/rom')) {
-    let body = '';
+    const chunks = [];
+    let size = 0;
     const max = url.pathname === '/rom' ? ROM_MAX : 1e5;
-    req.on('data', d => { body += d; if (body.length > max) req.destroy(); });
+    req.on('data', d => { chunks.push(d); size += d.length; if (size > max) req.destroy(); });
     req.on('end', () => {
+      // a ROM may be a raw binary, so it stays bytes; the rest is text
+      const raw = Buffer.concat(chunks);
+      const body = raw.toString('utf8');
       if (url.pathname === '/rom') {
-        const [code, text] = loadRom(url, body);
+        const [code, text] = loadRom(url, raw);
         res.writeHead(code, CORS);
         return res.end(text);
       }
