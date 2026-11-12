@@ -223,10 +223,11 @@ exits non-zero if anything required is missing or too old:
 
 `install/test_macos_vm.sh` checks `install_macos.sh` from scratch, without
 touching your own setup. It needs an Apple Silicon Mac with Tart
-(`brew install openai/tools/tart`). It clones a fresh macOS VM with no
-Xcode tools and no Homebrew, copies the checkout in (the committed `HEAD`, or
-`--worktree` for your uncommitted changes too), checks the installer stops
-and asks for the Command Line Tools, installs them, runs the installer, then,
+(`brew tap openai/tools && brew install openai/tools/tart`). It clones a
+fresh macOS VM without Homebrew, copies the checkout in (the committed `HEAD`,
+or `--worktree` for your uncommitted changes too), removes the Command Line
+Tools if the image has them, checks the installer stops and asks for them,
+installs them, runs the installer, then,
 in a new zsh terminal, sources `setup` and runs `check_toolchain.sh`, the KLR
 CPU regression (Icarus Verilog) and the `warm_idle_5s` dashboard test
 (Verilator). It prints PASS or FAIL for each step, saves the logs in

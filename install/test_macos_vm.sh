@@ -2,11 +2,15 @@
 # ============================================================
 #  test_macos_vm.sh — test install_macos.sh on a clean macOS VM (Tart)
 #
-#  Runs on an Apple Silicon Mac with Tart (brew install openai/tools/tart).
-#  Clones a fresh macOS VM from a Cirrus Labs "vanilla" image (no Xcode
-#  tools, no Homebrew), copies this checkout into it, and then:
-#    1. runs install_macos.sh with no Command Line Tools, and checks it
-#       stops and asks for them (it can't click the macOS dialog itself)
+#  Runs on an Apple Silicon Mac with Tart:
+#      brew tap openai/tools && brew install openai/tools/tart
+#  (and brew trust openai/tools first if Homebrew's tap trust is on).
+#  Clones a fresh macOS VM from a Cirrus Labs "vanilla" image (no
+#  Homebrew; recent images do come with the Command Line Tools), copies
+#  this checkout into it, and then:
+#    1. removes the Command Line Tools if the image has them, runs
+#       install_macos.sh, and checks it stops and asks for them (it can't
+#       click the macOS dialog itself)
 #    2. installs the Command Line Tools headlessly (softwareupdate), as a
 #       user clicking "Install" in that dialog would
 #    3. runs install_macos.sh -y again: Homebrew, the formulae, the venv,
@@ -30,7 +34,7 @@
 #                     included (tracked + untracked, not ignored files)
 #    --cpu N          VM CPUs (default: the image's)
 #    --memory MB      VM memory in MB (default: the image's)
-#    --skip-clt-check skip step 1
+#    --skip-clt-check skip step 1 (and keep the image's Command Line Tools)
 #    --skip-tests     stop after the install (skip step 4's simulations;
 #                     check_toolchain.sh still runs)
 #    --keep           leave the VM running at the end, to look around
@@ -91,7 +95,7 @@ die()  { printf '%serror:%s %s\n' "$red" "$nc" "$*" >&2; exit 2; }
 # ── Host checks ───────────────────────────────────────────────────────────
 [ "$(uname -s)" = Darwin ] || die "run this on a Mac (it drives Tart, which needs macOS on Apple Silicon)"
 [ "$(uname -m)" = arm64 ]  || die "Tart's macOS VMs need an Apple Silicon Mac"
-command -v tart >/dev/null 2>&1 || die "Tart isn't installed: brew install openai/tools/tart"
+command -v tart >/dev/null 2>&1 || die "Tart isn't installed: brew tap openai/tools && brew install openai/tools/tart"
 git -C "$REPO_DIR" rev-parse --verify --quiet "$REF^{commit}" >/dev/null || die "'$REF' isn't a commit in $REPO_DIR"
 
 if [ -z "$OUT" ]; then
@@ -184,7 +188,7 @@ for _i in $(seq 1 60); do
     [ "$_i" = 60 ] && die "ssh to $IP didn't come up"
     sleep 5
 done
-SW="$(vm_ssh 'sw_vers -productVersion; uname -m' </dev/null | tr '\n' ' ')"
+SW="$(vm_ssh 'echo "$(sw_vers -productVersion) $(uname -m)"' </dev/null)"
 info "macOS $SW, ssh up after $(toc)s"
 vm_ssh 'xcode-select -p >/dev/null 2>&1 && echo "Command Line Tools: present" || echo "Command Line Tools: none";
         command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] && echo "Homebrew: present" || echo "Homebrew: none"' \
@@ -218,10 +222,21 @@ fi
 step "1. install_macos.sh with no Command Line Tools: it should stop and ask for them"
 if [ "$CLT_CHECK" = 0 ]; then
     result SKIP "1. stops without CLT" "--skip-clt-check" 0
-elif vm_ssh 'xcode-select -p' </dev/null >/dev/null 2>&1; then
-    result SKIP "1. stops without CLT" "this image already has the Command Line Tools" 0
 else
     tic
+    # Recent vanilla images ship the Command Line Tools. Take them out
+    # (files, selected path and package receipts, so softwareupdate offers
+    # them again in step 2) to get the clean machine a new user has.
+    if vm_ssh 'xcode-select -p' </dev/null >/dev/null 2>&1; then
+        info "the image has the Command Line Tools; removing them"
+        vm_run 1_remove_clt.log bash -s <<'EOF'
+sudo rm -rf /Library/Developer/CommandLineTools
+sudo xcode-select --reset 2>/dev/null || true
+for p in $(pkgutil --pkgs | grep -i CLTools); do sudo pkgutil --forget "$p" >/dev/null; done
+if xcode-select -p >/dev/null 2>&1; then echo "still installed"; exit 1; fi
+echo "Command Line Tools removed"
+EOF
+    fi
     vm_run 1_install_no_clt.log bash -s <<EOF
 cd $VM_REPO && install/install_macos.sh -y
 EOF
