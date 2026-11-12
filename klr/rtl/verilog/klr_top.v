@@ -389,10 +389,9 @@ module klr_eprom (
     // Load KLR firmware image. Directory and filename are each
     // independently overridable via -D on the iverilog/verilator command
     // line, so run scripts can select different firmware images (e.g. the
-    // commented-out 89KLR_951.mem variant below) without editing this
-    // file — both default to the existing path if not overridden.
+    // '87 image) without editing this file. Default: the stock '89 image.
     //   -DKLR_ROM_DIR=\"../../bin_images/klr/\"
-    //   -DKLR_ROM_FILE=\"89KLR_951.mem\"
+    //   -DKLR_ROM_FILE=\"87KLR_951.mem\"
 `ifndef DMEKLR_REPO
 `define DMEKLR_REPO ""   // the checkout, with a trailing slash; set by the run scripts (paths.sh)
 `endif
@@ -400,7 +399,7 @@ module klr_eprom (
     `define KLR_ROM_DIR {`DMEKLR_REPO, "bin_images/klr/"}
     `endif
     `ifndef KLR_ROM_FILE
-    `define KLR_ROM_FILE "87KLR_951.mem"
+    `define KLR_ROM_FILE "89KLR_951.mem"
     `endif
     integer i;
     initial begin

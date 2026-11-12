@@ -871,7 +871,7 @@ psi / inHg.
 ## 10. ROM images
 
 The **ROM IMAGES** row (live mode) shows the `.mem` image in each EPROM and
-the workbook its listing comes from (`ASM: disassembleperformance.xlsx`).
+the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
 
 * **LOAD .mem** (while paused) loads another image into that CPU. With
   **RESTART AFTER LOAD** ticked (the default) the sim restarts at t=0 on it.

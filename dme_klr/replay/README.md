@@ -18,7 +18,7 @@ KLR actually did.
 Needs Verilator ≥ 5.038 (5.036 rejects the 8051 core's mixed blocking /
 non-blocking assignments), or Icarus Verilog 12 with `--iverilog`, and
 Python 3 with openpyxl. `xlsx_to_stim.py` reads the DME ROM image
-(`--dme-rom`, default `28PIN_DME_PERFORMANCE.mem`) for the NTC maps. The build is
+(`--dme-rom`, default `89DME_951pin.mem`) for the NTC maps. The build is
 `dme_klr_dashboard_tb` with `-DLIVE`, like the live debugger, but with its
 own driver in `obj/`: `replay_main.cpp` for Verilator, or the
 `replay_driver.v` top module for iverilog (elaborated with
@@ -90,7 +90,7 @@ tracing ignores the `$dumpvars` scopes and would dump the whole design.
 
 The log in `bench/verilog/10_9_evening_WOT_Run.xlsx` is from someone else's
 car, whose DME/KLR ROM images are unknown. The replay runs the sim's images
-(`28PIN_DME_PERFORMANCE.mem`, `87KLR_951.mem`), so differences in fuel or
+(`89DME_951pin.mem`, `89KLR_951.mem`), so differences in fuel or
 timing can come from the car's own maps rather than the sim: at 5.0 V the
 sim injects ~1.22x the log's time off-idle but ~1.56x at full load, which
 isn't a constant injector or sensor factor. Don't tune replay inputs to close

@@ -24,8 +24,8 @@
 #            obj/tests/<name>/; the bridge runs it to a test's warning
 #            (see test_snap.py).
 #  Env:    DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
-#          (default: this repo's bin_images, 28PIN_DME_PERFORMANCE.mem
-#           and 87KLR_951.mem — same images as v_run_dashboard_tests.sh)
+#          (default: this repo's bin_images, 89DME_951pin.mem
+#           and 89KLR_951.mem — same images as v_run_dashboard_tests.sh)
 #          DASH_INTERVAL_MS (default 100)
 # ============================================================
 
@@ -45,9 +45,9 @@ DMEKLR_DIR="$(cd "$LIVE_DIR/.." && pwd)"
 REPO_DIR="$(cd "$DMEKLR_DIR/.." && pwd)"
 
 DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
-DME_ROM_FILE="${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
 KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
-KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
+KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
 TEST=""

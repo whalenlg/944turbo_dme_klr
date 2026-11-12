@@ -124,9 +124,9 @@ OUT="$OUT_DIR/$NAME"
 # ── Build: dme_klr_dashboard_tb with -DLIVE like the live debugger, driven
 #    by replay_main.cpp (Verilator) or the replay_driver.v top (iverilog) ──
 DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
-DME_ROM_FILE="${DME_ROM_FILE:-28PIN_DME_PERFORMANCE.mem}"
+DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
 KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
-KLR_ROM_FILE="${KLR_ROM_FILE:-87KLR_951.mem}"
+KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
 source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
