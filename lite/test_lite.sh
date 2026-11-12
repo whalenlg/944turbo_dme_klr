@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# ============================================================
+#  test_lite.sh — check a built lite package on this machine
+#
+#  Starts the package's run_lite.sh (its bridge and prebuilt simulator)
+#  from a copy outside the checkout, then checks, as the dashboard would:
+#    - the bridge serves the DME and KLR listings (/asm/dme, /asm/klr)
+#    - the sim runs and pauses at 200 ms after POST /cmd "until 200"
+#    - the listings follow the ROM in the EPROM (SIM: [ASM] lines)
+#    - no Verilog, C++ or simulator build scripts are in the package
+#
+#  Usage:  lite/test_lite.sh <package dir or .tar.gz/.zip> [--port N]
+#  Exit 0 when every check passes.
+# ============================================================
+
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help)
+            sed -n '2,/^[^#]/{ /^[^#]/d; /^# ===/d; s/^# \{0,2\}//; p; }' "${BASH_SOURCE[0]}"
+            exit 0 ;;
+    esac
+done
+
+set -uo pipefail
+SRC="${1:?usage: test_lite.sh <package dir or archive> [--port N]}"
+PORT=18951
+[ "${2:-}" = "--port" ] && PORT="$3"
+
+WORK="$(mktemp -d)"
+case "$SRC" in
+    *.tar.gz) tar -xzf "$SRC" -C "$WORK" ;;
+    *.zip)    (cd "$WORK" && unzip -q "$SRC") ;;
+    *)        cp -R "$SRC" "$WORK/" ;;
+esac
+PKG="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d | head -1)"
+echo "package: $PKG"
+
+FAILS=0
+check() { if [ "$1" = 0 ]; then echo "  PASS  $2"; else echo "  FAIL  $2"; FAILS=$((FAILS + 1)); fi; }
+
+LOG="$WORK/bridge.log"; EVENTS="$WORK/events.txt"
+"$PKG/run_lite.sh" --port "$PORT" > "$LOG" 2>&1 &
+BRIDGE=$!
+CURL=""
+cleanup() {
+    [ -n "$CURL" ] && kill "$CURL" 2>/dev/null
+    kill "$BRIDGE" 2>/dev/null
+    pkill -f "$PKG/dme_klr/live/obj/dme_klr_live" 2>/dev/null
+    taskkill //F //IM dme_klr_live.exe >/dev/null 2>&1
+    true
+}
+trap cleanup EXIT
+H=(-H "Origin: http://localhost")
+for _ in $(seq 60); do curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/events" "${H[@]}"; [ $? -ne 7 ] && break; sleep 1; done
+curl -sN "${H[@]}" "http://127.0.0.1:$PORT/events" > "$EVENTS" &
+CURL=$!
+
+for _ in $(seq 120); do grep -q '^data: SIM: \[ASM\] klr' "$EVENTS" 2>/dev/null && break; sleep 1; done
+for cpu in dme klr; do
+    n="$(curl -s "${H[@]}" "http://127.0.0.1:$PORT/asm/$cpu" | grep -o '"a":' | wc -l | tr -d ' ')"
+    [ "${n:-0}" -gt 1000 ]; check $? "/asm/$cpu listing ($n lines)"
+    grep -q "^data: SIM: \[ASM\] $cpu .*match=content" "$EVENTS"; check $? "$cpu listing follows the loaded ROM"
+done
+
+curl -s -o /dev/null "${H[@]}" -X POST --data 'until 200' "http://127.0.0.1:$PORT/cmd"
+ok=1
+for _ in $(seq 180); do grep -q 'STATE\] paused.*reason=until' "$EVENTS" && { ok=0; break; }; sleep 1; done
+check $ok "sim runs and pauses at 200 ms"
+grep -q '^data: DME: ' "$EVENTS"; check $? "DME output reaches the dashboard"
+
+src="$(find "$PKG" \( -name '*.v' -o -name '*.sv' -o -name '*.cpp' -o -name '*.h' -o -name 'build_live.sh' \) | head -3)"
+[ -z "$src" ]; check $? "no simulator source in the package${src:+: $src}"
+
+if [ "$FAILS" -ne 0 ]; then
+    echo "--- bridge log"; tail -n 40 "$LOG"
+    echo "--- events"; tail -n 20 "$EVENTS"
+fi
+echo "$([ "$FAILS" = 0 ] && echo ALL PASSED || echo "$FAILS FAILED")"
+[ "$FAILS" = 0 ]

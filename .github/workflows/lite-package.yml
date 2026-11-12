@@ -1,0 +1,135 @@
+# Builds the lite package (lite/make_lite.sh: the prebuilt live simulator,
+# bridge, ROM images and disassembly workbooks, no Verilog) for macOS
+# arm64, Linux x86_64 and Windows x86_64, checks each one with
+# lite/test_lite.sh, and uploads the archives. On a v* tag they are also
+# attached to that tag's GitHub release.
+name: Lite package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - lite/**
+      - dme_klr/live/**
+      - dme_klr/asm_select.sh
+      - dme_klr/bench/**
+      - dme/rtl/**
+      - dme/bench/**
+      - klr/rtl/**
+      - klr/bench/**
+      - .github/workflows/lite-package.yml
+
+permissions:
+  contents: write   # attach the archives to a release (tags only)
+
+env:
+  VERILATOR_VERSION: v5.040
+
+jobs:
+  unix:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS arm64,  os: macos-14 }
+          # The oldest supported Ubuntu, so the binary runs on any glibc
+          # from 2.35 on (libstdc++ and libgcc are linked in statically)
+          - { name: Linux x86_64, os: ubuntu-22.04 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git describe for the version
+
+      - name: Tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install verilator
+
+      - name: Verilator cache (Linux)
+        if: runner.os == 'Linux'
+        id: vcache
+        uses: actions/cache@v4
+        with:
+          path: ~/verilator
+          key: verilator-${{ env.VERILATOR_VERSION }}-ubuntu-22.04
+      - name: Build Verilator (Linux)
+        if: runner.os == 'Linux' && steps.vcache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git autoconf flex bison help2man perl libfl-dev
+          git clone --depth 1 -b "$VERILATOR_VERSION" https://github.com/verilator/verilator.git /tmp/vsrc
+          cd /tmp/vsrc && autoconf && ./configure --prefix="$HOME/verilator" && make -j"$(nproc)" && make install
+      - name: Verilator on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: echo "$HOME/verilator/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Python packages
+        run: python3 -m pip install -r install/requirements.txt
+
+      - name: Build the lite package
+        run: |
+          verilator --version
+          lite/make_lite.sh --out "$RUNNER_TEMP/lite" ${{ startsWith(github.ref, 'refs/tags/v') && format('--version {0}', github.ref_name) || '' }}
+      - name: Test the lite package
+        run: lite/test_lite.sh "$(ls "$RUNNER_TEMP"/lite/*.tar.gz)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lite-${{ runner.os }}
+          path: ${{ runner.temp }}/lite/*.tar.gz
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/lite/*.tar.gz
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make perl diffutils zip unzip curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-verilator
+            mingw-w64-ucrt-x86_64-nodejs
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-openpyxl
+            mingw-w64-ucrt-x86_64-python-pandas
+            mingw-w64-ucrt-x86_64-python-matplotlib
+            mingw-w64-ucrt-x86_64-python-numpy
+      - name: Build the lite package
+        run: |
+          verilator --version
+          lite/make_lite.sh --out "$(cygpath -u "$RUNNER_TEMP")/lite" ${{ startsWith(github.ref, 'refs/tags/v') && format('--version {0}', github.ref_name) || '' }}
+      - name: Test the lite package
+        run: lite/test_lite.sh "$(ls "$(cygpath -u "$RUNNER_TEMP")"/lite/*.zip)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lite-Windows
+          path: ${{ runner.temp }}/lite/*.zip
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/lite/*.zip
