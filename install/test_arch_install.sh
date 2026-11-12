@@ -134,11 +134,13 @@ FAILS=0
 # check NAME COMMAND: run COMMAND as the test user in a new login shell
 check() {
     local name="$1"; shift
-    local log="$TLOG/$(echo "$name" | tr ' /' '__').log"
+    local log="$TLOG/$(echo "$name" | tr -cs 'A-Za-z0-9._-' '_').log"
     local t0=$SECONDS
     step "$name"
     echo "+ $*"
-    sudo -iu "$TUSER" bash -c "cd '$TREPO' && $*" > "$log" 2>&1
+    # sudo -u (not -i): -i hands the command to a second shell, which
+    # would expand the step's $VARS before setup has set them
+    sudo -u "$TUSER" -H bash -lc "cd '$TREPO' && $*" > "$log" 2>&1
     local rc=$?
     tail -n 40 "$log"
     local dt=$((SECONDS - t0))
