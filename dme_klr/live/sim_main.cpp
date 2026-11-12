@@ -798,7 +798,7 @@ private:
     static constexpr long kSaveEvals = 4'000'000;    // time slots to find a quiescent moment
     static constexpr long kLoadEvals = 40'000'000;   // fresh process: past start-up, AFM forks done
 
-    VlDelayScheduler& dly() { return root->__VdlySched; }
+    VlDelayScheduler& dly() { return liveDlySched(root); }
 
     LiveField* field(std::initializer_list<const char*> names) {
         for (const char* n : names)
