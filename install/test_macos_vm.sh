@@ -353,17 +353,25 @@ ls -l obj/dme_klr_live || exit 1
 # Drive it as the bridge does, one command at a time on stdin, and check
 # it pauses at 200 ms. (Python, not bash: macOS's bash 3.2 has no coproc.)
 python3 - obj/dme_klr_live <<'PY'
-import subprocess, sys, os, select, time
+import subprocess, sys, os, queue, threading, time
 p = subprocess.Popen([sys.argv[1], '+snapdir=' + os.environ['DMEKLR_TMP'] + '/macos-test-snaps'],
                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+# Read lines on a thread (select() on a buffered pipe misses lines that
+# are already in Python's buffer)
+lines = queue.Queue()
+def pump():
+    for l in p.stdout:
+        lines.put(l)
+    lines.put(None)
+threading.Thread(target=pump, daemon=True).start()
 p.stdin.write('until 200\n'); p.stdin.flush()
 ok, end = False, time.time() + 120
 while time.time() < end:
-    r, _, _ = select.select([p.stdout], [], [], 5)
-    if not r:
-        continue
-    line = p.stdout.readline()
-    if not line:
+    try:
+        line = lines.get(timeout=max(0.1, end - time.time()))
+    except queue.Empty:
+        break
+    if line is None:
         break
     if line.startswith('SIM:'):
         print(line.rstrip())
