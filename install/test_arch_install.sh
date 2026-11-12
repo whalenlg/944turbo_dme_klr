@@ -10,11 +10,14 @@
 #    3. iverilog smoke test:   klr/run_klr_regression
 #    4. Verilator smoke test:  dme_klr/v_run_dashboard_tests.sh warm_idle_5s
 #    5. live simulator build:  dme_klr/live/build_live.sh
+#    6. GTKWave: reads the KLR regression's .fst (fst2vcd) and opens it
+#       in gtkwave on a virtual display (Xvfb)
 #  then prints a PASS/FAIL line per step. Exits 0 only when all pass.
 #
 #  Usage:  install/test_arch_install.sh [options]
 #    --venv             test install_arch.sh --venv (Python packages from pip)
-#    --quick            stop after check_toolchain (skip steps 3-5)
+#    --quick            stop after check_toolchain (skip steps 3-6)
+#    --no-gtkwave       test install_arch.sh --no-gtkwave (skips step 6)
 #    --engine NAME      docker or podman (default: whichever is found)
 #    --image NAME       base image (default: archlinux:latest)
 #    --keep             leave the container for a look afterwards
@@ -41,11 +44,12 @@ set -uo pipefail
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
 
-VENV=0; QUICK=0; ENGINE=""; IMAGE="archlinux:latest"; KEEP=0; IN_CONTAINER=0
+VENV=0; GTKWAVE=1; QUICK=0; ENGINE=""; IMAGE="archlinux:latest"; KEEP=0; IN_CONTAINER=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --venv)         VENV=1 ;;
         --quick)        QUICK=1 ;;
+        --no-gtkwave)   GTKWAVE=0 ;;
         --engine)       ENGINE="${2:?--engine needs a name}"; shift ;;
         --image)        IMAGE="${2:?--image needs a name}"; shift ;;
         --keep)         KEEP=1 ;;
@@ -75,6 +79,7 @@ if [ "$IN_CONTAINER" = 0 ]; then
     ARGS=(--in-container)
     [ "$VENV" = 1 ] && ARGS+=(--venv)
     [ "$QUICK" = 1 ] && ARGS+=(--quick)
+    [ "$GTKWAVE" = 0 ] && ARGS+=(--no-gtkwave)
 
     RUNOPTS=(--name "$NAME" -i --platform linux/amd64)
     [ "$KEEP" = 1 ] || RUNOPTS+=(--rm)
@@ -112,7 +117,9 @@ step "System: $(. /etc/os-release && echo "$PRETTY_NAME"), $(uname -m)"
 
 # A normal Arch install has sudo and a user in wheel; the container doesn't.
 step "Bootstrap: sudo and a test user"
-pacman -Syu --needed --noconfirm sudo >/dev/null || die "pacman couldn't install sudo (no network?)"
+# xorg-server-xvfb + xorg-xauth: a virtual display for the GTKWave launch test
+pacman -Syu --needed --noconfirm sudo xorg-server-xvfb xorg-xauth >/dev/null \
+    || die "pacman couldn't install sudo (no network?)"
 id "$TUSER" >/dev/null 2>&1 || useradd -m -G wheel "$TUSER"
 echo "$TUSER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-test-user
 chmod 440 /etc/sudoers.d/90-test-user
@@ -146,6 +153,7 @@ check() {
 
 INST=(install/install_arch.sh -y)
 [ "$VENV" = 1 ] && INST+=(--venv)
+[ "$GTKWAVE" = 0 ] && INST+=(--no-gtkwave)
 
 if check "${INST[*]}" "${INST[*]}"; then
     check "source setup + check_toolchain" \
@@ -154,11 +162,21 @@ if check "${INST[*]}" "${INST[*]}"; then
         check "iverilog: KLR regression" \
             'source ./setup && klr/run_klr_regression && ls -l "$DMEKLR_TMP/klr/fst/"'
         check "verilator: warm_idle_5s" \
-            'source ./setup && cd dme_klr && ./v_run_dashboard_tests.sh warm_idle_5s \
+            'source ./setup && verilator --version && cd dme_klr && ./v_run_dashboard_tests.sh warm_idle_5s \
              && f="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log" && ls -l "$f" \
              && n=$(grep -c "\[DS\]" "$f") && echo "$n [DS] snapshot lines" && [ "$n" -gt 10 ]'
         check "verilator: live build" \
             'source ./setup && cd dme_klr/live && ./build_live.sh && ls -l obj/dme_klr_live'
+        if [ "$GTKWAVE" = 1 ]; then
+            # Opens the KLR regression's FST in GTKWave on a virtual display:
+            # still running after 15 s (timeout's 124) means it loaded and
+            # stayed up. fst2vcd (part of GTKWave) checks the file reads.
+            check "gtkwave: open the KLR waveform" \
+                'source ./setup && f="$DMEKLR_TMP/klr/fst/i8048_regression_tb.fst" && ls -l "$f" \
+                 && pacman -Q gtkwave && command -v gtkwave \
+                 && fst2vcd "$f" | grep -m1 -q "enddefinitions" && echo "fst2vcd: reads OK" \
+                 && { xvfb-run -a timeout 15 gtkwave "$f"; rc=$?; echo "gtkwave exit $rc (124 = still running at 15 s)"; [ $rc -eq 124 ]; }'
+        fi
     fi
 else
     echo "install_arch.sh failed; skipping the remaining steps"
@@ -166,7 +184,7 @@ fi
 
 echo
 echo "════════ Arch install test: $(date -u +%Y-%m-%dT%H:%MZ) ════════"
-pacman -Q verilator iverilog nodejs python gcc 2>/dev/null | sed 's/^/  /'
+pacman -Q verilator iverilog gtkwave nodejs python gcc 2>/dev/null | sed 's/^/  /'
 for r in "${RESULTS[@]}"; do echo "  $r"; done
 if [ "$FAILS" -eq 0 ]; then echo "All steps passed."; exit 0; fi
 echo "$FAILS step(s) failed."

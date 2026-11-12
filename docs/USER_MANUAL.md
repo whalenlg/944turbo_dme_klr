@@ -222,7 +222,8 @@ exits non-zero if anything required is missing or too old:
 To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
 runs it in a fresh `archlinux:latest` container (Docker or Podman), then
 `source setup`, `check_toolchain.sh`, the KLR regression (iverilog), the
-`warm_idle_5s` dashboard test (Verilator) and the live build, and prints a
+`warm_idle_5s` dashboard test (Verilator), the live build and a GTKWave
+launch on the KLR waveform (under Xvfb), and prints a
 PASS/FAIL line for each (`--venv` tests `install_arch.sh --venv`). The
 "Arch install test" GitHub workflow runs the same steps on pull requests
 that touch `install/`.
