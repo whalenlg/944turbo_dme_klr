@@ -67,20 +67,20 @@ flowchart LR
     DCPU["DME<br/>Intel 8051"]
     KCPU["KLR<br/>Intel 8048"]
 
-    MUX -- "AFM<br/>battery<br/>air temp<br/>coolant<br/>altitude<br/>throttle switch<br/>fuel quality<br/>reference sensor<br/>speed sensor<br/>O2 sensor<br/>cat<br/>AC" --> DCPU
-    MUX -- "TPS angle<br/>TPS supply<br/>battery<br/>MAP/boost<br/>knock sensor" --> KCPU
+    MUX -- "AFM<br/>Battery<br/>Air Temp<br/>Coolant<br/>Altitude<br/>Throttle Switch<br/>Fuel Quality<br/>Reference Sensor<br/>Speed Sensor<br/>O2 Sensor<br/>Cat<br/>AC" --> DCPU
+    MUX -- "TPS Angle<br/>TPS Supply<br/>Battery<br/>MAP/Boost<br/>Knock Sensor" --> KCPU
     DROM --> DCPU
     KROM --> KCPU
 
-    DCPU -- "KLR trigger (resets KLR)" --> KCPU
-    DCPU -- "tach / spark command" --> KCPU
-    KCPU -- "full load (WOT)" --> DCPU
+    DCPU -- "KLR Trigger (Resets KLR)" --> KCPU
+    DCPU -- "Spark Command" --> KCPU
+    KCPU -- "Full Load (WOT)" --> DCPU
 
     DCPU --> INJ(["Injectors"])
     DCPU --> ISV(["Idle Speed Valve"])
     DCPU --> REL(["DME Relay"])
-    KCPU -- "spark, knock retarded" --> COIL(["Ignition Coil"])
-    KCPU -- "duty cycle" --> CV(["Boost Control Valve"])
+    KCPU -- "Spark, Knock Retarded" --> COIL(["Ignition Coil"])
+    KCPU -- "Duty Cycle" --> CV(["Boost Control Valve"])
 ```
 
 The KLR's ignition output drives the coil: the DME computes the spark and
