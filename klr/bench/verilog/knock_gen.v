@@ -92,11 +92,7 @@ module knock_signal_processing (
     // real fake_knock input. knock_noise's rolling average below uses
     // the raw fake_knock input directly and is unaffected by this flag
     // (matches the module's original raw-fake_knock behavior for ch0).
-`ifdef TEST_KNOCK_FAKE_BLOCKED
-    wire fake_knock_eff = 1'b1;
-`else
-    wire fake_knock_eff = fake_knock;
-`endif
+    wire fake_knock_eff = `OPT_TEST_KNOCK_FAKE_BLOCKED ? 1'b1 : fake_knock;
 
     // knock_sum's non-retriggering hold, released by the next trigger_in tooth
     always @(posedge clk) begin
@@ -155,11 +151,8 @@ module knock_signal_processing (
             sample_hist[i] = 8'd0;
     end
 
-`ifdef KLR_ADC0_NOISE_HIGH
-    wire [7:0] sample_val = (knock_sensor >> 8) + (fake_knock ? 8'd4 : 8'd0);
-`else
-    wire [7:0] sample_val = (knock_sensor >> 2) + (fake_knock ? 8'd32 : 8'd0);
-`endif
+    wire [7:0] sample_val = `OPT_KLR_ADC0_NOISE_HIGH ? (knock_sensor >> 8) + (fake_knock ? 8'd4 : 8'd0)
+                                                     : (knock_sensor >> 2) + (fake_knock ? 8'd32 : 8'd0);
 
     always @(posedge clk) begin
         trigger_prev <= trigger_in;
@@ -181,11 +174,7 @@ module knock_signal_processing (
     // rolling-average machinery above still runs underneath (harmless —
     // just unused) so the non-blocked case doesn't need a separate code
     // path.
-`ifdef TEST_KNOCK_FAKE_BLOCKED
-    assign knock_noise = 8'hFF;
-`else
-    assign knock_noise = sample_sum / 11'd10;
-`endif
+    assign knock_noise = `OPT_TEST_KNOCK_FAKE_BLOCKED ? 8'hFF : sample_sum / 11'd10;
 
 endmodule
 

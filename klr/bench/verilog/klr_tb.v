@@ -143,29 +143,18 @@ module klr_tb #(parameter EXT_STIM = 0) (
 `ifdef LIVE
     // Live debugger / log replay: the same battery reading the DME gets
     wire [7:0] adc_ch1 = dme_klr_dashboard_tb.live_battery;
-`elsif KLR_BATT_DISCONNECTED
-    reg [7:0] adc_ch1 = 8'h00;  // battery — disconnected (KLR_BATT_DISCONNECTED test)
-`elsif KLR_BATT_LOW
-    reg [7:0] adc_ch1 = 8'hd8 >> 1;  // battery — halved (KLR_BATT_LOW test)
 `else
-    reg [7:0] adc_ch1 = 8'hd8;  // battery
+    // battery: disconnected (KLR_BATT_DISCONNECTED), halved (KLR_BATT_LOW), normal
+    wire [7:0] adc_ch1 = `OPT_KLR_BATT_DISCONNECTED ? 8'h00 :
+                         `OPT_KLR_BATT_LOW          ? 8'hd8 >> 1 :
+                                                      8'hd8;
 `endif
     reg [7:0] adc_ch2 = 8'h00;  // ground
-`ifdef BOOST
-    // adc_ch4 is the MAP-table model below
-`elsif LIVE
-    // Live debugger without -DBOOST: the web UI sets the MAP reading
-    // (capped at 0xF5 so the ADC routine's +10 can't wrap; see below)
-    // 16'hFFFF ("auto") is the fixed MAP the non-LIVE build uses, 0x85
-    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost == 16'hFFFF) ? 8'h85 :
-                         (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
-                         dme_klr_dashboard_tb.live_boost[7:0];
-`else
-    reg [7:0] adc_ch4 = 8'h85;  // conn 23 MAP sensor — fixed value; see -DBOOST for the modeled version
-`endif
+    // adc_ch4 (conn 23, MAP sensor) is set after the -DBOOST model below
     reg [7:0] adc_ch6 = 8'h87;  // conn 25
 
-`ifdef BOOST
+    // (The -DBOOST model is always built; with BOOST off (`OPT_BOOST) its
+    // processes are idle and adc_ch4 reads the fixed 0x85 below.)
     // ── Turbo boost ADC input (ch4) — MAP-table based ──────────
     //  Modeled from the real KLR boost map (throttle% x RPM ->
     //  ADC "software units"), '89 table, from:
@@ -259,7 +248,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // is what the real firmware actually feeds its own map lookups with,
     // so this is now the authoritative source rather than a reconstruction.
     real boost_thr_pct;
-    always @(*) begin
+    always @(*) if (`OPT_BOOST) begin
         boost_thr_pct = 58.0 + (top.i8048_core_1.ram[8'h43] - 1.0) * 30.0 / 27.0;
     end
 
@@ -268,7 +257,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     real    rpm_frac, thr_frac;
     real    v00, v01, v10, v11, v0, v1;
     integer bi, bj, rpm_lo, rpm_hi, thr_lo, thr_hi;
-    always @(*) begin
+    always @(*) if (`OPT_BOOST) begin
         boost_rpm_real = rpm_in;
         if (boost_rpm_real < boost_rpm_bp[0])
             boost_rpm_real = boost_rpm_bp[0];
@@ -352,7 +341,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
     localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
     real map_load_frac, map_rpm, map_kpa, map_target, map_target_fueled;
-    always @(*) begin
+    always @(*) if (`OPT_BOOST) begin
         map_load_frac = (tps_wiper - MAP_AFM_IDLE) / (MAP_AFM_ONSET - MAP_AFM_IDLE);
         if (map_load_frac < 0.0) map_load_frac = 0.0;
         if (map_load_frac > 1.0) map_load_frac = 1.0;
@@ -399,11 +388,12 @@ module klr_tb #(parameter EXT_STIM = 0) (
 `ifndef BOOST_CUT_TAU_MS
   `define BOOST_CUT_TAU_MS 150
 `endif
-    localparam real BOOST_CUT_TAU_NS = `BOOST_CUT_TAU_MS * 1_000_000.0;
+    real BOOST_CUT_TAU_NS;
+    initial BOOST_CUT_TAU_NS = `VAL_BOOST_CUT_TAU_MS * 1_000_000.0;
     real boost_lag_tau_ns;
-    always @(*) boost_lag_tau_ns = (EXT_STIM && fuel_cut === 1'b1 && map_target < boost_map_filtered)
+    always @(*) if (`OPT_BOOST) boost_lag_tau_ns = (EXT_STIM && fuel_cut === 1'b1 && map_target < boost_map_filtered)
                                    ? BOOST_CUT_TAU_NS : BOOST_LAG_TAU_NS;
-    always @(posedge clk) begin
+    always @(posedge clk) if (`OPT_BOOST) begin
         boost_map_filtered <= boost_map_filtered
             + (map_target - boost_map_filtered) * ((2.0 * DELAY) / boost_lag_tau_ns);
     end
@@ -425,7 +415,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg  cut_spool = 1'b0;
     real cut_rpm_ref = 0.0, cut_map_ref = 0.0;
     real cut_rpm_now, cut_ratio;
-    always @(*) begin
+    always @(*) if (`OPT_BOOST) begin
         cut_rpm_now = rpm_in;
         if (cut_rpm_now < MAP_MIN_RPM) cut_rpm_now = MAP_MIN_RPM;
         cut_ratio = (cut_spool && cut_rpm_ref > 0.0)
@@ -438,7 +428,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // the AFM model already reads the idle flow the engine falls back to,
     // and scaling it by RPM as well starves idle after the cut (stall).
     // A throttle back below onset ends the correction the same way.
-    always @(posedge clk) begin
+    always @(posedge clk) if (`OPT_BOOST) begin
         if (tps_wiper < MAP_AFM_ONSET)
             cut_spool <= 1'b0;
         else if (EXT_STIM && fuel_cut === 1'b1) begin
@@ -450,7 +440,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         end else if (cut_ratio >= 0.99)
             cut_spool <= 1'b0;
     end
-    always @(*) begin
+    always @(*) if (`OPT_BOOST) begin
         if (cut_spool) begin
             afm_flow_ratio_x1000 = $rtoi(1000.0 * cut_ratio);
             if (afm_flow_ratio_x1000 > 1000) afm_flow_ratio_x1000 = 1000;
@@ -515,13 +505,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     wire [8:0]  boost_adc4_high_wide  = boost_adc4_raw + 9'd80;
     wire [7:0]  boost_adc4_high       = (boost_adc4_high_wide > 9'd240) ? 8'd240 : boost_adc4_high_wide[7:0];
 
-`ifdef BOOST_ZERO
-    wire [7:0] boost_adc4_final = 8'd0;
-`elsif BOOST_LOW
-    wire [7:0] boost_adc4_final = boost_adc4_low;
-`elsif BOOST_HIGH
-    wire [7:0] boost_adc4_final = boost_adc4_high;
-`elsif BOOST_STEP_OVERBOOST
+    // -DBOOST_ZERO: 0. -DBOOST_LOW / -DBOOST_HIGH: the offsets above.
     // ── -DBOOST_STEP_OVERBOOST: stepped overboost hunt ─────────────
     //  Ramp phase: the modeled MAP reading, capped at OVERBOOST_START_PSI
     //  (default 4 psi). Once rpm_in first reaches OVERBOOST_STEP_RPM
@@ -561,7 +545,8 @@ module klr_tb #(parameter EXT_STIM = 0) (
     localparam [7:0] OB_ADC_MAX = 8'hF0;   // same cap as boost_adc4_capped below
     reg        ob_stepping = 1'b0;
     reg        ob_at_max   = 1'b0;
-    reg signed [7:0] ob_psi = `OVERBOOST_START_PSI;   // signed: the step-down goes into vacuum
+    reg signed [7:0] ob_psi;   // signed: the step-down goes into vacuum
+    initial ob_psi = `VAL_OVERBOOST_START_PSI;
     reg [63:0] ob_next_ns  = 64'd0;
     // Integer form of 108 + 8.4119 * psi, rounded (no reals, so it stays
     // plain combinational logic in every simulator).
@@ -571,24 +556,24 @@ module klr_tb #(parameter EXT_STIM = 0) (
     function automatic [15:0] ob_psi_to_adc(input signed [7:0] psi);
         ob_psi_to_adc = (1085000 + 84119 * psi) / 10000;
     endfunction
-    wire [7:0]  ob_start_adc = ob_psi_to_adc(`OVERBOOST_START_PSI);
+    wire [7:0]  ob_start_adc = ob_psi_to_adc(`VAL_OVERBOOST_START_PSI);
     wire [15:0] ob_step_raw  = ob_psi_to_adc(ob_psi);
-`ifdef BOOST_STEP_DOWN
-    localparam OB_DOWN = 1'b1;
-`else
-    localparam OB_DOWN = 1'b0;
-`endif
+    wire OB_DOWN = `OPT_BOOST_STEP_DOWN;
     wire signed [7:0] ob_next_psi = OB_DOWN ? ob_psi - 8'sd1 : ob_psi + 8'sd1;
     wire [15:0] ob_next_raw  = ob_psi_to_adc(ob_next_psi);
-    wire        ob_next_last = OB_DOWN ? (ob_next_psi <= `OVERBOOST_END_PSI) : (ob_next_raw >= OB_ADC_MAX);
+    wire        ob_next_last = OB_DOWN ? (ob_next_psi <= `VAL_OVERBOOST_END_PSI) : (ob_next_raw >= OB_ADC_MAX);
     wire [7:0]  ob_step_adc  = (ob_step_raw >= OB_ADC_MAX) ? OB_ADC_MAX : ob_step_raw[7:0];
-    wire [7:0] boost_adc4_final = ob_stepping ? ob_step_adc :
+    wire [7:0] boost_adc4_final = `OPT_BOOST_ZERO ? 8'd0 :
+                                  `OPT_BOOST_LOW  ? boost_adc4_low :
+                                  `OPT_BOOST_HIGH ? boost_adc4_high :
+                                  !`OPT_BOOST_STEP_OVERBOOST ? boost_adc4_raw :
+                                  ob_stepping ? ob_step_adc :
                                   (boost_adc4_raw > ob_start_adc) ? ob_start_adc : boost_adc4_raw;
-    always @(posedge clk) begin
+    always @(posedge clk) if (`OPT_BOOST && `OPT_BOOST_STEP_OVERBOOST) begin
         if (!ob_stepping) begin
-            if (EXT_STIM && rpm_in >= `OVERBOOST_STEP_RPM) begin
+            if (EXT_STIM && rpm_in >= `VAL_OVERBOOST_STEP_RPM) begin
                 ob_stepping <= 1'b1;
-                ob_next_ns  <= $time + `OVERBOOST_STEP_NS;
+                ob_next_ns  <= $time + `VAL_OVERBOOST_STEP_NS;
                 $display("KLR: [OVERBOOST] t=%0d ms  rpm=%0d reached  step start: %0d psi (ch4=%02h)  ram[51]=%02h ram[52]=%02h ram[60]=%02h ram[41]=%02h ram[3A]=%02h ram[43]=%02h ram[33]=%02h",
                          $time / 1000000, rpm_in, ob_psi, ob_start_adc,
                          top.i8048_core_1.ram[8'h51], top.i8048_core_1.ram[8'h52],
@@ -596,7 +581,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
                          top.i8048_core_1.ram[8'h43], top.i8048_core_1.ram[8'h33]);
             end
         end else if (!ob_at_max && $time >= ob_next_ns) begin
-            ob_next_ns <= ob_next_ns + `OVERBOOST_STEP_NS;
+            ob_next_ns <= ob_next_ns + `VAL_OVERBOOST_STEP_NS;
             ob_psi     <= ob_next_psi;
             if (ob_next_last && OB_DOWN) begin
                 ob_at_max <= 1'b1;
@@ -621,9 +606,6 @@ module klr_tb #(parameter EXT_STIM = 0) (
             end
         end
     end
-`else
-    wire [7:0] boost_adc4_final = boost_adc4_raw;
-`endif
 
     // Firmware compliance cap: the ADC-read routine adds +10d to this raw
     // value before storing to ram[52h] (see header comment). ram[52h] is
@@ -642,16 +624,19 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ram[52h] = 0x09 (deep vacuum, about -26 inHg) instead of full boost.
     wire [7:0] live_boost_pin = (dme_klr_dashboard_tb.live_boost[7:0] > 8'hF5) ? 8'hF5 :
                                 dme_klr_dashboard_tb.live_boost[7:0];
-    wire [7:0] adc_ch4 = (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? live_boost_pin :
+    // Without -DBOOST the web UI sets the MAP reading the same way, and
+    // 16'hFFFF ("auto") is the fixed MAP the non-LIVE build uses, 0x85.
+    wire [7:0] adc_ch4 = !`OPT_BOOST ? ((dme_klr_dashboard_tb.live_boost == 16'hFFFF) ? 8'h85 : live_boost_pin) :
+                         (dme_klr_dashboard_tb.live_boost != 16'hFFFF) ? live_boost_pin :
                          (EXT_STIM) ? boost_adc4_capped : 8'h85;
-`elsif BOOST_OPEN_CIRCUIT
-    // MAP signal open, pulled to the rail: 0xFF, deliberately past the
-    // 0xF0 cap above. This is the reading a real open wire gives, so the
-    // firmware's +10 wrap (ram[52h] = 0x09) is part of what's tested.
-    wire [7:0] adc_ch4 = 8'hFF;  // conn 23 MAP sensor — open circuit (BOOST_OPEN_CIRCUIT test)
 `else
-    wire [7:0] adc_ch4 = (EXT_STIM) ? boost_adc4_capped : 8'h85;
-`endif
+    // -DBOOST_OPEN_CIRCUIT: MAP signal open, pulled to the rail: 0xFF,
+    // deliberately past the 0xF0 cap above. This is the reading a real
+    // open wire gives, so the firmware's +10 wrap (ram[52h] = 0x09) is
+    // part of what's tested. Without -DBOOST: a fixed 0x85.
+    wire [7:0] adc_ch4 = !`OPT_BOOST ? 8'h85 :
+                         `OPT_BOOST_OPEN_CIRCUIT ? 8'hFF :
+                         (EXT_STIM) ? boost_adc4_capped : 8'h85;
 `endif
 
     // Always-declared export of the real internal MAP-table target (in the
@@ -661,13 +646,10 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // unconditionally (defaulting to 0 when -DBOOST isn't set) so
     // klr_phase_monitor.v can reference it in the STATUS line without
     // needing its own `ifdef BOOST` gating.
-`ifdef BOOST
-    wire [7:0] boost_target_export = (boost_map_value < 0.0)   ? 8'd0   :
+    wire [7:0] boost_target_export = !`OPT_BOOST ? 8'd0 :
+                                      (boost_map_value < 0.0)   ? 8'd0   :
                                       (boost_map_value > 255.0) ? 8'd255 :
                                       $rtoi(boost_map_value);
-`else
-    wire [7:0] boost_target_export = 8'd0;
-`endif
 
     // Processed boost/MAP value actually stored by firmware — ram[52h].
     // Named alias for readable FST traces (see -DBOOST above for the
@@ -808,16 +790,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // which needs 15 bits; without the explicit width here, Verilog
     // would size the whole expression to match the 8-bit LHS and
     // silently wrap the product before the division ever happens.
-`ifdef KLR_ADC0_NOISE_HIGH
-    wire [7:0] adc_ch0 = knock_noise;  // knock sensor noise-level indicator — rolling average under knock_gen.v's NOISE_HIGH sample_val formula (KLR_ADC0_NOISE_HIGH test)
-`elsif KLR_ADC0_NOISE_LOW
-    wire [7:0] adc_ch0 = 8'h80;  // knock sensor noise-level indicator — stuck at 0x80 for the whole sim (KLR_ADC0_NOISE_LOW test)
-`elsif TEST_KNOCK_FAKE_BLOCKED
-    wire [7:0] adc_ch0 = 8'h40;  // knock sensor noise-level indicator — forced 0x40 for the whole sim (TEST_KNOCK_FAKE_BLOCKED / cl_ramp_to_3000_KLR_KNOCK_BLOCKED)
-`else
+    // knock sensor noise-level indicator:
+    //   KLR_ADC0_NOISE_HIGH      rolling average under knock_gen.v's NOISE_HIGH sample_val formula
+    //   KLR_ADC0_NOISE_LOW       stuck at 0x80 for the whole sim
+    //   TEST_KNOCK_FAKE_BLOCKED  forced 0x40 for the whole sim (cl_ramp_to_3000_KLR_KNOCK_BLOCKED)
+    //   otherwise                nominal ~0x40 ceiling (self-test knock active) / ~0x1D floor (quiescent)
     wire [15:0] _adc0_noise_scaled_wide = knock_noise * 16'd64;
-    wire [7:0] adc_ch0 = _adc0_noise_scaled_wide / 16'd59;  // knock sensor noise-level indicator — nominal ~0x40 ceiling (self-test knock active) / ~0x1D floor (quiescent) (all tests)
-`endif
+    wire [7:0] adc_ch0 = `OPT_KLR_ADC0_NOISE_HIGH     ? knock_noise :
+                         `OPT_KLR_ADC0_NOISE_LOW      ? 8'h80 :
+                         `OPT_TEST_KNOCK_FAKE_BLOCKED ? 8'h40 :
+                                                        _adc0_noise_scaled_wide / 16'd59;
     wire [7:0] adc_ch5 = knock_sum;    // lm2902.14 — comparator output
 
     // ── TPS Supply (ch3) and TPS Angle (ch7) ─────────────────
@@ -840,19 +822,15 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // over more of the throttle sweep, not just near idle.
 // -DKLR_TPS_SUPPLY_LOST: the supply gone entirely (0x00), which also
 // takes the ratiometric ch7 reading to 0.
-`ifdef KLR_TPS_SUPPLY_LOST
-    wire [7:0] adc_ch3 = 8'h00;  // conn 1  TPS 5V supply — lost (KLR_TPS_SUPPLY_LOST test)
-`elsif KLR_TPS_SUPPLY_LOW
-    wire [7:0] adc_ch3 = 8'h18;  // conn 1  TPS 5V supply — ~9.4% of normal (KLR_TPS_SUPPLY_LOW test)
-`else
-    wire [7:0] adc_ch3 = 8'd255;   // conn 1  TPS 5V supply — fixed regulated value
-`endif
+    // conn 1  TPS 5V supply: lost (KLR_TPS_SUPPLY_LOST), ~9.4% of normal
+    // (KLR_TPS_SUPPLY_LOW), else the fixed regulated value
+    wire [7:0] adc_ch3 = `OPT_KLR_TPS_SUPPLY_LOST ? 8'h00 :
+                         `OPT_KLR_TPS_SUPPLY_LOW  ? 8'h18 :
+                                                    8'd255;
 
     // TPS angle mapping: AFM idle (0x28=40) → TPS 0x1A (0.5V), AFM WOT (0xEB=235) → TPS 0xEF (4.7V)
     // 16-bit intermediate prevents overflow: max (195 * 213) = 41535 > 255
     // tps = 26 + (afm - 40) * (239 - 26) / (235 - 40) = 26 + (afm-40)*213/195
-`ifdef BOOST
-`ifdef BOOST_STEP_OVERBOOST
     // -DBOOST_STEP_OVERBOOST (see above): from the first boost step on, the
     // KLR alone sees the throttle opened to OVERBOOST_KLR_TPS (AFM-wiper
     // scale), just past boost onset, while the DME/AFM/RPM model stays on
@@ -864,13 +842,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
 `ifndef OVERBOOST_KLR_TPS
   `define OVERBOOST_KLR_TPS 8'hA0
 `endif
-    wire [7:0] klr_tps_in = ob_stepping ? `OVERBOOST_KLR_TPS : tps_wiper;
-`else
-    wire [7:0] klr_tps_in = tps_wiper;
-`endif
-`else
-    wire [7:0] klr_tps_in = tps_wiper;
-`endif
+    wire [7:0] klr_tps_in = (`OPT_BOOST && `OPT_BOOST_STEP_OVERBOOST && ob_stepping) ? `VAL_OVERBOOST_KLR_TPS : tps_wiper;
     wire [15:0] _tps_angle_full = (klr_tps_in > 8'd40)
                                ? (16'd26 + ({8'd0, klr_tps_in} - 16'd40) * 16'd213 / 16'd195)
                                : 16'd26;
@@ -886,11 +858,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // to exercise that fault path. Clamped by default; ramp_to_redline_
     // KLR_TPS_HIGH deliberately disables this via -DKLR_TPS_HIGH to
     // exercise DTC 4-2 on purpose (that's the whole point of the test).
-`ifndef KLR_TPS_HIGH
-    wire [7:0] _tps_raw = (_tps_raw_unclamped > 8'hDB) ? 8'hDB : _tps_raw_unclamped;
-`else
-    wire [7:0] _tps_raw = _tps_raw_unclamped;
-`endif
+    wire [7:0] _tps_raw = (!`OPT_KLR_TPS_HIGH && _tps_raw_unclamped > 8'hDB) ? 8'hDB : _tps_raw_unclamped;
 
     // TPS (ch7) IS ratiometric against ch3's supply (confirmed — scaling
     // applies to ch7 specifically, not other channels): scaled_tps =
@@ -900,22 +868,20 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // reduction. With -DKLR_TPS_SUPPLY_LOW (adc_ch3=0x18), this scales
     // the TPS reading down to ~9.4% too.
     wire [15:0] _tps_scaled_wide = adc_ch3 * _tps_raw;
-`ifdef KLR_TPS_OPEN_CIRCUIT
-    // TPS wiper open circuit: a broken wiper track pulls the signal to
+    // KLR_TPS_OPEN_CIRCUIT: TPS wiper open circuit: a broken wiper track pulls the signal to
     // the 5V rail, reading full-scale regardless of actual throttle
     // position — bypasses the normal AFM-derived ratiometric chain
     // entirely (unlike KLR_TPS_HIGH, which just removes the 0xDB
     // ceiling on an otherwise throttle-position-dependent reading).
-    wire [7:0] adc_ch7 = 8'hFF;   // conn 16 TPS angle wiper — stuck at max (open circuit)
-`elsif KLR_TPS_SHORT_TO_GROUND
-    // TPS wiper shorted to ground: reads zero regardless of actual
+    // KLR_TPS_SHORT_TO_GROUND: TPS wiper shorted to ground: reads zero regardless of actual
     // throttle position, independent of AFM (used by
     // cl_ramp_to_3000_TPS0 to check the KLR's response when TPS reads
     // stuck-low while AFM/RPM behave normally through a ramp).
-    wire [7:0] adc_ch7 = 8'h00;   // conn 16 TPS angle wiper — stuck at zero (shorted to ground)
-`else
-    wire [7:0] adc_ch7 = (EXT_STIM) ? _tps_scaled_wide[15:8] : 8'd40;   // conn 16 TPS angle wiper — ratiometric per ch3
-`endif
+    // conn 16 TPS angle wiper: stuck at max (open circuit), stuck at zero
+    // (shorted to ground), else ratiometric per ch3
+    wire [7:0] adc_ch7 = `OPT_KLR_TPS_OPEN_CIRCUIT    ? 8'hFF :
+                         `OPT_KLR_TPS_SHORT_TO_GROUND ? 8'h00 :
+                         (EXT_STIM) ? _tps_scaled_wide[15:8] : 8'd40;
 
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;
@@ -1016,7 +982,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         sim_rst = 1;
 
         // ── Run for SIM_TIME ──────────────────────────────────
-        #`SIM_TIME;
+        #(`VAL_SIM_TIME);
 
         // ── Dump final memory state ───────────────────────────
         $writememh("rom_out.hex", top.rom_1.rom);  // 4096 locations (2732 4K×8)

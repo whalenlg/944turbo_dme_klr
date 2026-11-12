@@ -373,7 +373,7 @@ end
 // ============================================================
 integer ram_idx;
 initial begin
-    #`SIM_TIME;
+    #(`VAL_SIM_TIME);
     $display("\n========== KLR Internal RAM Dump (end of simulation) ==========");
     $display("       00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F");
     for (ram_idx = 0; ram_idx < 128; ram_idx = ram_idx + 16) begin

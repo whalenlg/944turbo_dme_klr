@@ -24,1013 +24,8 @@
 //  DASH_INTERVAL_MS default: 100  (override with -DDASH_INTERVAL_MS=50)
 // ============================================================
 
-// ============================================================
-//  TEST SELECTION — uncomment one or pass via -DTEST_xxx
-// ============================================================
-
-// --- Idle tests ---
-//`define TEST_WARM_IDLE
-//`define TEST_WARM_IDLE_5S
-//`define TEST_COLD_START
-//`define TEST_HOT_IDLE
-//`define TEST_IDLE_BATTERY_LOW
-//`define TEST_IDLE_HIGH_ALT
-//`define TEST_IDLE_POOR_FUEL
-//`define TEST_AC_ON_IDLE
-//`define TEST_CL_RAMP_TO_3000
-//`define TEST_CL_RAMP_TO_6000
-//`define TEST_CL_RAMP_TO_REDLINE
-//`define TEST_CL_AC_HALFWAY
-//`define TEST_CL_COLD_START
-
-// --- Fuel transient tests ---
-//`define TEST_TIPPY_IN
-//`define TEST_OVERRUN_CUTOFF
-//`define TEST_WARMUP_ENRICHMENT
-//`define TEST_AFM_OPEN_CIRCUIT
-
-// --- RPM sweep tests ---
-//`define TEST_RAMP_TO_3000
-//`define TEST_RAMP_TO_6000
-//`define TEST_RAMP_TO_REDLINE
-//`define TEST_RAMP_6K_HOLD
-
-// --- Sensor failure tests ---
-//`define TEST_COOLANT_FAIL
-//`define TEST_AIRTEMP_FAIL
-//`define TEST_O2_DISCONNECTED
-//`define TEST_O2_RICH_STUCK
-//`define TEST_O2_LEAN_STUCK
-//`define TEST_TPS_FAIL
-//`define TEST_ALTITUDE_DISCONNECTED
-//`define TEST_FUEL_QUAL_DISCONNECTED
-//`define TEST_REF_SENSOR_LOSS
-//`define TEST_SPEED_SENSOR_LOSS
-
-// --- Ignition tests ---
-//`define TEST_IGNITION_TIMING
-//`define TEST_DWELL_SCALING
-
-// --- ISV / idle speed control tests ---
-//`define TEST_ISV_COLD_IDLE
-//`define TEST_ISV_LOAD_DROOP
-
-// ============================================================
-//  Common sim parameters
-// ============================================================
-`ifndef SIM_TIME
-  `define SIM_TIME     80000000000
-`endif
-`ifndef RPMSTART
-  `define RPMSTART     100
-`endif
-`ifndef RPMEND
-  `define RPMEND       840
-`endif
-`ifndef RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 25
-`endif
-`ifndef DASH_INTERVAL_MS
-  `define DASH_INTERVAL_MS 100
-`endif
-
-// ============================================================
-//  Per-test parameter overrides (identical to i8051_dashboard_tb.v)
-// ============================================================
-
-// Warm idle: the live dashboard's defaults (LivePanel hints), so the
-// scripted tests and a live session run the same engine. Raw ADC values;
-// the firmware linearises them in place into 13h/12h.
-//   coolant 0x31 ~ 85 C (185 F)    air temp 0x9E ~ 20 C (68 F)
-// (Until 2026-10 the tests used coolant 0x20 ~ 103 C and air 0x50 ~ 62 C.)
-`define WARM_COOLANT_RAW 8'h31
-`define WARM_AIRTEMP_RAW 8'h9E
-
-`ifdef TEST_WARM_IDLE
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 10
-  `ifndef SIM_TIME
-  `define SIM_TIME  60000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_WARM_IDLE_5S: same idle target as TEST_WARM_IDLE, but with the
-// RPM_RAMP_PCT=25 / SIM_TIME=5s the sensor-fault idle tests (coolant_fail,
-// airtemp_fail, afm_open_circuit, tps_fail) all use — a plain -D override
-// of warm_idle's own RPM_RAMP_PCT doesn't work since that block sets it
-// unconditionally (not `ifndef`-guarded), so it needs its own macro to
-// give a directly comparable baseline log for those 4 tests.
-`ifdef TEST_WARM_IDLE_5S
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 25
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_COLD_START
-  `define RPMRAMP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  120000000000
-  `endif
-  `define _COOLANT_RAW  8'hC0
-  `define _AIRTEMP_RAW  8'h70
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_HOT_IDLE
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  25000000000
-  `endif
-  `define _COOLANT_RAW  8'h10
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_IDLE_BATTERY_LOW
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'h8C
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_IDLE_HIGH_ALT
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'h00
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_ALTITUDE_DISCONNECTED: altitude sensor wire open/pulled to the
-// 5V rail (0xFF), rather than a plausible reading anywhere in the real
-// sensor's range (0x00=high altitude .. 0xF8=sea level nominal per
-// TEST_IDLE_HIGH_ALT/baseline above — 0xFF is past the sea-level end,
-// an implausible "below sea level" reading a real barometric sensor
-// could never produce). No KLR involvement — altitude is DME-only,
-// unlike TPS/battery, so no DTC is expected here.
-`ifdef TEST_ALTITUDE_DISCONNECTED
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hFF
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_IDLE_POOR_FUEL previously had no distinguishing config at all —
-// identical to TEST_WARM_IDLE's baseline, so the test could never fail
-// regardless of whether any fuel-quality handling actually worked.
-// _FUEL_QUAL now defaults to 0xA7, the same worst-quality value already
-// calibrated and validated by the ramp_to_*_FQS7 / cl_ramp_to_*_FQS7
-// family (see run_dashboard_tests.sh) — reusing a real, exercised value
-// rather than guessing a new one.
-`ifdef TEST_IDLE_POOR_FUEL
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'hA7
-  `endif
-`endif
-
-// TEST_FUEL_QUAL_DISCONNECTED: fuel quality ADC pegged at 0xFF (open
-// circuit / pulled to the 5V rail) — past the FQS7 ceiling (0xA7, the
-// worst real fuel-quality value the FQS0-7 sweep calibrates), a
-// reading no real fuel-quality sensor could produce. Distinct from
-// idle_poor_fuel's plausible-but-worst-case 0xA7. No KLR involvement
-// (fuel quality is DME-only), so no DTC is expected here.
-`ifdef TEST_FUEL_QUAL_DISCONNECTED
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'hFF
-  `endif
-`endif
-
-// TEST_REF_SENSOR_LOSS: reference (crank position) sensor wire breaks
-// partway through the test — see the reference_sensor override near
-// the RPM/crank generator instantiation below for the actual
-// mechanism (P3.2/INT0 stops seeing pulses from REF_LOSS_T_MS onward,
-// while the underlying engine model keeps running normally). Longer
-// SIM_TIME than the other idle sensor-fault tests (8s vs 5s) to leave
-// a real post-fault observation window after the loss kicks in at
-// REF_LOSS_T_MS=3500 (well after ASE end, ~1.5-2.7s in the sibling
-// tests).
-`ifdef TEST_REF_SENSOR_LOSS
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  8000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-  `define REF_LOSS_T_MS 3500
-`endif
-
-// TEST_SPEED_SENSOR_LOSS: same idea as TEST_REF_SENSOR_LOSS, but for
-// the speed/tooth sensor (P3.3/INT1) instead — see the speed_sensor
-// override near the RPM/crank generator instantiation below.
-`ifdef TEST_SPEED_SENSOR_LOSS
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  8000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-  `define SPEED_LOSS_T_MS 3500
-`endif
-
-`ifdef TEST_AC_ON_IDLE
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define AC_COMP_ON                 // T1=1: AC compressor active
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  10000000000      // 10s — enough to see ISV and fuel response to AC load
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW        // warm engine
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_RAMP_TO_2100: same structure as TEST_CL_RAMP_TO_3000, for a
-// lower operating point below it. (Originally targeted 2000rpm as
-// TEST_CL_RAMP_TO_2000 — renamed to 2100 when the target itself moved,
-// keeping the macro name matching its actual target like every other
-// test in this family.)
-//
-// CALIBRATION HISTORY:
-//   0x53 (1st attempt, target was 2000rpm) — linearly interpolated
-//   between the two nearest real anchors then available: idle (840rpm,
-//   AFM=0x28/40) and the 3000-family's own real settling point
-//   (2853rpm, AFM=0x72/114). Actual result: ~1794rpm — undershot by
-//   ~206rpm (~10%), confirming real local nonlinearity in this region
-//   (same pattern the TEST_CL_RAMP_TO_4500 calibration history hit and
-//   warns about).
-//   0x59 (2nd attempt, target was still 2000rpm) — refined by directly
-//   bracketing between the 1st attempt's own real result (1794rpm,
-//   AFM=0x53/83) and the 3000-family anchor (2853rpm, AFM=0x72/114):
-//   local slope ~0.0293 AFM-counts/rpm. Actual result: ~1944rpm — much
-//   closer, confirming the bracketing-refinement approach.
-//   0x5F (FINAL, target moved to 2100rpm) — extrapolated using the two
-//   most recent real points, now bracketing more tightly and locally
-//   than the distant 3000-family anchor: (1794rpm, AFM=0x53/83) and
-//   (1944rpm, AFM=0x59/89), local slope ~0.04 AFM-counts/rpm. This is
-//   an EXTRAPOLATION (2100 is above both real anchors, not between
-//   them), so somewhat less reliable than the earlier interpolations —
-//   still unverified against a real run; refine again the same way
-//   (bracket the two nearest real points) if it's meaningfully off.
-`ifdef TEST_CL_RAMP_TO_2100
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h5F      // ~2100 RPM (REFINED — see calibration history above)
-  `ifndef SIM_TIME
-  `define SIM_TIME  30000000000     // 30s — matches the 3000-family's duration
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_CL_RAMP_TO_3000
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `ifndef AFM_CL_TARGET               // a -DAFM_CL_TARGET on the command line wins
-  `define AFM_CL_TARGET  8'h72      // 3000 RPM → ADC≈0x72 (114)
-  `endif
-  `ifndef SIM_TIME
-  `define SIM_TIME  30000000000     // 30s — RPM climbs ~670/13s, needs ~25s to reach 3000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_RAMP_TO_4500: same structure as TEST_CL_RAMP_TO_3000/_6000, for
-// an intermediate operating point between the two. AFM_CL_TARGET=0x9A has
-// been empirically verified — settles at ~4530rpm (0.7% over the 4500
-// nominal target), well within normal margin. var_interrupt_gen_cl.v's
-// own header explicitly warns that the friction curve (quadratic below
-// CL_FRICTION_HIGHRPM_THRESHOLD=4000rpm, cubic above) was only originally
-// calibrated against 3 real points (idle, ~2853rpm/AFM=0x72, ~6650rpm/
-// AFM=0xD8) and that a 4th test between those two "likely need[s]
-// re-verification" — this is that re-verification, done empirically
-// below rather than by retuning the curve itself.
-//
-// CALIBRATION HISTORY (kept for reference — the curve genuinely is
-// nonlinear in this region, confirming the header's warning was correct):
-//   0x83 (1st attempt) — derived by solving the documented friction
-//   equations for the combustion value giving a 4500rpm equilibrium, then
-//   interpolating AFM vs combustion between the two real anchors.
-//   Actual result: ~3500rpm, ~56.9% throttle.
-//   0xA1 (2nd attempt) — refined using the 0x83 result and the distant
-//   6000-family anchor (~33.6 rpm/AFM-count slope).
-//   Actual result: ~4800rpm, ~63% throttle — overshot, but also confirmed
-//   ram[0x43]/throttle% genuinely tracks AFM (56.9%->63% between these
-//   two runs) — the earlier plateau near 0x83 was just too small an AFM
-//   delta to show separation, not a bug.
-//   0x9A (FINAL) — refined by directly bracketing between the two real
-//   points above, (AFM=131,~3500rpm) and (AFM=161,~4800rpm): local slope
-//   ~43.3 rpm/AFM-count — steeper than the 2nd attempt's distant-anchor
-//   slope, confirming real local nonlinearity, consistent with the
-//   header's warning. VERIFIED result: ~4530rpm, ~59% throttle.
-`ifdef TEST_CL_RAMP_TO_4500
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h9A      // ~4500 RPM — VERIFIED, settles ~4530rpm (see note above)
-  `ifndef SIM_TIME
-  `define SIM_TIME  35000000000     // 35s — between the 30s/40s used for 3000/6000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_RAMP_TO_5000: same structure as TEST_CL_RAMP_TO_3000/_4500/_6000.
-// AFM_CL_TARGET=0xA6 is an ESTIMATE — interpolated from the two closest
-// REAL, empirically-observed bracketing points from the 4500 calibration
-// work: AFM=0x9A(154)->~4530rpm (verified) and AFM=0xA1(161)->~4800rpm
-// (observed). Local slope ~38.57 rpm/AFM-count; both anchors agree
-// exactly on 0xA6(166) for a 5000rpm target. Still unverified against a
-// real run — check the actual settled RPM in the resulting log and
-// refine the same way TEST_CL_RAMP_TO_4500 was (see its revision history
-// above) if it's meaningfully off.
-`ifdef TEST_CL_RAMP_TO_5000
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'hA6      // ~5000 RPM (ESTIMATED — see note above)
-  `ifndef SIM_TIME
-  `define SIM_TIME  35000000000     // 35s — matching the 4500-family's duration
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_CONDITION_CYCLE: closed-loop ramp to 3000rpm (same as
-// TEST_CL_RAMP_TO_3000 above — same AFM_CL_TARGET, same ~25-30s ramp
-// time), then six sequential 7-second condition-cycle phases, each
-// 1s nominal / 5s test-condition-active / 1s nominal:
-//   t=30-37s: air temp  -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
-//   t=37-44s: coolant   -> 0x68 (~5C, same cold value as TEST_ISV_COLD_IDLE)
-//   t=44-51s: altitude  -> 0x00 (high altitude, same as TEST_IDLE_HIGH_ALT)
-//   t=51-58s: cat (T0)  -> 1 (no cat fitted)
-//   t=58-65s: AC (T1)   -> 1 (AC compressor on)
-//   t=65-72s: battery   -> 0xAD (~20% reduced from nominal 0xD8)
-// Phases run sequentially, not simultaneously — only one condition is
-// ever active at a time, bookended by nominal baseline on each side so
-// the response to each individual change (and recovery back to
-// nominal) is separately observable. See the dynamic signal
-// declarations near coolant_dynamic/t0/t1 below for the actual timed
-// sequencing, and the adc_mux section for how each dynamic signal
-// gets wired to its ADC channel.
-`ifdef TEST_CL_CONDITION_CYCLE
-  `define CL_CONDITION_CYCLE_ACTIVE  // shared marker — see dynamic signal
-                                      // declarations, t0/t1, and adc_mux
-                                      // wiring below, which key off this
-                                      // rather than either specific flag,
-                                      // so TEST_CL_CONDITION_CYCLE and
-                                      // TEST_CL_CONDITION_CYCLE_IDLE share
-                                      // one set of signal declarations
-                                      // (with different timing selected
-                                      // internally by whichever flag is
-                                      // actually active).
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h72      // 3000 RPM target, same as TEST_CL_RAMP_TO_3000
-  `ifndef SIM_TIME
-  `define SIM_TIME  73000000000     // 73s — ~30s ramp/settle + 6x7s phases + 1s buffer
-  `endif
-  `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
-                                     // during the coolant-temp phase, see coolant_dynamic_cycle
-  `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically during
-                                     // the air-temp phase, see airtemp_dynamic_cycle
-  `define _BATTERY      8'hD8       // nominal baseline — overridden dynamically during
-                                     // the battery phase, see battery_dynamic_cycle
-  `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
-                                     // during the altitude phase, see altitude_dynamic_cycle
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_CONDITION_CYCLE_IDLE: same 6-phase condition cycle as
-// TEST_CL_CONDITION_CYCLE, but held at idle instead of ramped to
-// 3000rpm — no AFM_CL_RAMP/AFM_CL_TARGET, matching how cl_warm_idle
-// itself is built (RPMRAMP+CL_MODE, no ramp override — the closed
-// loop just settles at idle on its own). No ~25-30s ramp to wait
-// through, so the phases start much sooner (t=2s, past fuel
-// cut/ASE, vs t=30s for the ramped version):
-//   t=2-9s:   air temp  -> 0x68 (~5C)
-//   t=9-16s:  coolant   -> 0x68 (~5C)
-//   t=16-23s: altitude  -> 0x00 (high altitude)
-//   t=23-30s: cat (T0)  -> 1 (no cat fitted)
-//   t=30-37s: AC (T1)   -> 1 (AC compressor on)
-//   t=37-44s: battery   -> 0xAD (~20% reduced from nominal 0xD8)
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-  `define CL_CONDITION_CYCLE_ACTIVE  // see note on the marker above
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `ifndef SIM_TIME
-  `define SIM_TIME  47000000000     // 47s — 2s settle + 6x7s phases + 3s buffer
-  `endif
-  `define _COOLANT_RAW  8'h20       // nominal (warm) baseline — overridden dynamically
-  `define _AIRTEMP_RAW  8'h50       // nominal baseline — overridden dynamically
-  `define _BATTERY      8'hD8       // nominal baseline — overridden dynamically during
-                                     // the battery phase, see battery_dynamic_cycle
-  `define _ALTITUDE     8'hF8       // nominal (sea-level) baseline — overridden dynamically
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-
-
-`ifdef TEST_CL_RAMP_TO_6000
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'hD8      // 6000 RPM → capped at 0xD8 (was 0xDA;
-                                     // 0xDA let the closed loop converge
-                                     // too high — see var_interrupt_gen_cl.v)
-  `ifndef SIM_TIME
-  `define SIM_TIME  40000000000     // 40s — higher RPM needs more time
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_CL_RAMP_TO_REDLINE
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'hEB      // 6500 RPM → ADC=0xEB (235, max)
-  `ifndef SIM_TIME
-  `define SIM_TIME  40000000000     // 40s
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_CL_AC_HALFWAY
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2 (~10s)
-  `ifndef SIM_TIME
-  `define SIM_TIME  20000000000     // 20s — 10s pre-AC, 10s with AC
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_CL_IDLE_CONTROLLED_BY_ISV: cl_ac_halfway (warm closed-loop idle,
-// AC on at SIM_TIME/2) with CL_ISV_AIR, so the ISV's bypass air reaches
-// the AFM and the firmware's idle-speed control can pull RPM back after
-// the AC load step instead of the engine just settling lower.
-`ifdef TEST_CL_IDLE_CONTROLLED_BY_ISV
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define CL_ISV_AIR
-  `define CL_AC_HALFWAY              // T1 switches on at SIM_TIME/2
-  `ifndef SIM_TIME
-  `define SIM_TIME  45000000000     // 45s — 22.5s settle, 22.5s with AC
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_CL_COLD_START
-  `define RPMRAMP
-  `define CL_MODE                    // no SKIP_LAMBDA_WARMUP — genuine cold start
-  // Genuine cranking ramp (100->840 RPM over ~30s) instead of the CL
-  // generator's default instant-idle start — auto-enabled by
-  // var_interrupt_gen_cl.v itself from TEST_CL_COLD_START (see the
-  // CL_RPM_CRANK_RAMP header comment there for why it's not defined
-  // here directly — this file compiles too late in the file list for
-  // an in-source `define here to reach that file's own `ifdef).
-  `ifndef SIM_TIME
-  `define SIM_TIME  60000000000     // 60s — observe cold enrichment decay
-  `endif
-  `define _COOLANT_RAW  8'hC0       // cold — above 0x8F threshold for cold-start enrich
-  `define _AIRTEMP_RAW  8'h70
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_TIPPY_IN
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define AFM_TIPPY                  // enables step-change AFM override for accel enrichment
-  `undef  RPMEND
-  `define RPMEND    840              // hold at idle — AFM spike drives enrichment, not RPM
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 10
-  `ifndef SIM_TIME
-  `define SIM_TIME  20000000000      // 20s — DFCO decay after the AFM spike
-                                      // needs more than 10s to fully return
-                                      // to idle before steady-state is judged
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// TEST_OVERRUN_CUTOFF: real deceleration fuel cut-off. Driver holds the
-// throttle open long enough to settle near 2100rpm (AFM_CL_TARGET=0x5F,
-// same calibrated target as TEST_CL_RAMP_TO_2100 — comfortably above the
-// real DME's ~1350-1600rpm cutoff-engage threshold), then lifts off
-// completely at t=32s. That closes the idle switch while RPM is still
-// well above the cutoff band, so the firmware should set FuelOffCoast
-// (iram[23h].5) and cut injection; the CL physics model lets RPM coast
-// down under friction alone while that bit is set (see var_interrupt_
-// gen_cl.v), same as a real engine decelerating with no combustion
-// torque. The firmware is expected to clear FuelOffCoast again near the
-// real ~900-1200rpm reintroduction band and let RPM restabilize at idle.
-`ifdef TEST_OVERRUN_CUTOFF
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define CL_MODE
-  `define AFM_CL_RAMP
-  `define AFM_CL_TARGET  8'h5F      // ~2100 RPM — see header note above
-  `ifndef SIM_TIME
-  `define SIM_TIME  50000000000     // 2s idle + 30s ramp/hold open + throttle
-                                     // closes at t=32s + ~18s coast-down/
-                                     // fuel-reintroduction/re-settle at idle
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_WARMUP_ENRICHMENT
-  `define RPMRAMP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  60000000000
-  `endif
-  `define _COOLANT_RAW  8'hC0
-  `define _AIRTEMP_RAW  8'h70
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_AFM_OPEN_CIRCUIT
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define AFM_FAULT
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_COOLANT_FAIL
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_AIRTEMP_FAIL
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  8'h00   // shorted NTC: 0V → ADC 0x00 → firmware linearises to 0xFB=104°C hot air
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_O2_DISCONNECTED
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define O2_FLAT_DISCONNECTED
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  25000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_O2_RICH_STUCK
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define O2_FLAT_RICH
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  25000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_O2_LEAN_STUCK
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define O2_FLAT_LEAN
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  25000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_TPS_FAIL
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define TPS_FIXED 8'h80
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  5000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_RAMP_TO_3000
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    3000
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 50
-  `ifndef SIM_TIME
-  `define SIM_TIME  10000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_RAMP_TO_6000
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    6000
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 25
-  `ifndef SIM_TIME
-  `define SIM_TIME  10000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_RAMP_TO_REDLINE
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    6500
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 25
-  `ifndef SIM_TIME
-  `define SIM_TIME  10000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_RAMP_6K_HOLD
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    6000
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 25
-  `ifndef SIM_TIME
-  `define SIM_TIME  15000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_IGNITION_TIMING
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    6000
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 50
-  `ifndef SIM_TIME
-  `define SIM_TIME  15000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_DWELL_SCALING
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `undef  RPMEND
-  `define RPMEND    6000
-  `undef  RPM_RAMP_PCT
-  `define RPM_RAMP_PCT 80
-  `ifndef SIM_TIME
-  `define SIM_TIME  15000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_ISV_COLD_IDLE
-  `define RPMRAMP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  60000000000
-  `endif
-  `define _COOLANT_RAW  8'h60
-  `define _AIRTEMP_RAW  8'h70
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-`ifdef TEST_ISV_LOAD_DROOP
-  `define RPMRAMP
-  `define SKIP_LAMBDA_WARMUP
-  `define ISV_LOAD_DROOP
-  `undef  RPMEND
-  `define RPMEND    840
-  `ifndef SIM_TIME
-  `define SIM_TIME  12000000000
-  `endif
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-  `define _BATTERY      8'hD8
-  `define _ALTITUDE     8'hF8
-  `ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-  `endif
-`endif
-
-// ============================================================
-//  ADC channel defaults
-// ============================================================
-`ifndef _COOLANT_RAW
-  `define _COOLANT_RAW  `WARM_COOLANT_RAW
-`endif
-`ifndef _AIRTEMP_RAW
-  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
-`endif
-`ifndef _BATTERY
-  `define _BATTERY      8'hD8
-`endif
-`ifndef _ALTITUDE
-  `define _ALTITUDE     8'hF8
-`endif
-`ifndef _FUEL_QUAL
-  `define _FUEL_QUAL    8'h00
-`endif
+// The test selection and per-test options: see test_opts.vh
+`include "test_opts.vh"
 
 // ============================================================
 //  Clock constants
@@ -1118,60 +113,50 @@ assign      tdc = tdc_marker;
 // Live debugger / log replay: the live panel's AC switch
 wire t1;
 assign t1 = dme_klr_dashboard_tb.live_ac[0];
-`elsif CL_AC_HALFWAY
-reg t1;
-initial begin
-    t1 = 1'b0;
-    // 64'd2 keeps the division 64-bit: with a bare 2, Verilator 5.050
-    // sizes SIM_TIME (e.g. 20000000000) to its 35 bits as a signed value,
-    // so SIM_TIME / 2 came out negative and t1 never switched on
-    #(`SIM_TIME / 64'd2);   // switch AC on halfway through simulation
-    t1 = 1'b1;
-end
-`elsif CL_CONDITION_CYCLE_ACTIVE
-// AC phase — timing depends on which variant is active: the idle
-// version starts phases much sooner since there's no ramp to wait
-// through. See the compile-flag blocks above for the full schedule.
-reg t1;
-initial begin
-    t1 = 1'b0;                  // nominal (AC off)
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(30_000_000_000);          // t=30s
 `else
-    #(59_000_000_000);          // t=59s
-`endif
-    t1 = 1'b1;                  // AC on
-    #(5_000_000_000);           // 5s later
-    t1 = 1'b0;                  // back to nominal
+// CL_AC_HALFWAY: AC on at SIM_TIME/2. CL_CONDITION_CYCLE_ACTIVE: an AC
+// phase whose timing depends on the variant (the idle version starts
+// phases much sooner since there's no ramp to wait through, see the
+// schedule in test_opts.vh). AC_COMP_ON: always on. Otherwise off.
+reg t1_sched;
+initial begin
+    t1_sched = 1'b0;            // nominal (AC off)
+    if (`OPT_CL_AC_HALFWAY) begin
+        // 64'd2 keeps the division 64-bit: with a bare 2, Verilator 5.050
+        // sizes SIM_TIME (e.g. 20000000000) to its 35 bits as a signed value,
+        // so SIM_TIME / 2 came out negative and t1 never switched on
+        #(`VAL_SIM_TIME / 64'd2);   // switch AC on halfway through simulation
+        t1_sched = 1'b1;
+    end else if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd30_000_000_000);  // t=30s
+        else
+            #(64'd59_000_000_000);  // t=59s
+        t1_sched = 1'b1;            // AC on
+        #(64'd5_000_000_000);       // 5s later
+        t1_sched = 1'b0;            // back to nominal
+    end
 end
-`elsif AC_COMP_ON
 wire t1;
-assign t1 = 1'b1;   // T1 = AC compressor active
-`else
-wire t1;
-assign t1 = 1'b0;   // T1 = AC compressor off (default)
+assign t1 = (`OPT_AC_COMP_ON && !`OPT_CL_AC_HALFWAY && !`OPT_CL_CONDITION_CYCLE_ACTIVE)
+            ? 1'b1 : t1_sched;  // T1 = AC compressor active
 `endif
 
-`ifdef CL_CONDITION_CYCLE_ACTIVE
-// Cat phase — timing depends on which variant is active: the idle
-// version starts phases much sooner since there's no ramp to wait
-// through. See the compile-flag blocks above for the full schedule.
+// CL_CONDITION_CYCLE_ACTIVE: a cat phase (timing as for the AC phase
+// above). Otherwise T0 = has catalytic converter (0 = fitted).
 reg t0;
 initial begin
     t0 = 1'b0;                  // nominal (has cat)
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(23_000_000_000);          // t=23s
-`else
-    #(52_000_000_000);          // t=52s
-`endif
-    t0 = 1'b1;                  // no cat
-    #(5_000_000_000);           // 5s later
-    t0 = 1'b0;                  // back to nominal
+    if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd23_000_000_000);  // t=23s
+        else
+            #(64'd52_000_000_000);  // t=52s
+        t0 = 1'b1;                  // no cat
+        #(64'd5_000_000_000);       // 5s later
+        t0 = 1'b0;                  // back to nominal
+    end
 end
-`else
-wire        t0;
-assign t0 = 1'b0;   // T0 = has catalytic converter (0 = fitted)
-`endif
 wire        stb_o, ack_i, ack_uart;
 wire        cyc_o, iack_i, istb_o, icyc_o;
 wire [7:0]  data_in, data_out, data_out_uart;
@@ -1255,47 +240,19 @@ i8051_system  i8051_top (
 // COLD_START/CL_COLD_START previously started at 0xC0 (~52°C) — far too
 // warm for a genuine cold start; changed to match ISV_COLD_IDLE's ~5°C.
 // Tick rate (ramp speed) unchanged — only the starting value moved.
-`ifdef TEST_ISV_COLD_IDLE
 reg [7:0]  coolant_dynamic;
 reg [31:0] coolant_tick;
+wire       coolant_warmup_on = `OPT_TEST_ISV_COLD_IDLE || `OPT_TEST_COLD_START || `OPT_TEST_CL_COLD_START;
+wire [31:0] coolant_tick_max = `OPT_TEST_ISV_COLD_IDLE ? 32'd4_166_667 : 32'd3_750_000;
 initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
-always @(posedge clk) begin : coolant_warmup
+always @(posedge clk) if (coolant_warmup_on) begin : coolant_warmup
     if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
     end else if (coolant_dynamic>8'h20) begin
-        if (coolant_tick>=32'd4_166_667) begin
+        if (coolant_tick>=coolant_tick_max) begin
             coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
         end else coolant_tick<=coolant_tick+32'd1;
     end
 end
-`else
-`ifdef TEST_COLD_START
-reg [7:0]  coolant_dynamic;
-reg [31:0] coolant_tick;
-initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
-always @(posedge clk) begin : coolant_warmup
-    if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
-    end else if (coolant_dynamic>8'h20) begin
-        if (coolant_tick>=32'd3_750_000) begin
-            coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
-        end else coolant_tick<=coolant_tick+32'd1;
-    end
-end
-`else
-`ifdef TEST_CL_COLD_START
-reg [7:0]  coolant_dynamic;
-reg [31:0] coolant_tick;
-initial begin coolant_dynamic=8'h68; coolant_tick=32'd0; end
-always @(posedge clk) begin : coolant_warmup
-    if (!rst) begin coolant_dynamic<=8'h68; coolant_tick<=32'd0;
-    end else if (coolant_dynamic>8'h20) begin
-        if (coolant_tick>=32'd3_750_000) begin
-            coolant_dynamic<=coolant_dynamic-8'h01; coolant_tick<=32'd0;
-        end else coolant_tick<=coolant_tick+32'd1;
-    end
-end
-`endif
-`endif
-`endif
 
 // ─── Condition-cycle dynamic signals (CL_CONDITION_CYCLE_ACTIVE) ─
 // Air temp, coolant temp, altitude, and battery voltage each get
@@ -1311,47 +268,50 @@ end
 // TEST_IDLE_HIGH_ALT; 0xAD battery is ~20% below the 0xD8 nominal
 // used everywhere else (see TEST_IDLE_BATTERY_LOW's own lower
 // `_BATTERY value for comparison — that one isn't percentage-based).
-`ifdef CL_CONDITION_CYCLE_ACTIVE
+// (only CL_CONDITION_CYCLE_ACTIVE runs the phases)
 // Air temp phase.
 reg [7:0] airtemp_dynamic_cycle;
 initial begin
     airtemp_dynamic_cycle = 8'h50;   // nominal
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(2_000_000_000);                // t=2s
-`else
-    #(31_000_000_000);               // t=31s
-`endif
-    airtemp_dynamic_cycle = 8'h68;   // cold (~5C)
-    #(5_000_000_000);                // 5s later
-    airtemp_dynamic_cycle = 8'h50;   // back to nominal
+    if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd2_000_000_000);  // t=2s
+        else
+            #(64'd31_000_000_000);  // t=31s
+        airtemp_dynamic_cycle = 8'h68;   // cold (~5C)
+        #(64'd5_000_000_000);                // 5s later
+        airtemp_dynamic_cycle = 8'h50;   // back to nominal
+    end
 end
 
 // Coolant temp phase.
 reg [7:0] coolant_dynamic_cycle;
 initial begin
     coolant_dynamic_cycle = 8'h20;   // nominal (warm)
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(9_000_000_000);                // t=9s
-`else
-    #(38_000_000_000);               // t=38s
-`endif
-    coolant_dynamic_cycle = 8'h68;   // cold (~5C)
-    #(5_000_000_000);                // 5s later
-    coolant_dynamic_cycle = 8'h20;   // back to nominal
+    if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd9_000_000_000);  // t=9s
+        else
+            #(64'd38_000_000_000);  // t=38s
+        coolant_dynamic_cycle = 8'h68;   // cold (~5C)
+        #(64'd5_000_000_000);                // 5s later
+        coolant_dynamic_cycle = 8'h20;   // back to nominal
+    end
 end
 
 // Altitude phase.
 reg [7:0] altitude_dynamic_cycle;
 initial begin
     altitude_dynamic_cycle = 8'hF8;  // nominal (sea level)
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(16_000_000_000);               // t=16s
-`else
-    #(45_000_000_000);               // t=45s
-`endif
-    altitude_dynamic_cycle = 8'h00;  // high altitude
-    #(5_000_000_000);                // 5s later
-    altitude_dynamic_cycle = 8'hF8;  // back to nominal
+    if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd16_000_000_000);  // t=16s
+        else
+            #(64'd45_000_000_000);  // t=45s
+        altitude_dynamic_cycle = 8'h00;  // high altitude
+        #(64'd5_000_000_000);                // 5s later
+        altitude_dynamic_cycle = 8'hF8;  // back to nominal
+    end
 end
 
 // Battery voltage phase. 0xAD is ~20% below nominal 0xD8
@@ -1362,16 +322,16 @@ end
 reg [7:0] battery_dynamic_cycle;
 initial begin
     battery_dynamic_cycle = 8'hD8;   // nominal
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(37_000_000_000);               // t=37s
-`else
-    #(66_000_000_000);               // t=66s
-`endif
-    battery_dynamic_cycle = 8'hAD;   // reduced ~20%
-    #(5_000_000_000);                // 5s later
-    battery_dynamic_cycle = 8'hD8;   // back to nominal
+    if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+        if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+            #(64'd37_000_000_000);  // t=37s
+        else
+            #(64'd66_000_000_000);  // t=66s
+        battery_dynamic_cycle = 8'hAD;   // reduced ~20%
+        #(64'd5_000_000_000);                // 5s later
+        battery_dynamic_cycle = 8'hD8;   // back to nominal
+    end
 end
-`endif
 
 // ─── Tippy-in AFM step override ─────────────────────────────// iram[53h] is updated by the ADC scan every crank cycle — so a
 // free-running step always finds delta=0 by the time airflow_calc runs.
@@ -1380,7 +340,6 @@ end
 // BEFORE airflow_calc reads it, creating delta=0x50 within the same
 // crank event. Spike held for 2 seconds (~28 crank cycles at 840 RPM)
 // to simulate a realistic sustained throttle opening.
-`ifdef AFM_TIPPY
 reg [7:0]  afm_tippy;
 reg [7:0]  tippy_crank_count;
 reg        tippy_fired;
@@ -1396,7 +355,7 @@ end
 // between simulators. Counting it put the tippy one crank (70 ms at
 // 840 RPM) earlier in the Verilator run of cl_tippy_in than in the
 // Icarus one (step at 1840 vs 1910 ms with identical RPM up to then).
-always @(posedge reference_sensor) if ($time != 0) begin
+always @(posedge reference_sensor) if (`OPT_AFM_TIPPY && $time != 0) begin
     if (!tippy_fired) begin
         tippy_crank_count <= tippy_crank_count + 8'd1;
         // Fire at crank #25 — well past fuel cut end (~15 cranks at 840 RPM)
@@ -1411,7 +370,6 @@ always @(posedge reference_sensor) if ($time != 0) begin
             afm_tippy <= 8'h28;
     end
 end
-`endif
 
 // ─── CL ramp AFM/TPS override ─────────────────────────────────
 // Driver-commanded throttle event at t=2000ms (past fuel cut/ASE):
@@ -1455,7 +413,7 @@ end
 // Scope: AFM_CL_RAMP only — every other mode (default/idle,
 // AFM_TIPPY, AFM_FAULT) is unaffected; afm_wiper there still comes
 // straight from the crpm-based generator curve, unchanged.
-`ifdef AFM_CL_RAMP
+// (Always built; its clocked parts run only under AFM_CL_RAMP.)
     // Per-count ramp step rate — fixed (matches the 6000-family's original
     // 250ms/176-count cadence) rather than scaled per-target, so total
     // ramp time varies with each target's range instead of being forced
@@ -1470,10 +428,12 @@ end
     // default used by every other CL test) — defaults to the fixed rate
     // below when not overridden.
     `ifndef AFM_CL_STEP_NS
-    localparam integer      STEP_NS        = 1_420_454;
-    `else
-    localparam integer      STEP_NS        = `AFM_CL_STEP_NS;          // overridden — see -DAFM_CL_STEP_NS callers
+      `define AFM_CL_STEP_NS 1_420_454
     `endif
+    `ifndef AFM_CL_TARGET               // set by every AFM_CL_RAMP test;
+      `define AFM_CL_TARGET 8'h28       // idle for the others (unused there)
+    `endif
+    wire       [63:0]       STEP_NS        = `VAL_AFM_CL_STEP_NS;
     localparam integer      AFM_LAG_NS     = 250_000_000;            // additional AFM reaction lag behind TPS's own trigger
 
     // TPS commanded target -- driver presses the gas at t=2000ms
@@ -1507,13 +467,13 @@ end
     initial begin
         tps_commanded = 8'h28;         // idle until engine settled
         #2_000_000_000;                // 2000ms — past fuel cut and ASE
-        tps_commanded = `AFM_CL_TARGET;   // driver presses the gas
-`ifdef TEST_OVERRUN_CUTOFF
-        #30_000_000_000;               // hold open to t=32s — long enough to
-                                        // fully settle near the target (see
-                                        // TEST_CL_RAMP_TO_2100's own 30s figure)
-        tps_commanded = 8'h28;          // driver lifts off — coast begins
-`endif
+        tps_commanded = `VAL_AFM_CL_TARGET;   // driver presses the gas
+        if (`OPT_TEST_OVERRUN_CUTOFF) begin
+            #30_000_000_000;               // hold open to t=32s — long enough to
+                                            // fully settle near the target (see
+                                            // TEST_CL_RAMP_TO_2100's own 30s figure)
+            tps_commanded = 8'h28;          // driver lifts off — coast begins
+        end
     end
 
     // AFM commanded target -- triggers on TPS's OWN event, but an
@@ -1531,11 +491,11 @@ end
         afm_commanded = 8'h28;
         #2_000_000_000;
         #AFM_LAG_NS;
-        afm_commanded = `AFM_CL_TARGET;
-`ifdef TEST_OVERRUN_CUTOFF
-        #30_000_000_000;
-        afm_commanded = 8'h28;
-`endif
+        afm_commanded = `VAL_AFM_CL_TARGET;
+        if (`OPT_TEST_OVERRUN_CUTOFF) begin
+            #30_000_000_000;
+            afm_commanded = 8'h28;
+        end
     end
 
 `endif
@@ -1543,20 +503,20 @@ end
     // TPS (afm_wiper): slews toward tps_commanded, ~250ms full-range.
     // This IS the afm_wiper used everywhere else in the file/hierarchy
     // (including the hierarchical u_dme.afm_wiper reference that feeds
-    // the KLR's TPS input) — see the `ifndef AFM_CL_RAMP fallback wire
+    // the KLR's TPS input) — see the afm_wiper wire
     // declaration near the ADC mux section below.
-    reg        [7:0]  afm_wiper;
+    reg        [7:0]  afm_wiper_ramp;
     reg        [63:0] tps_last_step_time;
     initial begin
-        afm_wiper          = 8'h28;
+        afm_wiper_ramp     = 8'h28;
         tps_last_step_time = 0;
     end
-    always @(posedge clk) begin
-        if (afm_wiper < tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
-            afm_wiper          <= afm_wiper + 8'd1;
+    always @(posedge clk) if (`OPT_AFM_CL_RAMP) begin
+        if (afm_wiper_ramp < tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
+            afm_wiper_ramp     <= afm_wiper_ramp + 8'd1;
             tps_last_step_time <= $time;
-        end else if (afm_wiper > tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
-            afm_wiper          <= afm_wiper - 8'd1;
+        end else if (afm_wiper_ramp > tps_commanded && ($time - tps_last_step_time) >= STEP_NS) begin
+            afm_wiper_ramp     <= afm_wiper_ramp - 8'd1;
             tps_last_step_time <= $time;
         end
     end
@@ -1572,7 +532,7 @@ end
         afm_cl             = 8'h28;
         afm_last_step_time = 0;
     end
-    always @(posedge clk) begin
+    always @(posedge clk) if (`OPT_AFM_CL_RAMP) begin
         if (afm_cl < afm_commanded && ($time - afm_last_step_time) >= STEP_NS) begin
             afm_cl             <= afm_cl + 8'd1;
             afm_last_step_time <= $time;
@@ -1581,7 +541,6 @@ end
             afm_last_step_time <= $time;
         end
     end
-`endif
 
 // ─── ADC mux ────────────────────────────────────────────────
 // AFM idle threshold: below = TPS closed (0x40), above = TPS open (0xDB)
@@ -1589,12 +548,11 @@ end
 // At spike afm_tippy=0x78 >> threshold so TPS correctly reads open.
 `define AFM_IDLE_THR 8'h30
 
-// Under AFM_CL_RAMP, afm_wiper is declared above (as a reg, driven by
-// the TPS ramp). Every other mode still gets the plain wire, fed by
-// the crpm-based generator curve via the port connection below.
-`ifndef AFM_CL_RAMP
-wire [7:0] afm_wiper;
-`endif
+// Under AFM_CL_RAMP, afm_wiper is the TPS ramp above (afm_wiper_ramp).
+// Every other mode gets the crpm-based generator curve, via the port
+// connection below (afm_wiper_gen).
+wire [7:0] afm_wiper_gen;
+wire [7:0] afm_wiper = `OPT_AFM_CL_RAMP ? afm_wiper_ramp : afm_wiper_gen;
 // Idle switch derived from airflow: grounded (0) at idle, open (1) just
 // off idle.  This is the throttle idle-stop contact — internal because
 // afm_wiper/afm_tippy/afm_cl are all generated in this TB.
@@ -1612,28 +570,16 @@ wire [7:0] afm_wiper;
 // AFM_CL_RAMP) unless the web UI pins it (16'hFFFF = follow the model).
 wire [7:0] afm_effective = (dme_klr_dashboard_tb.live_afm == 16'hFFFF)
                            ? afm_cl : dme_klr_dashboard_tb.live_afm[7:0];
-`elsif AFM_FAULT
-wire [7:0] afm_effective = 8'hFF;
-`elsif AFM_CL_RAMP
-wire [7:0] afm_effective = afm_cl;
-`elsif AFM_TIPPY
-wire [7:0] afm_effective = afm_tippy;
 `else
-wire [7:0] afm_effective = afm_wiper;
-  `define AFM_FROM_ENGINE_MODEL      // the CL model's AFM, ISV bypass air included
+wire [7:0] afm_effective = `OPT_AFM_FAULT    ? 8'hFF :
+                           `OPT_AFM_CL_RAMP  ? afm_cl :
+                           `OPT_AFM_TIPPY    ? afm_tippy :
+                           afm_wiper;   // the engine model's (AFM_FROM_ENGINE_MODEL, see test_opts.vh)
 `endif
 
-// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v),
-// except cl_cold_start's scripted crank ramp (see there)
+// Every closed-loop build runs the ISV's bypass air (var_interrupt_gen_cl.v,
+// CL_ISV_AIR, see test_opts.vh), except cl_cold_start's scripted crank ramp
 `ifdef CL_MODE
-  `ifndef TEST_CL_COLD_START
-    `ifndef CL_ISV_AIR
-      `define CL_ISV_AIR
-    `endif
-  `endif
-`endif
-
-`ifdef CL_ISV_AIR
 // The ISV's bypass air (var_interrupt_gen_cl.v) shows on the AFM but
 // doesn't move the throttle, so the throttle switch here and the KLR's
 // throttle angle follow the AFM without it. Otherwise opening the ISV
@@ -1641,13 +587,10 @@ wire [7:0] afm_effective = afm_wiper;
 // turns the firmware's idle control off.
 // (Only where the AFM is the engine model's: the ramp/tippy/fault/live
 // AFMs are commanded and don't carry the ISV air.)
-`ifdef AFM_FROM_ENGINE_MODEL
 integer throttle_afm_i;
 always @(*) throttle_afm_i = $signed({1'b0, afm_effective}) - var_interrupt_generator_1.isv_afm_add;
-wire [7:0] throttle_afm = throttle_afm_i < 0 ? 8'd0 : throttle_afm_i > 255 ? 8'd255 : throttle_afm_i[7:0];
-`else
-wire [7:0] throttle_afm = afm_effective;
-`endif
+wire [7:0] throttle_afm = !(`OPT_CL_ISV_AIR && `OPT_AFM_FROM_ENGINE_MODEL) ? afm_effective :
+                          throttle_afm_i < 0 ? 8'd0 : throttle_afm_i > 255 ? 8'd255 : throttle_afm_i[7:0];
 `else
 wire [7:0] throttle_afm = afm_effective;
 `endif
@@ -1663,23 +606,14 @@ wire [7:0] throttle_afm = afm_effective;
 // throttle: there RPM is the driver's command.
 // (CL_THROTTLE_CLOSED is defined in var_interrupt_gen_cl.v, compiled
 // first, which also holds the AFM at the closed-throttle idle base.)
-`ifdef CL_THROTTLE_CLOSED
-wire idle_sw = 1'b0;
-`else
-wire idle_sw = (throttle_afm >= `AFM_IDLE_THR);
-`endif
+wire idle_sw = `OPT_CL_THROTTLE_CLOSED ? 1'b0 : (throttle_afm >= `AFM_IDLE_THR);
 
 // The KLR's throttle angle (dme_klr_dashboard_tb.throttle_pos, normal
 // and live builds alike): the throttle itself (afm_wiper), closed in the
 // CL_THROTTLE_CLOSED builds above, or, where the AFM is the (scripted-RPM)
 // engine model's, that AFM without the ISV's bypass air
-`ifdef CL_THROTTLE_CLOSED
-wire [7:0] klr_throttle = 8'h28;
-`elsif AFM_FROM_ENGINE_MODEL
-wire [7:0] klr_throttle = throttle_afm;
-`else
-wire [7:0] klr_throttle = afm_wiper;
-`endif
+wire [7:0] klr_throttle = `OPT_CL_THROTTLE_CLOSED   ? 8'h28 :
+                          `OPT_AFM_FROM_ENGINE_MODEL ? throttle_afm : afm_wiper;
 
 // ch6 (throttle switch) at closed throttle. The car reads 2.94-3.07 V
 // here (0x96-0x9D); 0x99 is 3.0 V. The firmware classifies ch6 with
@@ -1746,10 +680,8 @@ end
 // from ch4's source (adc_ch4 itself is assigned in the same block as ch0)
 `ifdef LIVE
 wire [7:0] alt_switch = dme_klr_dashboard_tb.live_altitude;
-`elsif CL_CONDITION_CYCLE_ACTIVE
-wire [7:0] alt_switch = altitude_dynamic_cycle;
 `else
-wire [7:0] alt_switch = `_ALTITUDE;
+wire [7:0] alt_switch = `OPT_CL_CONDITION_CYCLE_ACTIVE ? altitude_dynamic_cycle : `VAL__ALTITUDE;
 `endif
 wire alt_high = (alt_switch < 8'h80);
 // Air flow after a fuel cut (combined DME+KLR build): the AFM models
@@ -1800,68 +732,30 @@ always @(*) begin
 end
 `else
 always @(*) begin
-`ifdef AFM_FAULT
-        adc_ch0 = 8'hFF;
-`elsif AFM_SHORT_TO_GROUND
-        adc_ch0 = 8'h00;  // AFM wiper shorted to ground (afm_short_to_ground)
-`elsif AFM_CL_RAMP
-        adc_ch0 = afm_at_alt(afm_cl, boost_afm_shift);
-`elsif AFM_TIPPY
-        adc_ch0 = afm_at_alt(afm_tippy, boost_afm_shift);
-`else
-        adc_ch0 = afm_at_alt(afm_wiper, boost_afm_shift);
-`endif
-`ifdef DME_BATT_DISCONNECTED
-        adc_ch1 = 8'h00;  // battery sense open — reads no voltage (battery_disconnected)
-`elsif CL_CONDITION_CYCLE_ACTIVE
-        adc_ch1 = battery_dynamic_cycle;
-`else
-        adc_ch1 = `_BATTERY;
-`endif
-`ifdef TEST_AIRTEMP_FAIL
-        adc_ch2 = 8'h00;  // shorted sensor: 0V → ADC 0x00 → matches normal TB
-`elsif AIRTEMP_OPEN_CIRCUIT
-        adc_ch2 = 8'hFF;  // open NTC: pull-up takes it to the rail (airtemp_open_circuit)
-`elsif CL_CONDITION_CYCLE_ACTIVE
-        adc_ch2 = airtemp_dynamic_cycle;
-`else
-        adc_ch2 = `_AIRTEMP_RAW;
-`endif
-`ifdef TEST_ISV_COLD_IDLE
-        adc_ch3 = coolant_dynamic;
-`elsif TEST_COLD_START
-        adc_ch3 = coolant_dynamic;
-`elsif TEST_CL_COLD_START
-        adc_ch3 = coolant_dynamic;
-`elsif CL_CONDITION_CYCLE_ACTIVE
-        adc_ch3 = coolant_dynamic_cycle;
-`elsif TEST_COOLANT_FAIL
-        adc_ch3 = 8'h00;  // shorted sensor: matches normal TB
-`elsif COOLANT_OPEN_CIRCUIT
-        adc_ch3 = 8'hFF;  // open NTC: pull-up takes it to the rail (coolant_open_circuit)
-`else
-        adc_ch3 = `_COOLANT_RAW;
-`endif
-`ifdef CL_CONDITION_CYCLE_ACTIVE
-        adc_ch4 = altitude_dynamic_cycle;
-`else
-        adc_ch4 = `_ALTITUDE;
-`endif
+        adc_ch0 = `OPT_AFM_FAULT           ? 8'hFF :
+                  `OPT_AFM_SHORT_TO_GROUND ? 8'h00 :  // AFM wiper shorted to ground (afm_short_to_ground)
+                  `OPT_AFM_CL_RAMP         ? afm_at_alt(afm_cl, boost_afm_shift) :
+                  `OPT_AFM_TIPPY           ? afm_at_alt(afm_tippy, boost_afm_shift) :
+                                             afm_at_alt(afm_wiper, boost_afm_shift);
+        adc_ch1 = `OPT_DME_BATT_DISCONNECTED     ? 8'h00 :  // battery sense open — reads no voltage (battery_disconnected)
+                  `OPT_CL_CONDITION_CYCLE_ACTIVE ? battery_dynamic_cycle :
+                                                   `VAL__BATTERY;
+        adc_ch2 = `OPT_TEST_AIRTEMP_FAIL         ? 8'h00 :  // shorted sensor: 0V → ADC 0x00 → matches normal TB
+                  `OPT_AIRTEMP_OPEN_CIRCUIT      ? 8'hFF :  // open NTC: pull-up takes it to the rail (airtemp_open_circuit)
+                  `OPT_CL_CONDITION_CYCLE_ACTIVE ? airtemp_dynamic_cycle :
+                                                   `VAL__AIRTEMP_RAW;
+        adc_ch3 = coolant_warmup_on              ? coolant_dynamic :  // TEST_ISV_COLD_IDLE / TEST_COLD_START / TEST_CL_COLD_START
+                  `OPT_CL_CONDITION_CYCLE_ACTIVE ? coolant_dynamic_cycle :
+                  `OPT_TEST_COOLANT_FAIL         ? 8'h00 :  // shorted sensor: matches normal TB
+                  `OPT_COOLANT_OPEN_CIRCUIT      ? 8'hFF :  // open NTC: pull-up takes it to the rail (coolant_open_circuit)
+                                                   `VAL__COOLANT_RAW;
+        adc_ch4 = `OPT_CL_CONDITION_CYCLE_ACTIVE ? altitude_dynamic_cycle : `VAL__ALTITUDE;
         adc_ch5 = 8'hFF;
-`ifdef TPS_FIXED
-        adc_ch6 = `TPS_FIXED;
-`elsif AFM_CL_RAMP
-        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
-                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
-`elsif AFM_TIPPY
-        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
-                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
-`else
-        // full_load from KLR: 1=WOT (0xDB), 0=closed throttle (0x40)
-        adc_ch6 = idle_sw ? ch6_open  // open: WOT=4.0V / off-idle=4.75V
-                                  : `TPS_IDLE_ADC;                // closed throttle (see TPS_IDLE_ADC)
-`endif
-        adc_ch7 = `_FUEL_QUAL;
+        // TPS_FIXED pins ch6; otherwise from the idle switch / KLR full_load:
+        // open: WOT=4.0V / off-idle=4.75V, closed throttle (see TPS_IDLE_ADC)
+        adc_ch6 = `OPT_TPS_FIXED ? `VAL_TPS_FIXED
+                               : idle_sw ? ch6_open : `TPS_IDLE_ADC;
+        adc_ch7 = `VAL__FUEL_QUAL;
 end
 `endif // LIVE
 always @(*)
@@ -1900,22 +794,14 @@ adc_delay_8 adc_delay_8_1 (
 //   Disconnected (open):  both pins low (o2_pins_low) — the analog
 //                          recovery-circuit sim: an open input floats both
 //                          comparator outputs low.
-wire o2_pins_low;
-`ifdef O2_FLAT_DISCONNECTED
-    assign o2_pins_low = 1'b1;
-    assign o2_6 = 1'b0;
-    assign o2_7 = 1'b0;
-`else
-    assign o2_pins_low = 1'b0;
-`endif
-`ifdef O2_FLAT_DISCONNECTED
-`elsif O2_FLAT_LEAN
-    assign o2_6 = 1'b0;
-    assign o2_7 = 1'b0;
-`elsif O2_FLAT_RICH
-    assign o2_6 = 1'b1;
-    assign o2_7 = 1'b1;
-`elsif O2_SQUARE_WAVE
+// O2_FLAT_DISCONNECTED / O2_FLAT_LEAN: both low; O2_FLAT_RICH: both
+// high; otherwise the sensor model below (or the live panel's pin).
+wire o2_pins_low = `OPT_O2_FLAT_DISCONNECTED;
+wire o2_flat     = `OPT_O2_FLAT_DISCONNECTED || `OPT_O2_FLAT_LEAN || `OPT_O2_FLAT_RICH;
+wire o2_6_model, o2_7_model;
+assign o2_6 = o2_flat ? `OPT_O2_FLAT_RICH : o2_6_model;
+assign o2_7 = o2_flat ? `OPT_O2_FLAT_RICH : o2_7_model;
+`ifdef O2_SQUARE_WAVE
     // The old free-running square wave (o2_gen.v), on request only
     wire _o2_6, _o2_7;
     o2_generator o2_generator_1 (
@@ -1966,26 +852,21 @@ wire o2_pins_low;
         // from an AFM reading flow x sqrt(rho) while the real air is x rho
         // (see "Altitude: air density"), a further x sqrt(rho)
         if (alt_high) load = load * alt_sqrt_x1000 / 1000;
-        o2_rich_now  = (load != 0) && (fuel * 1000 > load * `O2_STOICH_X1000);
+        o2_rich_now  = (load != 0) && (fuel * 1000 > load * `VAL_O2_STOICH_X1000);
         o2_rich_line = {o2_rich_line[254:0], o2_rich_now};
-        o2_mv = o2_mv + ((o2_rich_line[`O2_DELAY_MS - 1] ? 850 : 100) - o2_mv) / `O2_TAU_MS;
+        o2_mv = o2_mv + ((o2_rich_line[`VAL_O2_DELAY_MS - 1] ? 850 : 100) - o2_mv) / `VAL_O2_TAU_MS;
     end
     assign _o2_7 = (o2_mv > 550);
     assign _o2_6 = (o2_mv > 450);
 `endif
-`ifdef O2_FLAT_DISCONNECTED
-`elsif O2_FLAT_LEAN
-`elsif O2_FLAT_RICH
-`else
 `ifdef LIVE
     // Live debugger / log replay: live_o2 = {o2_7, o2_6} pins the
     // comparator outputs (0 lean, 1 crossover, 3 rich); 16'hFFFF = generator.
-    assign o2_6 = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_6 : dme_klr_dashboard_tb.live_o2[0];
-    assign o2_7 = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_7 : dme_klr_dashboard_tb.live_o2[1];
+    assign o2_6_model = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_6 : dme_klr_dashboard_tb.live_o2[0];
+    assign o2_7_model = (dme_klr_dashboard_tb.live_o2 == 16'hFFFF) ? _o2_7 : dme_klr_dashboard_tb.live_o2[1];
 `else
-    assign o2_6 = _o2_6;
-    assign o2_7 = _o2_7;
-`endif
+    assign o2_6_model = _o2_6;
+    assign o2_7_model = _o2_7;
 `endif
 
 // ─── P1 / P3 input assignments ──────────────────────────────
@@ -2016,30 +897,16 @@ end
 // afm_wiper OUTPUT port connects to below — that output is a
 // read-only derived value, not a feedback input to the module's own
 // RPM computation, so discarding it under AFM_CL_RAMP is safe.
-`ifdef AFM_CL_RAMP
-// TPS/AFM come from the driver-commanded ramp above under
-// AFM_CL_RAMP (afm_wiper is a reg there, not a wire) — route this
-// generator's raw crpm-based curve output to an unused wire instead
-// of the real afm_wiper.
-wire [7:0] afm_wiper_curve_unused;
-var_interrupt_generator_cl var_interrupt_generator_1 (
-    .clk       ( clk                    ),
-    .rst       ( rst                    ),
-    .int_0     ( reference_sensor_gen   ),
-    .int_1     ( speed_sensor_gen       ),
-    .tdc       ( tdc_marker             ),
-    .afm_wiper ( afm_wiper_curve_unused )
-);
-`else
+// (Under AFM_CL_RAMP the TPS/AFM come from the driver-commanded ramp
+// above instead, and afm_wiper_gen goes unused: see afm_wiper.)
 var_interrupt_generator_cl var_interrupt_generator_1 (
     .clk       ( clk                  ),
     .rst       ( rst                  ),
     .int_0     ( reference_sensor_gen ),
     .int_1     ( speed_sensor_gen     ),
     .tdc       ( tdc_marker           ),
-    .afm_wiper ( afm_wiper            )
+    .afm_wiper ( afm_wiper_gen        )
 );
-`endif
 `else
 // Open-loop RPM ramp — STEP_CLOCKS supplied via -DSTEP_CLOCKS from run script
 var_interrupt_generator var_interrupt_generator_1 (
@@ -2048,7 +915,7 @@ var_interrupt_generator var_interrupt_generator_1 (
     .int_0     ( reference_sensor_gen ),
     .int_1     ( speed_sensor_gen     ),
     .tdc       ( tdc_marker           ),
-    .afm_wiper ( afm_wiper            )
+    .afm_wiper ( afm_wiper_gen        )
 );
 `endif
 `else
@@ -2081,55 +948,36 @@ interrupt_generator interrupt_generator_1 (
 // wire or connector between the sensor and the ECU. Held high (no
 // pulse) rather than low, matching the open-collector idle-high
 // convention documented above (`p3_in[2] — 1 = no ref pulse`).
-`ifdef TEST_REF_SENSOR_LOSS
-  `ifndef REF_LOSS_T_MS
-  `define REF_LOSS_T_MS 3000
-  `endif
-reg reference_sensor_lost = 1'b0;
-always @(posedge clk) if (`DME_MS >= `REF_LOSS_T_MS) reference_sensor_lost <= 1'b1;
-assign reference_sensor = reference_sensor_lost ? 1'b1 : reference_sensor_gen;
 // REF_SENSOR_STUCK_LOW: the opposite fault — the INT0 line shorted to
 // ground from REF_LOSS_T_MS onward (ref_sensor_stuck_low).
 // REF_SENSOR_ABSENT: no reference signal at all, from power-on — the
 // open wire of TEST_REF_SENSOR_LOSS, but present through cranking, so
 // it shows whether the engine can sync and start on the speed sensor
 // alone (ref_sensor_missing_at_start).
-`elsif REF_SENSOR_ABSENT
-assign reference_sensor = 1'b1;
-`elsif REF_SENSOR_STUCK_LOW
-  `ifndef REF_LOSS_T_MS
-  `define REF_LOSS_T_MS 3500
-  `endif
+// REF_LOSS_T_MS defaults to 3000 ms for TEST_REF_SENSOR_LOSS, 3500 ms
+// for REF_SENSOR_STUCK_LOW (test_opts.vh).
 reg reference_sensor_lost = 1'b0;
-always @(posedge clk) if (`DME_MS >= `REF_LOSS_T_MS) reference_sensor_lost <= 1'b1;
-assign reference_sensor = reference_sensor_lost ? 1'b0 : reference_sensor_gen;
-`else
-assign reference_sensor = reference_sensor_gen;
-`endif
+always @(posedge clk)
+    if ((`OPT_TEST_REF_SENSOR_LOSS || `OPT_REF_SENSOR_STUCK_LOW) && `DME_MS >= `VAL_REF_LOSS_T_MS)
+        reference_sensor_lost <= 1'b1;
+assign reference_sensor = `OPT_TEST_REF_SENSOR_LOSS  ? (reference_sensor_lost ? 1'b1 : reference_sensor_gen) :
+                          `OPT_REF_SENSOR_ABSENT     ? 1'b1 :
+                          `OPT_REF_SENSOR_STUCK_LOW  ? (reference_sensor_lost ? 1'b0 : reference_sensor_gen) :
+                                                       reference_sensor_gen;
 
 // TEST_SPEED_SENSOR_LOSS: same mechanism as TEST_REF_SENSOR_LOSS above,
 // applied to the speed/tooth sensor (P3.3/INT1) instead — held high
 // (no tooth) from SPEED_LOSS_T_MS onward, matching the idle-high
 // convention documented above (`p3_in[3] — 1 = no tooth`).
-`ifdef TEST_SPEED_SENSOR_LOSS
-  `ifndef SPEED_LOSS_T_MS
-  `define SPEED_LOSS_T_MS 3000
-  `endif
-reg speed_sensor_lost = 1'b0;
-always @(posedge clk) if (`DME_MS >= `SPEED_LOSS_T_MS) speed_sensor_lost <= 1'b1;
-assign speed_sensor = speed_sensor_lost ? 1'b1 : speed_sensor_gen;
 // SPEED_SENSOR_STUCK_LOW: INT1 shorted to ground from SPEED_LOSS_T_MS
-// onward (speed_sensor_stuck_low).
-`elsif SPEED_SENSOR_STUCK_LOW
-  `ifndef SPEED_LOSS_T_MS
-  `define SPEED_LOSS_T_MS 3500
-  `endif
+// onward (speed_sensor_stuck_low). SPEED_LOSS_T_MS defaults as above.
 reg speed_sensor_lost = 1'b0;
-always @(posedge clk) if (`DME_MS >= `SPEED_LOSS_T_MS) speed_sensor_lost <= 1'b1;
-assign speed_sensor = speed_sensor_lost ? 1'b0 : speed_sensor_gen;
-`else
-assign speed_sensor = speed_sensor_gen;
-`endif
+always @(posedge clk)
+    if ((`OPT_TEST_SPEED_SENSOR_LOSS || `OPT_SPEED_SENSOR_STUCK_LOW) && `DME_MS >= `VAL_SPEED_LOSS_T_MS)
+        speed_sensor_lost <= 1'b1;
+assign speed_sensor = `OPT_TEST_SPEED_SENSOR_LOSS ? (speed_sensor_lost ? 1'b1 : speed_sensor_gen) :
+                      `OPT_SPEED_SENSOR_STUCK_LOW ? (speed_sensor_lost ? 1'b0 : speed_sensor_gen) :
+                                                    speed_sensor_gen;
 
 // ─── External RAM ────────────────────────────────────────────
 always @(posedge xwr_n)
@@ -2140,7 +988,6 @@ always @(posedge xwr_n)
 // ─── Lambda warmup skip ───
 //  Watches for the falling edge of iram[23h].4 (bit1Ch) then
 //  seeds bit08h+09h+1Dh and wu=0x0001.
-`ifdef SKIP_LAMBDA_WARMUP
 reg skip_lambda_done;
 reg skip_lambda_intblock_prev;
 initial begin
@@ -2148,7 +995,7 @@ initial begin
     skip_lambda_intblock_prev = 1'b0;
 end
 
-always @(posedge clk) begin : lambda_warmup_skip
+always @(posedge clk) if (`OPT_SKIP_LAMBDA_WARMUP) begin : lambda_warmup_skip
     skip_lambda_intblock_prev <= i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h23][4];
 
     if (rst && !skip_lambda_done &&
@@ -2166,7 +1013,6 @@ always @(posedge clk) begin : lambda_warmup_skip
         $fflush();
     end
 end // lambda_warmup_skip
-`endif // SKIP_LAMBDA_WARMUP
 
 // ============================================================
 //  SIMULATION CONTROL  (identical to i8051_dashboard_tb.v)
@@ -2175,21 +1021,19 @@ end // lambda_warmup_skip
 // X-state propagation into monitors before the firmware runs.
 // Only active when SKIP_LAMBDA_WARMUP is set — for cold-start
 // tests the firmware must initialise from scratch.
-`ifdef SKIP_LAMBDA_WARMUP
-initial begin
+initial if (`OPT_SKIP_LAMBDA_WARMUP) begin
     wait (rst === 1'b1);
     @(posedge clk);  // one cycle; vlt ignores #delays in initial blocks
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h7F] = 8'h00;  // ISV step
     i8051_dashboard_tb.i8051_top.u_cpu.iram[7'h36] = 8'h00;  // ISV counter
 end
-`endif
 
 initial begin
     rst   = 1'b0;
     p2_in = 8'hFF;
     #1000
     rst = 1'b1;
-    #`SIM_TIME
+    #(`VAL_SIM_TIME)
     $display("time ", $time, "\nend of time\n");
     $writememh("rom_out.hex",  i8051_dashboard_tb.i8051_top.u_eprom.mem);
     $writememh("ram_out.hex",  i8051_dashboard_tb.i8051_top.u_cpu.iram);
@@ -2283,13 +1127,13 @@ endtask
 // Snapshot scheduler — suppressed when dme_klr_dashboard_tb is top
 // (that testbench has its own combined DME+KLR scheduler).
 reg [63:0] next_snap;
-initial    next_snap = (`DASH_INTERVAL_MS * `DME_FREQ);
+initial    next_snap = (`VAL_DASH_INTERVAL_MS * `DME_FREQ);
 
 always @(posedge clk) begin
     if (rst &&
         i8051_dashboard_tb.i8051_top.u_cpu.cycle_count >= next_snap) begin
         emit_snapshot;
-        next_snap <= next_snap + (`DASH_INTERVAL_MS * `DME_FREQ);
+        next_snap <= next_snap + (`VAL_DASH_INTERVAL_MS * `DME_FREQ);
     end
 end
 `endif // DME_KLR_COMBINED
@@ -2348,28 +1192,19 @@ reg [63:0] ph_status_next_snap;
 // read-back of anything the firmware computes.
 `ifdef LIVE
 wire [7:0] airtemp_adc_in = dme_klr_dashboard_tb.live_airtemp;
-`elsif TEST_AIRTEMP_FAIL
-wire [7:0] airtemp_adc_in = 8'h00;
-`elsif CL_CONDITION_CYCLE_ACTIVE
-wire [7:0] airtemp_adc_in = airtemp_dynamic_cycle;
 `else
-wire [7:0] airtemp_adc_in = `_AIRTEMP_RAW;
+wire [7:0] airtemp_adc_in = `OPT_TEST_AIRTEMP_FAIL         ? 8'h00 :
+                            `OPT_CL_CONDITION_CYCLE_ACTIVE ? airtemp_dynamic_cycle :
+                                                             `VAL__AIRTEMP_RAW;
 `endif
 
 `ifdef LIVE
 wire [7:0] coolant_adc_in = dme_klr_dashboard_tb.live_coolant;
-`elsif TEST_ISV_COLD_IDLE
-wire [7:0] coolant_adc_in = coolant_dynamic;
-`elsif TEST_COLD_START
-wire [7:0] coolant_adc_in = coolant_dynamic;
-`elsif TEST_CL_COLD_START
-wire [7:0] coolant_adc_in = coolant_dynamic;
-`elsif CL_CONDITION_CYCLE_ACTIVE
-wire [7:0] coolant_adc_in = coolant_dynamic_cycle;
-`elsif TEST_COOLANT_FAIL
-wire [7:0] coolant_adc_in = 8'h00;
 `else
-wire [7:0] coolant_adc_in = `_COOLANT_RAW;
+wire [7:0] coolant_adc_in = coolant_warmup_on              ? coolant_dynamic :
+                            `OPT_CL_CONDITION_CYCLE_ACTIVE ? coolant_dynamic_cycle :
+                            `OPT_TEST_COOLANT_FAIL         ? 8'h00 :
+                                                             `VAL__COOLANT_RAW;
 `endif
 
 always @(posedge clk) begin : isv_shadow_track
@@ -2601,73 +1436,65 @@ endgenerate
 //  Timing differs between the two variants (idle has no ~25-30s ramp
 //  to wait through first) — selected internally below, matching the
 //  TEST_CL_CONDITION_CYCLE_IDLE selection used for the actual signals.
-`ifdef CL_CONDITION_CYCLE_ACTIVE
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(2_000_000_000);
-`else
-    #(31_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd2_000_000_000);
+    else
+        #(64'd31_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", `DME_MS);
 end
 
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(9_000_000_000);
-`else
-    #(38_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd9_000_000_000);
+    else
+        #(64'd38_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", `DME_MS);
 end
 
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(16_000_000_000);
-`else
-    #(45_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd16_000_000_000);
+    else
+        #(64'd45_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", `DME_MS);
 end
 
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(23_000_000_000);
-`else
-    #(52_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd23_000_000_000);
+    else
+        #(64'd52_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", `DME_MS);
 end
 
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(30_000_000_000);
-`else
-    #(59_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd30_000_000_000);
+    else
+        #(64'd59_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
 end
 
-initial begin
-`ifdef TEST_CL_CONDITION_CYCLE_IDLE
-    #(37_000_000_000);
-`else
-    #(66_000_000_000);
-`endif
-    $display("DME: [PHASE] t=%0d ms  BATTERY test begin       (reduced ~20%%, battery_dynamic_cycle=0xAD)", `DME_MS);
-    #(5_000_000_000);
-    $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
+initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
+    if (`OPT_TEST_CL_CONDITION_CYCLE_IDLE)
+        #(64'd37_000_000_000);
+    else
+        #(64'd66_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  BATTERY test begin       (reduced ~20%%, battery_dynamic_cycle=0xAD)", `DME_MS);
+        #(64'd5_000_000_000);
+        $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
 end
-`endif // CL_CONDITION_CYCLE_ACTIVE
 
 
 // ─── Dead-code entry ────────────────────────────────────────

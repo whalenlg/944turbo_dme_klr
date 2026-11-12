@@ -1,40 +1,8 @@
-// Every closed-loop build runs the ISV's bypass air (CL_ISV_AIR, below);
-// this file is compiled before i8051_dashboard_tb.v, which does the same.
-// Not cl_cold_start: its RPM is the scripted crank ramp (CL_RPM_CRANK_RAMP),
-// which ISV air can't raise, so the idle loop winds the ISV open during
-// the 30 s crank and its air would triple the fuel at idle.
-`ifdef CL_MODE
-  `ifndef TEST_CL_COLD_START
-    `ifndef CL_ISV_AIR
-      `define CL_ISV_AIR
-    `endif
-  `endif
-`endif
-// CL_THROTTLE_CLOSED: closed-loop idle builds on this engine model
-// (cl_warm_idle, cl_ac_halfway, cl_cold_start, cl_condition_cycle_idle,
-// cl_idle_controlled_by_isv) have no driver throttle, so the throttle is
-// closed. A closed throttle is choked: the air it passes barely changes
-// with RPM, so the AFM sits at the idle base (plus the ISV's bypass air)
-// instead of following the RPM curve below, which is the air a ramp's
-// opening throttle lets in. Following RPM there made extra fuel a
-// runaway: more RPM -> more AFM -> more load per stroke -> more fuel.
-// With the air fixed, more RPM means less load per stroke, which is the
-// engine's own negative feedback. i8051_dashboard_tb.v also holds the
-// throttle switch and the KLR's throttle angle closed in these builds.
-// (Commanded-throttle builds — AFM_CL_RAMP ramps, tippy, live — define
-// CL_MODE in i8051_dashboard_tb.v or pass AFM_CL_RAMP/LIVE, so they
-// don't get here.)
-`ifdef CL_MODE
-`ifndef AFM_CL_RAMP
-`ifndef LIVE
-`ifndef TEST_TIPPY_IN
-`ifndef AFM_FAULT
-  `define CL_THROTTLE_CLOSED
-`endif
-`endif
-`endif
-`endif
-`endif
+// CL_ISV_AIR (every closed-loop build but cl_cold_start runs the ISV's
+// bypass air) and CL_THROTTLE_CLOSED (closed-loop idle builds have no
+// driver throttle: the AFM holds the closed-throttle idle base) are
+// derived in test_opts.vh, compiled before this file; see the reasons
+// there and at their uses below.
 // ============================================================
 //  var_interrupt_gen_cl.v  —  Closed-Loop RPM Generator
 //  89 DME 951 simulation — Bosch Motronic 3.1 / Porsche 944 Turbo
@@ -228,7 +196,7 @@
 // window, not an instant jump to idle.
 //
 // Gated behind CL_RPM_CRANK_RAMP so it's fully opt-in — every other
-// CL test compiles this file with the macro undefined, so
+// CL test runs with the flag off, so
 // crank_ramp_target() below just returns CL_RPM_TARGET unconditionally
 // and behaves exactly as before. Deliberately NOT a flat CL_RPM_TARGET
 // override (that deadlocked cl_ramp_to_6000_BOOST permanently in an
@@ -239,19 +207,9 @@
 // getting permanently stuck short of whatever RPM firmware needs to
 // sync at.
 //
-// Auto-enabled from TEST_CL_COLD_START (already passed via -D on the
-// run-script command line for that test) rather than relying on an
-// in-source `define inside i8051_dashboard_tb.v — this file compiles
-// BEFORE that in files/files_cl, so an in-source `define there would
-// still be undefined when the `ifdef below is evaluated.
-// A command-line -D is active from the very start of preprocessing,
-// so deriving it here instead sidesteps that file-order problem.
-`ifdef TEST_CL_COLD_START
-  `ifndef CL_RPM_CRANK_RAMP
-    `define CL_RPM_CRANK_RAMP
-  `endif
-`endif
-`ifdef CL_RPM_CRANK_RAMP
+// Auto-enabled from TEST_CL_COLD_START, in test_opts.vh (compiled first).
+// (defaults kept outside `ifdef CL_RPM_CRANK_RAMP: the code reads them as
+// `VAL_X whatever the flag, see test_opts.vh)
   `ifndef CL_RPM_CRANK_START
     `define CL_RPM_CRANK_START     100          // cranking speed — matches cold_start's RPMSTART
   `endif
@@ -272,7 +230,6 @@
                                                      // near cranking speed regardless of its own
                                                      // (shorter, 60s) SIM_TIME.
   `endif
-`endif
 
 
 // Self-contained: the non-dashboard files list compiles this module before the
@@ -449,17 +406,16 @@ module var_interrupt_generator_cl (
         reg [63:0] ramp_ns;
         reg [63:0] scaled_rise;
         begin
-`ifdef CL_RPM_CRANK_RAMP
-            ramp_ns = `CL_RPM_CRANK_RAMP_NS;
+            if (`OPT_CL_RPM_CRANK_RAMP) begin
+            ramp_ns = `VAL_CL_RPM_CRANK_RAMP_NS;
             if (now_ns >= ramp_ns)
                 crank_ramp_target = `CL_RPM_TARGET;
             else begin
-                scaled_rise = ((`CL_RPM_TARGET - `CL_RPM_CRANK_START) * now_ns) / ramp_ns;
-                crank_ramp_target = `CL_RPM_CRANK_START + scaled_rise;
+                scaled_rise = ((`CL_RPM_TARGET - `VAL_CL_RPM_CRANK_START) * now_ns) / ramp_ns;
+                crank_ramp_target = `VAL_CL_RPM_CRANK_START + scaled_rise;
             end
-`else
+            end else
             crank_ramp_target = `CL_RPM_TARGET;
-`endif
         end
     endfunction
 
@@ -471,13 +427,9 @@ module var_interrupt_generator_cl (
         real    uncapped_real;
         crpm     = rpm_fp / `CL_INERTIA;
 
-`ifdef CL_THROTTLE_CLOSED
-        if (1) begin
-            afm_wiper = afm_adc_lo;   // closed throttle: choked, see top
-`else
-        if (crpm <= afm_rpm_lo) begin
+        // CL_THROTTLE_CLOSED: closed throttle, choked (see top)
+        if (`OPT_CL_THROTTLE_CLOSED || crpm <= afm_rpm_lo) begin
             afm_wiper = afm_adc_lo;
-`endif
         end else if (crpm <= afm_rpm_plateau_end) begin
             // Logarithmic curve, capped at the 6000-family's D8
             // ceiling. crpm > afm_rpm_lo (840) is already guaranteed
@@ -504,14 +456,13 @@ module var_interrupt_generator_cl (
                         ((afm_adc_hi - afm_adc_mid) * (crpm - afm_rpm_plateau_end))
                         / (afm_rpm_hi - afm_rpm_plateau_end);
         end
-`ifdef CL_ISV_AIR
+        if (`OPT_CL_ISV_AIR) begin
         // ISV bypass air reaches the AFM like throttle air does
         uncapped  = afm_wiper + isv_afm_add;
         afm_wiper = uncapped < 0 ? 8'd0 : uncapped > 255 ? 8'd255 : uncapped;
-`endif
+        end
     end
 
-`ifdef CL_ISV_AIR
     // ── ISV bypass air (CL_ISV_AIR) ──────────────────────────────
     //  The idle speed valve (DME P1.4, high = open) bypasses the
     //  throttle, so its air goes through the AFM: more ISV duty -> a
@@ -531,13 +482,14 @@ module var_interrupt_generator_cl (
   `define CL_ISV_WIN_NS    64'd200_000_000  // 200 ms, many PWM periods
 `endif
     reg  [31:0] isv_hi_clk = 0, isv_tot_clk = 0;
-    integer     isv_pct10  = `CL_ISV_REF_PCT10;    // measured duty, 0.1 % units
+    integer     isv_pct10;                         // measured duty, 0.1 % units
+    initial     isv_pct10  = `VAL_CL_ISV_REF_PCT10;
     reg  [63:0] isv_win_t0 = 0;
     integer     isv_afm_add;
-    always @(*) isv_afm_add = ((isv_pct10 - `CL_ISV_REF_PCT10) * `CL_ISV_AIR_GAIN) / 100;
-    always @(posedge clk) begin : isv_duty
-        if ($time - isv_win_t0 >= `CL_ISV_WIN_NS) begin
-            isv_pct10   <= isv_tot_clk ? (isv_hi_clk * 1000) / isv_tot_clk : `CL_ISV_REF_PCT10;
+    always @(*) isv_afm_add = ((isv_pct10 - `VAL_CL_ISV_REF_PCT10) * `VAL_CL_ISV_AIR_GAIN) / 100;
+    always @(posedge clk) if (`OPT_CL_ISV_AIR) begin : isv_duty
+        if ($time - isv_win_t0 >= `VAL_CL_ISV_WIN_NS) begin
+            isv_pct10   <= isv_tot_clk ? (isv_hi_clk * 1000) / isv_tot_clk : `VAL_CL_ISV_REF_PCT10;
             isv_hi_clk  <= 0;
             isv_tot_clk <= 0;
             isv_win_t0  <= $time;
@@ -548,14 +500,13 @@ module var_interrupt_generator_cl (
             if (`CL_TB.p1[4] === 1'b1) isv_hi_clk <= isv_hi_clk + 1;
         end
     end
-`endif
 
     // ── Initial state ────────────────────────────────────────────
     initial begin
         tick_counter    = 0;
         rpm_fp          = crank_ramp_target($time) * `CL_INERTIA;
         rpm_fp_min      = `CL_RPM_MIN    * `CL_INERTIA;
-        rpm_fp_max      = `CL_RPM_MAX    * `CL_INERTIA;
+        rpm_fp_max      = `VAL_CL_RPM_MAX    * `CL_INERTIA;
         period_current  = `RPMCONST / crank_ramp_target($time);
         fuel_pulse_prev = 16'd0;
         fuel_ms_x100    = 0;
@@ -775,7 +726,7 @@ module var_interrupt_generator_cl (
 
                     crpm = new_rpm_fp / `CL_INERTIA;
                     if (crpm < `CL_RPM_MIN) crpm = `CL_RPM_MIN;
-                    if (crpm > `CL_RPM_MAX) crpm = `CL_RPM_MAX;
+                    if (crpm > `VAL_CL_RPM_MAX) crpm = `VAL_CL_RPM_MAX;
                     period_current <= `RPMCONST / crpm;
                 end
 

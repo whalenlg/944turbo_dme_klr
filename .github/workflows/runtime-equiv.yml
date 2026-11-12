@@ -1,0 +1,94 @@
+# Checks that the run-time-options build (dme_klr/build_runtime.sh: one
+# Verilator binary for every regression test, options as +X=<n>) gives the
+# same simulation as the usual one-build-per-test flow, test by test
+# (dme_klr/runtime_equiv.sh). Pull requests run every test cut to a few
+# seconds of simulated time; a manual run can do the full length.
+name: Run-time options equivalence
+
+on:
+  workflow_dispatch:
+    inputs:
+      sim_ms:
+        description: 'Stop each test at this many simulated ms (empty: full length)'
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - dme_klr/test_opts.py
+      - dme_klr/build_runtime.sh
+      - dme_klr/runtime_equiv.sh
+      - dme_klr/files
+      - dme_klr/files_cl
+      - dme_klr/v_run_dashboard_tests.sh
+      - dme_klr/bench/**
+      - dme/rtl/**
+      - dme/bench/**
+      - klr/rtl/**
+      - klr/bench/**
+      - .github/workflows/runtime-equiv.yml
+
+env:
+  VERILATOR_VERSION: v5.040
+
+jobs:
+  static:
+    name: Preprocessing and lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generated header is current
+        run: python3 dme_klr/test_opts.py gen --check
+      - name: No option read at compile time outside test_opts.vh
+        run: python3 dme_klr/test_opts.py lint
+      - name: Every test preprocesses as on the base branch
+        if: github.event_name == 'pull_request'
+        run: python3 dme_klr/test_opts.py same "origin/${{ github.base_ref }}"
+
+  equiv:
+    name: Equivalence ${{ matrix.shard }}/8
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verilator cache
+        id: vcache
+        uses: actions/cache@v4
+        with:
+          path: ~/verilator
+          key: verilator-${{ env.VERILATOR_VERSION }}-ubuntu-22.04
+      - name: Build Verilator
+        if: steps.vcache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git autoconf flex bison help2man perl libfl-dev
+          git clone --depth 1 -b "$VERILATOR_VERSION" https://github.com/verilator/verilator.git /tmp/vsrc
+          cd /tmp/vsrc && autoconf && ./configure --prefix="$HOME/verilator" && make -j"$(nproc)" && make install
+      - name: Verilator on PATH
+        run: echo "$HOME/verilator/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compare
+        env:
+          SIM_MS: ${{ github.event_name == 'pull_request' && '4000' || inputs.sim_ms }}
+        run: |
+          verilator --version
+          args=(--shard ${{ matrix.shard }}/8 --out "$RUNNER_TEMP/eq")
+          [ -n "$SIM_MS" ] && args+=(--sim-ms "$SIM_MS")
+          dme_klr/runtime_equiv.sh "${args[@]}"
+      - name: Logs of differing tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-equiv-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/eq/*/*.log
+            ${{ runner.temp }}/eq/*.build.log

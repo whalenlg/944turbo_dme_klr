@@ -10,6 +10,7 @@
 +incdir+../klr/bench/verilog
 
 ../klr/bench/verilog/klr_defs.v
+../dme/bench/verilog/test_opts.v
 ../dme/bench/verilog/timescale.v
 ../dme/bench/verilog/vcd.v
 ../dme/rtl/verilog/i8051_core.v
