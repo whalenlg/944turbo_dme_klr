@@ -67,19 +67,19 @@ flowchart LR
     DCPU["DME<br/>Intel 8051"]
     KCPU["KLR<br/>Intel 8048"]
 
-    MUX -- "ADC: ch0 AFM, ch1 battery, ch2 air temp,<br/>ch3 coolant, ch4 altitude, ch6 throttle switch,<br/>ch7 fuel quality<br/>P3.2 reference sensor, P3.3 speed sensor<br/>P1.6/P1.7 O2 sensor, T0 cat, T1 AC" --> DCPU
-    MUX -- "ADC: ch7 TPS angle, ch3 TPS supply,<br/>ch1 battery, ch4 MAP/boost,<br/>ch0/ch5 knock sensor" --> KCPU
+    MUX -- "AFM, battery, air temp, coolant,<br/>altitude, throttle switch, fuel quality,<br/>reference sensor, speed sensor,<br/>O2 sensor, cat, AC" --> DCPU
+    MUX -- "TPS angle, TPS supply, battery,<br/>MAP/boost, knock sensor" --> KCPU
     DROM --> DCPU
     KROM --> KCPU
 
-    DCPU -- "P1.5 KLR trigger (resets KLR)" --> KCPU
-    DCPU -- "P1.1 tach / spark command" --> KCPU
-    KCPU -- "P1.5 full load (WOT), to DME ch6" --> DCPU
+    DCPU -- "KLR trigger (resets KLR)" --> KCPU
+    DCPU -- "tach / spark command" --> KCPU
+    KCPU -- "full load (WOT)" --> DCPU
 
-    DCPU -- "P1.0" --> INJ(["injectors"])
-    DCPU -- "P1.4" --> ISV(["idle speed valve"])
-    DCPU -- "P1.2" --> REL(["DME relay"])
-    KCPU -- "P2.7 spark, knock retarded" --> COIL(["ignition coil"])
+    DCPU --> INJ(["injectors"])
+    DCPU --> ISV(["idle speed valve"])
+    DCPU --> REL(["DME relay"])
+    KCPU -- "spark, knock retarded" --> COIL(["ignition coil"])
     KCPU -- "duty cycle" --> CV(["boost control valve"])
 ```
 
