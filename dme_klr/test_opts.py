@@ -30,6 +30,8 @@ Usage:
                                                its +X=<n>, one per line, and
                                                "files: files|files_cl"
   test_opts.py resolve  -D... [-D...]          the same for a bare -D set
+                                               (both: --interval MS, the
+                                               snapshot interval, default 100)
   test_opts.py gen      [--check]              (re)write test_opts_gen.vh;
                                                --check: fail if it is stale
   test_opts.py same     <git-rev> [--script S] check that every test's
@@ -555,6 +557,11 @@ def main(argv):
         i = argv.index('--script')
         script = argv[i + 1]
         del argv[i:i + 2]
+    interval = 100
+    if '--interval' in argv:
+        i = argv.index('--interval')
+        interval = int(argv[i + 1])
+        del argv[i:i + 2]
     cmd, rest = argv[0], argv[1:]
     if cmd == 'tests':
         print('\n'.join(test_names(script)))
@@ -569,7 +576,7 @@ def main(argv):
             args += [a for a in rest[1:] if a.startswith('-D')]
         else:
             args = rest
-        print('\n'.join(plusargs(resolve(args))))
+        print('\n'.join(plusargs(resolve(args, interval))))
         print(f'files: {files_for(args)}')
     elif cmd == 'gen':
         text = gen_text()

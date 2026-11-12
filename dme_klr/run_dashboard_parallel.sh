@@ -37,6 +37,14 @@
 #    --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
 #  Under --verilator these are still accepted but have no effect —
 #  v_run_dashboard_tests.sh always strips them before compiling.
+#
+#  One build for every test: the testbench is built once (build_runtime.sh,
+#  two binaries or .vvp files: open loop and closed loop, into
+#  $DMEKLR_TMP/dme_klr/runtime or runtime_iv) and each test runs on it
+#  with its options as +X=<n>. --per-test-build builds every test on its
+#  own instead, as before. Tests also build on their own under iverilog
+#  with a debug flag, and under Verilator with VCD_ENABLE=1 (the shared
+#  binary has no tracing).
 # ============================================================
 
 # -h / --help: print the header comment above and exit before anything runs.
@@ -131,19 +139,21 @@ expand_tests() {
 # --NAME each runner's own CLI parses) so they can be forwarded
 # verbatim to every test this invocation launches.
 EXTRA_FLAGS=()
+PER_TEST_BUILD=0
 for _arg in "$@"; do
     case "$_arg" in
         --verilator)       USE_VERILATOR=1 ;;
+        --per-test-build)  PER_TEST_BUILD=1 ;;
         --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) EXTRA_FLAGS+=("$_arg") ;;
     esac
 done
-if [ "$USE_VERILATOR" = "1" ] || [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
+if [ "$USE_VERILATOR" = "1" ] || [ ${#EXTRA_FLAGS[@]} -gt 0 ] || [ "$PER_TEST_BUILD" = "1" ]; then
     RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
     [ "$USE_VERILATOR" = "1" ] && RUN_TESTS="$SCRIPT_DIR/v_run_dashboard_tests.sh"
     _NEW_ARGS=()
     for _arg in "$@"; do
         case "$_arg" in
-            --verilator|--DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) ;;
+            --verilator|--per-test-build|--DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) ;;
             *) _NEW_ARGS+=("$_arg") ;;
         esac
     done
@@ -153,7 +163,7 @@ fi
 if [ "$1" = "--dash" ]; then shift; fi
 
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 [--verilator] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ... | GROUP1 GROUP2 ...]"
+    echo "Usage: $0 [--verilator] [--per-test-build] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ... | GROUP1 GROUP2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
@@ -320,6 +330,29 @@ reap_finished() {
     PID_NAMES=("${NEW_NAMES[@]}")
     RUNNING=${#PIDS[@]}
 }
+
+# ── One build for every test (build_runtime.sh) ─────────────────────────────
+unset DMEKLR_RUNTIME_DIR
+if [ "$PER_TEST_BUILD" = "1" ]; then
+    echo "Building each test on its own (--per-test-build)"
+elif [ "$USE_VERILATOR" = "1" ] && [ "$VCD_ENABLE" = "1" ]; then
+    echo "Building each test on its own (VCD_ENABLE=1: the shared binary has no tracing)"
+elif [ "$USE_VERILATOR" != "1" ] && [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
+    echo "Building each test on its own (debug flags: ${EXTRA_FLAGS[*]})"
+else
+    _rt_dir="$_BASE/runtime"; _rt_opt=()
+    [ "$USE_VERILATOR" = "1" ] || { _rt_dir="$_BASE/runtime_iv"; _rt_opt=(--iverilog); }
+    echo "Building the shared testbench once → $_rt_dir (log: $LOGDIR/runtime_build.log)"
+    mkdir -p "$LOGDIR"
+    _t0=$SECONDS
+    if ! bash "$SCRIPT_DIR/build_runtime.sh" --out "$_rt_dir" "${_rt_opt[@]}" > "$LOGDIR/runtime_build.log" 2>&1; then
+        tail -20 "$LOGDIR/runtime_build.log"
+        echo "Shared build FAILED (log above). Run again with --per-test-build to build each test on its own."
+        exit 1
+    fi
+    echo "  built in $(( SECONDS - _t0 )) s"
+    export DMEKLR_RUNTIME_DIR="$_rt_dir"
+fi
 
 echo ""
 for test in "${TESTS[@]}"; do
