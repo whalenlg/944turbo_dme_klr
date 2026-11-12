@@ -9,7 +9,8 @@
 #  - activates the Python venv 944venv/ when it exists (install_macos.sh
 #    makes it)
 #  - puts a locally built Icarus Verilog in /opt/iverilog, and a GTKWave
-#    in <checkout>/gtkwave, ahead of the system ones when they exist
+#    in <checkout>/gtkwave/bin (install_macos.sh builds it there) or
+#    <checkout>/gtkwave, ahead of the system ones when they exist
 #  - adds the checkout to PATH
 # ============================================================
 
@@ -22,7 +23,8 @@ if [ -d /opt/iverilog/bin ]; then
     export PATH="/opt/iverilog/bin:$PATH"
     export IVERILOG_VPI_MODULE_PATH=/opt/iverilog/lib
 fi
-[ -d "$DMEKLR_REPO/gtkwave" ] && export PATH="$DMEKLR_REPO/gtkwave:$PATH"
+if [ -x "$DMEKLR_REPO/gtkwave/bin/gtkwave" ]; then export PATH="$DMEKLR_REPO/gtkwave/bin:$PATH"
+elif [ -d "$DMEKLR_REPO/gtkwave" ]; then export PATH="$DMEKLR_REPO/gtkwave:$PATH"; fi
 export IVERILOG_DUMPER=fst
 
 [ -f "$DMEKLR_REPO/944venv/bin/activate" ] && source "$DMEKLR_REPO/944venv/bin/activate"

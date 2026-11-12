@@ -6,7 +6,10 @@
 #  Python scripts and dashboard need:
 #    - Xcode Command Line Tools: clang/clang++ (C++20), make, git
 #    - Homebrew, if it isn't installed (asks first)
-#    - brew: verilator, icarus-verilog, gtkwave, node, python
+#    - brew: verilator, icarus-verilog, node, python
+#    - GTKWave, built from source into <repo>/gtkwave (Homebrew no longer
+#      has it): the GTK libraries and meson from brew, then GTKWave at a
+#      pinned commit of github.com/gtkwave/gtkwave. About 5 minutes.
 #    - a Python venv at <repo>/944venv with install/requirements.txt
 #      (openpyxl, pandas, matplotlib, numpy)
 #  then runs install/check_toolchain.sh and install/smoke_test.sh (the
@@ -19,6 +22,8 @@
 #    --with-dashboard   also clone whalenlg/dme-dashboard into <repo>/dashboard
 #                       and run npm install there (to run the page locally)
 #    --no-gtkwave       skip GTKWave (only needed to view waveforms)
+#    --rebuild-gtkwave  build GTKWave again even if it's already installed
+#                       (GTKWAVE_REF=<commit or tag> builds another version)
 #    --skip-tests       don't run the smoke tests at the end (they take a
 #                       few minutes, mostly the Verilator compile)
 #    -y, --yes          don't ask before installing Homebrew
@@ -41,12 +46,13 @@ REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
 VENV="$REPO_DIR/944venv"
 DASHBOARD_URL="https://github.com/whalenlg/dme-dashboard.git"
 
-UPGRADE=0; DASHBOARD=0; GTKWAVE=1; TESTS=1; YES=0; DRY=0
+UPGRADE=0; DASHBOARD=0; GTKWAVE=1; GTKWAVE_REBUILD=0; TESTS=1; YES=0; DRY=0
 for _arg in "$@"; do
     case "$_arg" in
         --upgrade)        UPGRADE=1 ;;
         --with-dashboard) DASHBOARD=1 ;;
         --no-gtkwave)     GTKWAVE=0 ;;
+        --rebuild-gtkwave) GTKWAVE_REBUILD=1 ;;
         --skip-tests)     TESTS=0 ;;
         -y|--yes)         YES=1 ;;
         -n|--dry-run)     DRY=1 ;;
@@ -98,7 +104,6 @@ fi
 # ── 3. Formulae ───────────────────────────────────────────────────────────
 #   verilator       Verilator >= 5.038: v_run_dashboard_tests.sh, live/build_live.sh
 #   icarus-verilog  iverilog + vvp: run_dashboard_tests.sh, the i8048/i8051 regressions
-#   gtkwave         viewing .vcd / .fst waveforms (optional)
 #   node            Node.js + npm: live/bridge.mjs, the dashboard
 #   python          Python 3 for the venv below
 step "Homebrew formulae"
@@ -111,13 +116,60 @@ for f in "${FORMULAE[@]}"; do
         run brew install "$f"
     fi
 done
-if [ "$GTKWAVE" = 1 ]; then
-    if command -v gtkwave >/dev/null 2>&1 || [ -d /Applications/gtkwave.app ]; then
-        echo "gtkwave: already installed"
-    elif ! run brew install gtkwave; then
-        warn "GTKWave didn't install from Homebrew. It is only needed to view waveforms;"
-        warn "see https://gtkwave.github.io/gtkwave/install/mac.html for other ways to get it."
+# ── 3b. GTKWave (optional: viewing .vcd / .fst waveforms) ────────────────
+#   Homebrew dropped both its gtkwave formula and cask, and the old
+#   gtkwave.app from SourceForge doesn't run on current macOS. So it is
+#   built from source the way GTKWave's own macOS CI does it: GTK 3/4 and
+#   meson from Homebrew, flex/gperf from the Command Line Tools. It goes in
+#   <repo>/gtkwave (git-ignored, no sudo); `source setup` puts its bin/ on
+#   PATH. That gives gtkwave plus vcd2fst / fst2vcd.
+#   GTKWAVE_REF pins the upstream commit (GTKWave 4 development branch,
+#   2026-11-03); set it in the environment to build another commit or tag.
+GTKWAVE_URL="https://github.com/gtkwave/gtkwave.git"
+GTKWAVE_REF="${GTKWAVE_REF:-e40ba7937336824f12f7db870ea36f6f090dd90d}"
+GTKWAVE_DIR="$REPO_DIR/gtkwave"
+GTKWAVE_DEPS=(meson ninja pkg-config gtk+3 gtk4 gtk-mac-integration json-glib
+              desktop-file-utils shared-mime-info librsvg)
+
+build_gtkwave() {
+    local src="$GTKWAVE_DIR/src" bld="$GTKWAVE_DIR/src/build" d
+    for d in "${GTKWAVE_DEPS[@]}"; do
+        if [ "$DRY" != 1 ] && brew list --formula "$d" >/dev/null 2>&1; then
+            echo "$d: already installed"
+        else
+            run brew install "$d" || return 1
+        fi
+    done
+    if [ ! -d "$src/.git" ]; then
+        run mkdir -p "$GTKWAVE_DIR" || return 1
+        run git clone "$GTKWAVE_URL" "$src" || return 1
+    else
+        run git -C "$src" fetch origin || return 1
     fi
+    run git -C "$src" -c advice.detachedHead=false checkout --force "$GTKWAVE_REF" || return 1
+    run rm -rf "$bld"
+    # introspection and tests are off: neither is needed to view waveforms,
+    # and the tests add a few minutes. The prefix isn't /usr, so meson sets
+    # an rpath and the binaries find libgtkwave without DYLD_LIBRARY_PATH.
+    run meson setup "$bld" "$src" --prefix="$GTKWAVE_DIR" --buildtype=release \
+        -Dintrospection=false -Dtests=false -Dupdate_mime_database=false || return 1
+    run meson compile -C "$bld" || return 1
+    run meson install -C "$bld" || return 1
+    [ "$DRY" = 1 ] || "$GTKWAVE_DIR/bin/gtkwave" --version 2>/dev/null | grep -m1 GTKWave || true
+}
+
+if [ "$GTKWAVE" = 1 ]; then
+    step "GTKWave (built from source into $GTKWAVE_DIR)"
+    if [ "$GTKWAVE_REBUILD" != 1 ] && [ -x "$GTKWAVE_DIR/bin/gtkwave" ]; then
+        echo "gtkwave: already built at $GTKWAVE_DIR/bin/gtkwave (--rebuild-gtkwave builds it again)"
+    elif [ "$GTKWAVE_REBUILD" != 1 ] && command -v gtkwave >/dev/null 2>&1; then
+        echo "gtkwave: already installed at $(command -v gtkwave)"
+    elif ! build_gtkwave; then
+        warn "GTKWave didn't build (output above). It is only needed to view waveforms,"
+        warn "so the rest of the install carries on; --rebuild-gtkwave tries again."
+    fi
+    # so check_toolchain.sh below finds it, as `source setup` will later
+    [ -d "$GTKWAVE_DIR/bin" ] && export PATH="$GTKWAVE_DIR/bin:$PATH"
 fi
 
 # ── 4. Python venv with the repo's packages ──────────────────────────────
