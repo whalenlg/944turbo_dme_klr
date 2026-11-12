@@ -110,6 +110,8 @@ const DME_ASM_PIN = arg('dme-asm', null);   // fixed DME listing; otherwise it f
 const DME_ASM = resolve(DME_ASM_PIN ?? join(REPO, 'dme', 'disassemble'));
 const KLR_ASM_PIN = arg('klr-asm', null);
 const KLR_ASM = resolve(KLR_ASM_PIN ?? join(REPO, 'klr', 'disassemble'));
+// No VCD: the sim gets the null device as its file (NUL on Windows)
+const DEVNULL = process.platform === 'win32' ? 'NUL' : '/dev/null';
 const MAX_HISTORY = 500_000;   // lines kept for replay
 
 // Lines the dashboard uses; the rest ($dumpvar notices, readmem
@@ -157,7 +159,7 @@ function startSim(load = null) {
   if (!load) bpNow = { dme: [], klr: [] };   // a plain restart starts without any
   const bin = test?.bin ?? SIM;
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
-  sim = spawn(bin, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
+  sim = spawn(bin, [`+vcd=${DEVNULL}`, ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
     if (pending && /^SIM: \[SNAP\] loaded /.test(line)) {

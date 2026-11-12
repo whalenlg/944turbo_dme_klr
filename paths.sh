@@ -36,6 +36,14 @@ else
     mkdir -p "$DMEKLR_REPO/../tmp"
     DMEKLR_TMP="$(cd "$DMEKLR_REPO/../tmp" && pwd)"
 fi
+# Windows (MSYS2): the tools are native Windows programs, which don't know
+# MSYS2's /c/... or /home/... paths, so hand everything C:/... ones (bash
+# takes those too). PATH entries still need the /c/... form: see setup.
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        DMEKLR_REPO="$(cygpath -m "$DMEKLR_REPO")"
+        DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")" ;;
+esac
 export DMEKLR_REPO DMEKLR_TMP
 
 dmeklr_vdefs() {
