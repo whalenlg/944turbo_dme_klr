@@ -37,8 +37,8 @@ firmware from there.
 ### System block diagram
 
 Both ROM images run on cycle-level models of the real CPUs, wired together as
-on the car. Their inputs come from one of three stimulus drivers, chosen when
-the model is built:
+on the car. Their inputs come from one of three stimulus drivers, chosen at
+run time by going live or by selecting an available test:
 
 - **Closed-loop test driver**: a regression test's scripted driver and fault
   injection, plus the engine, sensor and boost models of
@@ -50,7 +50,7 @@ the model is built:
 
 ```mermaid
 flowchart LR
-    subgraph STIM["Stimulus mux (selected at build)"]
+    subgraph STIM["Stimulus mux (selected at run time)"]
         direction TB
         CL["Closed-loop test driver<br/>scripted test + engine,<br/>sensor and boost models"]
         WEB["Web UI test driver<br/>dashboard controls via bridge"]
