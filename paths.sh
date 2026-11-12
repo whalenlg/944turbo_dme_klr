@@ -43,14 +43,13 @@ case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
         DMEKLR_REPO="$(cygpath -m "$DMEKLR_REPO")"
         DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")"
-        # Link Verilator's builds statically: MinGW's libstdc++ DLL doesn't
-        # export some std::string members the headers expect it to, so
-        # verilated.o fails to link against it ("undefined reference to
-        # std::__cxx11::basic_string(basic_string&&)"); the static library
-        # has them. The executables then also run without MSYS2 on PATH.
-        # Verilator's makefiles pass LDFLAGS to the link.
-        case " ${LDFLAGS:-} " in *" -static "*) ;;
-            *) export LDFLAGS="${LDFLAGS:+$LDFLAGS }-static" ;; esac ;;
+        # MSYS2's gcc 16 at -Os in C++20 mode leaves std::string's move
+        # constructor as an external reference that its libstdc++ doesn't
+        # provide ("undefined reference to std::__cxx11::basic_string(
+        # basic_string&&)"); -O2 inlines it. Verilator's makefiles compile
+        # its runtime at -Os but put CXXFLAGS after that, so this -O2 wins.
+        case " ${CXXFLAGS:-} " in *" -O2 "*) ;;
+            *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-O2" ;; esac ;;
 esac
 export DMEKLR_REPO DMEKLR_TMP
 
