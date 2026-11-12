@@ -55,11 +55,10 @@ flowchart LR
         CL["Closed-Loop Test Driver<br/>Scripted Test + Engine,<br/>Sensor And Boost Models"]
         WEB["Web UI Test Driver<br/>Dashboard Controls Via Bridge"]
         LOG["FTECH9 Log Replay Driver<br/>Recorded Car Log"]
-        MUX{{"Input Select"}}
-        CL --> MUX
-        WEB --> MUX
-        LOG --> MUX
+        CL ~~~ WEB ~~~ LOG
     end
+    MUX{{"Input Select"}}
+    STIM --> MUX
 
     DROM[("DME ROM Image<br/>'86 / '89 / Performance / Custom")]
     KROM[("KLR ROM Image<br/>'86 / '87 / '89 / Custom")]
