@@ -37,11 +37,11 @@ Contents
 
 ## 1. Install
 
-Two scripts in `install/` set up everything this repo needs on a fresh
-machine: the C++ compiler, Verilator, Icarus Verilog, GTKWave, Node.js and
-Python with its packages. Run the one for your system from the top of the
-checkout. Both are safe to run again; what is already installed is left
-alone. Both finish by running two short simulations to show the install
+Scripts in `install/` set up everything this repo needs on a fresh
+machine (macOS, Arch Linux or Windows): the C++ compiler, Verilator, Icarus
+Verilog, GTKWave, Node.js and Python with its packages. Run the one for your
+system from the top of the checkout. Each is safe to run again; what is
+already installed is left alone. Each finishes by running two short simulations to show the install
 works (see [Checking an install](#checking-an-install)); that takes a few
 minutes, and `--skip-tests` leaves it out.
 
@@ -162,6 +162,67 @@ runs `install/check_toolchain.sh` and the same smoke tests as on macOS.
 | `-y`, `--yes` | Pass `--noconfirm` to pacman |
 | `-n`, `--dry-run` | Print the commands without running them |
 
+### Windows (MSYS2)
+
+On Windows the toolchain comes from [MSYS2](https://www.msys2.org/), which
+has native Windows builds of Verilator, Icarus Verilog, GTKWave, gcc,
+Node.js and Python with numpy, pandas, matplotlib and openpyxl, installed
+with its own `pacman`. Nothing is compiled from source. In PowerShell:
+
+```powershell
+# No checkout yet: installs MSYS2, clones the repo into C:\dmeklr\944turbo_dme_klr, installs
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Clone C:\dmeklr\944turbo_dme_klr
+
+# Or from a checkout you already have
+cd C:\dmeklr\944turbo_dme_klr
+powershell -ExecutionPolicy Bypass -File install\install_windows.ps1
+```
+
+(For the first form, download `install/install_windows.ps1` from GitHub
+on its own.) `install_windows.ps1` installs MSYS2 into `C:\msys64` if it
+isn't there (`-MsysRoot` picks another folder), then runs
+`install/install_msys2.sh` in MSYS2's **UCRT64** environment. That runs one
+`pacman -Syu --needed` with `git`, `make`, `perl` and the
+`mingw-w64-ucrt-x86_64-` packages `gcc`, `verilator`, `iverilog`,
+`gtkwave`, `nodejs`, `python`, `python-openpyxl`, `python-pandas`,
+`python-matplotlib` and `python-numpy`, then `check_toolchain.sh` and the
+same smoke tests as on macOS and Arch. If you already use MSYS2, you can
+run `install/install_msys2.sh` yourself from a UCRT64 terminal.
+
+Afterwards, work in the **MSYS2 UCRT64** terminal (Start menu, or
+`C:\msys64\ucrt64.exe`): it is a bash shell, and every command in this
+manual works there as written, starting with `source setup`. Your `C:`
+drive is `/c` in it, so `cd /c/dmeklr/944turbo_dme_klr`. The live bridge
+(`node bridge.mjs`) listens on 127.0.0.1 as on the other systems, so the
+dashboard in any Windows browser connects to it the same way.
+
+| Option | Effect |
+|---|---|
+| `-MsysRoot DIR` | Where MSYS2 is, or goes (default `C:\msys64`) |
+| `-Clone DIR` | Clone the repo into `DIR` first and install from there |
+| `-Venv` | Also make `944venv/`, a venv that sees the pacman packages (`--venv` for `install_msys2.sh`) |
+| `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
+| `-NoGtkwave` | Skip GTKWave |
+| `-SkipTests` | Don't run the smoke tests at the end |
+| `-Yes` | Don't ask pacman to confirm |
+
+Things to know on Windows:
+
+- **No spaces in the checkout's path.** Verilator's generated makefiles
+  can't build in a folder like `C:\Users\Jane Doe\...`; the installers warn
+  about it. A short path such as `C:\dmeklr` is safest.
+- **Line ends.** The repo's `.gitattributes` checks every text file out
+  with LF line ends, also with Git for Windows (whose default is CRLF), so
+  the bash scripts run. A checkout made before that file existed can be
+  fixed with `git rm --cached -r -q . && git reset --hard` (commit or
+  stash your changes first: the reset discards them).
+- **Paths.** Under MSYS2, `source setup` sets `DMEKLR_REPO` and
+  `DMEKLR_TMP` as `C:/...` paths, which both bash and the native Windows
+  tools understand.
+- **WSL instead.** On Windows 10/11 with WSL2 you can also run the Arch
+  installer inside an Arch Linux WSL distribution, as on a Linux PC. That
+  path isn't tested here; the MSYS2 one is.
+
 ### The Python venv (`944venv`)
 
 The repo's Python scripts need four packages beyond the standard library:
@@ -251,7 +312,7 @@ system ones when they are there, and adds the checkout to
 
 ### Checking an install
 
-Both scripts finish by running `install/check_toolchain.sh`, which you can
+Each install script finishes by running `install/check_toolchain.sh`, which you can
 also run on its own at any time. It prints each tool with its version and
 exits non-zero if anything required is missing or too old:
 
@@ -265,7 +326,7 @@ exits non-zero if anything required is missing or too old:
   ...
 ```
 
-Then both scripts run `install/smoke_test.sh`, which sources `setup` (as a
+Then it runs `install/smoke_test.sh`, which sources `setup` (as a
 new terminal would) and runs two simulations that exercise the whole
 toolchain:
 
@@ -319,6 +380,18 @@ PASS/FAIL line for each (`--venv` tests `install_arch.sh --venv`). The
 "Arch install test" GitHub workflow runs the same steps on pull requests
 that touch `install/`.
 
+The "Windows install test" GitHub workflow does the same for Windows on a
+clean `windows-latest` runner: it runs `install_windows.ps1`, which
+installs MSYS2 from scratch into a new folder and then the toolchain with its
+smoke tests, then `install/test_windows_install.sh` in a UCRT64 shell:
+`source setup` and `check_toolchain.sh`, the smoke tests' output, the live
+simulator build (run to 200 ms), the live bridge (a client on `/events`
+sees the simulator pause at 200 ms after `POST /cmd`) and GTKWave opening
+the KLR waveform. It runs with and without `-Venv`, on pull requests that
+touch `install/`, and by hand from the Actions tab. You can run
+`install/test_windows_install.sh` on your own Windows install too, after
+the installer.
+
 ### Dependencies
 
 Everything the repo uses outside the standard tools every Unix system has
@@ -355,6 +428,9 @@ npm, and `--with-dashboard` sets that up.
   5.038 or newer. Homebrew and Arch both ship newer releases; on another
   Linux whose package is older, build it from source
   (https://verilator.org/guide/latest/install.html).
+- **Windows.** The Dependencies table's Arch package names, with the
+  `mingw-w64-ucrt-x86_64-` prefix, are the MSYS2 ones; see
+  [Windows (MSYS2)](#windows-msys2).
 - **Other Linux distributions.** Install the same things with your package
   manager (the table above has what each is for), then run
   `install/check_toolchain.sh`.
