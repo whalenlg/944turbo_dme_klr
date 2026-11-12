@@ -106,7 +106,7 @@ if [ "$BUILD" = 1 ]; then
         linux-*)   LDF=(-LDFLAGS "-static-libstdc++ -static-libgcc") ;;
         windows-*) LDF=(-LDFLAGS "-static") ;;
     esac
-    "$REPO/dme_klr/live/build_live.sh" --relocatable "${LDF[@]}"
+    "$REPO/dme_klr/live/build_live.sh" --relocatable ${LDF[@]+"${LDF[@]}"}   # (bash 3.2: an empty array is "unbound" under set -u)
 fi
 [ -x "$OBJ/dme_klr_live$EXE" ] || { echo "make_lite.sh: no $OBJ/dme_klr_live$EXE (build it first)" >&2; exit 1; }
 
