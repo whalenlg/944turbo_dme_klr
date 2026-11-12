@@ -259,19 +259,22 @@ module i2764_eprom (
     `ifndef DME_ROM_FILE
     `define DME_ROM_FILE "89DME_951pin.mem"
     `endif
+    `ifndef DME_ROM_PATH       // (a RUNTIME_OPTS build sets it from +DME_ROM_DIR/FILE)
+    `define DME_ROM_PATH {`DME_ROM_DIR, `DME_ROM_FILE}
+    `endif
     integer i;
     initial begin
         // Pre-fill with 0xFF to mimic a blank erased device
         for (i = 0; i < 8192; i = i + 1)
             mem[i] = 8'hFF;
         // Then overlay the actual program image
-        $readmemh({`DME_ROM_DIR, `DME_ROM_FILE}, mem);
+        $readmemh(`DME_ROM_PATH, mem);
         // Record which ROM was actually loaded — pulled from the same
         // macros the $readmemh above used, so this always reflects the
         // real compiled-in values (not just an echo of a shell env var
         // that could in principle diverge). Shows up in the raw .log,
         // so any run's actual firmware image is always on record.
-        $display("DME: ROM loaded from %s%s", `DME_ROM_DIR, `DME_ROM_FILE);
+        $display("DME: ROM loaded from %0s", `DME_ROM_PATH);
     end
 
     // Output: valid only when both /CE and /OE are low

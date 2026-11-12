@@ -2,7 +2,10 @@
 //
 // `OPT_X: flag X. `VAL_X: value X. A normal build reads them from
 // the -D flags (as `ifdef X / `X always did); a RUNTIME_OPTS build
-// from +X=<n> on the command line (test_opts.py plusargs <test>).
+// from +X=<n> on the command line (test_opts.py plusargs <test>),
+// and the paths from +DMEKLR_REPO=<dir/> +DME_ROM_DIR=<dir/>
+// +DME_ROM_FILE=<name> +DME_ASM_DIR=<dir/> and the KLR_ ones, as the
+// -D flags of the same names (paths.sh, asm_select.sh) set them.
 `ifdef RUNTIME_OPTS
 `ifndef DMEKLR_REPO
   `define DMEKLR_REPO ""
@@ -25,6 +28,7 @@
 `ifndef KLR_ASM_DIR
   `define KLR_ASM_DIR {DMEKLR_REPO, "klr/disassemble/"}
 `endif
+`ifdef VERILATOR
 package test_opts;
   function automatic longint arg(string name, longint dflt);
     longint v;
@@ -36,9 +40,6 @@ package test_opts;
     if ($value$plusargs({name, "=%s"}, v)) return v;
     return dflt;
   endfunction
-  // Paths: +DMEKLR_REPO=<dir/> +DME_ROM_DIR=<dir/> +DME_ROM_FILE=<name>
-  // +DME_ASM_DIR=<dir/> and the KLR_ ones, as the -D flags of the same
-  // names (paths.sh, asm_select.sh) set them in a normal build
   string DMEKLR_REPO = sarg("DMEKLR_REPO", `DMEKLR_REPO);
   string DME_ROM_DIR = sarg("DME_ROM_DIR", `DME_ROM_DIR);
   string DME_ROM_FILE = sarg("DME_ROM_FILE", `DME_ROM_FILE);
@@ -46,7 +47,6 @@ package test_opts;
   string KLR_ROM_DIR = sarg("KLR_ROM_DIR", `KLR_ROM_DIR);
   string KLR_ROM_FILE = sarg("KLR_ROM_FILE", `KLR_ROM_FILE);
   string KLR_ASM_DIR = sarg("KLR_ASM_DIR", `KLR_ASM_DIR);
-  // Flags
   bit AC_COMP_ON = arg("AC_COMP_ON", 0) != 0;
   bit AFM_CL_RAMP = arg("AFM_CL_RAMP", 0) != 0;
   bit AFM_FAULT = arg("AFM_FAULT", 0) != 0;
@@ -108,7 +108,6 @@ package test_opts;
   bit TEST_SPEED_SENSOR_LOSS = arg("TEST_SPEED_SENSOR_LOSS", 0) != 0;
   bit TEST_TIPPY_IN = arg("TEST_TIPPY_IN", 0) != 0;
   bit TPS_FIXED__GIVEN = $test$plusargs("TPS_FIXED=");
-  // Values (defaults: a build without test flags)
   integer AFM_CL_STEP_NS = 32'(arg("AFM_CL_STEP_NS", 1420454));
   logic [7:0] AFM_CL_TARGET = 8'(arg("AFM_CL_TARGET", 40));
   integer BOOST_CUT_TAU_MS = 32'(arg("BOOST_CUT_TAU_MS", 150));
@@ -259,6 +258,361 @@ endpackage
 `define KLR_ROM_FILE test_opts::KLR_ROM_FILE
 `undef KLR_ASM_DIR
 `define KLR_ASM_DIR test_opts::KLR_ASM_DIR
+`else
+module test_opts;
+  reg ok;                     // loaded
+  reg signed [63:0] n;
+  integer i, k;
+  // Paths, as strings in fixed-width regs (leading NULs are ignored)
+  reg [8*512-1:0] DMEKLR_REPO;
+  reg [8*512-1:0] DME_ROM_DIR;
+  reg [8*512-1:0] DME_ROM_FILE;
+  reg [8*512-1:0] DME_ASM_DIR;
+  reg [8*512-1:0] KLR_ROM_DIR;
+  reg [8*512-1:0] KLR_ROM_FILE;
+  reg [8*512-1:0] KLR_ASM_DIR;
+  reg [8*512-1:0] DME_ROM_PATH, KLR_ROM_PATH;
+  reg AC_COMP_ON;
+  reg AFM_CL_RAMP;
+  reg AFM_FAULT;
+  reg AFM_FROM_ENGINE_MODEL;
+  reg AFM_SHORT_TO_GROUND;
+  reg AFM_TIPPY;
+  reg AIRTEMP_OPEN_CIRCUIT;
+  reg BOOST;
+  reg BOOST_LOW;
+  reg BOOST_OPEN_CIRCUIT;
+  reg BOOST_STEP_DOWN;
+  reg BOOST_STEP_OVERBOOST;
+  reg BOOST_ZERO;
+  reg BOOST_HIGH;
+  reg CL_AC_HALFWAY;
+  reg CL_CONDITION_CYCLE_ACTIVE;
+  reg CL_ISV_AIR;
+  reg CL_MODE;
+  reg CL_RPM_CRANK_RAMP;
+  reg CL_THROTTLE_CLOSED;
+  reg COOLANT_OPEN_CIRCUIT;
+  reg DME_BATT_DISCONNECTED;
+  reg ISV_LOAD_DROOP;
+  reg KLR_ADC0_NOISE_HIGH;
+  reg KLR_ADC0_NOISE_LOW;
+  reg KLR_BATT_DISCONNECTED;
+  reg KLR_BATT_LOW;
+  reg KLR_FULL_LOAD_STUCK_HIGH;
+  reg KLR_FULL_LOAD_STUCK_LOW;
+  reg KLR_IGN_IN_STUCK_HIGH;
+  reg KLR_IGN_IN_STUCK_LOW;
+  reg KLR_TPS_HIGH;
+  reg KLR_TPS_OPEN_CIRCUIT;
+  reg KLR_TPS_SHORT_TO_GROUND;
+  reg KLR_TPS_SUPPLY_LOST;
+  reg KLR_TPS_SUPPLY_LOW;
+  reg KLR_TRIGGER_STUCK_HIGH;
+  reg KLR_TRIGGER_STUCK_LOW;
+  reg O2_FLAT_DISCONNECTED;
+  reg O2_FLAT_LEAN;
+  reg O2_FLAT_RICH;
+  reg REF_SENSOR_ABSENT;
+  reg REF_SENSOR_STUCK_LOW;
+  reg RPMRAMP;
+  reg RPM_RAMP_DOWN;
+  reg SKIP_LAMBDA_WARMUP;
+  reg SPEED_SENSOR_STUCK_LOW;
+  reg TEST_AIRTEMP_FAIL;
+  reg TEST_CL_COLD_START;
+  reg TEST_CL_CONDITION_CYCLE_IDLE;
+  reg TEST_COLD_START;
+  reg TEST_COOLANT_FAIL;
+  reg TEST_ISV_COLD_IDLE;
+  reg TEST_KNOCK_FAKE_BLOCKED;
+  reg TEST_KNOCK_PULSE;
+  reg TEST_KNOCK_SHORT_TO_GROUND;
+  reg TEST_OVERRUN_CUTOFF;
+  reg TEST_REF_SENSOR_LOSS;
+  reg TEST_SPEED_SENSOR_LOSS;
+  reg TEST_TIPPY_IN;
+  reg TPS_FIXED__GIVEN;
+  integer AFM_CL_STEP_NS;
+  reg [7:0] AFM_CL_TARGET;
+  integer BOOST_CUT_TAU_MS;
+  integer CL_FUEL_ENERGY_PCT;
+  integer CL_ISV_AIR_GAIN;
+  integer CL_ISV_REF_PCT10;
+  reg [63:0] CL_ISV_WIN_NS;
+  reg [63:0] CL_RPM_CRANK_RAMP_NS;
+  integer CL_RPM_CRANK_START;
+  integer CL_RPM_MAX;
+  integer IGN_IN_LOSS_T_MS;
+  integer O2_DELAY_MS;
+  integer O2_STOICH_X1000;
+  integer O2_TAU_MS;
+  integer OVERBOOST_END_PSI;
+  reg [7:0] OVERBOOST_KLR_TPS;
+  integer OVERBOOST_START_PSI;
+  integer OVERBOOST_STEP_NS;
+  integer OVERBOOST_STEP_RPM;
+  integer REF_LOSS_T_MS;
+  integer RPMEND;
+  integer RPMSTART;
+  integer RPM_DOWN_END_MS;
+  integer RPM_DOWN_START_MS;
+  integer RPM_DOWN_TARGET;
+  integer RPM_RAMP_PCT;
+  reg signed [63:0] SIM_TIME;
+  integer SPEED_LOSS_T_MS;
+  reg [7:0] TPS_FIXED;
+  integer TRIGGER_LOSS_T_MS;
+  reg signed [63:0] _AIRTEMP_RAW;
+  reg [7:0] _ALTITUDE;
+  reg [7:0] _BATTERY;
+  reg signed [63:0] _COOLANT_RAW;
+  reg [7:0] _FUEL_QUAL;
+  reg signed [63:0] STEP_CLOCKS;
+  integer DASH_INTERVAL_MS;
+  // dir + file, without the NULs between them
+  function [8*512-1:0] path;
+    input [8*512-1:0] dir, file;
+    begin
+      k = 0;
+      for (i = 0; i < 512; i = i + 1)
+        if (file[8*i +: 8] != 8'd0) k = i + 1;
+      path = (dir << (8 * k)) | file;
+    end
+  endfunction
+  function load;
+    input dummy;
+    begin
+      if (ok !== 1'b1) begin
+        ok = 1'b1;
+        if (!$value$plusargs("DMEKLR_REPO=%s", DMEKLR_REPO)) DMEKLR_REPO = `DMEKLR_REPO;
+        if (!$value$plusargs("DME_ROM_DIR=%s", DME_ROM_DIR)) DME_ROM_DIR = `DME_ROM_DIR;
+        if (!$value$plusargs("DME_ROM_FILE=%s", DME_ROM_FILE)) DME_ROM_FILE = `DME_ROM_FILE;
+        if (!$value$plusargs("DME_ASM_DIR=%s", DME_ASM_DIR)) DME_ASM_DIR = `DME_ASM_DIR;
+        if (!$value$plusargs("KLR_ROM_DIR=%s", KLR_ROM_DIR)) KLR_ROM_DIR = `KLR_ROM_DIR;
+        if (!$value$plusargs("KLR_ROM_FILE=%s", KLR_ROM_FILE)) KLR_ROM_FILE = `KLR_ROM_FILE;
+        if (!$value$plusargs("KLR_ASM_DIR=%s", KLR_ASM_DIR)) KLR_ASM_DIR = `KLR_ASM_DIR;
+        DME_ROM_PATH = path(DME_ROM_DIR, DME_ROM_FILE);
+        KLR_ROM_PATH = path(KLR_ROM_DIR, KLR_ROM_FILE);
+        AC_COMP_ON = $value$plusargs("AC_COMP_ON=%d", n) ? (n != 0) : 1'b0;
+        AFM_CL_RAMP = $value$plusargs("AFM_CL_RAMP=%d", n) ? (n != 0) : 1'b0;
+        AFM_FAULT = $value$plusargs("AFM_FAULT=%d", n) ? (n != 0) : 1'b0;
+        AFM_FROM_ENGINE_MODEL = $value$plusargs("AFM_FROM_ENGINE_MODEL=%d", n) ? (n != 0) : 1'b1;
+        AFM_SHORT_TO_GROUND = $value$plusargs("AFM_SHORT_TO_GROUND=%d", n) ? (n != 0) : 1'b0;
+        AFM_TIPPY = $value$plusargs("AFM_TIPPY=%d", n) ? (n != 0) : 1'b0;
+        AIRTEMP_OPEN_CIRCUIT = $value$plusargs("AIRTEMP_OPEN_CIRCUIT=%d", n) ? (n != 0) : 1'b0;
+        BOOST = $value$plusargs("BOOST=%d", n) ? (n != 0) : 1'b0;
+        BOOST_LOW = $value$plusargs("BOOST_LOW=%d", n) ? (n != 0) : 1'b0;
+        BOOST_OPEN_CIRCUIT = $value$plusargs("BOOST_OPEN_CIRCUIT=%d", n) ? (n != 0) : 1'b0;
+        BOOST_STEP_DOWN = $value$plusargs("BOOST_STEP_DOWN=%d", n) ? (n != 0) : 1'b0;
+        BOOST_STEP_OVERBOOST = $value$plusargs("BOOST_STEP_OVERBOOST=%d", n) ? (n != 0) : 1'b0;
+        BOOST_ZERO = $value$plusargs("BOOST_ZERO=%d", n) ? (n != 0) : 1'b0;
+        BOOST_HIGH = $value$plusargs("BOOST_HIGH=%d", n) ? (n != 0) : 1'b0;
+        CL_AC_HALFWAY = $value$plusargs("CL_AC_HALFWAY=%d", n) ? (n != 0) : 1'b0;
+        CL_CONDITION_CYCLE_ACTIVE = $value$plusargs("CL_CONDITION_CYCLE_ACTIVE=%d", n) ? (n != 0) : 1'b0;
+        CL_ISV_AIR = $value$plusargs("CL_ISV_AIR=%d", n) ? (n != 0) : 1'b0;
+        CL_MODE = $value$plusargs("CL_MODE=%d", n) ? (n != 0) : 1'b0;
+        CL_RPM_CRANK_RAMP = $value$plusargs("CL_RPM_CRANK_RAMP=%d", n) ? (n != 0) : 1'b0;
+        CL_THROTTLE_CLOSED = $value$plusargs("CL_THROTTLE_CLOSED=%d", n) ? (n != 0) : 1'b0;
+        COOLANT_OPEN_CIRCUIT = $value$plusargs("COOLANT_OPEN_CIRCUIT=%d", n) ? (n != 0) : 1'b0;
+        DME_BATT_DISCONNECTED = $value$plusargs("DME_BATT_DISCONNECTED=%d", n) ? (n != 0) : 1'b0;
+        ISV_LOAD_DROOP = $value$plusargs("ISV_LOAD_DROOP=%d", n) ? (n != 0) : 1'b0;
+        KLR_ADC0_NOISE_HIGH = $value$plusargs("KLR_ADC0_NOISE_HIGH=%d", n) ? (n != 0) : 1'b0;
+        KLR_ADC0_NOISE_LOW = $value$plusargs("KLR_ADC0_NOISE_LOW=%d", n) ? (n != 0) : 1'b0;
+        KLR_BATT_DISCONNECTED = $value$plusargs("KLR_BATT_DISCONNECTED=%d", n) ? (n != 0) : 1'b0;
+        KLR_BATT_LOW = $value$plusargs("KLR_BATT_LOW=%d", n) ? (n != 0) : 1'b0;
+        KLR_FULL_LOAD_STUCK_HIGH = $value$plusargs("KLR_FULL_LOAD_STUCK_HIGH=%d", n) ? (n != 0) : 1'b0;
+        KLR_FULL_LOAD_STUCK_LOW = $value$plusargs("KLR_FULL_LOAD_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
+        KLR_IGN_IN_STUCK_HIGH = $value$plusargs("KLR_IGN_IN_STUCK_HIGH=%d", n) ? (n != 0) : 1'b0;
+        KLR_IGN_IN_STUCK_LOW = $value$plusargs("KLR_IGN_IN_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
+        KLR_TPS_HIGH = $value$plusargs("KLR_TPS_HIGH=%d", n) ? (n != 0) : 1'b0;
+        KLR_TPS_OPEN_CIRCUIT = $value$plusargs("KLR_TPS_OPEN_CIRCUIT=%d", n) ? (n != 0) : 1'b0;
+        KLR_TPS_SHORT_TO_GROUND = $value$plusargs("KLR_TPS_SHORT_TO_GROUND=%d", n) ? (n != 0) : 1'b0;
+        KLR_TPS_SUPPLY_LOST = $value$plusargs("KLR_TPS_SUPPLY_LOST=%d", n) ? (n != 0) : 1'b0;
+        KLR_TPS_SUPPLY_LOW = $value$plusargs("KLR_TPS_SUPPLY_LOW=%d", n) ? (n != 0) : 1'b0;
+        KLR_TRIGGER_STUCK_HIGH = $value$plusargs("KLR_TRIGGER_STUCK_HIGH=%d", n) ? (n != 0) : 1'b0;
+        KLR_TRIGGER_STUCK_LOW = $value$plusargs("KLR_TRIGGER_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
+        O2_FLAT_DISCONNECTED = $value$plusargs("O2_FLAT_DISCONNECTED=%d", n) ? (n != 0) : 1'b0;
+        O2_FLAT_LEAN = $value$plusargs("O2_FLAT_LEAN=%d", n) ? (n != 0) : 1'b0;
+        O2_FLAT_RICH = $value$plusargs("O2_FLAT_RICH=%d", n) ? (n != 0) : 1'b0;
+        REF_SENSOR_ABSENT = $value$plusargs("REF_SENSOR_ABSENT=%d", n) ? (n != 0) : 1'b0;
+        REF_SENSOR_STUCK_LOW = $value$plusargs("REF_SENSOR_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
+        RPMRAMP = $value$plusargs("RPMRAMP=%d", n) ? (n != 0) : 1'b0;
+        RPM_RAMP_DOWN = $value$plusargs("RPM_RAMP_DOWN=%d", n) ? (n != 0) : 1'b0;
+        SKIP_LAMBDA_WARMUP = $value$plusargs("SKIP_LAMBDA_WARMUP=%d", n) ? (n != 0) : 1'b0;
+        SPEED_SENSOR_STUCK_LOW = $value$plusargs("SPEED_SENSOR_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
+        TEST_AIRTEMP_FAIL = $value$plusargs("TEST_AIRTEMP_FAIL=%d", n) ? (n != 0) : 1'b0;
+        TEST_CL_COLD_START = $value$plusargs("TEST_CL_COLD_START=%d", n) ? (n != 0) : 1'b0;
+        TEST_CL_CONDITION_CYCLE_IDLE = $value$plusargs("TEST_CL_CONDITION_CYCLE_IDLE=%d", n) ? (n != 0) : 1'b0;
+        TEST_COLD_START = $value$plusargs("TEST_COLD_START=%d", n) ? (n != 0) : 1'b0;
+        TEST_COOLANT_FAIL = $value$plusargs("TEST_COOLANT_FAIL=%d", n) ? (n != 0) : 1'b0;
+        TEST_ISV_COLD_IDLE = $value$plusargs("TEST_ISV_COLD_IDLE=%d", n) ? (n != 0) : 1'b0;
+        TEST_KNOCK_FAKE_BLOCKED = $value$plusargs("TEST_KNOCK_FAKE_BLOCKED=%d", n) ? (n != 0) : 1'b0;
+        TEST_KNOCK_PULSE = $value$plusargs("TEST_KNOCK_PULSE=%d", n) ? (n != 0) : 1'b0;
+        TEST_KNOCK_SHORT_TO_GROUND = $value$plusargs("TEST_KNOCK_SHORT_TO_GROUND=%d", n) ? (n != 0) : 1'b0;
+        TEST_OVERRUN_CUTOFF = $value$plusargs("TEST_OVERRUN_CUTOFF=%d", n) ? (n != 0) : 1'b0;
+        TEST_REF_SENSOR_LOSS = $value$plusargs("TEST_REF_SENSOR_LOSS=%d", n) ? (n != 0) : 1'b0;
+        TEST_SPEED_SENSOR_LOSS = $value$plusargs("TEST_SPEED_SENSOR_LOSS=%d", n) ? (n != 0) : 1'b0;
+        TEST_TIPPY_IN = $value$plusargs("TEST_TIPPY_IN=%d", n) ? (n != 0) : 1'b0;
+        TPS_FIXED__GIVEN = $test$plusargs("TPS_FIXED=");
+        AFM_CL_STEP_NS = $value$plusargs("AFM_CL_STEP_NS=%d", n) ? n : 1420454;
+        AFM_CL_TARGET = $value$plusargs("AFM_CL_TARGET=%d", n) ? n : 40;
+        BOOST_CUT_TAU_MS = $value$plusargs("BOOST_CUT_TAU_MS=%d", n) ? n : 150;
+        CL_FUEL_ENERGY_PCT = $value$plusargs("CL_FUEL_ENERGY_PCT=%d", n) ? n : 0;
+        CL_ISV_AIR_GAIN = $value$plusargs("CL_ISV_AIR_GAIN=%d", n) ? n : 0;
+        CL_ISV_REF_PCT10 = $value$plusargs("CL_ISV_REF_PCT10=%d", n) ? n : 0;
+        CL_ISV_WIN_NS = $value$plusargs("CL_ISV_WIN_NS=%d", n) ? n : 0;
+        CL_RPM_CRANK_RAMP_NS = $value$plusargs("CL_RPM_CRANK_RAMP_NS=%d", n) ? n : 0;
+        CL_RPM_CRANK_START = $value$plusargs("CL_RPM_CRANK_START=%d", n) ? n : 0;
+        CL_RPM_MAX = $value$plusargs("CL_RPM_MAX=%d", n) ? n : 0;
+        IGN_IN_LOSS_T_MS = $value$plusargs("IGN_IN_LOSS_T_MS=%d", n) ? n : 3000;
+        O2_DELAY_MS = $value$plusargs("O2_DELAY_MS=%d", n) ? n : 150;
+        O2_STOICH_X1000 = $value$plusargs("O2_STOICH_X1000=%d", n) ? n : 1025;
+        O2_TAU_MS = $value$plusargs("O2_TAU_MS=%d", n) ? n : 30;
+        OVERBOOST_END_PSI = $value$plusargs("OVERBOOST_END_PSI=%d", n) ? n : -6;
+        OVERBOOST_KLR_TPS = $value$plusargs("OVERBOOST_KLR_TPS=%d", n) ? n : 160;
+        OVERBOOST_START_PSI = $value$plusargs("OVERBOOST_START_PSI=%d", n) ? n : 4;
+        OVERBOOST_STEP_NS = $value$plusargs("OVERBOOST_STEP_NS=%d", n) ? n : 1000000000;
+        OVERBOOST_STEP_RPM = $value$plusargs("OVERBOOST_STEP_RPM=%d", n) ? n : 2950;
+        REF_LOSS_T_MS = $value$plusargs("REF_LOSS_T_MS=%d", n) ? n : 3500;
+        RPMEND = $value$plusargs("RPMEND=%d", n) ? n : 6500;
+        RPMSTART = $value$plusargs("RPMSTART=%d", n) ? n : 840;
+        RPM_DOWN_END_MS = $value$plusargs("RPM_DOWN_END_MS=%d", n) ? n : 40000;
+        RPM_DOWN_START_MS = $value$plusargs("RPM_DOWN_START_MS=%d", n) ? n : 30000;
+        RPM_DOWN_TARGET = $value$plusargs("RPM_DOWN_TARGET=%d", n) ? n : 840;
+        RPM_RAMP_PCT = $value$plusargs("RPM_RAMP_PCT=%d", n) ? n : 25;
+        SIM_TIME = $value$plusargs("SIM_TIME=%d", n) ? n : 10000000000;
+        SPEED_LOSS_T_MS = $value$plusargs("SPEED_LOSS_T_MS=%d", n) ? n : 3500;
+        TPS_FIXED = $value$plusargs("TPS_FIXED=%d", n) ? n : 0;
+        TRIGGER_LOSS_T_MS = $value$plusargs("TRIGGER_LOSS_T_MS=%d", n) ? n : 3000;
+        _AIRTEMP_RAW = $value$plusargs("_AIRTEMP_RAW=%d", n) ? n : 158;
+        _ALTITUDE = $value$plusargs("_ALTITUDE=%d", n) ? n : 248;
+        _BATTERY = $value$plusargs("_BATTERY=%d", n) ? n : 216;
+        _COOLANT_RAW = $value$plusargs("_COOLANT_RAW=%d", n) ? n : 49;
+        _FUEL_QUAL = $value$plusargs("_FUEL_QUAL=%d", n) ? n : 0;
+        STEP_CLOCKS = $value$plusargs("STEP_CLOCKS=%d", n) ? n : 0;
+        DASH_INTERVAL_MS = $value$plusargs("DASH_INTERVAL_MS=%d", n) ? n : 100;
+      end
+      load = 1'b1;
+    end
+  endfunction
+  initial if (load(1'b0)) ;
+endmodule
+`define OPT_AC_COMP_ON ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AC_COMP_ON : test_opts.AC_COMP_ON)
+`define OPT_AFM_CL_RAMP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_CL_RAMP : test_opts.AFM_CL_RAMP)
+`define OPT_AFM_FAULT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_FAULT : test_opts.AFM_FAULT)
+`define OPT_AFM_FROM_ENGINE_MODEL ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_FROM_ENGINE_MODEL : test_opts.AFM_FROM_ENGINE_MODEL)
+`define OPT_AFM_SHORT_TO_GROUND ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_SHORT_TO_GROUND : test_opts.AFM_SHORT_TO_GROUND)
+`define OPT_AFM_TIPPY ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_TIPPY : test_opts.AFM_TIPPY)
+`define OPT_AIRTEMP_OPEN_CIRCUIT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AIRTEMP_OPEN_CIRCUIT : test_opts.AIRTEMP_OPEN_CIRCUIT)
+`define OPT_BOOST ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST : test_opts.BOOST)
+`define OPT_BOOST_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_LOW : test_opts.BOOST_LOW)
+`define OPT_BOOST_OPEN_CIRCUIT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_OPEN_CIRCUIT : test_opts.BOOST_OPEN_CIRCUIT)
+`define OPT_BOOST_STEP_DOWN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_STEP_DOWN : test_opts.BOOST_STEP_DOWN)
+`define OPT_BOOST_STEP_OVERBOOST ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_STEP_OVERBOOST : test_opts.BOOST_STEP_OVERBOOST)
+`define OPT_BOOST_ZERO ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_ZERO : test_opts.BOOST_ZERO)
+`define OPT_BOOST_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_HIGH : test_opts.BOOST_HIGH)
+`define OPT_CL_AC_HALFWAY ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_AC_HALFWAY : test_opts.CL_AC_HALFWAY)
+`define OPT_CL_CONDITION_CYCLE_ACTIVE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_CONDITION_CYCLE_ACTIVE : test_opts.CL_CONDITION_CYCLE_ACTIVE)
+`define OPT_CL_ISV_AIR ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_ISV_AIR : test_opts.CL_ISV_AIR)
+`define OPT_CL_MODE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_MODE : test_opts.CL_MODE)
+`define OPT_CL_RPM_CRANK_RAMP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_RPM_CRANK_RAMP : test_opts.CL_RPM_CRANK_RAMP)
+`define OPT_CL_THROTTLE_CLOSED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_THROTTLE_CLOSED : test_opts.CL_THROTTLE_CLOSED)
+`define OPT_COOLANT_OPEN_CIRCUIT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.COOLANT_OPEN_CIRCUIT : test_opts.COOLANT_OPEN_CIRCUIT)
+`define OPT_DME_BATT_DISCONNECTED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DME_BATT_DISCONNECTED : test_opts.DME_BATT_DISCONNECTED)
+`define OPT_ISV_LOAD_DROOP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.ISV_LOAD_DROOP : test_opts.ISV_LOAD_DROOP)
+`define OPT_KLR_ADC0_NOISE_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ADC0_NOISE_HIGH : test_opts.KLR_ADC0_NOISE_HIGH)
+`define OPT_KLR_ADC0_NOISE_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ADC0_NOISE_LOW : test_opts.KLR_ADC0_NOISE_LOW)
+`define OPT_KLR_BATT_DISCONNECTED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_BATT_DISCONNECTED : test_opts.KLR_BATT_DISCONNECTED)
+`define OPT_KLR_BATT_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_BATT_LOW : test_opts.KLR_BATT_LOW)
+`define OPT_KLR_FULL_LOAD_STUCK_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_FULL_LOAD_STUCK_HIGH : test_opts.KLR_FULL_LOAD_STUCK_HIGH)
+`define OPT_KLR_FULL_LOAD_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_FULL_LOAD_STUCK_LOW : test_opts.KLR_FULL_LOAD_STUCK_LOW)
+`define OPT_KLR_IGN_IN_STUCK_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_IGN_IN_STUCK_HIGH : test_opts.KLR_IGN_IN_STUCK_HIGH)
+`define OPT_KLR_IGN_IN_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_IGN_IN_STUCK_LOW : test_opts.KLR_IGN_IN_STUCK_LOW)
+`define OPT_KLR_TPS_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TPS_HIGH : test_opts.KLR_TPS_HIGH)
+`define OPT_KLR_TPS_OPEN_CIRCUIT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TPS_OPEN_CIRCUIT : test_opts.KLR_TPS_OPEN_CIRCUIT)
+`define OPT_KLR_TPS_SHORT_TO_GROUND ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TPS_SHORT_TO_GROUND : test_opts.KLR_TPS_SHORT_TO_GROUND)
+`define OPT_KLR_TPS_SUPPLY_LOST ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TPS_SUPPLY_LOST : test_opts.KLR_TPS_SUPPLY_LOST)
+`define OPT_KLR_TPS_SUPPLY_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TPS_SUPPLY_LOW : test_opts.KLR_TPS_SUPPLY_LOW)
+`define OPT_KLR_TRIGGER_STUCK_HIGH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TRIGGER_STUCK_HIGH : test_opts.KLR_TRIGGER_STUCK_HIGH)
+`define OPT_KLR_TRIGGER_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_TRIGGER_STUCK_LOW : test_opts.KLR_TRIGGER_STUCK_LOW)
+`define OPT_O2_FLAT_DISCONNECTED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_FLAT_DISCONNECTED : test_opts.O2_FLAT_DISCONNECTED)
+`define OPT_O2_FLAT_LEAN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_FLAT_LEAN : test_opts.O2_FLAT_LEAN)
+`define OPT_O2_FLAT_RICH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_FLAT_RICH : test_opts.O2_FLAT_RICH)
+`define OPT_REF_SENSOR_ABSENT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.REF_SENSOR_ABSENT : test_opts.REF_SENSOR_ABSENT)
+`define OPT_REF_SENSOR_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.REF_SENSOR_STUCK_LOW : test_opts.REF_SENSOR_STUCK_LOW)
+`define OPT_RPMRAMP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPMRAMP : test_opts.RPMRAMP)
+`define OPT_RPM_RAMP_DOWN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_RAMP_DOWN : test_opts.RPM_RAMP_DOWN)
+`define OPT_SKIP_LAMBDA_WARMUP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SKIP_LAMBDA_WARMUP : test_opts.SKIP_LAMBDA_WARMUP)
+`define OPT_SPEED_SENSOR_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SPEED_SENSOR_STUCK_LOW : test_opts.SPEED_SENSOR_STUCK_LOW)
+`define OPT_TEST_AIRTEMP_FAIL ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_AIRTEMP_FAIL : test_opts.TEST_AIRTEMP_FAIL)
+`define OPT_TEST_CL_COLD_START ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_CL_COLD_START : test_opts.TEST_CL_COLD_START)
+`define OPT_TEST_CL_CONDITION_CYCLE_IDLE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_CL_CONDITION_CYCLE_IDLE : test_opts.TEST_CL_CONDITION_CYCLE_IDLE)
+`define OPT_TEST_COLD_START ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_COLD_START : test_opts.TEST_COLD_START)
+`define OPT_TEST_COOLANT_FAIL ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_COOLANT_FAIL : test_opts.TEST_COOLANT_FAIL)
+`define OPT_TEST_ISV_COLD_IDLE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_ISV_COLD_IDLE : test_opts.TEST_ISV_COLD_IDLE)
+`define OPT_TEST_KNOCK_FAKE_BLOCKED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_KNOCK_FAKE_BLOCKED : test_opts.TEST_KNOCK_FAKE_BLOCKED)
+`define OPT_TEST_KNOCK_PULSE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_KNOCK_PULSE : test_opts.TEST_KNOCK_PULSE)
+`define OPT_TEST_KNOCK_SHORT_TO_GROUND ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_KNOCK_SHORT_TO_GROUND : test_opts.TEST_KNOCK_SHORT_TO_GROUND)
+`define OPT_TEST_OVERRUN_CUTOFF ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_OVERRUN_CUTOFF : test_opts.TEST_OVERRUN_CUTOFF)
+`define OPT_TEST_REF_SENSOR_LOSS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_REF_SENSOR_LOSS : test_opts.TEST_REF_SENSOR_LOSS)
+`define OPT_TEST_SPEED_SENSOR_LOSS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_SPEED_SENSOR_LOSS : test_opts.TEST_SPEED_SENSOR_LOSS)
+`define OPT_TEST_TIPPY_IN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_TIPPY_IN : test_opts.TEST_TIPPY_IN)
+`define VAL_AFM_CL_STEP_NS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_CL_STEP_NS : test_opts.AFM_CL_STEP_NS)
+`define VAL_AFM_CL_TARGET ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.AFM_CL_TARGET : test_opts.AFM_CL_TARGET)
+`define VAL_BOOST_CUT_TAU_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.BOOST_CUT_TAU_MS : test_opts.BOOST_CUT_TAU_MS)
+`define VAL_CL_FUEL_ENERGY_PCT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_FUEL_ENERGY_PCT : test_opts.CL_FUEL_ENERGY_PCT)
+`define VAL_CL_ISV_AIR_GAIN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_ISV_AIR_GAIN : test_opts.CL_ISV_AIR_GAIN)
+`define VAL_CL_ISV_REF_PCT10 ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_ISV_REF_PCT10 : test_opts.CL_ISV_REF_PCT10)
+`define VAL_CL_ISV_WIN_NS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_ISV_WIN_NS : test_opts.CL_ISV_WIN_NS)
+`define VAL_CL_RPM_CRANK_RAMP_NS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_RPM_CRANK_RAMP_NS : test_opts.CL_RPM_CRANK_RAMP_NS)
+`define VAL_CL_RPM_CRANK_START ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_RPM_CRANK_START : test_opts.CL_RPM_CRANK_START)
+`define VAL_CL_RPM_MAX ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.CL_RPM_MAX : test_opts.CL_RPM_MAX)
+`define VAL_IGN_IN_LOSS_T_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.IGN_IN_LOSS_T_MS : test_opts.IGN_IN_LOSS_T_MS)
+`define VAL_O2_DELAY_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_DELAY_MS : test_opts.O2_DELAY_MS)
+`define VAL_O2_STOICH_X1000 ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_STOICH_X1000 : test_opts.O2_STOICH_X1000)
+`define VAL_O2_TAU_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.O2_TAU_MS : test_opts.O2_TAU_MS)
+`define VAL_OVERBOOST_END_PSI ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.OVERBOOST_END_PSI : test_opts.OVERBOOST_END_PSI)
+`define VAL_OVERBOOST_KLR_TPS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.OVERBOOST_KLR_TPS : test_opts.OVERBOOST_KLR_TPS)
+`define VAL_OVERBOOST_START_PSI ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.OVERBOOST_START_PSI : test_opts.OVERBOOST_START_PSI)
+`define VAL_OVERBOOST_STEP_NS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.OVERBOOST_STEP_NS : test_opts.OVERBOOST_STEP_NS)
+`define VAL_OVERBOOST_STEP_RPM ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.OVERBOOST_STEP_RPM : test_opts.OVERBOOST_STEP_RPM)
+`define VAL_REF_LOSS_T_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.REF_LOSS_T_MS : test_opts.REF_LOSS_T_MS)
+`define VAL_RPMEND ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPMEND : test_opts.RPMEND)
+`define VAL_RPMSTART ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPMSTART : test_opts.RPMSTART)
+`define VAL_RPM_DOWN_END_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_DOWN_END_MS : test_opts.RPM_DOWN_END_MS)
+`define VAL_RPM_DOWN_START_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_DOWN_START_MS : test_opts.RPM_DOWN_START_MS)
+`define VAL_RPM_DOWN_TARGET ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_DOWN_TARGET : test_opts.RPM_DOWN_TARGET)
+`define VAL_RPM_RAMP_PCT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_RAMP_PCT : test_opts.RPM_RAMP_PCT)
+`define VAL_SIM_TIME ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SIM_TIME : test_opts.SIM_TIME)
+`define VAL_SPEED_LOSS_T_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SPEED_LOSS_T_MS : test_opts.SPEED_LOSS_T_MS)
+`define VAL_TPS_FIXED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TPS_FIXED : test_opts.TPS_FIXED)
+`define VAL_TRIGGER_LOSS_T_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TRIGGER_LOSS_T_MS : test_opts.TRIGGER_LOSS_T_MS)
+`define VAL__AIRTEMP_RAW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts._AIRTEMP_RAW : test_opts._AIRTEMP_RAW)
+`define VAL__ALTITUDE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts._ALTITUDE : test_opts._ALTITUDE)
+`define VAL__BATTERY ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts._BATTERY : test_opts._BATTERY)
+`define VAL__COOLANT_RAW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts._COOLANT_RAW : test_opts._COOLANT_RAW)
+`define VAL__FUEL_QUAL ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts._FUEL_QUAL : test_opts._FUEL_QUAL)
+`define VAL_STEP_CLOCKS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.STEP_CLOCKS : test_opts.STEP_CLOCKS)
+`define VAL_DASH_INTERVAL_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DASH_INTERVAL_MS : test_opts.DASH_INTERVAL_MS)
+`define OPT_TPS_FIXED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TPS_FIXED__GIVEN : test_opts.TPS_FIXED__GIVEN)
+`undef DMEKLR_REPO
+`define DMEKLR_REPO ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DMEKLR_REPO : test_opts.DMEKLR_REPO)
+`undef DME_ROM_DIR
+`define DME_ROM_DIR ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DME_ROM_DIR : test_opts.DME_ROM_DIR)
+`undef DME_ROM_FILE
+`define DME_ROM_FILE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DME_ROM_FILE : test_opts.DME_ROM_FILE)
+`undef DME_ASM_DIR
+`define DME_ASM_DIR ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DME_ASM_DIR : test_opts.DME_ASM_DIR)
+`undef KLR_ROM_DIR
+`define KLR_ROM_DIR ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ROM_DIR : test_opts.KLR_ROM_DIR)
+`undef KLR_ROM_FILE
+`define KLR_ROM_FILE ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ROM_FILE : test_opts.KLR_ROM_FILE)
+`undef KLR_ASM_DIR
+`define KLR_ASM_DIR ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ASM_DIR : test_opts.KLR_ASM_DIR)
+`define DME_ROM_PATH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.DME_ROM_PATH : test_opts.DME_ROM_PATH)
+`define KLR_ROM_PATH ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.KLR_ROM_PATH : test_opts.KLR_ROM_PATH)
+`endif   // VERILATOR
 `else
 `ifdef AC_COMP_ON
   `define OPT_AC_COMP_ON 1'b1

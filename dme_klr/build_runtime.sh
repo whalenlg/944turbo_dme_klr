@@ -15,7 +15,10 @@
 #      <out>/dme_klr_sim      open-loop tests     (test_opts.py: files: files)
 #      <out>/dme_klr_sim_cl   closed-loop tests   (files: files_cl)
 #
-#  Usage: build_runtime.sh [--out DIR] [--trace] [--jobs N]
+#  With --iverilog, Icarus Verilog instead (plain Verilog-2005, no -g2012):
+#      <out>/dme_klr_sim.vvp, <out>/dme_klr_sim_cl.vvp   (vvp <file> +X=<n> ...)
+#
+#  Usage: build_runtime.sh [--out DIR] [--iverilog] [--trace] [--jobs N]
 #         (default DIR: $DMEKLR_TMP/dme_klr/runtime)
 # ============================================================
 set -e
@@ -33,11 +36,13 @@ source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 OUT="$DMEKLR_TMP/dme_klr/runtime"
 TRACE=""
 JOBS=""
+SIM=verilator
 while [ $# -gt 0 ]; do
     case "$1" in
         --out)   OUT="$2"; shift 2 ;;
         --trace) TRACE="--trace"; shift ;;
         --jobs)  JOBS="$2"; shift 2 ;;
+        --iverilog) SIM=iverilog; shift ;;
         *) echo "build_runtime.sh: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -51,6 +56,15 @@ python3 test_opts.py gen --check   # the generated header matches the tests
 build() {   # <file list> <exe name> [extra -D]
     local fl=$1 exe=$2; shift 2
     echo "== $exe ($fl)"
+    if [ "$SIM" = iverilog ]; then
+        # test_opts is a module of its own here: a second root
+        iverilog -o "$OUT/$exe.vvp" -f "$fl" \
+            -I rtl/verilog -I bench/verilog -I ../dme/rtl/verilog -I ../dme/bench/verilog \
+            -I ../klr/rtl/verilog -I ../klr/bench/verilog \
+            -s dme_klr_dashboard_tb -s test_opts \
+            -DRUNTIME_OPTS -DRPMRAMP -DDASHBOARD_TB -DDME_KLR_COMBINED "$@"
+        return
+    fi
     rm -rf "$OUT/obj_$exe"
     # shellcheck disable=SC2086
     verilator --binary $TRACE -j "$JOBS" \
@@ -80,4 +94,5 @@ build() {   # <file list> <exe name> [extra -D]
 }
 build files    dme_klr_sim
 build files_cl dme_klr_sim_cl -DCL_MODE
-echo "built $OUT/dme_klr_sim and $OUT/dme_klr_sim_cl"
+[ "$SIM" = iverilog ] && x=.vvp || x=
+echo "built $OUT/dme_klr_sim$x and $OUT/dme_klr_sim_cl$x"
