@@ -50,6 +50,10 @@ mkdir -p "$LOGDIR" || exit 1
 bold=$'\033[1m'; green=$'\033[0;32m'; red=$'\033[0;31m'; nc=$'\033[0m'
 [ -t 1 ] || { bold=""; green=""; red=""; nc=""; }
 
+# Tracked files the tests change (they shouldn't; see the end)
+git_dirty() { git -C "$REPO_DIR" status --porcelain --untracked-files=no 2>/dev/null; }
+DIRTY_BEFORE="$(git_dirty)"
+
 declare -a RESULTS=()
 FAILS=0
 result() {   # result PASS|FAIL NAME DETAIL SECONDS
@@ -97,4 +101,11 @@ done
 echo
 echo "${bold}Smoke tests${nc}"
 for r in "${RESULTS[@]}"; do echo "  $r"; done
+DIRTY_AFTER="$(git_dirty)"
+if [ "$DIRTY_AFTER" != "$DIRTY_BEFORE" ]; then
+    echo
+    echo "warning: the tests changed these files in the checkout, which they"
+    echo "shouldn't (please report it; 'git checkout -- <file>' undoes it):"
+    diff <(echo "$DIRTY_BEFORE") <(echo "$DIRTY_AFTER") | sed -n 's/^> /  /p'
+fi
 [ "$FAILS" -eq 0 ]
