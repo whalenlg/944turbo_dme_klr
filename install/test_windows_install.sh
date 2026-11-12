@@ -14,11 +14,16 @@
 #                              on /events sees it pause at 200 ms after
 #                              POST /cmd "until 200"
 #    6. GTKWave: reads the KLR regression's .fst (fst2vcd) and opens it
+#    7. dashboard (with --browser): the published dashboard in Edge (or
+#       Chrome), live on a bridge here, through install/dashboard_e2e.mjs:
+#       it connects, shows a pause sent to the bridge, and its RUN and
+#       PAUSE buttons drive the sim. Needs internet; screenshots go to the
+#       log folder
 #  then prints a PASS/FAIL line per step. Exits 0 only when all pass.
 #  .github/workflows/windows-install.yml runs it on a clean
 #  windows-latest runner after install_windows.ps1.
 #
-#  Usage:  install/test_windows_install.sh [--no-gtkwave] [--logdir DIR]
+#  Usage:  install/test_windows_install.sh [--no-gtkwave] [--browser] [--logdir DIR]
 #  Logs go to <checkout>/../tmp/windows-install-test/ by default.
 # ============================================================
 
@@ -34,10 +39,11 @@ set -uo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
-GTKWAVE=1; LOGDIR="$REPO_DIR/../tmp/windows-install-test"
+GTKWAVE=1; BROWSER=0; LOGDIR="$REPO_DIR/../tmp/windows-install-test"
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-gtkwave) GTKWAVE=0 ;;
+        --browser)    BROWSER=1 ;;
         --logdir)     LOGDIR="${2:?--logdir needs a folder}"; shift ;;
         *) echo "test_windows_install.sh: unknown option '$1' (see --help)" >&2; exit 2 ;;
     esac
@@ -86,6 +92,25 @@ grep -m1 'STATE\] paused.*reason=until' "$events"
 [ "$ok" = 1 ] && echo "bridge: sim paused at 200 ms" || { echo "bridge: no pause at 200 ms"; tail -n 20 "$events"; exit 1; }
 SMOKE
 
+cat > "$LOGDIR/browser_smoke.sh" <<'SMOKE'
+logdir="$1"
+port=18952
+pw="$DMEKLR_TMP/win-test-playwright"
+# playwright-core only: the browser is the system's Edge (or Chrome)
+[ -d "$pw/node_modules/playwright-core" ] \
+    || npm install --prefix "$pw" --no-audit --no-fund playwright-core@1.55.0 || exit 1
+node dme_klr/live/bridge.mjs --port $port --snapdir "$DMEKLR_TMP/win-test-browser-snaps" > "$logdir/browser_bridge.log" 2>&1 &
+bridge=$!
+trap 'kill $bridge 2>/dev/null; taskkill //F //IM dme_klr_live.exe >/dev/null 2>&1' EXIT
+for _ in $(seq 60); do curl -s -o /dev/null "http://127.0.0.1:$port/events" -m 1; [ $? -ne 7 ] && break; sleep 1; done
+PW_DIR="$(cygpath -m "$pw" 2>/dev/null || echo "$pw")" \
+    node install/dashboard_e2e.mjs --bridge "http://127.0.0.1:$port" \
+         --out "$(cygpath -m "$logdir" 2>/dev/null || echo "$logdir")"
+rc=$?
+echo "--- bridge log (last 15 lines)"; tail -n 15 "$logdir/browser_bridge.log"
+exit $rc
+SMOKE
+
 declare -a RESULTS=()
 FAILS=0
 check() {   # check NAME COMMAND: run COMMAND in a new UCRT64 login shell
@@ -121,7 +146,10 @@ check "verilator: warm_idle_5s" \
 if check "verilator: live build" \
     "source ./setup && cd dme_klr/live && ./build_live.sh && ls -l obj/dme_klr_live.exe \
      && bash '$LOGDIR/live_smoke.sh' obj/dme_klr_live"; then
-    check "node: live bridge" "source ./setup && node --version && bash '$LOGDIR/bridge_smoke.sh'"
+    if check "node: live bridge" "source ./setup && node --version && bash '$LOGDIR/bridge_smoke.sh'" \
+       && [ "$BROWSER" = 1 ]; then
+        check "browser: dashboard live on the bridge" "source ./setup && bash '$LOGDIR/browser_smoke.sh' '$LOGDIR'"
+    fi
 fi
 if [ "$GTKWAVE" = 1 ]; then
     # Still running after 15 s (timeout's 124) means it loaded and stayed up

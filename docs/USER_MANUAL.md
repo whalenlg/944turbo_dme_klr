@@ -387,7 +387,11 @@ smoke tests, then `install/test_windows_install.sh` in a UCRT64 shell:
 `source setup` and `check_toolchain.sh`, the smoke tests' output, the live
 simulator build (run to 200 ms), the live bridge (a client on `/events`
 sees the simulator pause at 200 ms after `POST /cmd`) and GTKWave opening
-the KLR waveform. It runs with and without `-Venv`, on pull requests that
+the KLR waveform. With `--browser` (the workflow passes it) it also opens
+the published dashboard in Edge, live on a bridge on the runner, through
+`install/dashboard_e2e.mjs`: the page must connect, show a pause sent to the
+bridge, and drive the simulator with its own ▶ RUN and ⏸ PAUSE buttons. Its
+screenshots are in the workflow's uploaded logs. It runs with and without `-Venv`, on pull requests that
 touch `install/`, and by hand from the Actions tab. You can run
 `install/test_windows_install.sh` on your own Windows install too, after
 the installer.
