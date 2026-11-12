@@ -219,6 +219,21 @@ exits non-zero if anything required is missing or too old:
   ...
 ```
 
+### Testing the macOS install on a clean Mac
+
+`install/test_macos_vm.sh` checks `install_macos.sh` from scratch, without
+touching your own setup. It needs an Apple Silicon Mac with Tart
+(`brew install cirruslabs/cli/tart`). It clones a fresh macOS VM with no
+Xcode tools and no Homebrew, copies the checkout in (the committed `HEAD`, or
+`--worktree` for your uncommitted changes too), checks the installer stops
+and asks for the Command Line Tools, installs them, runs the installer, then,
+in a new zsh terminal, sources `setup` and runs `check_toolchain.sh`, the KLR
+CPU regression (Icarus Verilog) and the `warm_idle_5s` dashboard test
+(Verilator). It prints PASS or FAIL for each step, saves the logs in
+`$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
+it running). The first run downloads the macOS image, about 25 GB; a run
+takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
+
 ### Dependencies
 
 Everything the repo uses outside the standard tools every Unix system has
