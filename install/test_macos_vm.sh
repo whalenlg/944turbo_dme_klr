@@ -2,7 +2,7 @@
 # ============================================================
 #  test_macos_vm.sh — test install_macos.sh on a clean macOS VM (Tart)
 #
-#  Runs on an Apple Silicon Mac with Tart (brew install cirruslabs/cli/tart).
+#  Runs on an Apple Silicon Mac with Tart (brew install openai/tools/tart).
 #  Clones a fresh macOS VM from a Cirrus Labs "vanilla" image (no Xcode
 #  tools, no Homebrew), copies this checkout into it, and then:
 #    1. runs install_macos.sh with no Command Line Tools, and checks it
@@ -91,7 +91,7 @@ die()  { printf '%serror:%s %s\n' "$red" "$nc" "$*" >&2; exit 2; }
 # ── Host checks ───────────────────────────────────────────────────────────
 [ "$(uname -s)" = Darwin ] || die "run this on a Mac (it drives Tart, which needs macOS on Apple Silicon)"
 [ "$(uname -m)" = arm64 ]  || die "Tart's macOS VMs need an Apple Silicon Mac"
-command -v tart >/dev/null 2>&1 || die "Tart isn't installed: brew install cirruslabs/cli/tart"
+command -v tart >/dev/null 2>&1 || die "Tart isn't installed: brew install openai/tools/tart"
 git -C "$REPO_DIR" rev-parse --verify --quiet "$REF^{commit}" >/dev/null || die "'$REF' isn't a commit in $REPO_DIR"
 
 if [ -z "$OUT" ]; then

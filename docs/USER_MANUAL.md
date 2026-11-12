@@ -223,7 +223,7 @@ exits non-zero if anything required is missing or too old:
 
 `install/test_macos_vm.sh` checks `install_macos.sh` from scratch, without
 touching your own setup. It needs an Apple Silicon Mac with Tart
-(`brew install cirruslabs/cli/tart`). It clones a fresh macOS VM with no
+(`brew install openai/tools/tart`). It clones a fresh macOS VM with no
 Xcode tools and no Homebrew, copies the checkout in (the committed `HEAD`, or
 `--worktree` for your uncommitted changes too), checks the installer stops
 and asks for the Command Line Tools, installs them, runs the installer, then,
