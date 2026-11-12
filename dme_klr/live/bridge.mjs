@@ -492,7 +492,7 @@ function loadSnapshot(id) {
 // and the time. LOAD builds the test with the debugger's hooks
 // (build_live.sh --test, in obj/tests/<test>/, kept for next time) and
 // runs it there, paused. Progress goes out as SIM: [SNAP] building lines.
-const TEST_SOURCES = [join(HERE, 'sim_main.cpp'), join(HERE, 'snapshot.h'), join(HERE, 'build_live.sh'),
+const TEST_SOURCES = [join(HERE, 'sim_main.cpp'), join(HERE, 'stdin_ready.cpp'), join(HERE, 'snapshot.h'), join(HERE, 'build_live.sh'),
                       join(REPO, 'dme_klr', 'bench', 'verilog', 'dme_klr_dashboard_tb.v')];
 const testDir = req => join(dirname(SIM), 'tests', req.test);
 const testStamp = req => JSON.stringify({ defines: req.defines, roms: req.roms, interval: req.interval_ms, script: req.script });

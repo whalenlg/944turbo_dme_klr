@@ -112,7 +112,7 @@ verilator --cc --exe --build --timing -j 0 \
     -Wno-fatal -Wno-PINMISSING -Wno-IMPLICIT -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND \
     -Wno-REDEFMACRO -Wno-DEFOVERRIDE -Wno-CASEINCOMPLETE -Wno-LATCH -Wno-MULTIDRIVEN \
     "$@" \
-    "$LIVE_DIR/sim_main.cpp" "$OBJ/live_fields.cpp"
+    "$LIVE_DIR/sim_main.cpp" "$LIVE_DIR/stdin_ready.cpp" "$OBJ/live_fields.cpp"
 
 # List the model's variables from the generated headers, then rebuild
 # that file, and Verilator's runtime with live_printf.h (only the runtime

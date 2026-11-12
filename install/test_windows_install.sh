@@ -97,6 +97,8 @@ check() {   # check NAME COMMAND: run COMMAND in a new UCRT64 login shell
     MSYSTEM=UCRT64 CHERE_INVOKING=1 bash -lc "cd '$REPO_DIR' && $*" > "$log" 2>&1
     local rc=$?
     tail -n 40 "$log"
+    # The compilers' warnings can push the error out of that tail
+    [ $rc -eq 0 ] || { echo "--- error lines:"; grep -m 20 -E 'error|Error|undefined reference' "$log"; }
     local dt=$((SECONDS - t0))
     if [ $rc -eq 0 ]; then RESULTS+=("PASS  ${name}  (${dt}s)")
     else RESULTS+=("FAIL  ${name}  (exit $rc, ${dt}s; log: $log)"); FAILS=$((FAILS + 1)); fi
