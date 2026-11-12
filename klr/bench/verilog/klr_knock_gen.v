@@ -57,7 +57,8 @@ module klr_knock_gen (
     output wire [7:0] knock_sensor  // drives KLR knock_sensor input
 );
 
-`ifdef TEST_KNOCK_PULSE
+    // -DTEST_KNOCK_PULSE (`OPT_TEST_KNOCK_PULSE): the drops below; the
+    // process idles otherwise.
     localparam KNOCK_CYLINDERS    = 4;
     localparam KNOCK_DELAY_PULSES = 32;    // speed_sensor pulses after TDC before dropping
     localparam KNOCK_HOLD_PULSES  = 107;   // speed_sensor pulses held low (~7ms @ 65.133us/pulse)
@@ -83,12 +84,12 @@ module klr_knock_gen (
         knock_state        = 2'd0;
     end
 
-    always @(posedge clk) begin
+    always @(posedge clk) if (`OPT_TEST_KNOCK_PULSE) begin
         tdc_prev          <= tdc;
         speed_sensor_prev <= speed_sensor;
 
         if (!knock_started) begin
-            if ($time >= 64'd`SIM_TIME / 64'd2)
+            if ($time >= (`VAL_SIM_TIME) / 64'd2)
                 knock_started <= 1'b1;
         end else if (knock_state != 2'd3) begin
             // tdc falling edge this cycle? — old (pre-increment)
@@ -134,52 +135,50 @@ module klr_knock_gen (
         end
     end
 
-    assign knock_sensor = knock_sensor_sig;
-
-`elsif TEST_KNOCK_SHORT_TO_GROUND
-    assign knock_sensor = 8'd0;
-`elsif LIVE
+`ifdef LIVE
     // live_knock (dme_klr_dashboard_tb) = 1: the TEST_KNOCK_PULSE drop
     // on every TDC (once per revolution) while it stays set; any other
     // value (16'hFFFF = model) leaves the sensor at nominal 110. A drop
     // runs until its 107 teeth are up or the next TDC, whichever is
     // first, even if live_knock clears.
-    localparam KNOCK_DELAY_PULSES = 32;
-    localparam KNOCK_HOLD_PULSES  = 107;
-
+    // (the same KNOCK_DELAY_PULSES / KNOCK_HOLD_PULSES as above)
     wire       knock_req = (dme_klr_dashboard_tb.live_knock == 16'd1);
-    reg [7:0]  knock_sensor_sig = 8'd110;
-    reg        tdc_prev = 1'b0, speed_sensor_prev = 1'b0;
-    reg [31:0] pulse_count = 32'd0;
-    reg [1:0]  knock_state = 2'd0;   // 0 idle, 1 counting to drop, 2 counting to restore
+    reg [7:0]  live_knock_sig = 8'd110;
+    reg        live_tdc_prev = 1'b0, live_speed_prev = 1'b0;
+    reg [31:0] live_pulse_count = 32'd0;
+    reg [1:0]  live_knock_state = 2'd0;   // 0 idle, 1 counting to drop, 2 counting to restore
 
     always @(posedge clk) begin
-        tdc_prev          <= tdc;
-        speed_sensor_prev <= speed_sensor;
-        if (tdc_prev && !tdc) begin
-            knock_sensor_sig <= 8'd110;
-            pulse_count      <= 32'd0;
-            knock_state      <= knock_req ? 2'd1 : 2'd0;
-        end else if (!speed_sensor_prev && speed_sensor) begin
-            case (knock_state)
-                2'd1: if (pulse_count + 32'd1 >= KNOCK_DELAY_PULSES) begin
-                          knock_sensor_sig <= 8'd0;
-                          pulse_count      <= 32'd0;
-                          knock_state      <= 2'd2;
-                      end else pulse_count <= pulse_count + 32'd1;
-                2'd2: if (pulse_count + 32'd1 >= KNOCK_HOLD_PULSES) begin
-                          knock_sensor_sig <= 8'd110;
-                          pulse_count      <= 32'd0;
-                          knock_state      <= 2'd0;
-                      end else pulse_count <= pulse_count + 32'd1;
+        live_tdc_prev   <= tdc;
+        live_speed_prev <= speed_sensor;
+        if (live_tdc_prev && !tdc) begin
+            live_knock_sig   <= 8'd110;
+            live_pulse_count <= 32'd0;
+            live_knock_state <= knock_req ? 2'd1 : 2'd0;
+        end else if (!live_speed_prev && speed_sensor) begin
+            case (live_knock_state)
+                2'd1: if (live_pulse_count + 32'd1 >= KNOCK_DELAY_PULSES) begin
+                          live_knock_sig   <= 8'd0;
+                          live_pulse_count <= 32'd0;
+                          live_knock_state <= 2'd2;
+                      end else live_pulse_count <= live_pulse_count + 32'd1;
+                2'd2: if (live_pulse_count + 32'd1 >= KNOCK_HOLD_PULSES) begin
+                          live_knock_sig   <= 8'd110;
+                          live_pulse_count <= 32'd0;
+                          live_knock_state <= 2'd0;
+                      end else live_pulse_count <= live_pulse_count + 32'd1;
                 default: ;
             endcase
         end
     end
-
-    assign knock_sensor = knock_sensor_sig;
+    wire [7:0] knock_nominal = live_knock_sig;
 `else
-    assign knock_sensor = 8'd110;
+    wire [7:0] knock_nominal = 8'd110;
 `endif
+
+    // TEST_KNOCK_PULSE: the drops above; TEST_KNOCK_SHORT_TO_GROUND: 0
+    assign knock_sensor = `OPT_TEST_KNOCK_PULSE         ? knock_sensor_sig :
+                          `OPT_TEST_KNOCK_SHORT_TO_GROUND ? 8'd0 :
+                                                          knock_nominal;
 
 endmodule

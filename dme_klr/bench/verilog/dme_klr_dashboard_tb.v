@@ -383,7 +383,7 @@ module dme_klr_dashboard_tb;
     // Log this result now? (changed, first, or DASH_INTERVAL_MS since the last)
     function lk_due(input [8:0] s, input [7:0] v);
         lk_due = !lk_seen[s] || lk_last[s] != v ||
-                 ($time - lk_lt[s]) >= (`DASH_INTERVAL_MS * 64'd1_000_000);
+                 ($time - lk_lt[s]) >= (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
     endfunction
     reg [15:0] lk_pc, lk_dptr, lk_ma, lk_ta;
     reg [6:0]  lk_sp;
@@ -475,7 +475,7 @@ module dme_klr_dashboard_tb;
     initial for (lk_i = 0; lk_i < 32; lk_i = lk_i + 1) klk_seen[lk_i] = 1'b0;
     function klk_due(input [4:0] s, input [7:0] v);
         klk_due = !klk_seen[s] || klk_last[s] != v ||
-                  ($time - klk_lt[s]) >= (`DASH_INTERVAL_MS * 64'd1_000_000);
+                  ($time - klk_lt[s]) >= (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
     endfunction
     reg [11:0] klk_pc;
     reg [15:0] klk_ta;
@@ -601,41 +601,25 @@ module dme_klr_dashboard_tb;
     wire ext_trigger_gen = ~ign_out_dme_to_klr;  // DME A_5_KLR_ign_out → KLR trigger (inverted)
     wire ext_ign_gen     = ~tach_dme_to_klr;     // DME tach → KLR ign (inverted)
 
-`ifdef KLR_TRIGGER_STUCK_HIGH
-  `ifndef TRIGGER_LOSS_T_MS
+`ifndef TRIGGER_LOSS_T_MS
   `define TRIGGER_LOSS_T_MS 3000
-  `endif
-    reg ext_trigger_lost = 1'b0;
-    always @(posedge dme_clk) if (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
-    wire ext_trigger = ext_trigger_lost ? 1'b1 : ext_trigger_gen;
-`elsif KLR_TRIGGER_STUCK_LOW
-  `ifndef TRIGGER_LOSS_T_MS
-  `define TRIGGER_LOSS_T_MS 3000
-  `endif
-    reg ext_trigger_lost = 1'b0;
-    always @(posedge dme_clk) if (`DME_KLR_MS >= `TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
-    wire ext_trigger = ext_trigger_lost ? 1'b0 : ext_trigger_gen;
-`else
-    wire ext_trigger = ext_trigger_gen;
 `endif
+`ifndef IGN_IN_LOSS_T_MS
+  `define IGN_IN_LOSS_T_MS 3000
+`endif
+    // KLR_TRIGGER_STUCK_HIGH/LOW, KLR_IGN_IN_STUCK_HIGH/LOW: the line
+    // sticks at TRIGGER_LOSS_T_MS / IGN_IN_LOSS_T_MS (HIGH wins if both)
+    reg ext_trigger_lost = 1'b0;
+    always @(posedge dme_clk)
+        if ((`OPT_KLR_TRIGGER_STUCK_HIGH || `OPT_KLR_TRIGGER_STUCK_LOW) &&
+            `DME_KLR_MS >= `VAL_TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
+    wire ext_trigger = !ext_trigger_lost ? ext_trigger_gen : `OPT_KLR_TRIGGER_STUCK_HIGH;
 
-`ifdef KLR_IGN_IN_STUCK_HIGH
-  `ifndef IGN_IN_LOSS_T_MS
-  `define IGN_IN_LOSS_T_MS 3000
-  `endif
     reg ext_ign_lost = 1'b0;
-    always @(posedge dme_clk) if (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
-    wire ext_ign = ext_ign_lost ? 1'b1 : ext_ign_gen;
-`elsif KLR_IGN_IN_STUCK_LOW
-  `ifndef IGN_IN_LOSS_T_MS
-  `define IGN_IN_LOSS_T_MS 3000
-  `endif
-    reg ext_ign_lost = 1'b0;
-    always @(posedge dme_clk) if (`DME_KLR_MS >= `IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
-    wire ext_ign = ext_ign_lost ? 1'b0 : ext_ign_gen;
-`else
-    wire ext_ign = ext_ign_gen;
-`endif
+    always @(posedge dme_clk)
+        if ((`OPT_KLR_IGN_IN_STUCK_HIGH || `OPT_KLR_IGN_IN_STUCK_LOW) &&
+            `DME_KLR_MS >= `VAL_IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
+    wire ext_ign = !ext_ign_lost ? ext_ign_gen : `OPT_KLR_IGN_IN_STUCK_HIGH;
 
     // ── KLR sub-TB ───────────────────────────────────────────
     // EXT_STIM=1: external trigger/ign signals (not internal generator)
@@ -664,15 +648,10 @@ module dme_klr_dashboard_tb;
     // the DME. No TEST_ prefix, matching the KLR_BATT_LOW/
     // KLR_TPS_SUPPLY_LOW/etc. naming convention for KLR-side fault
     // macros elsewhere in this test suite.
-`ifdef KLR_FULL_LOAD_STUCK_LOW
-    assign full_load = 1'b0;
 // KLR_FULL_LOAD_STUCK_HIGH: the same wire stuck at the WOT level, so the
 // DME sees full load whenever the throttle is off idle.
-`elsif KLR_FULL_LOAD_STUCK_HIGH
-    assign full_load = 1'b1;
-`else
-    assign full_load = full_load_klr;
-`endif
+    assign full_load = `OPT_KLR_FULL_LOAD_STUCK_LOW  ? 1'b0 :
+                       `OPT_KLR_FULL_LOAD_STUCK_HIGH ? 1'b1 : full_load_klr;
 
     // ── Snapshot-busy flag ───────────────────────────────────
     reg snapshot_busy;
@@ -752,12 +731,12 @@ module dme_klr_dashboard_tb;
 
     // ── Snapshot scheduler — latched to DME clock ────────────
     reg [63:0] next_snap_ns;
-    initial    next_snap_ns = `DASH_INTERVAL_MS * 64'd1_000_000;
+    initial    next_snap_ns = `VAL_DASH_INTERVAL_MS * 64'd1_000_000;
 
     always @(posedge dme_clk) begin
         if ($time >= next_snap_ns) begin
             emit_combined_snapshot;
-            next_snap_ns <= next_snap_ns + (`DASH_INTERVAL_MS * 64'd1_000_000);
+            next_snap_ns <= next_snap_ns + (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
         end
 `ifdef LIVE_DEBUG
         else if (live_snap_req != live_snap_ack)
@@ -792,15 +771,10 @@ module dme_klr_dashboard_tb;
         end
 `endif
 
-    // Hard simulation boundary — terminates at exactly SIM_TIME.
-    // SIM_TIME must be passed via -DSIM_TIME=<ns> from the run script.
-    // No default — intentional, so a missing define causes a compile error
-    // rather than silently capping a long test at 10s.
-`ifndef SIM_TIME
-  ERROR_SIM_TIME_must_be_defined  // force compile error if omitted
-`endif
+    // Hard simulation boundary — terminates at exactly SIM_TIME (the
+    // run script's -DSIM_TIME / +SIM_TIME, else test_opts.vh's default).
     initial begin
-        #`SIM_TIME;
+        #(`VAL_SIM_TIME);
         // ── DME memory dumps ──────────────────────────────────
         $writememh("dme_rom_out.hex", u_dme.i8051_top.u_eprom.mem);
         $writememh("dme_ram_out.hex", u_dme.i8051_top.u_cpu.iram);

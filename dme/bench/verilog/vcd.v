@@ -612,9 +612,7 @@ $dumpvars(1,`TB.o2_6);
 $dumpvars(1,`TB.ale);
 $dumpvars(1,`TB.afm_wiper [7:0]);
 $dumpvars(1,`TB.A_5_KLR_ign_out);
-`ifdef TEST_ISV_COLD_IDLE
 $dumpvars(1,`TB.coolant_dynamic);
-`endif
 $dumpvars(1,`TB.A_4_idle_speed);
 $dumpvars(1,`TB.A_3_unused_p1_3);
 $dumpvars(1,`TB.A_2_dme_relay);
