@@ -50,7 +50,7 @@ run time by going live or by selecting an available test:
 
 ```mermaid
 flowchart LR
-    subgraph STIM["Stimulus mux (selected at run time)"]
+    subgraph STIM["Stimulus mux"]
         direction TB
         CL["Closed-loop test driver<br/>scripted test + engine,<br/>sensor and boost models"]
         WEB["Web UI test driver<br/>dashboard controls via bridge"]
@@ -67,8 +67,8 @@ flowchart LR
     DCPU["DME<br/>Intel 8051"]
     KCPU["KLR<br/>Intel 8048"]
 
-    MUX -- "AFM, battery, air temp, coolant,<br/>altitude, throttle switch, fuel quality,<br/>reference sensor, speed sensor,<br/>O2 sensor, cat, AC" --> DCPU
-    MUX -- "TPS angle, TPS supply, battery,<br/>MAP/boost, knock sensor" --> KCPU
+    MUX -- "AFM<br/>battery<br/>air temp<br/>coolant<br/>altitude<br/>throttle switch<br/>fuel quality<br/>reference sensor<br/>speed sensor<br/>O2 sensor<br/>cat<br/>AC" --> DCPU
+    MUX -- "TPS angle<br/>TPS supply<br/>battery<br/>MAP/boost<br/>knock sensor" --> KCPU
     DROM --> DCPU
     KROM --> KCPU
 
