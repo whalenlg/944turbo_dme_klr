@@ -50,19 +50,19 @@ run time by going live or by selecting an available test:
 
 ```mermaid
 flowchart LR
-    subgraph STIM["Stimulus mux"]
+    subgraph STIM["Stimulus Mux"]
         direction TB
-        CL["Closed-loop test driver<br/>scripted test + engine,<br/>sensor and boost models"]
-        WEB["Web UI test driver<br/>dashboard controls via bridge"]
-        LOG["FTECH9 log replay driver<br/>recorded car log"]
-        MUX{{"input select"}}
+        CL["Closed-Loop Test Driver<br/>Scripted Test + Engine,<br/>Sensor And Boost Models"]
+        WEB["Web UI Test Driver<br/>Dashboard Controls Via Bridge"]
+        LOG["FTECH9 Log Replay Driver<br/>Recorded Car Log"]
+        MUX{{"Input Select"}}
         CL --> MUX
         WEB --> MUX
         LOG --> MUX
     end
 
-    DROM[("DME ROM image<br/>'86 / '89 / Performance / custom")]
-    KROM[("KLR ROM image<br/>'86 / '87 / '89 / custom")]
+    DROM[("DME ROM Image<br/>'86 / '89 / Performance / Custom")]
+    KROM[("KLR ROM Image<br/>'86 / '87 / '89 / Custom")]
 
     DCPU["DME<br/>Intel 8051"]
     KCPU["KLR<br/>Intel 8048"]
@@ -76,11 +76,11 @@ flowchart LR
     DCPU -- "tach / spark command" --> KCPU
     KCPU -- "full load (WOT)" --> DCPU
 
-    DCPU --> INJ(["injectors"])
-    DCPU --> ISV(["idle speed valve"])
-    DCPU --> REL(["DME relay"])
-    KCPU -- "spark, knock retarded" --> COIL(["ignition coil"])
-    KCPU -- "duty cycle" --> CV(["boost control valve"])
+    DCPU --> INJ(["Injectors"])
+    DCPU --> ISV(["Idle Speed Valve"])
+    DCPU --> REL(["DME Relay"])
+    KCPU -- "spark, knock retarded" --> COIL(["Ignition Coil"])
+    KCPU -- "duty cycle" --> CV(["Boost Control Valve"])
 ```
 
 The KLR's ignition output drives the coil: the DME computes the spark and
@@ -1210,26 +1210,26 @@ assembly next to the running code.
 
 ```mermaid
 flowchart TB
-    BIN["EPROM dump<br/>.bin"]
+    BIN["EPROM Dump<br/>.bin"]
     HEX["Intel HEX<br/>.hex"]
-    MEM["Simulator image<br/>.mem (one byte per line)"]
-    SIM["DME / KLR model<br/>loads it with $readmemh"]
+    MEM["Simulator Image<br/>.mem (One Byte Per Line)"]
+    SIM["DME / KLR Model<br/>Loads It With $readmemh"]
 
     BIN -- "bin2intelhex.py" --> HEX
     HEX -- "intelhex2veriloghex.py (DME)<br/>hex2mem48.py (KLR)" --> MEM
     MEM --> SIM
 
-    SRCX["Hand-annotated workbook<br/>disassembleperformance.xlsx (DME)<br/>87KLR951.xlsx (KLR)"]
-    VAR["Workbook for this image<br/>e.g. disassemble1986.xlsx"]
+    SRCX["Hand-Annotated Workbook<br/>disassembleperformance.xlsx (DME)<br/>87KLR951.xlsx (KLR)"]
+    VAR["Workbook For This Image<br/>E.g. disassemble1986.xlsx"]
     MEM -- "build_variant.py:<br/>identical code keeps its notes,<br/>changed code re-disassembled<br/>and highlighted" --> VAR
     SRCX --> VAR
 
-    TAB["Disassembly tables<br/>asm_opcode_ins.hex, asm_instr.hex,<br/>asm_operands*.hex, test_sim.hex,<br/>memory_byte_map.hex, asm_full.json"]
+    TAB["Disassembly Tables<br/>asm_opcode_ins.hex, asm_instr.hex,<br/>asm_operands*.hex, test_sim.hex,<br/>memory_byte_map.hex, asm_full.json"]
     VAR -- "asm_select.sh<br/>xlsxinstr2veriloghex.py,<br/>xlsx2veriloghex.py" --> TAB
 
-    TAB --> VCD["Simulator trace<br/>instruction text in the logs"]
+    TAB --> VCD["Simulator Trace<br/>Instruction Text In The Logs"]
     TAB --> BR["Bridge /asm"]
-    BR --> UI["Dashboard listing<br/>labels, comments, breakpoints"]
+    BR --> UI["Dashboard Listing<br/>Labels, Comments, Breakpoints"]
     SIM -- "PC, RAM" --> UI
 ```
 
