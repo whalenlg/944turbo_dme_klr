@@ -651,7 +651,7 @@ $dumpvars(1,`TB.tdc);
  //   $readmemh({`DME_ASM_DIR, "asm_operands.hex"},ops);
     $readmemh({`DME_ASM_DIR, "asm_operand_mapped.hex"},ops);
     $readmemh({`DME_ASM_DIR, "asm_operands_numeric.hex"},opsnums);
-    $display("DME: ASM tables loaded from %s", `DME_ASM_DIR);
+    $display("DME: ASM tables loaded from %0s", `DME_ASM_DIR);
     end
 
 //DEBUG — ISV P1.4 deadlock detector

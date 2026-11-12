@@ -470,7 +470,7 @@ initial begin
     $readmemh({`KLR_ASM_DIR, "asm_instr.hex"},            instr);
     $readmemh({`KLR_ASM_DIR, "asm_operands.hex"},         ops);
     $readmemh({`KLR_ASM_DIR, "asm_operands_numeric.hex"}, opsnums);
-    $display("KLR: ASM tables loaded from %s", `KLR_ASM_DIR);
+    $display("KLR: ASM tables loaded from %0s", `KLR_ASM_DIR);
 end
 
 // ============================================================

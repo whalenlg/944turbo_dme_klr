@@ -8,7 +8,10 @@
 #  shared RUNTIME_OPTS binary with the same test as +X=<n>
 #  (test_opts.py plusargs), and compare the two outputs line for line
 #  (only the simulator's own report and the source line of $finish may
-#  differ).
+#  differ). Two $display lines that come from separate always blocks at
+#  the same simulated time have no set order: Verilator picks one per
+#  build. A test whose output differs only in such an order (the same
+#  lines, each at the same time) is reported as "order" and passes.
 #
 #  Usage: runtime_equiv.sh [--sim-ms N] [--shard I/N] [--out DIR] [test ...]
 #    --sim-ms N   stop every test at N ms (its options as for the full
@@ -76,6 +79,17 @@ norm() {
     grep -v -e '^- ' -e '^\s*$' "$1" | sed -e 's/dashboard_tb\.v:[0-9]*:/dashboard_tb.v:/'
 }
 
+# The lines of a log, each with the time it was printed at (the t=<ms> of
+# the last line that had one; a [DS] snapshot gives its own), sorted:
+# equal for two logs whose lines differ only in their order within a
+# time step
+by_time() {
+    norm "$1" | awk '{
+        if (match($0, /t=[0-9]+ ms/)) t = substr($0, RSTART + 2, RLENGTH - 5)
+        else if (match($0, /\[DS\] [0-9]+/)) t = substr($0, RSTART + 5, RLENGTH - 5)
+        print t "\t" $0 }' | LC_ALL=C sort
+}
+
 fails=0
 for t in "${TESTS[@]}"; do
     mapfile -t D < <(python3 test_opts.py defines "$t")
@@ -98,11 +112,16 @@ for t in "${TESTS[@]}"; do
     ( cd "$W/rt"  && "$exe_rt" +vcd=/dev/null "${PA[@]}" "+DMEKLR_REPO=$DMEKLR_REPO/" > ../rt.log 2>&1 ) &
     wait
     rm -rf "$OUT/obj_$t" "$OUT/$t.exe"
-    if cmp -s <(norm "$W/old.log") <(norm "$W/rt.log") && [ -s "$W/old.log" ]; then
+    if [ ! -s "$W/old.log" ]; then
+        echo "FAIL  $t: no output"; fails=$((fails + 1))
+    elif cmp -s <(norm "$W/old.log") <(norm "$W/rt.log"); then
         echo "same  $t ($(wc -l < "$W/old.log") lines, $((SECONDS - t0)) s)"
+    elif cmp -s <(by_time "$W/old.log") <(by_time "$W/rt.log"); then
+        echo "order $t ($(wc -l < "$W/old.log") lines; same lines, some in another order within a time step)"
+        diff -U2 <(norm "$W/old.log") <(norm "$W/rt.log") | head -30 | cut -c1-160
     else
         echo "DIFF  $t: diff $W/old.log $W/rt.log"
-        diff <(norm "$W/old.log") <(norm "$W/rt.log") | head -20
+        diff -U2 <(norm "$W/old.log") <(norm "$W/rt.log") | head -40 | cut -c1-160
         fails=$((fails + 1))
     fi
 done

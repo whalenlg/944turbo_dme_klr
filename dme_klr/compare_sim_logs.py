@@ -417,13 +417,19 @@ def compare_phase_sequence(iv_lines, vl_lines, prefix):
     _skip = re.compile(r'spurious pulse filtered', re.IGNORECASE)
     def normalise(lines):
         out = []
+        t = -1
         for l in lines:
             if not l.startswith(prefix) or _skip.search(l): continue
             raw = l.strip()
+            t = _raw_t(raw) if _raw_t(raw) is not None else t
             l = _ts.sub('t=T ms  ', raw)
             l = _num.sub(lambda m: m.group(0).split('=')[0] + '=N', l)
-            out.append((l, raw))
-        return out
+            out.append((t, l, raw))
+        # Events at the same sim time have no set order (separate always
+        # blocks; each simulator, even each build, picks its own), so
+        # within one ms they are compared in text order
+        out.sort(key=lambda e: (e[0], e[1]))
+        return [(l, raw) for _, l, raw in out]
     iv_p = normalise(iv_lines)
     vl_p = normalise(vl_lines)
     # Trim leading events that appear before the first IGN_OUT/engine event
