@@ -97,9 +97,12 @@ mkdir -p "$OBJ"
 # Empty stand-in for the first build; gen_state.py writes the real one
 printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, LiveFieldList&) {}\n' \
     > "$OBJ/live_fields.cpp"
+# VL_TIME_CONTEXT: time comes from the VerilatedContext, so the program
+# needn't define sc_time_stamp() (Verilator's weak default for it doesn't
+# link on Windows; --binary builds define this themselves)
 verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
-    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" \
+    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" -CFLAGS -DVL_TIME_CONTEXT \
     --Mdir "$OBJ" -o dme_klr_live \
     -f "$FILES_LIST" \
     --top-module dme_klr_dashboard_tb \

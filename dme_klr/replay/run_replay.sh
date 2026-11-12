@@ -169,9 +169,10 @@ if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
             "${DEFINES[@]}" "$DRIVER" > "$OUT_DIR/build.log" 2>&1 \
             || { tail -30 "$OUT_DIR/build.log"; echo "  BUILD FAILED (see $OUT_DIR/build.log)"; exit 1; }
     else
+    # VL_TIME_CONTEXT: no sc_time_stamp() needed (its weak default doesn't link on Windows)
     verilator --cc --exe --build --timing -j 0 \
         -O3 --x-assign fast --x-initial fast --noassert \
-        -CFLAGS -O2 \
+        -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT \
         --Mdir "$REPLAY_DIR/obj" -o dme_klr_replay \
         -f files_cl \
         --top-module dme_klr_dashboard_tb \
