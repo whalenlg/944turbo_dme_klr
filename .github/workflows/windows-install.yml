@@ -49,7 +49,7 @@ jobs:
         run: |
           $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
           Set-Location dmeklr
-          & D:\msys2-clean\usr\bin\bash.exe -lc 'git status --short; git diff --stat; git diff | head -n 40 | cat -A | cut -c1-200'
+          & D:\msys2-clean\usr\bin\bash.exe -lc 'git status --short; git diff --stat; git diff | head -n 40 | cat -A | cut -c1-200; bash .github/diag/link_diag.sh 2>&1'
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
