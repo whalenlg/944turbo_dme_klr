@@ -107,6 +107,8 @@ fi
 # ── GTKWave (optional: only for looking at .vcd/.fst waveforms) ───────────
 if command -v gtkwave >/dev/null 2>&1; then
     ok "gtkwave" "$(command -v gtkwave)"
+elif [ -x "$REPO_DIR/gtkwave/bin/gtkwave" ]; then
+    ok "gtkwave" "$REPO_DIR/gtkwave/bin/gtkwave (source setup puts it on PATH)"
 elif [ -d /Applications/gtkwave.app ] || [ -d "$HOME/Applications/gtkwave.app" ]; then
     ok "gtkwave" "gtkwave.app"
 else

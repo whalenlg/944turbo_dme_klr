@@ -80,12 +80,14 @@ It installs, in order:
    that finishes.
 2. **Homebrew**, if `brew` isn't found (it asks first; `--yes` skips the
    question).
-3. The Homebrew formulae `verilator`, `icarus-verilog`, `gtkwave`, `node`
-   and `python`.
-4. A Python virtual environment at `944venv/` in the repo, with the packages
+3. The Homebrew formulae `verilator`, `icarus-verilog`, `node` and
+   `python`.
+4. **GTKWave**, built from source into `gtkwave/` in the repo (see
+   [GTKWave on macOS](#gtkwave-on-macos) below). `--no-gtkwave` skips it.
+5. A Python virtual environment at `944venv/` in the repo, with the packages
    in `install/requirements.txt`. You must activate it in each new terminal;
    see [The Python venv](#the-python-venv-944venv) below.
-5. `install/check_toolchain.sh`, then the **smoke tests**: the KLR
+6. `install/check_toolchain.sh`, then the **smoke tests**: the KLR
    regression on Icarus Verilog and `warm_idle_5s` on Verilator (see
    [Checking an install](#checking-an-install)).
 
@@ -94,11 +96,46 @@ It installs, in order:
 | `--upgrade` | `brew upgrade` the formulae that are already installed |
 | `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and run `npm install` there |
 | `--no-gtkwave` | Skip GTKWave |
+| `--rebuild-gtkwave` | Build GTKWave again even if it is already there |
 | `--skip-tests` | Don't run the smoke tests at the end |
 | `-y`, `--yes` | Don't ask before installing Homebrew |
 | `-n`, `--dry-run` | Print the commands without running them |
 
 Apple Silicon and Intel Macs both work.
+
+#### GTKWave on macOS
+
+Homebrew no longer has GTKWave: `brew install gtkwave` finds neither a
+formula nor a cask, and the old `gtkwave.app` from SourceForge doesn't run
+on current macOS. So `install_macos.sh` builds it from source, the same way
+GTKWave's own macOS build does:
+
+1. `brew install meson ninja pkg-config gtk+3 gtk4 gtk-mac-integration
+   json-glib desktop-file-utils shared-mime-info librsvg` (flex and gperf
+   come with the Command Line Tools).
+2. Clone `https://github.com/gtkwave/gtkwave` into `gtkwave/src/` and check
+   out a pinned commit of GTKWave 4, the version under active development
+   and the one its macOS build supports.
+3. `meson setup`, `meson compile` and `meson install` with the prefix
+   `gtkwave/` in the checkout, so it needs no `sudo` and nothing outside
+   the repo changes. `gtkwave/` is git-ignored.
+
+That takes about five minutes. It installs `gtkwave` and the converters the
+repo's scripts use (`vcd2fst`, `fst2vcd`) into `gtkwave/bin/`, which
+`source setup` puts on `PATH`. Open a waveform from the terminal:
+
+```sh
+source setup
+gtkwave "$DMEKLR_TMP/klr/fst/i8048_regression_tb.fst"
+```
+
+GTKWave is optional, so if the build fails the installer prints a warning
+and carries on. Run `install/install_macos.sh --rebuild-gtkwave` to try
+again, or to rebuild after deleting `gtkwave/`. To build a different
+GTKWave commit or tag, set `GTKWAVE_REF`
+(`GTKWAVE_REF=<commit> install/install_macos.sh --rebuild-gtkwave`). If
+`gtkwave` is already on your `PATH` from somewhere else, the installer
+leaves it alone.
 
 ### Arch Linux (pacman)
 
@@ -207,8 +244,9 @@ across or point the tools at them with their directory arguments.
 
 **`setup`.** `source setup` in a terminal sets `DMEKLR_REPO` and
 `DMEKLR_TMP`, activates `944venv/` when it exists, puts a locally built
-Icarus Verilog in `/opt/iverilog` and a GTKWave in `<checkout>/gtkwave/`
-ahead of the system ones when they are there, and adds the checkout to
+Icarus Verilog in `/opt/iverilog` and a GTKWave in `<checkout>/gtkwave/bin/`
+(where `install_macos.sh` builds it) or `<checkout>/gtkwave/` ahead of the
+system ones when they are there, and adds the checkout to
 `PATH`. It works from bash and zsh.
 
 ### Checking an install
@@ -222,7 +260,7 @@ exits non-zero if anything required is missing or too old:
   ok       make         GNU Make 3.81
   ok       verilator    5.040
   ok       iverilog     12.0 (stable)
-  ok       gtkwave      /opt/homebrew/bin/gtkwave
+  ok       gtkwave      /Users/you/944turbo_dme_klr/gtkwave/bin/gtkwave
   ok       node         24.4.0
   ...
 ```
@@ -293,7 +331,7 @@ Everything the repo uses outside the standard tools every Unix system has
 | git | any | Cloning; `run_all.sh` pulls `main` first | Xcode Command Line Tools | `git` |
 | Verilator | **5.038 or newer** | `v_run_dashboard_tests.sh`, `run_dashboard_parallel.sh --verilator`, `replay/run_replay.sh`, the live simulator (`live/build_live.sh`) | `verilator` | `verilator` |
 | Icarus Verilog (`iverilog`, `vvp`) | 12 or newer | `run_dashboard_tests.sh`, the i8048 and i8051 CPU regressions (`klr/run_klr_regression`, `dme/run_dme_regression`), the replay's reference run | `icarus-verilog` | `iverilog` |
-| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump; its `vcd2fst` / `fst2vcd` convert them (`--vcd` runs, the replay, `extract_table_access.py`) | `gtkwave` | `gtkwave` |
+| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump; its `vcd2fst` / `fst2vcd` convert them (`--vcd` runs, the replay, `extract_table_access.py`) | built from source into `gtkwave/` ([GTKWave on macOS](#gtkwave-on-macos)) | `gtkwave` |
 | Node.js | **18 or newer** | The live-sim bridge, `dme_klr/live/bridge.mjs` (standard library only, no `npm install` needed) | `node` | `nodejs` |
 | npm | comes with Node | Running the dashboard from a checkout of `dme-dashboard` | `node` | `npm` |
 | Python | 3.9 or newer | All the `.py` tools: disassembly tables, log validation and comparison, replay, map graphs | `python` | `python` |
