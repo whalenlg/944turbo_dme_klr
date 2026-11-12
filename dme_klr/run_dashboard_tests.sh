@@ -39,6 +39,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
 source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
+dmeklr_rom_mem || exit 1   # a .bin/.hex DME_ROM_FILE / KLR_ROM_FILE -> .mem
 source "$SCRIPT_DIR/asm_select.sh"
 
 # ── Mode: dashboard-only ─────────────────────────────────────────────────────

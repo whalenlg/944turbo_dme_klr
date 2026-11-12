@@ -20,6 +20,11 @@
 #  86KLR_951.mem              86KLR951.xlsx                  asm_86/
 #  89KLR_951.mem              89KLR951.xlsx                  asm_89/
 #
+#  Any other image (DME_ROM_DIR + DME_ROM_FILE, a .mem) gets a workbook of
+#  its own, made from the reference workbook as the variants above are:
+#  <cpu>/disassemble/variants/<name>.xlsx, tables in asm_<name>/. It is
+#  remade when the reference workbook, its generator or the image is newer.
+#
 #  An unset ROM file means the one i8051_top.v / klr_top.v default to
 #  (89DME_951pin.mem / 89KLR_951.mem).
 #
@@ -101,8 +106,14 @@ _asm_tables_stale() {    # <xlsx> <tables dir>   (uses _c_*)
 }
 
 _asm_any_stale() {       # <xlsx> <tables dir>
-    local _v
-    for _v in "${_c_variants[@]}"; do _asm_variant_stale "${_v##*:}" && return 0; done
+    local _v _m
+    for _v in "${_c_variants[@]}"; do
+        _asm_variant_stale "${_v##*:}" && return 0
+        # an image newer than its workbook (an image of your own, updated)
+        _m="${_v#*:}"; _m="${_m%:*}"
+        case "$_m" in /*|[A-Za-z]:*) ;; *) _m="$_c_roms/$_m" ;; esac
+        [ "$_m" -nt "$_c_dis/${_v##*:}" ] && return 0
+    done
     _asm_tables_stale "$1" "$2"
 }
 
@@ -115,17 +126,32 @@ _asm_select() {   # <dme|klr> <array name>
     local -a _c_deps _c_variants _c_files
     _asm_cfg "$_cpu" "$_repo"
     local _NAME="$_c_name" _sel _rom _pin
-    if [ "$_cpu" = dme ]; then _pin="${DME_ASM_DIR:-}"; _rom="${DME_ROM_FILE:-}"
-    else                       _pin="${KLR_ASM_DIR:-}"; _rom="${KLR_ROM_FILE:-}"; fi
+    local _romdir
+    if [ "$_cpu" = dme ]; then _pin="${DME_ASM_DIR:-}"; _rom="${DME_ROM_FILE:-}"; _romdir="${DME_ROM_DIR:-}"
+    else                       _pin="${KLR_ASM_DIR:-}"; _rom="${KLR_ROM_FILE:-}"; _romdir="${KLR_ROM_DIR:-}"; fi
     _sel="$_pin"
 
     if [ -z "$_sel" ]; then
         local _wb
         _wb="$(_asm_workbook "$_cpu" "$(basename "${_rom:-$_c_default}")")"
         if [ -z "$_wb" ]; then
-            echo "  $_NAME ASM: no workbook for ${_rom}, using the testbench's default tables"
-            [ "$_cpu" = dme ] && DME_ASM_SEL="" || KLR_ASM_SEL=""
-            return 0
+            # An image without a workbook of its own: make one from the
+            # reference workbook (its annotations follow the code that is
+            # the same) in variants/<name>.xlsx, and tables from that in
+            # asm_<name>/, as for the 1986/1989 images
+            local _img="${_romdir:-$_c_roms/}$_rom" _stem
+            _stem="$(basename "$_rom")"; _stem="${_stem%.*}"
+            _stem="$(printf %s "$_stem" | tr -c 'A-Za-z0-9_.-' '_')"
+            if [ -n "$_rom" ] && [ -f "$_img" ] && [ -n "$_stem" ]; then
+                echo "  $_NAME ASM: $_rom has no workbook of its own; using variants/$_stem.xlsx (made from $_c_src)"
+                mkdir -p "$_c_dis/variants"
+                _wb="variants/$_stem.xlsx $_stem"
+                _c_variants=("$_stem:$_img:variants/$_stem.xlsx")
+            else
+                echo "  $_NAME ASM: no workbook for ${_rom}, using the testbench's default tables"
+                [ "$_cpu" = dme ] && DME_ASM_SEL="" || KLR_ASM_SEL=""
+                return 0
+            fi
         fi
         local _xlsx="${_wb% *}" _tag="${_wb#* }"
         local _dir="$_c_dis/asm_$_tag"
@@ -144,11 +170,12 @@ _asm_select() {   # <dme|klr> <array name>
             local _gens="$_repo/dme/disassemble"   # xlsx -> hex table scripts
             local _rc=0 _v _vtag _mem _out
             for _v in "${_c_variants[@]}"; do
-                _vtag="${_v%%:*}"; _mem="${_v#*:}"; _mem="${_mem%%:*}"; _out="${_v##*:}"
-                _asm_variant_stale "$_out" || continue
+                _vtag="${_v%%:*}"; _mem="${_v#*:}"; _mem="${_mem%:*}"; _out="${_v##*:}"
+                case "$_mem" in /*|[A-Za-z]:*) ;; *) _mem="$_c_roms/$_mem" ;; esac
+                _asm_variant_stale "$_out" || [ "$_mem" -nt "$_c_dis/$_out" ] || continue
                 echo "  $_NAME ASM: regenerating $_out from $_c_src"
                 if ! "$_py" "$_c_dis/$_c_gen" "$_c_dis/$_c_src" \
-                        "$_c_roms/$_mem" "$_c_roms/$_c_refimg" "$_c_dis/$_out.tmp.xlsx" \
+                        "$_mem" "$_c_roms/$_c_refimg" "$_c_dis/$_out.tmp.xlsx" \
                         "$_vtag" "$_c_reftag" >/dev/null; then
                     echo "  asm_select: failed to regenerate $_out" >&2; rm -f "$_c_dis/$_out.tmp.xlsx"; _rc=1
                 elif [ -e "$_c_dis/$_out" ] && _asm_xlsx_same "$_py" "$_c_dis/$_out" "$_c_dis/$_out.tmp.xlsx"; then
