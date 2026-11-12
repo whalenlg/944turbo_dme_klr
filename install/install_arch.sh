@@ -9,8 +9,10 @@
 #    - nodejs, npm
 #    - python with python-openpyxl, python-pandas, python-matplotlib,
 #      python-numpy (the packages in install/requirements.txt)
-#  then runs install/check_toolchain.sh. Safe to run again: pacman
-#  --needed skips what is already installed and up to date.
+#  then runs install/check_toolchain.sh and install/smoke_test.sh (the
+#  KLR regression on Icarus Verilog and warm_idle_5s on Verilator).
+#  Safe to run again: pacman --needed skips what is already installed
+#  and up to date.
 #
 #  Usage:  install/install_arch.sh [options]
 #    --venv             put the Python packages in a venv at <repo>/944venv
@@ -18,6 +20,8 @@
 #    --with-dashboard   also clone whalenlg/dme-dashboard into <repo>/dashboard
 #                       and run npm install there (to run the page locally)
 #    --no-gtkwave       skip GTKWave (only needed to view waveforms)
+#    --skip-tests       don't run the smoke tests at the end (they take a
+#                       few minutes, mostly the Verilator compile)
 #    -y, --yes          pass --noconfirm to pacman
 #    -n, --dry-run      print the commands without running them
 #    -h, --help         this text
@@ -41,12 +45,13 @@ VENV="$REPO_DIR/944venv"
 DASHBOARD_URL="https://github.com/whalenlg/dme-dashboard.git"
 MIN_VERILATOR=5.038
 
-USE_VENV=0; DASHBOARD=0; GTKWAVE=1; YES=0; DRY=0
+USE_VENV=0; DASHBOARD=0; GTKWAVE=1; TESTS=1; YES=0; DRY=0
 for _arg in "$@"; do
     case "$_arg" in
         --venv)           USE_VENV=1 ;;
         --with-dashboard) DASHBOARD=1 ;;
         --no-gtkwave)     GTKWAVE=0 ;;
+        --skip-tests)     TESTS=0 ;;
         -y|--yes)         YES=1 ;;
         -n|--dry-run)     DRY=1 ;;
         *) echo "install_arch.sh: unknown option '$_arg' (see --help)" >&2; exit 2 ;;
@@ -121,6 +126,18 @@ if [ "$DRY" = 1 ]; then
     echo "+ $INSTALL_DIR/check_toolchain.sh"
 else
     "$INSTALL_DIR/check_toolchain.sh" || exit 1
+fi
+
+# ── Smoke tests (skip with --skip-tests) ─────────────────────────────────
+#   The KLR CPU regression on Icarus Verilog and warm_idle_5s on Verilator,
+#   in the environment `source setup` gives a new terminal
+if [ "$TESTS" = 1 ]; then
+    step "Smoke tests: KLR regression (iverilog), warm_idle_5s (Verilator)"
+    if [ "$DRY" = 1 ]; then
+        echo "+ $INSTALL_DIR/smoke_test.sh"
+    elif ! "$INSTALL_DIR/smoke_test.sh"; then
+        die "the tools are installed, but a smoke test failed (logs above); run install/smoke_test.sh again once it is fixed"
+    fi
 fi
 
 echo

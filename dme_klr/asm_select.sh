@@ -26,7 +26,10 @@
 #  disassembleperformance.xlsx and 87KLR951.xlsx are the hand-annotated
 #  sources. The other workbooks are generated from them (build_variant.py /
 #  build_klr_variant.py) and rebuilt whenever the source or its generator is
-#  newer; the previous copy is kept as <name>.prev.xlsx. Each tables directory
+#  newer; the previous copy is kept as <name>.prev.xlsx.
+#  A rebuild that comes out the same as the workbook already there (only
+#  the save time differs) leaves that workbook untouched, so a fresh
+#  clone's checkout stays clean. Each tables directory
 #  is rebuilt whenever its workbook is newer.
 #
 #  Setting DME_ASM_DIR / KLR_ASM_DIR yourself skips all of this and uses that
@@ -75,6 +78,18 @@ _asm_variant_stale() {   # <variant xlsx>   (uses _c_*)
     [ "$_c_dis/$_c_src" -nt "$_x" ] && return 0
     for _d in "${_c_deps[@]}"; do [ "$_c_dis/$_d" -nt "$_x" ] && return 0; done
     return 1
+}
+
+# two workbooks hold the same content: every part of the .xlsx (zip) is
+# identical except docProps/core.xml, which holds the save time
+_asm_xlsx_same() {   # <python> <a.xlsx> <b.xlsx>
+    "$1" - "$2" "$3" <<'PY'
+import sys, zipfile
+def parts(p):
+    with zipfile.ZipFile(p) as z:
+        return {n: z.read(n) for n in z.namelist() if n != "docProps/core.xml"}
+sys.exit(0 if parts(sys.argv[1]) == parts(sys.argv[2]) else 1)
+PY
 }
 
 _asm_tables_stale() {    # <xlsx> <tables dir>   (uses _c_*)
@@ -131,12 +146,20 @@ _asm_select() {   # <dme|klr> <array name>
                 _vtag="${_v%%:*}"; _mem="${_v#*:}"; _mem="${_mem%%:*}"; _out="${_v##*:}"
                 _asm_variant_stale "$_out" || continue
                 echo "  $_NAME ASM: regenerating $_out from $_c_src"
-                [ -e "$_c_dis/$_out" ] && cp -p "$_c_dis/$_out" "$_c_dis/${_out%.xlsx}.prev.xlsx"
-                "$_py" "$_c_dis/$_c_gen" "$_c_dis/$_c_src" \
-                    "$_c_roms/$_mem" "$_c_roms/$_c_refimg" "$_c_dis/$_out.tmp.xlsx" \
-                    "$_vtag" "$_c_reftag" >/dev/null \
-                  && mv -f "$_c_dis/$_out.tmp.xlsx" "$_c_dis/$_out" \
-                  || { echo "  asm_select: failed to regenerate $_out" >&2; rm -f "$_c_dis/$_out.tmp.xlsx"; _rc=1; }
+                if ! "$_py" "$_c_dis/$_c_gen" "$_c_dis/$_c_src" \
+                        "$_c_roms/$_mem" "$_c_roms/$_c_refimg" "$_c_dis/$_out.tmp.xlsx" \
+                        "$_vtag" "$_c_reftag" >/dev/null; then
+                    echo "  asm_select: failed to regenerate $_out" >&2; rm -f "$_c_dis/$_out.tmp.xlsx"; _rc=1
+                elif [ -e "$_c_dis/$_out" ] && _asm_xlsx_same "$_py" "$_c_dis/$_out" "$_c_dis/$_out.tmp.xlsx"; then
+                    # Same content (only the save time differs): keep the
+                    # file as it is, so a fresh clone, whose file times are
+                    # arbitrary, doesn't show the workbook as modified
+                    echo "  $_NAME ASM: $_out is unchanged"
+                    rm -f "$_c_dis/$_out.tmp.xlsx"; touch "$_c_dis/$_out"
+                else
+                    [ -e "$_c_dis/$_out" ] && cp -p "$_c_dis/$_out" "$_c_dis/${_out%.xlsx}.prev.xlsx"
+                    mv -f "$_c_dis/$_out.tmp.xlsx" "$_c_dis/$_out"
+                fi
             done
             if [ "$_rc" = "0" ] && _asm_tables_stale "$_xlsx" "$_dir"; then
                 echo "  $_NAME ASM: generating $_dir from $_xlsx"
