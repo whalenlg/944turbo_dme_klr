@@ -295,7 +295,10 @@ compile_and_run_klr() {
     echo "  VCD     → $vcdfile"
     echo "  HEX     → $hexdir/{rom,ram,klr_rom,klr_ram}_out.hex"
 
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo /dev/null )" ) > "${log}" 2>&1
+    # (the sim is a native Windows program under MSYS2, where /dev/null is NUL)
+    local devnull=/dev/null
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) devnull=NUL ;; esac
+    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo "$devnull" )" ) > "${log}" 2>&1
     local rc=$?
 
     if [ $rc -ne 0 ]; then

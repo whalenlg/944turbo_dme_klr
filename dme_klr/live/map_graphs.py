@@ -273,7 +273,7 @@ def generate(path, cache, force=False):
         draw_table(plt, np, t, f'Table {addr:04X}h ({"linear_lookup" if kind == "linear" else "MOVC"})   {rom}',
                    os.path.join(tmp, f))
         index['tables'][f'{addr:04X}'] = {'file': f, 'kind': kind, 'bytes': t['bytes']}
-    json.dump(index, open(os.path.join(tmp, 'index.json'), 'w'), indent=1)
+    json.dump(index, open(os.path.join(tmp, 'index.json'), 'w', newline='\n'), indent=1)
     if os.path.exists(out):
         import shutil
         shutil.rmtree(out)

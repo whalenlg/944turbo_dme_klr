@@ -16,7 +16,7 @@ def convert(infile, outfile):
             if line[7:9] == '00':
                 for i in range(count):
                     mem[addr+i] = line[9+i*2 : 11+i*2]
-    with open(outfile, 'w') as f:
+    with open(outfile, 'w', newline='\n') as f:
         f.write("\n".join(mem))
 
 if __name__ == "__main__":

@@ -7,7 +7,9 @@
 #  - sets DMEKLR_REPO and DMEKLR_TMP (paths.sh); set DMEKLR_TMP before
 #    sourcing this to put the build output and logs somewhere else
 #  - activates the Python venv 944venv/ when it exists (install_macos.sh
-#    makes it)
+#    makes it; install_arch.sh and install_msys2.sh with --venv)
+#  - on Windows, use it in an MSYS2 UCRT64 terminal; DMEKLR_REPO and
+#    DMEKLR_TMP are then C:/... paths, which the native tools understand
 #  - puts a locally built Icarus Verilog in /opt/iverilog, and a GTKWave
 #    in <checkout>/gtkwave/bin (install_macos.sh builds it there) or
 #    <checkout>/gtkwave, ahead of the system ones when they exist
@@ -27,7 +29,11 @@ if [ -x "$DMEKLR_REPO/gtkwave/bin/gtkwave" ]; then export PATH="$DMEKLR_REPO/gtk
 elif [ -d "$DMEKLR_REPO/gtkwave" ]; then export PATH="$DMEKLR_REPO/gtkwave:$PATH"; fi
 export IVERILOG_DUMPER=fst
 
-[ -f "$DMEKLR_REPO/944venv/bin/activate" ] && source "$DMEKLR_REPO/944venv/bin/activate"
+if [ -f "$DMEKLR_REPO/944venv/bin/activate" ]; then source "$DMEKLR_REPO/944venv/bin/activate"
+elif [ -f "$DMEKLR_REPO/944venv/Scripts/activate" ]; then source "$DMEKLR_REPO/944venv/Scripts/activate"; fi
 
-case ":$PATH:" in *":$DMEKLR_REPO:"*) ;; *) export PATH="$PATH:$DMEKLR_REPO" ;; esac
-unset _dmeklr_here
+# PATH is colon-separated, so on Windows (MSYS2) it takes the /c/... form
+_dmeklr_pathdir="$DMEKLR_REPO"
+command -v cygpath >/dev/null 2>&1 && _dmeklr_pathdir="$(cygpath -u "$DMEKLR_REPO")"
+case ":$PATH:" in *":$_dmeklr_pathdir:"*) ;; *) export PATH="$PATH:$_dmeklr_pathdir" ;; esac
+unset _dmeklr_here _dmeklr_pathdir

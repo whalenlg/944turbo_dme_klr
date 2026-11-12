@@ -105,11 +105,16 @@ const arg = (name, dflt) => {
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 };
 const PORT    = +arg('port', 8951);
-const SIM     = resolve(arg('sim', join(HERE, 'obj', 'dme_klr_live')));
+// Windows (MSYS2) builds are dme_klr_live.exe; --sim may leave the .exe off
+const EXE = process.platform === 'win32' ? '.exe' : '';
+const withExe = p => (EXE && !p.toLowerCase().endsWith(EXE) && !existsSync(p) ? p + EXE : p);
+const SIM     = withExe(resolve(arg('sim', join(HERE, 'obj', 'dme_klr_live'))));
 const DME_ASM_PIN = arg('dme-asm', null);   // fixed DME listing; otherwise it follows the ROM
 const DME_ASM = resolve(DME_ASM_PIN ?? join(REPO, 'dme', 'disassemble'));
 const KLR_ASM_PIN = arg('klr-asm', null);
 const KLR_ASM = resolve(KLR_ASM_PIN ?? join(REPO, 'klr', 'disassemble'));
+// No VCD: the sim gets the null device as its file (NUL on Windows)
+const DEVNULL = process.platform === 'win32' ? 'NUL' : '/dev/null';
 const MAX_HISTORY = 500_000;   // lines kept for replay
 
 // Lines the dashboard uses; the rest ($dumpvar notices, readmem
@@ -157,7 +162,7 @@ function startSim(load = null) {
   if (!load) bpNow = { dme: [], klr: [] };   // a plain restart starts without any
   const bin = test?.bin ?? SIM;
   // Run from obj/ so the testbench's $writememh / sim.vcd land there
-  sim = spawn(bin, ['+vcd=/dev/null', ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
+  sim = spawn(bin, [`+vcd=${DEVNULL}`, ...romArgs, ...snapArgs], { cwd: dirname(bin), stdio: ['pipe', 'pipe', 'pipe'] });
   const proc = sim;
   const onLine = line => {
     if (pending && /^SIM: \[SNAP\] loaded /.test(line)) {
@@ -490,12 +495,12 @@ function loadSnapshot(id) {
 // and the time. LOAD builds the test with the debugger's hooks
 // (build_live.sh --test, in obj/tests/<test>/, kept for next time) and
 // runs it there, paused. Progress goes out as SIM: [SNAP] building lines.
-const TEST_SOURCES = [join(HERE, 'sim_main.cpp'), join(HERE, 'snapshot.h'), join(HERE, 'build_live.sh'),
+const TEST_SOURCES = [join(HERE, 'sim_main.cpp'), join(HERE, 'stdin_ready.cpp'), join(HERE, 'snapshot.h'), join(HERE, 'build_live.sh'),
                       join(REPO, 'dme_klr', 'bench', 'verilog', 'dme_klr_dashboard_tb.v')];
 const testDir = req => join(dirname(SIM), 'tests', req.test);
 const testStamp = req => JSON.stringify({ defines: req.defines, roms: req.roms, interval: req.interval_ms, script: req.script });
 function testBuilt(req) {
-  const bin = join(testDir(req), 'dme_klr_live');
+  const bin = join(testDir(req), 'dme_klr_live' + EXE);
   try {
     if (readFileSync(join(testDir(req), 'build.stamp'), 'utf8') !== testStamp(req)) return false;
     const t = statSync(bin).mtimeMs;
@@ -514,7 +519,7 @@ function loadTest(id) {
   if (testBuild) return [409, `already building ${testBuild.id}`];
   const run = () => {
     console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms`);
-    restartSim({ test: { bin: join(testDir(req), 'dme_klr_live'), runTo: req.t_ns, id } });
+    restartSim({ test: { bin: join(testDir(req), 'dme_klr_live' + EXE), runTo: req.t_ns, id } });
   };
   if (testBuilt(req)) { run(); return [204, '']; }
   // ROM images as the test ran them; the script finds its own -D flags

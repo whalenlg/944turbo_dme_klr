@@ -36,6 +36,23 @@ else
     mkdir -p "$DMEKLR_REPO/../tmp"
     DMEKLR_TMP="$(cd "$DMEKLR_REPO/../tmp" && pwd)"
 fi
+# Windows (MSYS2): the tools are native Windows programs, which don't know
+# MSYS2's /c/... or /home/... paths, so hand everything C:/... ones (bash
+# takes those too). PATH entries still need the /c/... form: see setup.
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        DMEKLR_REPO="$(cygpath -m "$DMEKLR_REPO")"
+        DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")"
+        # MSYS2's gcc 16, at -Os, calls std::string's constructors through
+        # the "C4" unified-constructor symbol (-fdeclone-ctor-dtor), which
+        # its libstdc++ doesn't export: "undefined reference to
+        # std::__cxx11::basic_string(basic_string&&)" when linking any
+        # Verilator build (its runtime is compiled at -Os). Turn that off.
+        # Verilator's makefiles pass CXXFLAGS to every compile;
+        # build_live.sh and run_replay.sh also pass it with -CFLAGS.
+        case " ${CXXFLAGS:-} " in *" -fno-declone-ctor-dtor "*) ;;
+            *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-fno-declone-ctor-dtor" ;; esac ;;
+esac
 export DMEKLR_REPO DMEKLR_TMP
 
 dmeklr_vdefs() {

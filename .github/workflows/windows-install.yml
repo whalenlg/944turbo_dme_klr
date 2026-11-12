@@ -1,0 +1,61 @@
+# Tests install/install_windows.ps1 on a clean Windows runner: MSYS2 is
+# installed from scratch into a fresh folder (the runner's own C:\msys64 is
+# not used), then install_msys2.sh, its smoke tests, and
+# install/test_windows_install.sh (setup, check_toolchain, live build,
+# bridge, GTKWave).
+name: Windows install test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - install/**
+      - setup
+      - paths.sh
+      - .gitattributes
+      - dme_klr/live/**
+      - .github/workflows/windows-install.yml
+
+jobs:
+  windows:
+    name: Windows${{ matrix.venv && ' (-Venv)' || '' }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        venv: [false, true]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dmeklr
+      - name: Install (install_windows.ps1)
+        shell: pwsh
+        run: |
+          # A path without the runner's own MSYS2 on it, as on a new PC
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'msys64|Git\\usr\\bin|Git\\mingw64' }) -join ';'
+          & .\dmeklr\install\install_windows.ps1 -MsysRoot D:\msys2-clean -Yes ${{ matrix.venv && '-Venv' || '' }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check the install (test_windows_install.sh)
+        shell: pwsh
+        run: |
+          $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'; $env:MSYS2_PATH_TYPE = 'minimal'
+          Set-Location dmeklr
+          & D:\msys2-clean\usr\bin\bash.exe -lc 'install/test_windows_install.sh --browser --logdir ../tmp/windows-install-test'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Show checkout changes
+        if: always()
+        shell: pwsh
+        run: |
+          $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
+          Set-Location dmeklr
+          & D:\msys2-clean\usr\bin\bash.exe -lc 'git status --short; git diff --stat; git diff | head -n 40 | cat -A | cut -c1-200'
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-install-logs${{ matrix.venv && '-venv' || '' }}
+          path: |
+            tmp/windows-install-test/
+            tmp/install_smoke/
+          if-no-files-found: ignore

@@ -75,7 +75,7 @@ def main():
             rows[str(a)] = e
         out[cpu] = rows
         print(f'{cpu}: {len(rows)} rows from {os.path.relpath(path, REPO)}')
-    with open(dest, 'w') as f:
+    with open(dest, 'w', newline='\n') as f:
         json.dump(out, f, separators=(',', ':'))
     return 0
 

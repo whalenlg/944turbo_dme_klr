@@ -5,7 +5,8 @@
 #  Checks the C++ compiler (C++20, which Verilator --timing needs), make,
 #  Verilator (>= 5.038), Icarus Verilog (iverilog + vvp), GTKWave,
 #  Node.js (>= 18) and npm, Python 3 with the packages in
-#  requirements.txt, and git. Run by install_macos.sh and install_arch.sh
+#  requirements.txt, and git. Run by install_macos.sh, install_arch.sh and
+#  install_msys2.sh
 #  when they finish; safe to run on its own at any time.
 #
 #  Python is checked with this repo's 944venv/bin/python when that venv
@@ -76,7 +77,7 @@ if command -v "$CXX_BIN" >/dev/null 2>&1; then
     fi
     rm -rf "$_tmp"
 else
-    bad "c++" "no C++ compiler (macOS: xcode-select --install, Arch: base-devel)"
+    bad "c++" "no C++ compiler (macOS: xcode-select --install, Arch: base-devel, Windows: install_msys2.sh)"
 fi
 
 if command -v make >/dev/null 2>&1; then
@@ -130,7 +131,10 @@ fi
 
 # ── Python and its packages ───────────────────────────────────────────────
 PY=python3
-[ -x "$REPO_DIR/944venv/bin/python" ] && PY="$REPO_DIR/944venv/bin/python"
+VENV_PY=""
+for _p in "$REPO_DIR/944venv/bin/python" "$REPO_DIR/944venv/Scripts/python.exe"; do
+    [ -x "$_p" ] && { VENV_PY="$_p"; PY="$_p"; break; }
+done
 if command -v "$PY" >/dev/null 2>&1; then
     ok "python3" "$("$PY" --version 2>&1 | awk '{print $2}')  ($PY)"
     for _m in openpyxl pandas matplotlib numpy; do
@@ -141,7 +145,9 @@ else
     bad "python3" "Python 3"
 fi
 VENV_INACTIVE=0
-if [ "$PY" != python3 ] && [ "${VIRTUAL_ENV:-}" != "$REPO_DIR/944venv" ]; then
+# (on Windows, compare the /c/... forms: VIRTUAL_ENV may be either)
+_unix() { if command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"; else echo "$1"; fi; }
+if [ -n "$VENV_PY" ] && [ "$(_unix "${VIRTUAL_ENV:-/}")" != "$(_unix "$REPO_DIR/944venv")" ]; then
     VENV_INACTIVE=1
     printf "  ${YELLOW}note${NC}     %-12s %s\n" "944venv" "not active in this shell; run: source $REPO_DIR/setup"
 fi

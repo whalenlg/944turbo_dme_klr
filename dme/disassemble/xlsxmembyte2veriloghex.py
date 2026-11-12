@@ -66,7 +66,7 @@ def main():
             hex_data = "".join(f"{ord(c):02x}" for c in content_str)
             output_lines.append(hex_data)
             
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', newline='\n') as f:
             f.write('\n'.join(output_lines))
             
         print(f"Success! Wrote {len(output_lines)} lines (32 bytes wide) to {output_file}")

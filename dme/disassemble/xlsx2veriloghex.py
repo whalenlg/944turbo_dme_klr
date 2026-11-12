@@ -72,7 +72,7 @@ def main():
         output_lines.append(hex_content)
 
     # Write only the hex content lines to the file
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', newline='\n') as f:
         f.write('\n'.join(output_lines))
     
     print(f"Success! Wrote {len(output_lines)} lines to {output_file}")

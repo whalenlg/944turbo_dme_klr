@@ -40,13 +40,16 @@ done
 
 set -e
 
-LIVE_DIR="$(cd "$(dirname "$0")" && pwd)"
-DMEKLR_DIR="$(cd "$LIVE_DIR/.." && pwd)"
-REPO_DIR="$(cd "$DMEKLR_DIR/.." && pwd)"
+# pwd -W: the C:/... form on Windows (MSYS2), which the native compilers need
+_pwd() { pwd -W 2>/dev/null || pwd; }
+LIVE_DIR="$(cd "$(dirname "$0")" && _pwd)"
+DMEKLR_DIR="$(cd "$LIVE_DIR/.." && _pwd)"
+REPO_DIR="$(cd "$DMEKLR_DIR/.." && _pwd)"
 
-DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
+source "$REPO_DIR/paths.sh"   # DMEKLR_REPO (C:/... on Windows), DMEKLR_TMP
+DME_ROM_DIR="${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}"
 DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
-KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
+KLR_ROM_DIR="${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
@@ -59,7 +62,7 @@ fi
 if [ -n "$TEST" ]; then
     OBJ="$LIVE_DIR/obj/tests/$TEST"
     TEST_DEFS=()
-    while IFS= read -r d; do TEST_DEFS+=("$d"); done \
+    while IFS= read -r d; do TEST_DEFS+=("${d%$'\r'}"); done \
         < <(python3 "$LIVE_DIR/test_snap.py" defines "$TEST" --script "$TEST_SCRIPT")
     [ ${#TEST_DEFS[@]} -gt 0 ] || { echo "build_live.sh: no -D flags for test $TEST" >&2; exit 1; }
     # STEP_CLOCKS and the file list as the runners work them out
@@ -83,7 +86,6 @@ else
 fi
 
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
-source "$REPO_DIR/paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
 dmeklr_vdefs ASM_DEFS
@@ -95,9 +97,12 @@ mkdir -p "$OBJ"
 # Empty stand-in for the first build; gen_state.py writes the real one
 printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, LiveFieldList&) {}\n' \
     > "$OBJ/live_fields.cpp"
+# VL_TIME_CONTEXT: time comes from the VerilatedContext, so the program
+# needn't define sc_time_stamp() (Verilator's weak default for it doesn't
+# link on Windows; --binary builds define this themselves)
 verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
-    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" \
+    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" -CFLAGS -DVL_TIME_CONTEXT ${CXXFLAGS:+-CFLAGS "$CXXFLAGS"} \
     --Mdir "$OBJ" -o dme_klr_live \
     -f "$FILES_LIST" \
     --top-module dme_klr_dashboard_tb \
@@ -110,7 +115,7 @@ verilator --cc --exe --build --timing -j 0 \
     -Wno-fatal -Wno-PINMISSING -Wno-IMPLICIT -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND \
     -Wno-REDEFMACRO -Wno-DEFOVERRIDE -Wno-CASEINCOMPLETE -Wno-LATCH -Wno-MULTIDRIVEN \
     "$@" \
-    "$LIVE_DIR/sim_main.cpp" "$OBJ/live_fields.cpp"
+    "$LIVE_DIR/sim_main.cpp" "$LIVE_DIR/stdin_ready.cpp" "$OBJ/live_fields.cpp"
 
 # List the model's variables from the generated headers, then rebuild
 # that file, and Verilator's runtime with live_printf.h (only the runtime

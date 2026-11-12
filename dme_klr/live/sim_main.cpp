@@ -92,8 +92,6 @@
 #include "verilated.h"
 #include "snapshot.h"
 
-#include <poll.h>
-#include <unistd.h>
 
 #include <chrono>
 #include <algorithm>
@@ -114,6 +112,8 @@
 #include <regex>
 #include <string>
 #include <vector>
+
+bool liveStdinReady();   // stdin_ready.cpp: poll(), or its Windows equivalent
 
 // ── Model output (live_printf.h) ────────────────────────────
 // Every $display / $write of the model lands here: printed as before,
@@ -385,8 +385,7 @@ private:
 
     // ── stdin while running ─────────────────────────────────
     void pollInput() {
-        pollfd p{0, POLLIN, 0};
-        while (poll(&p, 1, 0) > 0 && (p.revents & (POLLIN | POLLHUP))) {
+        while (liveStdinReady()) {
             std::string line;
             if (!std::getline(std::cin, line)) { quit_ = true; return; }
             command(line);

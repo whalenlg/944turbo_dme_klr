@@ -109,7 +109,8 @@ _asm_any_stale() {       # <xlsx> <tables dir>
 _asm_select() {   # <dme|klr> <array name>
     local _cpu="$1" _arr="${2:-rom_overrides}"
     local _repo
-    _repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # pwd -W: the C:/... form on Windows (MSYS2), for the native tools
+    _repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && { pwd -W 2>/dev/null || pwd; })"
     local _c_name _c_dis _c_roms _c_size _c_src _c_refimg _c_reftag _c_gen _c_default
     local -a _c_deps _c_variants _c_files
     _asm_cfg "$_cpu" "$_repo"

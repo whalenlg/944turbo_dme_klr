@@ -1,0 +1,10 @@
+# Check text files out with LF line ends everywhere, including on Windows
+# (Git for Windows defaults to CRLF): bash, the Verilog $readmemh images and
+# the Python scripts all expect LF.
+* text=auto eol=lf
+
+# Committed with CRLF; keep them byte for byte
+*.asy -text
+bin_images/klr/codes -text
+bin_images/klr/instr -text
+bin_images/klr/opcodescsv.csv -text
