@@ -14,10 +14,11 @@
 #    2. installs the Command Line Tools headlessly (softwareupdate), as a
 #       user clicking "Install" in that dialog would
 #    3. runs install_macos.sh -y again: Homebrew, the formulae, the venv,
-#       then check_toolchain.sh
+#       check_toolchain.sh and its smoke tests (install/smoke_test.sh: the
+#       KLR regression and warm_idle_5s)
 #    4. in a new zsh login shell (the macOS default), sources setup and runs
-#       check_toolchain.sh, the KLR CPU regression (Icarus Verilog + the
-#       venv's Python), the warm_idle_5s dashboard test (Verilator), the
+#       check_toolchain.sh, checks the smoke tests' logs (KLR regression on
+#       Icarus Verilog, warm_idle_5s on Verilator), then the
 #       live simulator build (build_live.sh, run to 200 ms), and opens the
 #       KLR waveform in GTKWave
 #  then prints PASS/FAIL for each step, copies the VM's logs back and
@@ -37,8 +38,8 @@
 #    --cpu N          VM CPUs (default: the image's)
 #    --memory MB      VM memory in MB (default: the image's)
 #    --skip-clt-check skip step 1 (and keep the image's Command Line Tools)
-#    --skip-tests     stop after the install (skip step 4's simulations;
-#                     check_toolchain.sh still runs)
+#    --skip-tests     install with install_macos.sh --skip-tests and skip
+#                     steps 4b-4e (check_toolchain.sh still runs)
 #    --keep           leave the VM running at the end, to look around
 #                     (ssh admin@$(tart ip NAME), password admin)
 #    --replace        delete an existing VM of the same name first
@@ -274,7 +275,7 @@ step "3. install_macos.sh -y"
 tic
 vm_run 3_install.log bash -s <<EOF
 export NONINTERACTIVE=1   # what Homebrew's installer assumes without a terminal anyway
-cd $VM_REPO && install/install_macos.sh -y
+cd $VM_REPO && install/install_macos.sh -y $([ "$TESTS" = 0 ] && echo --skip-tests)
 EOF
 rc=$?
 if [ "$rc" = 0 ]; then result PASS "3. install_macos.sh -y" "exit 0" "$(toc)"
@@ -308,10 +309,14 @@ if [ "$TESTS" = 0 ]; then
     result SKIP "4d. live build + run (Verilator)" "--skip-tests" 0
     result SKIP "4e. GTKWave (optional)" "--skip-tests" 0
 else
-    step "4b. KLR CPU regression (Icarus Verilog + Python venv)"
+    # install_macos.sh ran install/smoke_test.sh (the KLR regression and
+    # warm_idle_5s) at the end of step 3; check what it left behind rather
+    # than running the two simulations again
+    step "4b. Installer's smoke test: KLR regression (Icarus Verilog + Python venv)"
     tic
-    vm_run 4b_klr_regression.log zsh -l -s <<EOF
-source $VM_REPO/setup && cd \$DMEKLR_REPO/klr && ./run_klr_regression
+    vm_run 4b_klr_regression.log zsh -l -s <<'EOF'
+source "$HOME/944/944turbo_dme_klr/setup" || exit 3
+cat "$DMEKLR_TMP/install_smoke/klr.log" || exit 1
 EOF
     rc=$?
     _pass=$(grep -c 'PASS \[' "$OUT/4b_klr_regression.log")
@@ -320,17 +325,16 @@ EOF
        && ! grep -q 'Traceback' "$OUT/4b_klr_regression.log"; then
         result PASS "4b. KLR regression (iverilog)" "$_pass checks passed" "$(toc)"
     else
-        result FAIL "4b. KLR regression (iverilog)" "exit $rc, $_pass passed, $_fail failed (4b_klr_regression.log)" "$(toc)"
+        result FAIL "4b. KLR regression (iverilog)" "no klr.log, or $_pass passed, $_fail failed (4b_klr_regression.log)" "$(toc)"
     fi
 
-    step "4c. warm_idle_5s dashboard test (Verilator compile + 5 s simulated)"
+    step "4c. Installer's smoke test: warm_idle_5s (Verilator)"
     tic
-    vm_run 4c_warm_idle_5s.log zsh -l -s <<EOF
-source $VM_REPO/setup && cd \$DMEKLR_REPO/dme_klr && ./v_run_dashboard_tests.sh warm_idle_5s
-_rc=\$?
-_d=\$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log
-echo "dash log: \$(wc -l < \$_d 2>/dev/null || echo missing) lines, \$(grep -c '\[DS\]' \$_d 2>/dev/null || echo 0) snapshots"
-exit \$_rc
+    vm_run 4c_warm_idle_5s.log zsh -l -s <<'EOF'
+source "$HOME/944/944turbo_dme_klr/setup" || exit 3
+tail -n 20 "$DMEKLR_TMP/install_smoke/warm_idle_5s.log"
+_d="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log"
+echo "dash log: $(wc -l < "$_d" 2>/dev/null || echo missing) lines, $(grep -c '\[DS\]' "$_d" 2>/dev/null || echo 0) snapshots"
 EOF
     rc=$?
     _snaps=$(sed -n 's/.*lines, \([0-9]*\) snapshots.*/\1/p' "$OUT/4c_warm_idle_5s.log" | tail -1)
@@ -338,7 +342,7 @@ EOF
        && ! grep -qE 'COMPILE FAILED|SIM FAILED' "$OUT/4c_warm_idle_5s.log"; then
         result PASS "4c. warm_idle_5s (Verilator)" "$_snaps dashboard snapshots" "$(toc)"
     else
-        result FAIL "4c. warm_idle_5s (Verilator)" "exit $rc, ${_snaps:-0} snapshots (4c_warm_idle_5s.log)" "$(toc)"
+        result FAIL "4c. warm_idle_5s (Verilator)" "${_snaps:-0} snapshots (4c_warm_idle_5s.log)" "$(toc)"
     fi
     # bring the dashboard log back too, so it can be opened on the host
     vm_ssh "cat $VM_REPO/../tmp/dme_klr/v_dash_logs/warm_idle_5s.dash.log" </dev/null \
