@@ -41,7 +41,9 @@ Two scripts in `install/` set up everything this repo needs on a fresh
 machine: the C++ compiler, Verilator, Icarus Verilog, GTKWave, Node.js and
 Python with its packages. Run the one for your system from the top of the
 checkout. Both are safe to run again; what is already installed is left
-alone.
+alone. Both finish by running two short simulations to show the install
+works (see [Checking an install](#checking-an-install)); that takes a few
+minutes, and `--skip-tests` leaves it out.
 
 The checkout can be anywhere and have any name: every script finds the repo
 from its own location. Where the build output and logs go is one setting,
@@ -83,12 +85,16 @@ It installs, in order:
 4. A Python virtual environment at `944venv/` in the repo, with the packages
    in `install/requirements.txt`. You must activate it in each new terminal;
    see [The Python venv](#the-python-venv-944venv) below.
+5. `install/check_toolchain.sh`, then the **smoke tests**: the KLR
+   regression on Icarus Verilog and `warm_idle_5s` on Verilator (see
+   [Checking an install](#checking-an-install)).
 
 | Option | Effect |
 |---|---|
 | `--upgrade` | `brew upgrade` the formulae that are already installed |
 | `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and run `npm install` there |
 | `--no-gtkwave` | Skip GTKWave |
+| `--skip-tests` | Don't run the smoke tests at the end |
 | `-y`, `--yes` | Don't ask before installing Homebrew |
 | `-n`, `--dry-run` | Print the commands without running them |
 
@@ -107,13 +113,15 @@ It runs one `sudo pacman -Syu --needed` with `base-devel`, `git`,
 `python-openpyxl`, `python-pandas`, `python-matplotlib` and
 `python-numpy`, all from the official repositories. `-Syu` upgrades the
 rest of the system too, because Arch doesn't support partial upgrades. The
-Python packages come from pacman, so there is no venv to activate.
+Python packages come from pacman, so there is no venv to activate. Then it
+runs `install/check_toolchain.sh` and the same smoke tests as on macOS.
 
 | Option | Effect |
 |---|---|
 | `--venv` | Install the Python packages with pip into `944venv/` instead of from pacman (then `source 944venv/bin/activate` as on macOS) |
 | `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
 | `--no-gtkwave` | Skip GTKWave |
+| `--skip-tests` | Don't run the smoke tests at the end |
 | `-y`, `--yes` | Pass `--noconfirm` to pacman |
 | `-n`, `--dry-run` | Print the commands without running them |
 
@@ -219,11 +227,40 @@ exits non-zero if anything required is missing or too old:
   ...
 ```
 
+Then both scripts run `install/smoke_test.sh`, which sources `setup` (as a
+new terminal would) and runs two simulations that exercise the whole
+toolchain:
+
+| Test | What it runs | Passes when |
+|---|---|---|
+| `klr` | `klr/run_klr_regression`: the KLR i8048 CPU regression on Icarus Verilog, with the Python table converters | every check prints `PASS`, none `FAIL` |
+| `warm_idle_5s` | `dme_klr/v_run_dashboard_tests.sh warm_idle_5s`: the full DME+KLR model compiled with Verilator and run for 5 simulated seconds | it compiles and runs, and the dashboard log has its `[DS]` snapshots |
+
+It ends with a PASS/FAIL line for each:
+
+```
+Smoke tests
+  PASS  iverilog: KLR regression  (… checks passed, 20s)
+  PASS  verilator: warm_idle_5s  (… dashboard snapshots in …/warm_idle_5s.dash.log, 180s)
+```
+
+Most of the time is the Verilator compile. Each test's full output is in
+`$DMEKLR_TMP/install_smoke/<test>.log`, and the `warm_idle_5s` dashboard
+log is left in `$DMEKLR_TMP/dme_klr/v_dash_logs/`, ready to open in the
+dashboard. If a test fails, the install script stops with an error after
+printing the end of that test's log; the tools are installed by then, so
+once the cause is fixed, run just the tests again:
+
+```sh
+install/smoke_test.sh                 # both
+install/smoke_test.sh warm_idle_5s    # or one: klr, warm_idle_5s
+```
+
 To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
-runs it in a fresh `archlinux:latest` container (Docker or Podman), then
-`source setup`, `check_toolchain.sh`, the KLR regression (iverilog), the
-`warm_idle_5s` dashboard test (Verilator), the live build and a GTKWave
-launch on the KLR waveform (under Xvfb), and prints a
+runs it in a fresh `archlinux:latest` container (Docker or Podman),
+including its smoke tests, then `source setup` and `check_toolchain.sh` in a
+new login shell, checks the smoke tests' output, builds and runs the live
+simulator and launches GTKWave on the KLR waveform (under Xvfb), and prints a
 PASS/FAIL line for each (`--venv` tests `install_arch.sh --venv`). The
 "Arch install test" GitHub workflow runs the same steps on pull requests
 that touch `install/`.

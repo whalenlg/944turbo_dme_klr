@@ -5,10 +5,12 @@
 #  Starts a fresh archlinux:latest container (Docker or Podman, x86_64),
 #  copies this checkout's tracked files into it as a new user's clone,
 #  and as that user (with sudo, as on a normal Arch system):
-#    1. runs install/install_arch.sh -y  (plus --venv when asked)
+#    1. runs install/install_arch.sh -y  (plus --venv when asked), which
+#       ends with its smoke tests (install/smoke_test.sh): the KLR
+#       regression on iverilog and warm_idle_5s on Verilator
 #    2. in a new login shell: source setup, install/check_toolchain.sh
-#    3. iverilog smoke test:   klr/run_klr_regression
-#    4. Verilator smoke test:  dme_klr/v_run_dashboard_tests.sh warm_idle_5s
+#    3. iverilog smoke test:   checks the KLR regression's output from 1
+#    4. Verilator smoke test:  checks warm_idle_5s's dashboard log from 1
 #    5. live simulator build:  dme_klr/live/build_live.sh
 #    6. GTKWave: reads the KLR regression's .fst (fst2vcd) and opens it
 #       in gtkwave on a virtual display (Xvfb)
@@ -16,7 +18,8 @@
 #
 #  Usage:  install/test_arch_install.sh [options]
 #    --venv             test install_arch.sh --venv (Python packages from pip)
-#    --quick            stop after check_toolchain (skip steps 3-6)
+#    --quick            install with --skip-tests and stop after
+#                       check_toolchain (skip steps 3-6)
 #    --no-gtkwave       test install_arch.sh --no-gtkwave (skips step 6)
 #    --engine NAME      docker or podman (default: whichever is found)
 #    --image NAME       base image (default: archlinux:latest)
@@ -173,15 +176,20 @@ check() {
 INST=(install/install_arch.sh -y)
 [ "$VENV" = 1 ] && INST+=(--venv)
 [ "$GTKWAVE" = 0 ] && INST+=(--no-gtkwave)
+[ "$QUICK" = 1 ] && INST+=(--skip-tests)
 
 if check "${INST[*]}" "${INST[*]}"; then
     check "source setup + check_toolchain" \
         'source ./setup && echo "DMEKLR_REPO=$DMEKLR_REPO DMEKLR_TMP=$DMEKLR_TMP" && which python3 && install/check_toolchain.sh'
     if [ "$QUICK" = 0 ]; then
+        # install_arch.sh ran both smoke tests (install/smoke_test.sh) as
+        # its last step; check what they left rather than run them again
         check "iverilog: KLR regression" \
-            'source ./setup && klr/run_klr_regression && ls -l "$DMEKLR_TMP/klr/fst/"'
+            'source ./setup && l="$DMEKLR_TMP/install_smoke/klr.log" && ls -l "$l" "$DMEKLR_TMP/klr/fst/" \
+             && n=$(grep -c "PASS \[" "$l") && echo "$n checks passed" && [ "$n" -gt 0 ] \
+             && ! grep -q "FAIL \[" "$l"'
         check "verilator: warm_idle_5s" \
-            'source ./setup && verilator --version && cd dme_klr && ./v_run_dashboard_tests.sh warm_idle_5s \
+            'source ./setup && verilator --version && ls -l "$DMEKLR_TMP/install_smoke/warm_idle_5s.log" \
              && f="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log" && ls -l "$f" \
              && n=$(grep -c "\[DS\]" "$f") && echo "$n [DS] snapshot lines" && [ "$n" -gt 10 ]'
         check "verilator: live build" \
