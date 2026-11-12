@@ -294,6 +294,22 @@ install/smoke_test.sh                 # both
 install/smoke_test.sh warm_idle_5s    # or one: klr, warm_idle_5s
 ```
 
+### Testing the macOS install on a clean Mac
+
+`install/test_macos_vm.sh` checks `install_macos.sh` from scratch, without
+touching your own setup. It needs an Apple Silicon Mac with Tart
+(`brew tap openai/tools && brew install openai/tools/tart`). It clones a
+fresh macOS VM without Homebrew, copies the checkout in (the committed `HEAD`,
+or `--worktree` for your uncommitted changes too), removes the Command Line
+Tools if the image has them, checks the installer stops and asks for them,
+installs them, runs the installer (with its smoke tests) and checks the
+smoke tests' logs, then, in a new zsh terminal, sources `setup` and runs
+`check_toolchain.sh`, the live simulator build (run to 200 ms) and a GTKWave launch on
+the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
+`$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
+it running). The first run downloads the macOS image, about 25 GB; a run
+takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
+
 To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
 runs it in a fresh `archlinux:latest` container (Docker or Podman),
 including its smoke tests, then `source setup` and `check_toolchain.sh` in a
