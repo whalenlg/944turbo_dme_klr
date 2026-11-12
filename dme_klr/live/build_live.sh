@@ -102,7 +102,7 @@ printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, 
 # link on Windows; --binary builds define this themselves)
 verilator --cc --exe --build --timing -j 0 \
     -O3 --x-assign fast --x-initial fast --noassert \
-    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" -CFLAGS -DVL_TIME_CONTEXT \
+    -CFLAGS -O2 -CFLAGS "-I$LIVE_DIR" -CFLAGS -DVL_TIME_CONTEXT ${CXXFLAGS:+-CFLAGS "$CXXFLAGS"} \
     --Mdir "$OBJ" -o dme_klr_live \
     -f "$FILES_LIST" \
     --top-module dme_klr_dashboard_tb \

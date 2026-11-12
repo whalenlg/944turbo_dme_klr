@@ -17,20 +17,6 @@ on:
       - .github/workflows/windows-install.yml
 
 jobs:
-  diag:
-    name: gcc diag (temporary)
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Diagnose
-        shell: pwsh
-        run: |
-          $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
-          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Syuu --noconfirm 2>&1 | tail -3'
-          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Syuu --noconfirm 2>&1 | tail -3'
-          & C:\msys64\usr\bin\bash.exe -lc 'pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc 2>&1 | tail -3'
-          & C:\msys64\usr\bin\bash.exe -lc 'bash .github/diag/gcc_diag.sh'
   windows:
     name: Windows${{ matrix.venv && ' (-Venv)' || '' }}
     runs-on: windows-latest

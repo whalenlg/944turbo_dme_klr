@@ -43,13 +43,15 @@ case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
         DMEKLR_REPO="$(cygpath -m "$DMEKLR_REPO")"
         DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")"
-        # MSYS2's gcc 16 at -Os in C++20 mode leaves std::string's move
-        # constructor as an external reference that its libstdc++ doesn't
-        # provide ("undefined reference to std::__cxx11::basic_string(
-        # basic_string&&)"); -O2 inlines it. Verilator's makefiles compile
-        # its runtime at -Os but put CXXFLAGS after that, so this -O2 wins.
-        case " ${CXXFLAGS:-} " in *" -O2 "*) ;;
-            *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-O2" ;; esac ;;
+        # MSYS2's gcc 16, at -Os, calls std::string's constructors through
+        # the "C4" unified-constructor symbol (-fdeclone-ctor-dtor), which
+        # its libstdc++ doesn't export: "undefined reference to
+        # std::__cxx11::basic_string(basic_string&&)" when linking any
+        # Verilator build (its runtime is compiled at -Os). Turn that off.
+        # Verilator's makefiles pass CXXFLAGS to every compile;
+        # build_live.sh and run_replay.sh also pass it with -CFLAGS.
+        case " ${CXXFLAGS:-} " in *" -fno-declone-ctor-dtor "*) ;;
+            *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-fno-declone-ctor-dtor" ;; esac ;;
 esac
 export DMEKLR_REPO DMEKLR_TMP
 

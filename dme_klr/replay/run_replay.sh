@@ -172,7 +172,7 @@ if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
     # VL_TIME_CONTEXT: no sc_time_stamp() needed (its weak default doesn't link on Windows)
     verilator --cc --exe --build --timing -j 0 \
         -O3 --x-assign fast --x-initial fast --noassert \
-        -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT \
+        -CFLAGS -O2 -CFLAGS -DVL_TIME_CONTEXT ${CXXFLAGS:+-CFLAGS "$CXXFLAGS"} \
         --Mdir "$REPLAY_DIR/obj" -o dme_klr_replay \
         -f files_cl \
         --top-module dme_klr_dashboard_tb \
