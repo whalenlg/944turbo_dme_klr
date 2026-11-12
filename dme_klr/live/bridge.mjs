@@ -174,7 +174,8 @@ function startSim(load = null) {
     const st = line.match(/^SIM: \[STATE\] (\w+)/);
     if (st) simState = st[1];
     const rom = line.match(/^SIM: \[ROM\] (dme|klr) (.+)$/);
-    if (rom) roms[rom[1]] = rom[2];
+    // A relative path (the lite package's build) is from the sim's folder
+    if (rom) { rom[2] = resolve(dirname(bin), rom[2]); roms[rom[1]] = rom[2]; }
     const bp = line.match(/^SIM: \[BP\] dme=(\S*) klr=(\S*)/);
     if (bp && proc === sim) bpNow = { dme: bp[1].split(',').filter(Boolean), klr: bp[2].split(',').filter(Boolean) };
     const cfg = line.match(/^SIM: \[SNAPCFG\] auto=(\w+) break=(\w+)/);
@@ -307,6 +308,11 @@ const WORKBOOK = {
   },
 };
 const ASM_SELECT = join(HERE, '..', 'asm_select.sh');
+// The lite package also ships the tables already made from the workbooks,
+// for when asm_select.sh can't run (no bash, or no pandas/openpyxl):
+// lite/make_lite.sh writes which directory goes with which image
+//   {"dme": {"89DME_951pin.mem": "asm_1989", ...}, "klr": {...}}
+const LITE_TABLES = readJson(join(HERE, 'asm_tables.json'));
 
 // Bytes of a .mem image as the sim loads it (see sim_main.cpp loadRom)
 function memBytes(file) {
@@ -360,11 +366,19 @@ function followRom(cpu, path) {
   let dir = dflt, workbook = '-';
   if (img) {
     // Same helper as the run scripts: regenerates stale workbooks/tables
-    const r = spawnSync('bash', ['-c', `source "$1" && ${cpu}_asm_select _arr >&2 && printf %s "$${CPU}_ASM_SEL"`, '_', ASM_SELECT],
-                        { env: { ...process.env, [`${CPU}_ROM_FILE`]: img.name, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
-                          stdio: ['ignore', 'pipe', 'inherit'] });
+    const r = existsSync(ASM_SELECT)
+      ? spawnSync('bash', ['-c', `source "$1" && ${cpu}_asm_select _arr >&2 && printf %s "$${CPU}_ASM_SEL"`, '_', ASM_SELECT],
+                  { env: { ...process.env, [`${CPU}_ROM_FILE`]: img.name, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'inherit'] })
+      : { status: -1, stdout: '' };
+    const sub = LITE_TABLES?.[cpu]?.[img.name];
     if (r.status === 0 && r.stdout.trim()) {
       dir = resolve(r.stdout.trim());
+      workbook = WORKBOOK[cpu][img.name];
+    } else if (sub && existsSync(join(dflt, sub))) {
+      // the lite package's prebuilt tables
+      console.error(`bridge: couldn't run asm_select.sh for ${img.name}; using the packaged ${sub} tables`);
+      dir = join(dflt, sub);
       workbook = WORKBOOK[cpu][img.name];
     } else {
       console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
@@ -514,6 +528,8 @@ try {
   watch(SNAP_DIR, () => { clearTimeout(t); t = setTimeout(() => broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=scan'), 500); });
 } catch { /* no fs.watch here: the list refreshes on the next snapshot */ }
 function loadTest(id) {
+  if (!existsSync(join(HERE, 'build_live.sh')))
+    return [501, 'opening a regression test at a chosen time needs the developer install (the lite package has no Verilog to build it from)'];
   const req = readJson(join(snapPath(id), 'request.json'));
   if (!snapId(req?.test ?? '') || !Array.isArray(req.defines)) return [400, `snapshot ${id}: bad request.json`];
   if (testBuild) return [409, `already building ${testBuild.id}`];

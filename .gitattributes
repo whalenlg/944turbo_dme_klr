@@ -8,3 +8,6 @@
 bin_images/klr/codes -text
 bin_images/klr/instr -text
 bin_images/klr/opcodescsv.csv -text
+
+# Windows batch files need CRLF
+*.cmd text eol=crlf

@@ -124,6 +124,9 @@ The checkout can be anywhere and have any name: every script finds the repo
 from its own location. Where the build output and logs go is one setting,
 `DMEKLR_TMP`; see [Install location and output folder](#install-location-and-output-folder).
 
+To use the live simulator and debugger without building anything, there is
+also a [lite package](#the-lite-package-no-verilog-source).
+
 ### Before installing
 
 Run the check script first. It changes nothing; it lists each tool the repo
@@ -297,6 +300,59 @@ Things to know on Windows:
 - **WSL instead.** On Windows 10/11 with WSL2 you can also run the Arch
   installer inside an Arch Linux WSL distribution, as on a Linux PC. That
   path isn't tested here; the MSYS2 one is.
+
+### The lite package (no Verilog source)
+
+The lite package is for people who want the dashboard's live mode and the
+code debugger without the developer install. It is a download with the
+simulator already built, and holds no Verilog, testbenches or simulator
+build scripts. Verilator, iverilog, GTKWave and a C++ compiler are not
+needed.
+
+| | Lite package | Developer install (this repo) |
+|---|---|---|
+| Live mode, code debugger, snapshots, ROM swapping | yes | yes |
+| Disassembly workbooks; edited workbooks rebuild the listing | yes | yes |
+| Regression tests, TEST LOAD from a test's warning | not yet | yes |
+| Changing the model (Verilog) | no | yes |
+| Needs | Node.js 18+; Python with `requirements.txt` (pandas, openpyxl, matplotlib, numpy); bash to rebuild listings | everything in [Dependencies](#dependencies) |
+
+**Using it.** Unpack `dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` on
+Windows) anywhere, then:
+
+```sh
+pip install -r requirements.txt   # once
+./run_lite.sh                     # Windows: run_lite.cmd
+```
+
+and open the dashboard and press **LIVE**, as in [section 5](#5-live-simulation).
+Snapshots and the map-graph cache go to `data/` in the package folder
+(`DMEKLR_TMP` moves them). On macOS, `run_lite.sh` clears the
+downloaded-file flag on the package folder so the unsigned simulator can
+run. Without bash (Windows with no Git Bash or MSYS2), or without pandas
+and openpyxl, the bridge uses the listings that came with the package, so
+an edited workbook doesn't change the listing until bash and those packages
+are available.
+
+**Getting it.** The `Lite package` GitHub Actions workflow
+(`.github/workflows/lite-package.yml`) builds it for macOS arm64, Linux
+x86_64 (glibc 2.35 or newer) and Windows x86_64, tests each one with
+`lite/test_lite.sh`, and keeps the archives as workflow artifacts. A `v*`
+tag also attaches them to that tag's GitHub release.
+
+**Building it yourself** (developer install):
+
+```sh
+lite/make_lite.sh                 # -> $DMEKLR_TMP/lite/dmeklr-lite-<version>-<platform>.tar.gz
+lite/test_lite.sh "$DMEKLR_TMP"/lite/dmeklr-lite-*.tar.gz
+```
+
+`make_lite.sh` makes the disassembly tables for every ROM that has a
+workbook, builds the simulator with `dme_klr/live/build_live.sh
+--relocatable` (in `obj/lite/`; every file path in it is relative, so it
+runs wherever the package is unpacked), and copies in the bridge, the ROM
+images, the workbooks and the scripts that make tables from them. It stops
+if any Verilog or C++ source ends up in the package.
 
 ### The Python venv (`944venv`)
 

@@ -23,6 +23,12 @@
 #            the debugger's breakpoints, stepping and RAM views. Built in
 #            obj/tests/<name>/; the bridge runs it to a test's warning
 #            (see test_snap.py).
+#          ./build_live.sh --relocatable [extra verilator -D flags]
+#            the live sim for the lite package (lite/make_lite.sh): built
+#            in obj/lite/, with every file path in it (ROM images,
+#            disassembly tables) relative to the folder it runs from, so
+#            it works wherever the package is unpacked. It must sit in
+#            <package>/dme_klr/live/obj/, as make_lite.sh puts it.
 #  Env:    DME_ROM_DIR / DME_ROM_FILE / KLR_ROM_DIR / KLR_ROM_FILE
 #          (default: this repo's bin_images, 89DME_951pin.mem
 #           and 89KLR_951.mem — same images as v_run_dashboard_tests.sh)
@@ -53,6 +59,9 @@ KLR_ROM_DIR="${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
+RELOCATABLE=0
+if [ "$1" = "--relocatable" ]; then RELOCATABLE=1; shift; fi
+
 TEST=""
 TEST_SCRIPT="$DMEKLR_DIR/run_dashboard_tests.sh"
 if [ "$1" = "--test" ]; then
@@ -78,6 +87,7 @@ if [ -n "$TEST" ]; then
                "${TEST_DEFS[@]}" -CFLAGS -DLIVE_SCRIPTED)
 else
     OBJ="$LIVE_DIR/obj"
+    [ "$RELOCATABLE" = 1 ] && OBJ="$LIVE_DIR/obj/lite"
     FILES_LIST=files_cl
     MODE_DEFS=(-DLIVE \
         -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h28 -DBOOST \
@@ -91,6 +101,28 @@ ASM_DEFS=()
 dmeklr_vdefs ASM_DEFS
 dme_asm_select ASM_DEFS
 klr_asm_select ASM_DEFS
+
+# --relocatable: the paths above, made relative to where the sim runs
+# (<package>/dme_klr/live/obj/, the bridge's cwd for it) instead of this
+# checkout
+if [ "$RELOCATABLE" = 1 ]; then
+    _rel="../../../"
+    DME_ROM_DIR="${DME_ROM_DIR/#"$DMEKLR_REPO"\//$_rel}"
+    KLR_ROM_DIR="${KLR_ROM_DIR/#"$DMEKLR_REPO"\//$_rel}"
+    _defs=()
+    for d in "${ASM_DEFS[@]}"; do
+        case "$d" in
+            -DDMEKLR_TMP=*) _defs+=('-DDMEKLR_TMP="./"') ;;   # unused by the live sim
+            *)              _defs+=("${d//"$DMEKLR_REPO"\//$_rel}") ;;
+        esac
+    done
+    ASM_DEFS=("${_defs[@]}")
+    # anything still absolute was outside this checkout and can't be packaged
+    for d in "=$DME_ROM_DIR" "=$KLR_ROM_DIR" "${ASM_DEFS[@]}"; do
+        case "$d" in *'="/'*|*'=/'*|*'="'[A-Za-z]:*|*=[A-Za-z]:*)
+            echo "build_live.sh --relocatable: $d is outside the checkout" >&2; exit 1 ;; esac
+    done
+fi
 
 cd "$DMEKLR_DIR"
 mkdir -p "$OBJ"
