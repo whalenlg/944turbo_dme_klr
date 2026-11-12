@@ -30,26 +30,45 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 // ── Private members of the timing scheduler ─────────────────
 // (explicit instantiation may name private members; this is the
 // standard way to reach them without editing Verilator's headers)
-template <typename Tag, typename Tag::type M>
+// The member types are deduced (auto), so this builds whichever type
+// the installed Verilator uses: m_coro is std::coroutine_handle<> up to
+// about 5.04x and std::coroutine_handle<VlPromise> in 5.054.
+template <typename Tag, auto M>
 struct LiveRob {
-    friend typename Tag::type liveGet(Tag) { return M; }
+    friend auto liveGet(Tag) { return M; }
 };
 struct LiveDlyQueueTag {
-    using type = std::multimap<uint64_t, VlCoroutineHandle> VlDelayScheduler::*;
-    friend type liveGet(LiveDlyQueueTag);
+    friend auto liveGet(LiveDlyQueueTag);
 };
 template struct LiveRob<LiveDlyQueueTag, &VlDelayScheduler::m_queue>;
 struct LiveCoroTag {
-    using type = std::coroutine_handle<> VlCoroutineHandle::*;
-    friend type liveGet(LiveCoroTag);
+    friend auto liveGet(LiveCoroTag);
 };
 template struct LiveRob<LiveCoroTag, &VlCoroutineHandle::m_coro>;
+
+// The model root's delay scheduler. Verilator 5.054 moved it (with the
+// other non-trivial members) into root->__Vnontrivs; older versions have
+// root->__VdlySched.
+// (C++17 detection: Verilator builds with -fcoroutines, not -std=c++20.)
+template <typename Root, typename = void>
+struct LiveNontrivSched : std::false_type {};
+template <typename Root>
+struct LiveNontrivSched<Root, std::void_t<decltype(std::declval<Root&>().__Vnontrivs.__VdlySched)>>
+    : std::true_type {};
+template <typename Root>
+inline VlDelayScheduler& liveDlySched(Root* root) {
+    if constexpr (LiveNontrivSched<Root>::value)
+        return root->__Vnontrivs.__VdlySched;
+    else
+        return root->__VdlySched;
+}
 
 // One waiting coroutine: wake-up time (model ticks) and which code it is
 struct LiveDelay {

@@ -17,7 +17,9 @@
 #       then check_toolchain.sh
 #    4. in a new zsh login shell (the macOS default), sources setup and runs
 #       check_toolchain.sh, the KLR CPU regression (Icarus Verilog + the
-#       venv's Python) and the warm_idle_5s dashboard test (Verilator)
+#       venv's Python), the warm_idle_5s dashboard test (Verilator), the
+#       live simulator build (build_live.sh, run to 200 ms), and opens the
+#       KLR waveform in GTKWave
 #  then prints PASS/FAIL for each step, copies the VM's logs back and
 #  deletes the VM.
 #
@@ -303,6 +305,8 @@ fi
 if [ "$TESTS" = 0 ]; then
     result SKIP "4b. KLR regression (iverilog)" "--skip-tests" 0
     result SKIP "4c. warm_idle_5s (Verilator)" "--skip-tests" 0
+    result SKIP "4d. live build + run (Verilator)" "--skip-tests" 0
+    result SKIP "4e. GTKWave (optional)" "--skip-tests" 0
 else
     step "4b. KLR CPU regression (Icarus Verilog + Python venv)"
     tic
@@ -339,6 +343,82 @@ EOF
     # bring the dashboard log back too, so it can be opened on the host
     vm_ssh "cat $VM_REPO/../tmp/dme_klr/v_dash_logs/warm_idle_5s.dash.log" </dev/null \
         > "$OUT/warm_idle_5s.dash.log" 2>/dev/null || rm -f "$OUT/warm_idle_5s.dash.log"
+
+    step "4d. Live simulator: build_live.sh (Verilator) and run to 200 ms"
+    tic
+    vm_run 4d_live_build.log zsh -l -s <<'EOF'
+source "$HOME/944/944turbo_dme_klr/setup" && cd "$DMEKLR_REPO/dme_klr/live" || exit 3
+./build_live.sh || { echo "build_live.sh failed"; exit 1; }
+ls -l obj/dme_klr_live || exit 1
+# Drive it as the bridge does, one command at a time on stdin, and check
+# it pauses at 200 ms. (Python, not bash: macOS's bash 3.2 has no coproc.)
+python3 - obj/dme_klr_live <<'PY'
+import subprocess, sys, os, select, time
+p = subprocess.Popen([sys.argv[1], '+snapdir=' + os.environ['DMEKLR_TMP'] + '/macos-test-snaps'],
+                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+p.stdin.write('until 200\n'); p.stdin.flush()
+ok, end = False, time.time() + 120
+while time.time() < end:
+    r, _, _ = select.select([p.stdout], [], [], 5)
+    if not r:
+        continue
+    line = p.stdout.readline()
+    if not line:
+        break
+    if line.startswith('SIM:'):
+        print(line.rstrip())
+    if '[STATE] paused' in line and 'reason=until' in line:
+        ok = True
+        break
+try:
+    p.stdin.write('quit\n'); p.stdin.flush()
+except Exception:
+    pass
+try:
+    p.wait(10)
+except subprocess.TimeoutExpired:
+    p.kill()
+print('live sim ran to 200 ms' if ok else "live sim didn't reach 200 ms")
+sys.exit(0 if ok else 1)
+PY
+EOF
+    rc=$?
+    if [ "$rc" = 0 ] && grep -q 'live sim ran to 200 ms' "$OUT/4d_live_build.log"; then
+        result PASS "4d. live build + run (Verilator)" "built and paused at 200 ms" "$(toc)"
+    else
+        result FAIL "4d. live build + run (Verilator)" "exit $rc (4d_live_build.log)" "$(toc)"
+    fi
+
+    step "4e. GTKWave: read and open the KLR regression's waveform"
+    tic
+    vm_run 4e_gtkwave.log zsh -l -s <<'EOF'
+source "$HOME/944/944turbo_dme_klr/setup" || exit 3
+f="$DMEKLR_TMP/klr/fst/i8048_regression_tb.fst"
+ls -l "$f" || exit 1
+if command -v gtkwave >/dev/null 2>&1; then echo "gtkwave: $(command -v gtkwave)"
+elif [ -d /Applications/gtkwave.app ]; then echo "gtkwave: /Applications/gtkwave.app"
+else echo "gtkwave: not installed"; exit 4; fi
+if command -v fst2vcd >/dev/null 2>&1; then
+    fst2vcd "$f" | grep -m1 -q enddefinitions && echo "fst2vcd: reads OK" || { echo "fst2vcd: can't read $f"; exit 1; }
+fi
+# Open it in the VM's logged-in desktop session; still running after 15 s
+# means it loaded the file and stayed up.
+if command -v gtkwave >/dev/null 2>&1; then gtkwave "$f" >/tmp/gtkwave.out 2>&1 &
+else open -a /Applications/gtkwave.app --args "$f"; fi
+sleep 15
+if pgrep -if gtkwave >/dev/null; then
+    echo "gtkwave still running after 15 s"; pkill -if gtkwave; exit 0
+fi
+echo "gtkwave exited within 15 s:"; cat /tmp/gtkwave.out 2>/dev/null; exit 1
+EOF
+    rc=$?
+    if [ "$rc" = 0 ]; then
+        result PASS "4e. GTKWave (optional)" "$(grep -q 'reads OK' "$OUT/4e_gtkwave.log" && echo 'fst2vcd reads the FST, ')opened and stayed up" "$(toc)"
+    elif [ "$rc" = 4 ]; then
+        result SKIP "4e. GTKWave (optional)" "GTKWave isn't installed (install_macos.sh treats it as optional)" "$(toc)"
+    else
+        result FAIL "4e. GTKWave (optional)" "exit $rc (4e_gtkwave.log)" "$(toc)"
+    fi
 fi
 
 # What got installed, for the record
