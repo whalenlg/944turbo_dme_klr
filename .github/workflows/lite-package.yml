@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: macOS arm64,  os: macos-14 }
+          - { name: macOS arm64,  os: macos-15 }
           # The oldest supported Ubuntu, so the binary runs on any glibc
           # from 2.35 on (libstdc++ and libgcc are linked in statically)
           - { name: Linux x86_64, os: ubuntu-22.04 }
