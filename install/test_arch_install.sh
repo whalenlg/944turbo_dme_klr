@@ -129,6 +129,23 @@ cp -a "$REPO_DIR" "$TREPO"
 chown -R "$TUSER:$TUSER" "$TREPO"
 sudo -u "$TUSER" mkdir -p "$TLOG"
 
+# Runs the live simulator to 200 ms (as the dashboard would, one command
+# at a time on stdin) and checks it pauses there
+cat > "$THOME/live_smoke.sh" <<'SMOKE'
+exe="$1"
+coproc SIM { "$exe" +snapdir="$DMEKLR_TMP/arch-test-snaps" 2>&1; }
+echo "until 200" >&"${SIM[1]}"
+ok=0
+while IFS= read -t 120 -r line <&"${SIM[0]}"; do
+    case "$line" in SIM:*) echo "$line" ;; esac
+    case "$line" in *"[STATE] paused"*"reason=until"*) ok=1; break ;; esac
+done
+echo quit >&"${SIM[1]}" 2>/dev/null
+wait "$SIM_PID" 2>/dev/null
+[ "$ok" = 1 ] && echo "live sim ran to 200 ms" || { echo "live sim didn't reach 200 ms"; exit 1; }
+SMOKE
+chown "$TUSER:$TUSER" "$THOME/live_smoke.sh"
+
 declare -a RESULTS=()
 FAILS=0
 # check NAME COMMAND: run COMMAND as the test user in a new login shell
@@ -168,7 +185,8 @@ if check "${INST[*]}" "${INST[*]}"; then
              && f="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log" && ls -l "$f" \
              && n=$(grep -c "\[DS\]" "$f") && echo "$n [DS] snapshot lines" && [ "$n" -gt 10 ]'
         check "verilator: live build" \
-            'source ./setup && cd dme_klr/live && ./build_live.sh && ls -l obj/dme_klr_live'
+            'source ./setup && cd dme_klr/live && ./build_live.sh && ls -l obj/dme_klr_live \
+             && bash ~/live_smoke.sh obj/dme_klr_live'
         if [ "$GTKWAVE" = 1 ]; then
             # Opens the KLR regression's FST in GTKWave on a virtual display:
             # still running after 15 s (timeout's 124) means it loaded and
