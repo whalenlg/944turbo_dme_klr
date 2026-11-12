@@ -1,5 +1,24 @@
 # DME + KLR Simulation Debug Console: User Manual
 
+## Introduction
+
+The 951 Debugger was created to allow analysis of the Porsche 951 DME and KLR
+systems in a 100% software environment. It also includes nearly 100 separate
+functionality tests that simulate real-world driving scenarios and many
+failure conditions (TPS stuck at 0 V, for example). A closed-loop model
+simulates external behavior such as AFM air flow, turbo boost and
+engine/transmission inertia to mimic real-world behavior, while letting you
+override these models and explore any combination of RPM, TPS, AFM airflow,
+turbo boost, battery voltage, altitude, FQS switches, AC on/off and more.
+
+The system provides three standard DME ROM images: from a 1986 951, a 1989
+951, and the Carpokes Performance DME created in 2025. There are also KLR
+images from 1986, 1987 and 1989. You can also create, import, validate and
+debug custom tuned images, and compare their performance with the standard
+images.
+
+### How it works
+
 The debug console is a web page (the `whalenlg/dme-dashboard` repo) that shows
 what the simulated 944 Turbo DME (Intel 8051) and KLR (Intel 8048) are doing.
 It works in two ways:
@@ -17,6 +36,7 @@ firmware from there.
 
 Contents
 
+- [Introduction](#introduction)
 1. [Install](#1-install)
 2. [Setting up](#2-setting-up)
 3. [The screen](#3-the-screen)
