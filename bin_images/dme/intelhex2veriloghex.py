@@ -8,7 +8,7 @@ if __name__ == '__main__' and any(a in ('-h', '--help') for a in sys.argv[1:]):
 
 def convert_intel_hex_to_byte_per_line(input_file, output_file):
     try:
-        with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+        with open(input_file, 'r') as infile, open(output_file, 'w', newline='\n') as outfile:
             for line_num, line in enumerate(infile, 1):
                 line = line.strip()
                 if not line or not line.startswith(':'):

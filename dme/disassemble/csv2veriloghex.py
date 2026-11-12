@@ -53,7 +53,7 @@ def main(csvfile, hexout):
     max_addr = max(entries.keys())
 
     # Write hex file
-    with open(hexout, "w") as f:
+    with open(hexout, "w", newline='\n') as f:
         for addr in range(min_addr, max_addr + 1):
             if addr in entries:
                 word = entries[addr]

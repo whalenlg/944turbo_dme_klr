@@ -62,7 +62,7 @@ fi
 if [ -n "$TEST" ]; then
     OBJ="$LIVE_DIR/obj/tests/$TEST"
     TEST_DEFS=()
-    while IFS= read -r d; do TEST_DEFS+=("$d"); done \
+    while IFS= read -r d; do TEST_DEFS+=("${d%$'\r'}"); done \
         < <(python3 "$LIVE_DIR/test_snap.py" defines "$TEST" --script "$TEST_SCRIPT")
     [ ${#TEST_DEFS[@]} -gt 0 ] || { echo "build_live.sh: no -D flags for test $TEST" >&2; exit 1; }
     # STEP_CLOCKS and the file list as the runners work them out

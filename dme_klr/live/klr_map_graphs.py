@@ -207,7 +207,7 @@ def generate(path, cache, force=False):
     for entry, dest, vals in K.consts(img)[0]:
         add(entry, 9, lambda p, e=entry, d=dest, v=vals:
             draw_const(plt, img, e, d, v, f'RPM constant {e:04X}h -> {d:02X}h   {rom}', p, axis))
-    json.dump(index, open(os.path.join(tmp, 'index.json'), 'w'), indent=1)
+    json.dump(index, open(os.path.join(tmp, 'index.json'), 'w', newline='\n'), indent=1)
     if os.path.exists(out):
         import shutil
         shutil.rmtree(out)

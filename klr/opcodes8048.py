@@ -12,7 +12,7 @@ def text_to_left_padded_hex(excel_path, output_path, sheet_name="8048opcodes", c
         # Target the 2nd column (index 1) for Mnemonics
         mnemonics = df.iloc[:, 1].astype(str)
         
-        with open(output_path, 'w') as f:
+        with open(output_path, 'w', newline='\n') as f:
             # i starts at 0 (Opcode 00)
             for i in range(256):
                 # Check if the row exists in the spreadsheet

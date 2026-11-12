@@ -81,7 +81,7 @@ def main():
                 
             # File name conversion: "Opcode Ins" -> "asm_opcode_ins.hex"
             file_name = f"asm_{col.replace(' ', '_').lower()}.hex"
-            with open(file_name, 'w') as f:
+            with open(file_name, 'w', newline='\n') as f:
                 f.write('\n'.join(output_lines))
             print(f"Successfully created: {file_name}")
 
