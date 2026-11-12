@@ -40,13 +40,16 @@ done
 
 set -e
 
-LIVE_DIR="$(cd "$(dirname "$0")" && pwd)"
-DMEKLR_DIR="$(cd "$LIVE_DIR/.." && pwd)"
-REPO_DIR="$(cd "$DMEKLR_DIR/.." && pwd)"
+# pwd -W: the C:/... form on Windows (MSYS2), which the native compilers need
+_pwd() { pwd -W 2>/dev/null || pwd; }
+LIVE_DIR="$(cd "$(dirname "$0")" && _pwd)"
+DMEKLR_DIR="$(cd "$LIVE_DIR/.." && _pwd)"
+REPO_DIR="$(cd "$DMEKLR_DIR/.." && _pwd)"
 
-DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
+source "$REPO_DIR/paths.sh"   # DMEKLR_REPO (C:/... on Windows), DMEKLR_TMP
+DME_ROM_DIR="${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}"
 DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
-KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
+KLR_ROM_DIR="${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 
@@ -83,7 +86,6 @@ else
 fi
 
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
-source "$REPO_DIR/paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 source "$DMEKLR_DIR/asm_select.sh"
 ASM_DEFS=()
 dmeklr_vdefs ASM_DEFS

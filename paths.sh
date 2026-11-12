@@ -42,7 +42,15 @@ fi
 case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
         DMEKLR_REPO="$(cygpath -m "$DMEKLR_REPO")"
-        DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")" ;;
+        DMEKLR_TMP="$(cygpath -m "$DMEKLR_TMP")"
+        # MinGW's libstdc++ DLL doesn't export every std::string member its
+        # headers declare as explicitly instantiated (extern template), so
+        # Verilator's runtime (verilated.o) fails to link with "undefined
+        # reference to std::__cxx11::basic_string(basic_string&&)". Without
+        # the extern templates each object instantiates what it uses.
+        # Verilator's makefiles pass CXXFLAGS to every compile.
+        case " ${CXXFLAGS:-} " in *" -D_GLIBCXX_EXTERN_TEMPLATE=0 "*) ;;
+            *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-D_GLIBCXX_EXTERN_TEMPLATE=0" ;; esac ;;
 esac
 export DMEKLR_REPO DMEKLR_TMP
 

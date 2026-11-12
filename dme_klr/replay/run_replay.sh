@@ -118,14 +118,14 @@ REPLAY_OUT="$DMEKLR_TMP/dme_klr/replay"
 if [ -z "$OUT_DIR" ]; then
     if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
 fi
-mkdir -p "$OUT_DIR"; OUT_DIR="$(cd "$OUT_DIR" && pwd)"
+mkdir -p "$OUT_DIR"; OUT_DIR="$(cd "$OUT_DIR" && { pwd -W 2>/dev/null || pwd; })"   # pwd -W: C:/... on Windows
 OUT="$OUT_DIR/$NAME"
 
 # ── Build: dme_klr_dashboard_tb with -DLIVE like the live debugger, driven
 #    by replay_main.cpp (Verilator) or the replay_driver.v top (iverilog) ──
-DME_ROM_DIR="${DME_ROM_DIR:-$REPO_DIR/bin_images/dme/}"
+DME_ROM_DIR="${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}"   # (C:/... on Windows: see paths.sh)
 DME_ROM_FILE="${DME_ROM_FILE:-89DME_951pin.mem}"
-KLR_ROM_DIR="${KLR_ROM_DIR:-$REPO_DIR/bin_images/klr/}"
+KLR_ROM_DIR="${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}"
 KLR_ROM_FILE="${KLR_ROM_FILE:-89KLR_951.mem}"
 # DME/KLR disassembly tables to match DME_ROM_FILE / KLR_ROM_FILE (see asm_select.sh)
 source "$DMEKLR_DIR/asm_select.sh"
