@@ -5,13 +5,15 @@
 #        iverilog/Verilator comparison, FQS analysis
 #
 #  Usage:
-#    ./run_all.sh [--verilator | --iverilog] [workers 1-8, default 8]
+#    ./run_all.sh [--verilator | --iverilog] [--per-test-build] [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
 #  comparison + FQS analysis step that depends on both). Pass --verilator or
 #  --iverilog to run only that simulator's suite — the comparison/FQS step
 #  is skipped in that case, since it needs both sides' logs.
+#  Each suite builds the testbench once and runs every test on that build;
+#  --per-test-build builds every test on its own instead.
 # =============================================================================
 set -uo pipefail
 
@@ -23,11 +25,13 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,14s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,16s/^# \{0,2\}//p' "$0"; }
+PT_OPT=()
 for arg in "$@"; do
     case "$arg" in
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
+        --per-test-build) PT_OPT=(--per-test-build) ;;
         -h|--help)   usage; exit 0 ;;
         -*)          echo "run_all.sh: unknown option '$arg'" >&2; usage >&2; exit 2 ;;
         *)           ARGS+=("$arg") ;;
@@ -110,7 +114,7 @@ if [ "$RUN_VERILATOR" = "1" ]; then
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator --all) ..."
     log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
-    bash run_dashboard_parallel.sh --verilator "$WORKERS" 2>&1 | tee "$RUNLOG/vl_suite.log"
+    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" 2>&1 | tee "$RUNLOG/vl_suite.log"
     log "Verilator test suite completed"
     VL_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
@@ -139,7 +143,7 @@ if [ "$RUN_IVERILOG" = "1" ]; then
     cd "$DME_KLR"
     log "Running iverilog suite (--all) ..."
     log "Running: bash run_dashboard_parallel.sh $WORKERS"
-    bash run_dashboard_parallel.sh "$WORKERS" 2>&1 | tee "$RUNLOG/iv_suite.log"
+    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" 2>&1 | tee "$RUNLOG/iv_suite.log"
     log "iverilog test suite completed"
     IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
     IV_SUMMARY=""

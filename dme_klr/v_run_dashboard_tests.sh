@@ -41,6 +41,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 dmeklr_rom_mem || exit 1   # a .bin/.hex DME_ROM_FILE / KLR_ROM_FILE -> .mem
 source "$SCRIPT_DIR/asm_select.sh"
+# The shared build, when run_dashboard_parallel.sh made one (DMEKLR_RUNTIME_DIR)
+source "$SCRIPT_DIR/runtime_select.sh"
 
 # ── Mode: dashboard-only ─────────────────────────────────────────────────────
 MODE="dash"
@@ -258,6 +260,15 @@ compile_and_run_klr() {
     echo "  DME ROM: ${DME_ROM_DIR:-$DMEKLR_REPO/bin_images/dme/}${DME_ROM_FILE:-89DME_951pin.mem}"
     echo "  KLR ROM: ${KLR_ROM_DIR:-$DMEKLR_REPO/bin_images/klr/}${KLR_ROM_FILE:-89KLR_951.mem}"
 
+    # The shared build (build_runtime.sh) runs the test from its +X=<n>
+    # options; otherwise build this test on its own
+    local -a run_args=()
+    if runtime_select verilator "$interval" rom_overrides "$@"; then
+        exe="$RT_EXE"
+        run_args=("${RT_ARGS[@]}")
+        rm -rf "${VLTDIR}/obj_${name}"
+        echo "  Shared build: $exe"
+    else
     # shellcheck disable=SC2086
     verilator --binary $trace_flag \
         -o "$exe" \
@@ -291,6 +302,7 @@ compile_and_run_klr() {
         echo "  COMPILE FAILED: $name" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
+    fi
 
     echo "  Running → $log"
     echo "  VCD     → $vcdfile"
@@ -299,7 +311,7 @@ compile_and_run_klr() {
     # (the sim is a native Windows program under MSYS2, where /dev/null is NUL)
     local devnull=/dev/null
     case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) devnull=NUL ;; esac
-    ( cd "$hexdir" && "$exe" +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo "$devnull" )" ) > "${log}" 2>&1
+    ( cd "$hexdir" && "$exe" ${run_args[@]+"${run_args[@]}"} +vcd="$( [ "$VCD_ENABLE" = "1" ] && echo "${vcdfile}" || echo "$devnull" )" ) > "${log}" 2>&1
     local rc=$?
 
     if [ $rc -ne 0 ]; then
