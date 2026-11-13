@@ -48,7 +48,7 @@ mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 cd "$SCRIPT_DIR"
 
-[ ${#TESTS[@]} -gt 0 ] || mapfile -t TESTS < <(python3 test_opts.py tests)
+[ ${#TESTS[@]} -gt 0 ] || IFS=$'\n' read -r -d '' -a TESTS < <(python3 test_opts.py tests)
 if [ -n "$SHARD" ]; then
     i=${SHARD%/*}; n=${SHARD#*/}; sel=()
     for k in "${!TESTS[@]}"; do [ $(( k % n )) -eq $(( i - 1 )) ] && sel+=("${TESTS[$k]}"); done
@@ -91,17 +91,18 @@ by_time() {
 }
 
 # Wall-clock seconds, to the millisecond where the shell can
-now() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/,/.}"; else date +%s; fi; }
+# (bash 3.2, as on macOS, has no EPOCHREALTIME)
+now() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/,/.}"; else python3 -c 'import time; print(time.time())'; fi; }
 since() { awk -v a="$1" -v b="$(now)" 'BEGIN { printf "%.1f", b - a }'; }
 
 fails=0 t_old=0 t_rt=0
 for t in "${TESTS[@]}"; do
-    mapfile -t D < <(python3 test_opts.py defines "$t")
+    IFS=$'\n' read -r -d '' -a D < <(python3 test_opts.py defines "$t")
     extra=()
     [ -n "$SIM_MS" ] && extra=("-DSIM_TIME=$(( SIM_MS * 1000000 ))")
-    mapfile -t P < <(python3 test_opts.py plusargs "$t" "${extra[@]}")
+    IFS=$'\n' read -r -d '' -a P < <(python3 test_opts.py plusargs "$t" "${extra[@]}")
     fl=$(printf '%s\n' "${P[@]}" | sed -n 's/^files: //p')
-    mapfile -t PA < <(printf '%s\n' "${P[@]}" | grep '^+')
+    IFS=$'\n' read -r -d '' -a PA < <(printf '%s\n' "${P[@]}" | grep '^+')
     sc=$(printf '%s\n' "${PA[@]}" | sed -n 's/^+STEP_CLOCKS=//p')
     iv=$(printf '%s\n' "${PA[@]}" | sed -n 's/^+DASH_INTERVAL_MS=//p')
     exe_rt="$OUT/rt/dme_klr_sim"; [ "$fl" = files_cl ] && exe_rt="$OUT/rt/dme_klr_sim_cl"
@@ -134,5 +135,5 @@ for t in "${TESTS[@]}"; do
     fi
 done
 echo "${#TESTS[@]} test(s), $fails differ"
-awk -v a="$t_old" -v b="$t_rt" 'BEGIN { printf "simulation time: per-test builds %.0f s, shared build %.0f s (%+.1f%%)\n", a, b, a > 0 ? 100 * (b - a) / a : 0 }'
+awk -v a="$t_old" -v b="$t_rt" 'BEGIN { printf "simulation time: per-test builds %.0f s, shared build %.0f s (%+.1f%%)\n", a, b, (a > 0 ? 100 * (b - a) / a : 0) }'
 exit $fails
