@@ -90,7 +90,11 @@ by_time() {
         print t "\t" $0 }' | LC_ALL=C sort
 }
 
-fails=0
+# Wall-clock seconds, to the millisecond where the shell can
+now() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/,/.}"; else date +%s; fi; }
+since() { awk -v a="$1" -v b="$(now)" 'BEGIN { printf "%.1f", b - a }'; }
+
+fails=0 t_old=0 t_rt=0
 for t in "${TESTS[@]}"; do
     mapfile -t D < <(python3 test_opts.py defines "$t")
     extra=()
@@ -108,16 +112,20 @@ for t in "${TESTS[@]}"; do
             "-DSTEP_CLOCKS=$sc" "-DDASH_INTERVAL_MS=$iv"; then
         echo "FAIL  $t: per-test build failed (see $OUT/$t.build.log)"; fails=$((fails + 1)); continue
     fi
-    ( cd "$W/old" && "$OUT/$t.exe" +vcd=/dev/null > ../old.log 2>&1 ) &
-    ( cd "$W/rt"  && "$exe_rt" +vcd=/dev/null "${PA[@]}" "+DMEKLR_REPO=$DMEKLR_REPO/" > ../rt.log 2>&1 ) &
+    ( cd "$W/old" && s=$(now) && "$OUT/$t.exe" +vcd=/dev/null > ../old.log 2>&1; since "$s" > ../old.secs ) &
+    ( cd "$W/rt"  && s=$(now) && "$exe_rt" +vcd=/dev/null "${PA[@]}" "+DMEKLR_REPO=$DMEKLR_REPO/" > ../rt.log 2>&1; since "$s" > ../rt.secs ) &
     wait
+    # how long each simulator took (they run side by side, one core each)
+    speed="per-test $(cat "$W/old.secs")s, shared $(cat "$W/rt.secs")s"
+    t_old=$(awk -v a="$t_old" -v b="$(cat "$W/old.secs")" 'BEGIN { print a + b }')
+    t_rt=$(awk -v a="$t_rt" -v b="$(cat "$W/rt.secs")" 'BEGIN { print a + b }')
     rm -rf "$OUT/obj_$t" "$OUT/$t.exe"
     if [ ! -s "$W/old.log" ]; then
         echo "FAIL  $t: no output"; fails=$((fails + 1))
     elif cmp -s <(norm "$W/old.log") <(norm "$W/rt.log"); then
-        echo "same  $t ($(wc -l < "$W/old.log") lines, $((SECONDS - t0)) s)"
+        echo "same  $t ($(wc -l < "$W/old.log") lines, $((SECONDS - t0)) s; $speed)"
     elif cmp -s <(by_time "$W/old.log") <(by_time "$W/rt.log"); then
-        echo "order $t ($(wc -l < "$W/old.log") lines; same lines, some in another order within a time step)"
+        echo "order $t ($(wc -l < "$W/old.log") lines; same lines, some in another order within a time step; $speed)"
         diff -U2 <(norm "$W/old.log") <(norm "$W/rt.log") | head -30 | cut -c1-160
     else
         echo "DIFF  $t: diff $W/old.log $W/rt.log"
@@ -126,4 +134,5 @@ for t in "${TESTS[@]}"; do
     fi
 done
 echo "${#TESTS[@]} test(s), $fails differ"
+awk -v a="$t_old" -v b="$t_rt" 'BEGIN { printf "simulation time: per-test builds %.0f s, shared build %.0f s (%+.1f%%)\n", a, b, a > 0 ? 100 * (b - a) / a : 0 }'
 exit $fails
