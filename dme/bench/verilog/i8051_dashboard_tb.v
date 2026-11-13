@@ -1441,9 +1441,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd2_000_000_000);
     else
         #(64'd31_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test begin      (cold ~5C, airtemp_dynamic_cycle=0x68)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AIR TEMP test end        (back to nominal, airtemp_dynamic_cycle=0x50)", `DME_MS);
 end
 
 initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
@@ -1451,9 +1451,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd9_000_000_000);
     else
         #(64'd38_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test begin  (cold ~5C, coolant_dynamic_cycle=0x68)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  COOLANT TEMP test end    (back to nominal, coolant_dynamic_cycle=0x20)", `DME_MS);
 end
 
 initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
@@ -1461,9 +1461,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd16_000_000_000);
     else
         #(64'd45_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test begin      (high altitude, altitude_dynamic_cycle=0x00)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  ALTITUDE test end        (back to sea level, altitude_dynamic_cycle=0xF8)", `DME_MS);
 end
 
 initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
@@ -1471,9 +1471,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd23_000_000_000);
     else
         #(64'd52_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  CAT test begin           (no cat fitted, T0=1)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  CAT test end             (cat fitted, T0=0)", `DME_MS);
 end
 
 initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
@@ -1481,9 +1481,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd30_000_000_000);
     else
         #(64'd59_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  AC test begin            (compressor on, T1=1)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  AC test end              (compressor off, T1=0)", `DME_MS);
 end
 
 initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
@@ -1491,9 +1491,9 @@ initial if (`OPT_CL_CONDITION_CYCLE_ACTIVE) begin
         #(64'd37_000_000_000);
     else
         #(64'd66_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  BATTERY test begin       (reduced ~20%%, battery_dynamic_cycle=0xAD)", `DME_MS);
-        #(64'd5_000_000_000);
-        $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
+    $display("DME: [PHASE] t=%0d ms  BATTERY test begin       (reduced ~20%%, battery_dynamic_cycle=0xAD)", `DME_MS);
+    #(64'd5_000_000_000);
+    $display("DME: [PHASE] t=%0d ms  BATTERY test end         (back to nominal, battery_dynamic_cycle=0xD8)", `DME_MS);
 end
 
 
