@@ -34,7 +34,15 @@ def main():
         df = df.dropna(subset=['addr_int'])
         df['addr_int'] = df['addr_int'].astype(int)
         
-        addr_to_desc = dict(zip(df['addr_int'], df['Description']))
+        # The name column was 'Description' in older KLR workbooks; the
+        # current ones (86/87/89KLR951.xlsx) call it 'variable_name'.
+        name_col = next((c for c in ('Description', 'variable_name')
+                         if c in df.columns), None)
+        if name_col is None:
+            raise KeyError("byte_mem sheet has neither a 'Description' nor "
+                           "a 'variable_name' column (columns: "
+                           f"{list(df.columns)})")
+        addr_to_desc = dict(zip(df['addr_int'], df[name_col]))
         max_addr = int(df['addr_int'].max())
 
         output_lines = []
@@ -72,7 +80,10 @@ def main():
         print(f"Success! Wrote {len(output_lines)} lines (32 bytes wide) to {output_file}")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        # Exit non-zero so callers (e.g. klr/run_klr_regression) can't
+        # silently carry on with a stale output file.
+        print(f"An error occurred: {e!r}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
