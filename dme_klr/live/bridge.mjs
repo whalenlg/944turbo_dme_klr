@@ -389,17 +389,15 @@ function klrImageName(name, text) {
   return img ? klrKnown.find(k => k.img?.equals(img))?.f ?? null : null;
 }
 
-// Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
-// that reuses a file name with new contents is caught too.
-function followRom(cpu, path) {
-  const { pin, dir: dflt } = CPU_ASM[cpu];
-  if (pin) return;
+// The disassembly tables for an image: asm_select.sh's (the same helper
+// as the run scripts: regenerates stale workbooks/tables; an image without
+// a workbook of its own gets one made from the reference workbook,
+// <cpu>/disassemble/variants/<name>.xlsx), else the lite package's prebuilt
+// ones. { dir (null: none found), workbook, img (knownImage) }
+function asmTables(cpu, path) {
+  const { dir: dflt } = CPU_ASM[cpu];
   const CPU = cpu.toUpperCase();
   const img = knownImage(cpu, path);
-  let dir = dflt, workbook = '-';
-  // Same helper as the run scripts: regenerates stale workbooks/tables. An
-  // image without a workbook of its own gets one made from the reference
-  // workbook (<cpu>/disassemble/variants/<name>.xlsx), see asm_select.sh.
   const env = img ? { [`${CPU}_ROM_FILE`]: img.name }
                   : { [`${CPU}_ROM_DIR`]: dirname(path).replace(/\\/g, '/') + '/', [`${CPU}_ROM_FILE`]: basename(path) };
   const r = existsSync(ASM_SELECT) && /\.mem$/i.test(path)
@@ -407,28 +405,82 @@ function followRom(cpu, path) {
                 { env: { ...process.env, ...env, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
                   stdio: ['ignore', 'pipe', 'inherit'] })
     : { status: -1, stdout: '' };
-  if (!img) {
-    if (r.status === 0 && r.stdout.trim()) {
-      dir = resolve(r.stdout.trim());
-      workbook = `variants/${basename(dir).replace(/^asm_/, '')}.xlsx`;
-    }
-  } else {
-    const sub = LITE_TABLES?.[cpu]?.[img.name];
-    if (r.status === 0 && r.stdout.trim()) {
-      dir = resolve(r.stdout.trim());
-      workbook = WORKBOOK[cpu][img.name];
-    } else if (sub && existsSync(join(dflt, sub))) {
-      // the lite package's prebuilt tables
-      console.error(`bridge: couldn't run asm_select.sh for ${img.name}; using the packaged ${sub} tables`);
-      dir = join(dflt, sub);
-      workbook = WORKBOOK[cpu][img.name];
-    } else {
-      console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
-    }
+  const sel = r.status === 0 && r.stdout.trim() ? resolve(r.stdout.trim()) : null;
+  if (!img) return { dir: sel, workbook: sel ? `variants/${basename(sel).replace(/^asm_/, '')}.xlsx` : '-', img };
+  if (sel) return { dir: sel, workbook: WORKBOOK[cpu][img.name], img };
+  const sub = LITE_TABLES?.[cpu]?.[img.name];
+  if (sub && existsSync(join(dflt, sub))) {
+    console.error(`bridge: couldn't run asm_select.sh for ${img.name}; using the packaged ${sub} tables`);
+    return { dir: join(dflt, sub), workbook: WORKBOOK[cpu][img.name], img };
   }
+  return { dir: null, workbook: '-', img };
+}
+
+// Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
+// that reuses a file name with new contents is caught too.
+function followRom(cpu, path) {
+  const { pin, dir: dflt } = CPU_ASM[cpu];
+  if (pin) return;
+  const CPU = cpu.toUpperCase();
+  const t = asmTables(cpu, path);
+  const dir = t.dir ?? dflt, workbook = t.dir ? t.workbook : '-', img = t.img;
+  if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
   ASM[cpu] = cpuListing(cpu, dir);
   console.log(`bridge: ${CPU} listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM[cpu].length} lines)`);
   broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
+}
+
+// ── ROM image compare ────────────────────────────────────────
+// GET /compare/<cpu>/images: the images it can compare (bin_images/<cpu>
+// and the uploads), [{name, src: repo|upload, sha}]
+// GET /compare/<cpu>?a=<name>&b=<name>[&all=1]: rom_compare.py's JSON for
+// the two (maps and tables decoded from each, the other differing bytes
+// with the listing around them). A name is a file name, never a path.
+const ROM_COMPARE = join(HERE, 'rom_compare.py');
+function compareImages(cpu) {
+  const out = [];
+  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload']]) {
+    let names = [];
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const n of names.sort()) {
+      if (!/\.(mem|bin)$/i.test(n)) continue;
+      const p = join(dir, n);
+      // a .bin that is only part of an EPROM (a 4 KB half, a short dump)
+      // isn't a whole image
+      if (/\.bin$/i.test(n)) {
+        let size = 0;
+        try { size = statSync(p).size; } catch { continue; }
+        if (size !== ROM_BYTES[cpu] && size !== 8192) continue;
+      }
+      out.push({ name: n, src, sha: imageSha(p) });
+    }
+  }
+  return out;
+}
+const tablesCache = new Map();   // `${cpu}:${path}:${mtime}` -> dir
+function tablesFor(cpu, path) {
+  if (!/\.mem$/i.test(path)) return null;
+  let k;
+  try { k = `${cpu}:${path}:${statSync(path).mtimeMs}`; } catch { return null; }
+  if (!tablesCache.has(k)) tablesCache.set(k, asmTables(cpu, path).dir);
+  return tablesCache.get(k);
+}
+function compareRoms(cpu, a, b, all, done) {
+  const pa = findImageByName(a, cpu), pb = findImageByName(b, cpu);
+  if (!pa || !pb) return done(404, `no ${cpu.toUpperCase()} image named ${!pa ? a : b}`);
+  const args = [ROM_COMPARE, cpu, pa, pb, '--name-a', a, '--name-b', b];
+  const ta = tablesFor(cpu, pa), tb = tablesFor(cpu, pb);
+  if (ta) args.push('--asm-a', ta);
+  if (tb) args.push('--asm-b', tb);
+  if (all) args.push('--all');
+  const proc = spawn('python3', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = [], err = [];
+  proc.stdout.on('data', d => out.push(d));
+  proc.stderr.on('data', d => err.push(d));
+  proc.on('error', e => done(500, `rom_compare.py: ${e.message}`));
+  proc.on('close', code => code === 0
+    ? done(200, Buffer.concat(out).toString('utf8'), 'application/json')
+    : done(500, Buffer.concat(err).toString('utf8').trim() || `rom_compare.py exited ${code}`));
 }
 
 // ── Snapshots ────────────────────────────────────────────────
@@ -877,6 +929,18 @@ createServer((req, res) => {
       return text(204, '');
     }
     return text(405, 'method not allowed');
+  }
+  const cmp = url.pathname.match(/^\/compare\/(dme|klr)(\/images)?$/);
+  if (req.method === 'GET' && cmp) {
+    const send = (code, body, type = 'text/plain') => {
+      res.writeHead(code, { ...CORS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
+      res.end(body);
+    };
+    if (cmp[2]) return send(200, JSON.stringify(compareImages(cmp[1])), 'application/json');
+    const a = url.searchParams.get('a'), b = url.searchParams.get('b');
+    const ok = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
+    if (!ok(a) || !ok(b)) return send(400, 'a and b must be image file names');
+    return compareRoms(cmp[1], a, b, url.searchParams.get('all') === '1', send);
   }
   const mapsCpu = url.pathname.match(/^\/maps\/(dme|klr)$/);
   if (req.method === 'GET' && mapsCpu) {

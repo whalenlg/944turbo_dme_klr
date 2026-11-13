@@ -55,6 +55,27 @@ matches none of them keeps the default `<cpu>/disassemble/` listing and
 shows **ASM: no workbook**. `--dme-asm <dir>` / `--klr-asm <dir>` pin a
 listing to one directory instead.
 
+## Comparing ROM images
+
+**COMPARE IMAGES** on the dashboard's ROM IMAGES row shows what differs
+between two DME or two KLR images before you run either. Pick A and B from the
+images in `bin_images/<cpu>` and the ones uploaded with LOAD .mem. The
+bridge runs `rom_compare.py` (`GET /compare/<cpu>?a=<name>&b=<name>`, and
+`GET /compare/<cpu>/images` for the list), and the result has two parts:
+
+- **Maps and tables**: decoded from each image the way the firmware reads
+  them (DME: `map_graphs.py`; KLR: `klr/disassemble/klr_maps.py`) and shown
+  side by side, with the differing cells marked. It also says whether a
+  map's axis changed, whether the map moved to another address, or whether
+  it is in only one of the images. ALL MAPS lists the unchanged ones too.
+- **Code and other bytes**: every other run of differing bytes, with the
+  nearest label in each image and the disassembly around it. The listings
+  come from each image's own tables (`asm_select.sh`, as for the debugger).
+
+From a terminal, run
+`python3 rom_compare.py dme|klr <a> <b> [--asm-a DIR] [--asm-b DIR] [--all]`.
+It prints the same JSON.
+
 ## Map graphs
 
 Click a chart's title on the dashboard's **DME MAPS** tab to see that map or
