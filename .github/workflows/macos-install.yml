@@ -22,7 +22,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install (install_macos.sh -y)
         env:
           NONINTERACTIVE: 1
@@ -56,7 +56,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/logs" && cp -R "$DMEKLR_TMP/install_smoke" "$RUNNER_TEMP/logs/" 2>/dev/null || true
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-install-logs
           path: ${{ runner.temp }}/logs/

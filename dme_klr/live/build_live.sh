@@ -23,6 +23,13 @@
 #            the debugger's breakpoints, stepping and RAM views. Built in
 #            obj/tests/<name>/; the bridge runs it to a test's warning
 #            (see test_snap.py).
+#          ./build_live.sh [--relocatable] --tests
+#            every regression test at once, for TEST LOAD: two builds with
+#            LIVE_DEBUG and RUNTIME_OPTS (open loop and closed loop, as
+#            build_runtime.sh), in obj/tests_rt/{open,cl}/ (obj/lite/... with
+#            --relocatable). A test's options and the ROM / table paths come
+#            from the command line (+X=<n>, test_opts.py), so nothing is
+#            built per test; the bridge uses these when they are there.
 #          ./build_live.sh --relocatable [extra verilator -D flags]
 #            the live sim for the lite package (lite/make_lite.sh): built
 #            in obj/lite/, with every file path in it (ROM images,
@@ -63,13 +70,32 @@ DASH_INTERVAL_MS="${DASH_INTERVAL_MS:-100}"
 RELOCATABLE=0
 if [ "$1" = "--relocatable" ]; then RELOCATABLE=1; shift; fi
 
+if [ "$1" = "--tests" ]; then
+    shift
+    _rel=(); [ "$RELOCATABLE" = 1 ] && _rel=(--relocatable)
+    for _v in open cl; do
+        bash "$0" "${_rel[@]}" --tests-one "$_v" "$@" || exit 1
+    done
+    exit 0
+fi
+TESTS_ONE=""
+if [ "$1" = "--tests-one" ]; then TESTS_ONE="$2"; shift 2; fi
 TEST=""
 TEST_SCRIPT="$DMEKLR_DIR/run_dashboard_tests.sh"
 if [ "$1" = "--test" ]; then
     TEST="$2"; shift 2
     if [ "$1" = "--script" ]; then TEST_SCRIPT="$2"; shift 2; fi
 fi
-if [ -n "$TEST" ]; then
+if [ -n "$TESTS_ONE" ]; then
+    OBJ="$LIVE_DIR/obj/tests_rt/$TESTS_ONE"
+    [ "$RELOCATABLE" = 1 ] && OBJ="$LIVE_DIR/obj/lite/tests_rt/$TESTS_ONE"
+    FILES_LIST=files
+    MODE_DEFS=(-DLIVE_DEBUG -DRUNTIME_OPTS -DRPMRAMP)
+    [ "$TESTS_ONE" = cl ] && { FILES_LIST=files_cl; MODE_DEFS+=(-DCL_MODE); }
+    MODE_DEFS+=(-CFLAGS -DLIVE_SCRIPTED)
+    # every path comes from the bridge as +NAME=<path>
+    RELOCATABLE=0
+elif [ -n "$TEST" ]; then
     OBJ="$LIVE_DIR/obj/tests/$TEST"
     TEST_DEFS=()
     while IFS= read -r d; do TEST_DEFS+=("${d%$'\r'}"); done \

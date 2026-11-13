@@ -35,12 +35,21 @@ WHERE THINGS GO
   Snapshots and the map-graph cache go to data/ in this folder. Set
   DMEKLR_TMP to put them elsewhere.
 
-NOT IN THE LITE PACKAGE
-  Opening a regression test at a chosen time (SNAPSHOTS TEST rows), and the
-  regression tests themselves, need the developer install.
+REGRESSION TESTS
+  python3 run_tests.py            all of them (python3 run_tests.py --help)
+  python3 run_tests.py -j 4 cl_ramp_*      some, 4 at a time
+  They run on the prebuilt testbench in dme_klr/runtime/ and are checked as
+  in the developer install (PASS / WARN / FAIL). The logs go to
+  data/dme_klr/v_dash_logs/: open a <test>.dash.log in the dashboard. A
+  WARN or FAIL adds a TEST row to the live page's SNAPSHOTS list; LOAD
+  runs that test to the moment it warned, paused in the debugger.
+  DME_ROM_FILE / KLR_ROM_FILE pick other ROM images, as for run_lite.sh.
 
 CONTENTS
   dme_klr/live/obj/dme_klr_live   the simulator
+  dme_klr/live/obj/tests_rt/      the simulator for TEST rows (any test)
+  dme_klr/runtime/                the regression testbench (run_tests.py)
+  run_tests.py                    runs and checks the regression tests
   dme_klr/live/bridge.mjs         connects it to the dashboard
   bin_images/                     DME and KLR ROM images (.mem)
   dme/, klr/disassemble/          disassembly workbooks, scripts and tables

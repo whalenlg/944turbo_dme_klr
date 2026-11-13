@@ -55,6 +55,35 @@ matches none of them keeps the default `<cpu>/disassemble/` listing and
 shows **ASM: no workbook**. `--dme-asm <dir>` / `--klr-asm <dir>` pin a
 listing to one directory instead.
 
+## Comparing ROM images
+
+**COMPARE IMAGES** on the dashboard's ROM IMAGES row shows what differs
+between two DME or two KLR images before you run either. Pick A and B from the
+images in `bin_images/<cpu>` and the ones uploaded with LOAD .mem. The
+bridge runs `rom_compare.py` (`GET /compare/<cpu>?a=<name>&b=<name>`, and
+`GET /compare/<cpu>/images` for the list), and the result has two parts:
+
+- **Maps and tables**: decoded from each image the way the firmware reads
+  them (DME: `map_graphs.py`; KLR: `klr/disassemble/klr_maps.py`) and shown
+  side by side, with the differing cells marked. It also says whether a
+  map's axis changed, whether the map moved to another address, or whether
+  it is in only one of the images. ALL MAPS lists the unchanged ones too.
+- **Code and other bytes**: every other run of differing bytes, with the
+  nearest label in each image and the disassembly around it. The listings
+  come from each image's own tables (`asm_select.sh`, as for the debugger).
+
+**ALL VARIANTS** compares every image with one reference, map by map, in one
+table (`GET /compare/<cpu>/variants?ref=<name>`). It has one column per image
+(images with the same bytes appear once; half-EPROM files are left out), and
+each cell says how many values differ, whether the axis differs or the map
+moved, or that the map isn't in that image. Clicking a cell opens that pair
+side by side.
+
+From a terminal, run
+`python3 rom_compare.py dme|klr <a> <b> [--asm-a DIR] [--asm-b DIR] [--all]`
+or `python3 rom_compare.py dme|klr --variants <ref> <image> ...`.
+They print the same JSON.
+
 ## Map graphs
 
 Click a chart's title on the dashboard's **DME MAPS** tab to see that map or
@@ -162,10 +191,19 @@ snapshot directory: the test, its `-D` flags, ROM images, the time and the
 line. A rerun of the test replaces its old ones.
 
 They show in the dashboard's SNAPSHOTS list as **TEST** rows. **LOAD**
-builds that test with the debugger's hooks (`build_live.sh --test <name>`:
-the testbench's `LIVE_DEBUG` without `LIVE`, so its own stimulus stays; in
-`obj/tests/<name>/`, a few minutes the first time and reused after) and runs
-it to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
+runs that test with the debugger's hooks. These are the testbench's
+`LIVE_DEBUG` without `LIVE`, so the test's own stimulus stays. It runs on two
+shared builds that read every test option at run time (`build_live.sh
+--tests`, in `obj/tests_rt/{open,cl}/`). The first LOAD makes them, which
+takes a few minutes, and they are made again only when a source changes.
+The bridge passes the test's options as `+X=<n>` (`test_opts.py resolve`)
+along with the ROM images it ran with. A test from a runner script other
+than the usual two, or `DMEKLR_TEST_BUILD=per-test` in the bridge's
+environment, gets a build of its own instead (`build_live.sh --test
+<name>`, in `obj/tests/<name>/`). The lite package ships the shared builds
+and every test's options (`tests.json`), so its TEST rows load the same way,
+and its `run_tests.py` runs the regression tests that make them. The test
+runs to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
 to change it; a time you pick with `add` is used as is), paused, so
 breakpoints, stepping and the RAM views catch the lead-up to it. Getting there takes as long as the sim needs to reach
 that time. The input controls do nothing in a test run (its inputs follow

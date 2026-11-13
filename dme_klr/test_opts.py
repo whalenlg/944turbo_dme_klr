@@ -32,6 +32,10 @@ Usage:
   test_opts.py resolve  -D... [-D...]          the same for a bare -D set
                                                (both: --interval MS, the
                                                snapshot interval, default 100)
+  test_opts.py tests-json [--script S]         every test as JSON: its -D flags,
+                                               file list, SIM_TIME and +X=<n>
+                                               (no +DASH_INTERVAL_MS), for the
+                                               lite package
   test_opts.py gen      [--check]              (re)write test_opts_gen.vh;
                                                --check: fail if it is stale
   test_opts.py same     <git-rev> [--script S] check that every test's
@@ -578,6 +582,18 @@ def main(argv):
             args = rest
         print('\n'.join(plusargs(resolve(args, interval))))
         print(f'files: {files_for(args)}')
+    elif cmd == 'tests-json':
+        # every test with its -D flags and run-time options, for the lite
+        # package (no Verilog to preprocess there): its regression runner
+        # and the bridge's TEST LOAD read this
+        tests = {}
+        for t in test_names(script):
+            args = test_defines(t, script)
+            opts = resolve(args, interval)
+            tests[t] = {'defines': args, 'files': files_for(args), 'sim_ns': opts.get('SIM_TIME'),
+                        'plusargs': [p for p in plusargs(opts) if not p.startswith('+DASH_INTERVAL_MS=')]}
+        json.dump({'format': 'dme-klr-tests', 'version': 1, 'tests': tests}, sys.stdout, indent=1)
+        print()
     elif cmd == 'gen':
         text = gen_text()
         if '--check' in rest:

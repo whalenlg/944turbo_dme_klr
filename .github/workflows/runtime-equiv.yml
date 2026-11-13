@@ -35,7 +35,7 @@ jobs:
     name: Preprocessing and lint
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Generated header is current
@@ -55,11 +55,11 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Verilator cache
         id: vcache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/verilator
           key: verilator-${{ env.VERILATOR_VERSION }}-ubuntu-22.04
@@ -72,7 +72,7 @@ jobs:
           cd /tmp/vsrc && autoconf && ./configure --prefix="$HOME/verilator" && make -j"$(nproc)" && make install
       - name: Verilator on PATH
         run: echo "$HOME/verilator/bin" >> "$GITHUB_PATH"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -86,7 +86,7 @@ jobs:
           dme_klr/runtime_equiv.sh "${args[@]}"
       - name: Logs of differing tests
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-equiv-${{ matrix.shard }}
           path: |

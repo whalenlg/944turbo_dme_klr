@@ -7,6 +7,10 @@
 #    - the bridge serves the DME and KLR listings (/asm/dme, /asm/klr)
 #    - the sim runs and pauses at 200 ms after POST /cmd "until 200"
 #    - the listings follow the ROM in the EPROM (SIM: [ASM] lines)
+#    - run_tests.py runs a regression test (cut to 300 ms) on the packaged
+#      testbench and checks it
+#    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
+#      shared test build and pauses at its time
 #    - no Verilog, C++ or simulator build scripts are in the package
 #
 #  Usage:  lite/test_lite.sh <package dir or .tar.gz/.zip> [--port N]
@@ -45,7 +49,7 @@ CURL=""
 cleanup() {
     [ -n "$CURL" ] && kill "$CURL" 2>/dev/null
     kill "$BRIDGE" 2>/dev/null
-    pkill -f "$PKG/dme_klr/live/obj/dme_klr_live" 2>/dev/null
+    pkill -f "$PKG/dme_klr/live/obj/" 2>/dev/null
     taskkill //F //IM dme_klr_live.exe >/dev/null 2>&1
     true
 }
@@ -67,6 +71,28 @@ ok=1
 for _ in $(seq 180); do grep -q 'STATE\] paused.*reason=until' "$EVENTS" && { ok=0; break; }; sleep 1; done
 check $ok "sim runs and pauses at 200 ms"
 grep -q '^data: DME: ' "$EVENTS"; check $? "DME output reaches the dashboard"
+
+# The regression runner, on the packaged testbench
+RT_OUT="$WORK/run_tests.txt"
+( cd "$PKG" && DMEKLR_TMP="$PKG/data" python3 run_tests.py -j 2 --sim-ms 300 warm_idle_5s cl_warm_idle ) > "$RT_OUT" 2>&1
+cat "$RT_OUT" | sed 's/^/    /' | cut -c1-200
+grep -qE '^Total: 2 ' "$RT_OUT" && ! grep -q 'simulator exited' "$RT_OUT"; check $? "run_tests.py runs and checks two tests"
+for t in warm_idle_5s cl_warm_idle; do
+    n="$(grep -cE '^(DME: )?\[DS\]' "$PKG/data/dme_klr/v_dash_logs/$t.dash.log" 2>/dev/null)"
+    [ "${n:-0}" -ge 2 ]; check $? "$t.dash.log has DS snapshots (${n:-0})"
+done
+
+# TEST LOAD: a TEST row at 150 ms, run on the shared test build
+( cd "$PKG" && DMEKLR_TMP="$PKG/data" python3 dme_klr/live/test_snap.py add cl_warm_idle 150 lite-check --script none ) > /dev/null 2>&1
+SNAP_ID="$(ls "$PKG/data/dme_klr/snapshots" 2>/dev/null | grep 'cl_warm_idle-lite-check' | head -1)"
+[ -n "$SNAP_ID" ]; check $? "test_snap.py add makes a TEST row (${SNAP_ID:-none})"
+if [ -n "$SNAP_ID" ]; then
+    code="$(curl -s -o /dev/null -w '%{http_code}' "${H[@]}" -X POST "http://127.0.0.1:$PORT/snapshots/$SNAP_ID/load")"
+    [ "$code" = 204 ]; check $? "TEST LOAD starts at once on the packaged build (HTTP $code)"
+    ok=1
+    for _ in $(seq 180); do grep -q "SIM: \[SNAP\] loaded t_ns=1[45][0-9]* exact=1 dir=$SNAP_ID" "$EVENTS" && { ok=0; break; }; sleep 1; done
+    check $ok "the test runs to 150 ms and pauses"
+fi
 
 src="$(find "$PKG" \( -name '*.v' -o -name '*.sv' -o -name '*.cpp' -o -name '*.h' -o -name 'build_live.sh' \) | head -3)"
 [ -z "$src" ]; check $? "no simulator source in the package${src:+: $src}"

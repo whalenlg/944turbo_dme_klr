@@ -18,8 +18,9 @@
 #  With --iverilog, Icarus Verilog instead (plain Verilog-2005, no -g2012):
 #      <out>/dme_klr_sim.vvp, <out>/dme_klr_sim_cl.vvp   (vvp <file> +X=<n> ...)
 #
-#  Usage: build_runtime.sh [--out DIR] [--iverilog] [--trace] [--jobs N]
-#         (default DIR: $DMEKLR_TMP/dme_klr/runtime)
+#  Usage: build_runtime.sh [--out DIR] [--iverilog] [--trace] [--jobs N] [-- extra]
+#         (default DIR: $DMEKLR_TMP/dme_klr/runtime; extra: more Verilator or
+#         iverilog arguments, e.g. -LDFLAGS -static for the lite package)
 # ============================================================
 set -e
 for _arg in "$@"; do
@@ -37,12 +38,14 @@ OUT="$DMEKLR_TMP/dme_klr/runtime"
 TRACE=""
 JOBS=""
 SIM=verilator
+EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --out)   OUT="$2"; shift 2 ;;
         --trace) TRACE="--trace"; shift ;;
         --jobs)  JOBS="$2"; shift 2 ;;
         --iverilog) SIM=iverilog; shift ;;
+        --) shift; EXTRA=("$@"); break ;;
         *) echo "build_runtime.sh: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -92,7 +95,7 @@ build() {   # <file list> <exe name> [extra -D]
         -Wno-MULTIDRIVEN \
         "$@"
 }
-build files    dme_klr_sim
-build files_cl dme_klr_sim_cl -DCL_MODE
+build files    dme_klr_sim ${EXTRA[@]+"${EXTRA[@]}"}
+build files_cl dme_klr_sim_cl -DCL_MODE ${EXTRA[@]+"${EXTRA[@]}"}
 [ "$SIM" = iverilog ] && x=.vvp || x=
 echo "built $OUT/dme_klr_sim$x and $OUT/dme_klr_sim_cl$x"

@@ -136,8 +136,8 @@ function broadcast(line) {
 }
 
 // load: { dir, history } to start from a snapshot (see loadSnapshot), or
-// { test: { bin, runTo, id } } to run a regression test's build to the
-// moment it warned (see loadTest)
+// { test: { bin, runTo, id, args } } to run a regression test's build to
+// the moment it warned (see loadTest)
 function startSim(load = null) {
   if (!existsSync(SIM)) {
     console.error(`Simulator not found: ${SIM}\nBuild it with ./build_live.sh`);
@@ -152,7 +152,8 @@ function startSim(load = null) {
   simState = 'paused';
   const test = load?.test;
   // A test build keeps the ROMs it was compiled with
-  const romArgs = test ? [] : Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
+  // (a shared test build gets them, and the test's options, as test.args)
+  const romArgs = test ? (test.args ?? []) : Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
   const snapArgs = test ? ['+autosnap=0', `+runto=${test.runTo}`, `+runlabel=${test.id}`]
                         : [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
                            ...(load ? [`+load=${load.dir}`] : [])];
@@ -389,17 +390,15 @@ function klrImageName(name, text) {
   return img ? klrKnown.find(k => k.img?.equals(img))?.f ?? null : null;
 }
 
-// Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
-// that reuses a file name with new contents is caught too.
-function followRom(cpu, path) {
-  const { pin, dir: dflt } = CPU_ASM[cpu];
-  if (pin) return;
+// The disassembly tables for an image: asm_select.sh's (the same helper
+// as the run scripts: regenerates stale workbooks/tables; an image without
+// a workbook of its own gets one made from the reference workbook,
+// <cpu>/disassemble/variants/<name>.xlsx), else the lite package's prebuilt
+// ones. { dir (null: none found), workbook, img (knownImage) }
+function asmTables(cpu, path) {
+  const { dir: dflt } = CPU_ASM[cpu];
   const CPU = cpu.toUpperCase();
   const img = knownImage(cpu, path);
-  let dir = dflt, workbook = '-';
-  // Same helper as the run scripts: regenerates stale workbooks/tables. An
-  // image without a workbook of its own gets one made from the reference
-  // workbook (<cpu>/disassemble/variants/<name>.xlsx), see asm_select.sh.
   const env = img ? { [`${CPU}_ROM_FILE`]: img.name }
                   : { [`${CPU}_ROM_DIR`]: dirname(path).replace(/\\/g, '/') + '/', [`${CPU}_ROM_FILE`]: basename(path) };
   const r = existsSync(ASM_SELECT) && /\.mem$/i.test(path)
@@ -407,28 +406,117 @@ function followRom(cpu, path) {
                 { env: { ...process.env, ...env, [`${CPU}_ASM_DIR`]: '' }, encoding: 'utf8',
                   stdio: ['ignore', 'pipe', 'inherit'] })
     : { status: -1, stdout: '' };
-  if (!img) {
-    if (r.status === 0 && r.stdout.trim()) {
-      dir = resolve(r.stdout.trim());
-      workbook = `variants/${basename(dir).replace(/^asm_/, '')}.xlsx`;
-    }
-  } else {
-    const sub = LITE_TABLES?.[cpu]?.[img.name];
-    if (r.status === 0 && r.stdout.trim()) {
-      dir = resolve(r.stdout.trim());
-      workbook = WORKBOOK[cpu][img.name];
-    } else if (sub && existsSync(join(dflt, sub))) {
-      // the lite package's prebuilt tables
-      console.error(`bridge: couldn't run asm_select.sh for ${img.name}; using the packaged ${sub} tables`);
-      dir = join(dflt, sub);
-      workbook = WORKBOOK[cpu][img.name];
-    } else {
-      console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
-    }
+  const sel = r.status === 0 && r.stdout.trim() ? resolve(r.stdout.trim()) : null;
+  if (!img) return { dir: sel, workbook: sel ? `variants/${basename(sel).replace(/^asm_/, '')}.xlsx` : '-', img };
+  if (sel) return { dir: sel, workbook: WORKBOOK[cpu][img.name], img };
+  const sub = LITE_TABLES?.[cpu]?.[img.name];
+  if (sub && existsSync(join(dflt, sub))) {
+    console.error(`bridge: couldn't run asm_select.sh for ${img.name}; using the packaged ${sub} tables`);
+    return { dir: join(dflt, sub), workbook: WORKBOOK[cpu][img.name], img };
   }
+  return { dir: null, workbook: '-', img };
+}
+
+// Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
+// that reuses a file name with new contents is caught too.
+function followRom(cpu, path) {
+  const { pin, dir: dflt } = CPU_ASM[cpu];
+  if (pin) return;
+  const CPU = cpu.toUpperCase();
+  const t = asmTables(cpu, path);
+  const dir = t.dir ?? dflt, workbook = t.dir ? t.workbook : '-', img = t.img;
+  if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
   ASM[cpu] = cpuListing(cpu, dir);
   console.log(`bridge: ${CPU} listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM[cpu].length} lines)`);
   broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
+}
+
+// ── ROM image compare ────────────────────────────────────────
+// GET /compare/<cpu>/images: the images it can compare (bin_images/<cpu>
+// and the uploads), [{name, src: repo|upload, sha}]
+// GET /compare/<cpu>/variants[?ref=<name>]: every image against the
+// reference (default: the first .mem), map by map (rom_compare.py
+// --variants); images with the same contents are listed once
+// GET /compare/<cpu>?a=<name>&b=<name>[&all=1]: rom_compare.py's JSON for
+// the two (maps and tables decoded from each, the other differing bytes
+// with the listing around them). A name is a file name, never a path.
+const ROM_COMPARE = join(HERE, 'rom_compare.py');
+function compareImages(cpu) {
+  const out = [];
+  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload']]) {
+    let names = [];
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const n of names.sort()) {
+      if (!/\.(mem|bin)$/i.test(n)) continue;
+      const p = join(dir, n);
+      // a .bin that is only part of an EPROM (a 4 KB half, a short dump)
+      // isn't a whole image
+      // nor a .mem that fills only part of it (lower_4k_..., upper_4k_...)
+      if (/\.mem$/i.test(n) && memWords(p) <= ROM_BYTES[cpu] / 2) continue;
+      if (/\.bin$/i.test(n)) {
+        let size = 0;
+        try { size = statSync(p).size; } catch { continue; }
+        if (size !== ROM_BYTES[cpu] && size !== 8192) continue;
+      }
+      out.push({ name: n, src, sha: imageSha(p) });
+    }
+  }
+  return out;
+}
+// How many bytes a .mem file sets (its data words, not @addresses)
+function memWords(file) {
+  try {
+    return readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ')
+      .split(/\s+/).filter(t => t && t[0] !== '@').length;
+  } catch { return 0; }
+}
+const tablesCache = new Map();   // `${cpu}:${path}:${mtime}` -> dir
+function tablesFor(cpu, path) {
+  if (!/\.mem$/i.test(path)) return null;
+  let k;
+  try { k = `${cpu}:${path}:${statSync(path).mtimeMs}`; } catch { return null; }
+  if (!tablesCache.has(k)) tablesCache.set(k, asmTables(cpu, path).dir);
+  return tablesCache.get(k);
+}
+function runCompare(args, done) {
+  const proc = spawn('python3', [ROM_COMPARE, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = [], err = [];
+  proc.stdout.on('data', d => out.push(d));
+  proc.stderr.on('data', d => err.push(d));
+  proc.on('error', e => done(500, `rom_compare.py: ${e.message}`));
+  proc.on('close', code => code === 0
+    ? done(200, Buffer.concat(out).toString('utf8'), 'application/json')
+    : done(500, Buffer.concat(err).toString('utf8').trim() || `rom_compare.py exited ${code}`));
+}
+function compareVariants(cpu, ref, done) {
+  const seen = new Set(), list = [];
+  // .mem first, so a .bin with the same bytes is the one left out
+  const all = compareImages(cpu).sort((x, y) => /\.mem$/i.test(y.name) - /\.mem$/i.test(x.name));
+  for (const i of all) {
+    if (!i.sha || seen.has(i.sha)) continue;
+    seen.add(i.sha);
+    list.push(i.name);
+  }
+  if (!list.length) return done(404, `no ${cpu.toUpperCase()} images`);
+  if (ref && !list.includes(ref)) {
+    if (!findImageByName(ref, cpu)) return done(404, `no ${cpu.toUpperCase()} image named ${ref}`);
+    list.unshift(ref);
+  } else if (ref) {
+    list.splice(list.indexOf(ref), 1);
+    list.unshift(ref);
+  }
+  const paths = list.map(n => findImageByName(n, cpu));
+  runCompare([cpu, '--variants', ...paths, '--names', ...list], done);
+}
+function compareRoms(cpu, a, b, all, done) {
+  const pa = findImageByName(a, cpu), pb = findImageByName(b, cpu);
+  if (!pa || !pb) return done(404, `no ${cpu.toUpperCase()} image named ${!pa ? a : b}`);
+  const args = [ROM_COMPARE, cpu, pa, pb, '--name-a', a, '--name-b', b];
+  const ta = tablesFor(cpu, pa), tb = tablesFor(cpu, pb);
+  if (ta) args.push('--asm-a', ta);
+  if (tb) args.push('--asm-b', tb);
+  if (all) args.push('--all');
+  runCompare(args.slice(1), done);
 }
 
 // ── Snapshots ────────────────────────────────────────────────
@@ -569,12 +657,104 @@ try {
   let t = null;
   watch(SNAP_DIR, () => { clearTimeout(t); t = setTimeout(() => broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=scan'), 500); });
 } catch { /* no fs.watch here: the list refreshes on the next snapshot */ }
+// The shared test builds (build_live.sh --tests): every test from two
+// binaries, its options as +X=<n>. The lite package ships them with
+// tests.json (test_opts.py tests-json); the developer install makes them
+// the first time a test is loaded, and again when a source is newer.
+const TESTS_RT = join(dirname(SIM), 'tests_rt');
+const TESTS_JSON = join(HERE, 'tests.json');
+const TEST_OPTS = join(REPO, 'dme_klr', 'test_opts.py');
+const rtBin = cl => join(TESTS_RT, cl ? 'cl' : 'open', 'dme_klr_live' + EXE);
+const RT_SOURCES = [...TEST_SOURCES, join(REPO, 'dme', 'bench', 'verilog', 'test_opts_gen.vh'),
+                    join(REPO, 'dme', 'bench', 'verilog', 'test_opts.vh')];
+function rtBuilt() {
+  return [false, true].every(cl => {
+    try {
+      const t = statSync(rtBin(cl)).mtimeMs;
+      return !existsSync(join(HERE, 'build_live.sh'))   // the lite package: as shipped
+          || RT_SOURCES.every(f => { try { return statSync(f).mtimeMs <= t; } catch { return true; } });
+    } catch { return false; }
+  });
+}
+// A test's +X=<n> and file list: test_opts.py from its -D flags (developer
+// install), else tests.json by name (lite package)
+function testOptions(req) {
+  const interval = req.interval_ms ?? 100;
+  if (existsSync(TEST_OPTS)) {
+    const r = spawnSync('python3', [TEST_OPTS, 'resolve', '--interval', String(interval), ...req.defines], { encoding: 'utf8' });
+    if (r.status === 0) {
+      const lines = r.stdout.split(/\r?\n/);
+      return { cl: lines.includes('files: files_cl'), args: lines.filter(l => l.startsWith('+')) };
+    }
+    console.error(`bridge: test_opts.py resolve failed: ${r.stderr?.trim()}`);
+  }
+  const t = readJson(TESTS_JSON)?.tests?.[req.test];
+  return t ? { cl: t.files === 'files_cl', args: [...t.plusargs, `+DASH_INTERVAL_MS=${interval}`] } : null;
+}
+// The ROM images and their disassembly tables as +NAME=<path>
+function pathArgs(req) {
+  const repo = REPO.replace(/\\/g, '/') + '/';
+  const out = [`+DMEKLR_REPO=${repo}`];
+  for (const cpu of ['dme', 'klr']) {
+    const CPU = cpu.toUpperCase();
+    const p = req.roms?.[cpu] && existsSync(req.roms[cpu]) ? resolve(req.roms[cpu])
+            : join(IMAGES[cpu], cpu === 'dme' ? '89DME_951pin.mem' : '89KLR_951.mem');
+    out.push(`+${CPU}_ROM_DIR=${dirname(p).replace(/\\/g, '/')}/`, `+${CPU}_ROM_FILE=${basename(p)}`);
+    const t = tablesFor(cpu, p);
+    if (t) out.push(`+${CPU}_ASM_DIR=${t.replace(/\\/g, '/')}/`);
+  }
+  return out;
+}
+let rtBuild = null;   // build_live.sh --tests in progress
+function buildTestsRt(id, test, then) {
+  const proc = spawn('bash', [join(HERE, 'build_live.sh'), '--tests'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  rtBuild = proc;
+  testBuild = { id, proc };
+  broadcast(`SIM: [SNAP] building id=${id} test=${test} starting (the shared test builds, once: a few minutes)`);
+  const tail = [];
+  const onLine = line => {
+    tail.push(line); if (tail.length > 20) tail.shift();
+    if (/^(gen_state|Built|- V|%Error|.*error:)/.test(line))
+      broadcast(`SIM: [SNAP] building id=${id} test=${test} ${line.trim().slice(0, 200)}`);
+  };
+  createInterface({ input: proc.stdout }).on('line', onLine);
+  createInterface({ input: proc.stderr }).on('line', onLine);
+  proc.on('exit', code => {
+    rtBuild = null;
+    testBuild = null;
+    if (code === 0) { broadcast(`SIM: [SNAP] building id=${id} test=${test} done`); then(); }
+    else {
+      const why = tail.filter(l => /error/i.test(l)).slice(-2).join(' | ') || tail.slice(-1)[0] || `exit ${code}`;
+      broadcast(`SIM: [SNAP] building id=${id} test=${test} failed`);
+      broadcast(`SIM: [ERROR] building the shared test builds failed: ${why.slice(0, 300)}`);
+    }
+  });
+}
+function loadTestRt(id, req) {
+  const run = () => {
+    const o = testOptions(req);
+    if (!o) return broadcast(`SIM: [ERROR] no options for test ${req.test} (no test_opts.py, and not in tests.json)`);
+    console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms on the shared ${o.cl ? 'closed-loop' : 'open-loop'} build`);
+    restartSim({ test: { bin: rtBin(o.cl), runTo: req.t_ns, id, args: [...o.args, ...pathArgs(req)] } });
+  };
+  if (rtBuilt()) { run(); return [204, '']; }
+  buildTestsRt(id, req.test, run);
+  return [202, ''];
+}
+
 function loadTest(id) {
-  if (!existsSync(join(HERE, 'build_live.sh')))
-    return [501, 'opening a regression test at a chosen time needs the developer install (the lite package has no Verilog to build it from)'];
   const req = readJson(join(snapPath(id), 'request.json'));
   if (!snapId(req?.test ?? '') || !Array.isArray(req.defines)) return [400, `snapshot ${id}: bad request.json`];
   if (testBuild) return [409, `already building ${testBuild.id}`];
+  const dev = existsSync(join(HERE, 'build_live.sh'));
+  // The shared builds: shipped (lite), or made once (developer install,
+  // unless the test's runner script is not the usual one: then it may
+  // have flags test_opts.py doesn't know, so it gets a build of its own)
+  const usual = !req.script || /[\\/](v_)?run_dashboard_tests\.sh$/.test(req.script);
+  if ((!dev && rtBuilt()) || (dev && usual && existsSync(TEST_OPTS) && process.env.DMEKLR_TEST_BUILD !== 'per-test'))
+    return loadTestRt(id, req);
+  if (!dev)
+    return [501, 'opening a regression test at a chosen time needs the shared test builds (dme_klr/live/obj/tests_rt), which this package doesn\'t have'];
   const run = () => {
     console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms`);
     restartSim({ test: { bin: join(testDir(req), 'dme_klr_live' + EXE), runTo: req.t_ns, id } });
@@ -877,6 +1057,24 @@ createServer((req, res) => {
       return text(204, '');
     }
     return text(405, 'method not allowed');
+  }
+  const cmp = url.pathname.match(/^\/compare\/(dme|klr)(\/images|\/variants)?$/);
+  if (req.method === 'GET' && cmp) {
+    const send = (code, body, type = 'text/plain') => {
+      res.writeHead(code, { ...CORS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
+      res.end(body);
+    };
+    const nameOk = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
+    if (cmp[2] === '/images') return send(200, JSON.stringify(compareImages(cmp[1])), 'application/json');
+    if (cmp[2] === '/variants') {
+      const ref = url.searchParams.get('ref');
+      if (ref !== null && !nameOk(ref)) return send(400, 'ref must be an image file name');
+      return compareVariants(cmp[1], ref, send);
+    }
+    const a = url.searchParams.get('a'), b = url.searchParams.get('b');
+    const ok = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
+    if (!ok(a) || !ok(b)) return send(400, 'a and b must be image file names');
+    return compareRoms(cmp[1], a, b, url.searchParams.get('all') === '1', send);
   }
   const mapsCpu = url.pathname.match(/^\/maps\/(dme|klr)$/);
   if (req.method === 'GET' && mapsCpu) {
