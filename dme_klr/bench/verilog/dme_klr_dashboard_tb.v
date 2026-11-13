@@ -762,8 +762,15 @@ module dme_klr_dashboard_tb;
     reg [8*512-1:0] live_dme_rom_path /*verilator public_flat_rd*/;
     reg [8*512-1:0] live_klr_rom_path /*verilator public_flat_rd*/;
     initial begin
+`ifdef VERILATOR
+        // the paths are strings here; assigning one to a vector directly
+        // makes Verilator 5.040 emit C++ that doesn't compile (VL_EXTEND_WN)
+        $sformat(live_dme_rom_path, "%s", `DME_ROM_PATH);
+        $sformat(live_klr_rom_path, "%s", `KLR_ROM_PATH);
+`else
         live_dme_rom_path = `DME_ROM_PATH;
         live_klr_rom_path = `KLR_ROM_PATH;
+`endif
     end
 `else
     reg [8*512-1:0] live_dme_rom_path /*verilator public_flat_rd*/ = {`DME_ROM_DIR, `DME_ROM_FILE};
