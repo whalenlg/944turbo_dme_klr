@@ -93,6 +93,9 @@ if [ -n "$TESTS_ONE" ]; then
     MODE_DEFS=(-DLIVE_DEBUG -DRUNTIME_OPTS -DRPMRAMP)
     [ "$TESTS_ONE" = cl ] && { FILES_LIST=files_cl; MODE_DEFS+=(-DCL_MODE); }
     MODE_DEFS+=(-CFLAGS -DLIVE_SCRIPTED)
+    # every # delay read at run time is SIM_TIME or a part of it, never 0
+    # (see build_runtime.sh)
+    verilator --help 2>/dev/null | grep -q -- '-sched-zero-delay' && MODE_DEFS+=(--no-sched-zero-delay)
     # every path comes from the bridge as +NAME=<path>
     RELOCATABLE=0
 elif [ -n "$TEST" ]; then
