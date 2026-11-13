@@ -23,12 +23,12 @@ jobs:
       matrix:
         venv: [false, true]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install and smoke test
         run: bash install/test_arch_install.sh --in-container ${{ matrix.venv && '--venv' || '' }}
       - name: Upload step logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: arch-install-logs${{ matrix.venv && '-venv' || '' }}
           path: /home/tester/tmp/arch-install-test/

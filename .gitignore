@@ -8,6 +8,7 @@
 trace
 node_modules/
 klr/d52/
+klr/asm48/
 gtkwave/
 iverilog/
 verilator/
