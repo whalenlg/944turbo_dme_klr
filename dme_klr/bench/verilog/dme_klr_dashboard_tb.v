@@ -99,6 +99,11 @@ module dme_klr_dashboard_tb;
     reg [15:0] live_o2        /*verilator public_flat_rw*/ = 16'hFFFF;  // {o2_7, o2_6}: 0 lean, 1 cross, 3 rich
     reg [15:0] live_knock     /*verilator public_flat_rw*/ = 16'hFFFF;  // 1: crank-synced knock on the KLR knock_sensor (klr_knock_gen.v)
     reg [7:0]  live_ac        /*verilator public_flat_rw*/ = 8'h00;     // DME T1 (P3.5): 1 = AC compressor on
+    reg [7:0]  live_cat       /*verilator public_flat_rw*/ = 8'h00;     // DME T0 (P3.4): 0 = catalytic converter fitted, 1 = none
+    // Knock for a set number of crank revolutions (live panel): N > 0
+    // injects the live_knock = 1 drop on the next N TDCs; klr_knock_gen
+    // counts it down
+    reg [15:0] live_knock_revs /*verilator public_flat_rw*/ = 16'd0;
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     // KLR ram 3Ah / 48h for the log replay's knock filter

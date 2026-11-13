@@ -144,6 +144,10 @@ assign t1 = (`OPT_AC_COMP_ON && !`OPT_CL_AC_HALFWAY && !`OPT_CL_CONDITION_CYCLE_
 
 // CL_CONDITION_CYCLE_ACTIVE: a cat phase (timing as for the AC phase
 // above). Otherwise T0 = has catalytic converter (0 = fitted).
+`ifdef LIVE
+// Live debugger / log replay: the live panel's CAT switch
+wire t0 = dme_klr_dashboard_tb.live_cat[0];
+`else
 reg t0;
 initial begin
     t0 = 1'b0;                  // nominal (has cat)
@@ -157,6 +161,7 @@ initial begin
         t0 = 1'b0;                  // back to nominal
     end
 end
+`endif
 wire        stb_o, ack_i, ack_uart;
 wire        cyc_o, iack_i, istb_o, icyc_o;
 wire [7:0]  data_in, data_out, data_out_uart;
