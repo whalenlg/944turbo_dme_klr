@@ -35,6 +35,19 @@ have bytes but no labels.
 
 The bridge serves this at GET /compare/<cpu>?a=..&b=.. for the dashboard's
 COMPARE button. Needs only the Python standard library.
+
+    python3 rom_compare.py dme|klr --variants <ref> <image> [<image> ...]
+
+compares every image with the first (the reference) at once, for the
+dashboard's VARIANTS table (GET /compare/<cpu>/variants?ref=..):
+
+  images       [{name, sha}], the reference first
+  maps         one entry per map or table found in any image:
+               {key, id, name, kind, cells: [...]} with one cell per image:
+               null (not in that image), or {addr, cells, axis, moved}
+               against the reference (cells = values that differ)
+  code         per image: bytes outside the maps that differ from the
+               reference, and how many runs they make
 """
 import argparse, hashlib, json, os, sys
 
@@ -228,8 +241,72 @@ def compare(cpu, pa, pb, asm_a=None, asm_b=None, every=False, name_a=None, name_
     }
 
 
+def variants(cpu, paths, names=None):
+    """Every image against the first, map by map."""
+    names = names or [os.path.basename(p) for p in paths]
+    imgs = [load(p, cpu) for p in paths]
+    decode = dme_calib if cpu == 'dme' else klr_calib
+    cals = [decode(i) for i in imgs]
+    keys = []
+    for c in cals:
+        keys += [k for k in c if k not in keys]
+    ref, R = cals[0], imgs[0]
+    maps = []
+    for k in keys:
+        r = ref.get(k)
+        row, any_diff = [], False
+        for c in cals:
+            e = c.get(k)
+            if e is None:
+                row.append(None)
+                any_diff = True
+                continue
+            if r is None:
+                row.append({'addr': e['addr'], 'cells': None, 'axis': None, 'moved': None})
+                any_diff = True
+                continue
+            fa, fb = flat(r['values']), flat(e['values'])
+            cells = sum(x != y for x, y in zip(fa, fb)) + abs(len(fa) - len(fb))
+            axis = r.get('x') != e.get('x') or r.get('y') != e.get('y')
+            moved = r['addr'] != e['addr']
+            any_diff |= bool(cells or axis or moved)
+            row.append({'addr': e['addr'], 'cells': cells, 'axis': axis, 'moved': moved})
+        e0 = r or next(c[k] for c in cals if k in c)
+        maps.append({'key': k, 'id': e0.get('id', k), 'name': e0['name'], 'kind': e0['kind'],
+                     'differs': any_diff, 'cells': row})
+    code = []
+    for c, img in zip(cals, imgs):
+        cov = set()
+        for e in list(c.values()) + list(ref.values()):
+            cov.update(range(e['addr'], e['addr'] + e['size']))
+        d = [i for i in range(len(img)) if img[i] != R[i] and i not in cov]
+        runs = 0
+        last = None
+        for i in d:
+            if last is None or i - last >= GAP:
+                runs += 1
+            last = i
+        code.append({'bytes': len(d), 'runs': runs, 'diff_bytes': sum(x != y for x, y in zip(img, R))})
+    return {'cpu': cpu, 'images': [{'name': n, 'sha': sha(i)} for n, i in zip(names, imgs)],
+            'maps': maps, 'code': code}
+
+
 def main():
     p = argparse.ArgumentParser(description='Compare two DME or KLR EPROM images (JSON on stdout).')
+    if '--variants' in sys.argv[1:]:
+        v = argparse.ArgumentParser(description='Compare DME or KLR images with the first one, map by map.')
+        v.add_argument('cpu', choices=('dme', 'klr'))
+        v.add_argument('--variants', nargs='+', required=True, metavar='IMAGE')
+        v.add_argument('--names', nargs='+')
+        o = v.parse_args()
+        try:
+            r = variants(o.cpu, o.variants, o.names)
+        except (OSError, ValueError) as e:
+            print(f'rom_compare.py: {e}', file=sys.stderr)
+            return 1
+        json.dump(r, sys.stdout, separators=(',', ':'))
+        print()
+        return 0
     p.add_argument('cpu', choices=('dme', 'klr'))
     p.add_argument('a')
     p.add_argument('b')

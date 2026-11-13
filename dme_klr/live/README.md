@@ -72,9 +72,17 @@ bridge runs `rom_compare.py` (`GET /compare/<cpu>?a=<name>&b=<name>`, and
   nearest label in each image and the disassembly around it. The listings
   come from each image's own tables (`asm_select.sh`, as for the debugger).
 
+**ALL VARIANTS** compares every image with one reference, map by map, in one
+table (`GET /compare/<cpu>/variants?ref=<name>`). It has one column per image
+(images with the same bytes appear once; half-EPROM files are left out), and
+each cell says how many values differ, whether the axis differs or the map
+moved, or that the map isn't in that image. Clicking a cell opens that pair
+side by side.
+
 From a terminal, run
-`python3 rom_compare.py dme|klr <a> <b> [--asm-a DIR] [--asm-b DIR] [--all]`.
-It prints the same JSON.
+`python3 rom_compare.py dme|klr <a> <b> [--asm-a DIR] [--asm-b DIR] [--all]`
+or `python3 rom_compare.py dme|klr --variants <ref> <image> ...`.
+They print the same JSON.
 
 ## Map graphs
 

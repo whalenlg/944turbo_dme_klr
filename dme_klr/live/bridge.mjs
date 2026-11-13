@@ -433,6 +433,9 @@ function followRom(cpu, path) {
 // ── ROM image compare ────────────────────────────────────────
 // GET /compare/<cpu>/images: the images it can compare (bin_images/<cpu>
 // and the uploads), [{name, src: repo|upload, sha}]
+// GET /compare/<cpu>/variants[?ref=<name>]: every image against the
+// reference (default: the first .mem), map by map (rom_compare.py
+// --variants); images with the same contents are listed once
 // GET /compare/<cpu>?a=<name>&b=<name>[&all=1]: rom_compare.py's JSON for
 // the two (maps and tables decoded from each, the other differing bytes
 // with the listing around them). A name is a file name, never a path.
@@ -447,6 +450,8 @@ function compareImages(cpu) {
       const p = join(dir, n);
       // a .bin that is only part of an EPROM (a 4 KB half, a short dump)
       // isn't a whole image
+      // nor a .mem that fills only part of it (lower_4k_..., upper_4k_...)
+      if (/\.mem$/i.test(n) && memWords(p) <= ROM_BYTES[cpu] / 2) continue;
       if (/\.bin$/i.test(n)) {
         let size = 0;
         try { size = statSync(p).size; } catch { continue; }
@@ -457,6 +462,13 @@ function compareImages(cpu) {
   }
   return out;
 }
+// How many bytes a .mem file sets (its data words, not @addresses)
+function memWords(file) {
+  try {
+    return readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ')
+      .split(/\s+/).filter(t => t && t[0] !== '@').length;
+  } catch { return 0; }
+}
 const tablesCache = new Map();   // `${cpu}:${path}:${mtime}` -> dir
 function tablesFor(cpu, path) {
   if (!/\.mem$/i.test(path)) return null;
@@ -464,6 +476,36 @@ function tablesFor(cpu, path) {
   try { k = `${cpu}:${path}:${statSync(path).mtimeMs}`; } catch { return null; }
   if (!tablesCache.has(k)) tablesCache.set(k, asmTables(cpu, path).dir);
   return tablesCache.get(k);
+}
+function runCompare(args, done) {
+  const proc = spawn('python3', [ROM_COMPARE, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = [], err = [];
+  proc.stdout.on('data', d => out.push(d));
+  proc.stderr.on('data', d => err.push(d));
+  proc.on('error', e => done(500, `rom_compare.py: ${e.message}`));
+  proc.on('close', code => code === 0
+    ? done(200, Buffer.concat(out).toString('utf8'), 'application/json')
+    : done(500, Buffer.concat(err).toString('utf8').trim() || `rom_compare.py exited ${code}`));
+}
+function compareVariants(cpu, ref, done) {
+  const seen = new Set(), list = [];
+  // .mem first, so a .bin with the same bytes is the one left out
+  const all = compareImages(cpu).sort((x, y) => /\.mem$/i.test(y.name) - /\.mem$/i.test(x.name));
+  for (const i of all) {
+    if (!i.sha || seen.has(i.sha)) continue;
+    seen.add(i.sha);
+    list.push(i.name);
+  }
+  if (!list.length) return done(404, `no ${cpu.toUpperCase()} images`);
+  if (ref && !list.includes(ref)) {
+    if (!findImageByName(ref, cpu)) return done(404, `no ${cpu.toUpperCase()} image named ${ref}`);
+    list.unshift(ref);
+  } else if (ref) {
+    list.splice(list.indexOf(ref), 1);
+    list.unshift(ref);
+  }
+  const paths = list.map(n => findImageByName(n, cpu));
+  runCompare([cpu, '--variants', ...paths, '--names', ...list], done);
 }
 function compareRoms(cpu, a, b, all, done) {
   const pa = findImageByName(a, cpu), pb = findImageByName(b, cpu);
@@ -473,14 +515,7 @@ function compareRoms(cpu, a, b, all, done) {
   if (ta) args.push('--asm-a', ta);
   if (tb) args.push('--asm-b', tb);
   if (all) args.push('--all');
-  const proc = spawn('python3', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-  const out = [], err = [];
-  proc.stdout.on('data', d => out.push(d));
-  proc.stderr.on('data', d => err.push(d));
-  proc.on('error', e => done(500, `rom_compare.py: ${e.message}`));
-  proc.on('close', code => code === 0
-    ? done(200, Buffer.concat(out).toString('utf8'), 'application/json')
-    : done(500, Buffer.concat(err).toString('utf8').trim() || `rom_compare.py exited ${code}`));
+  runCompare(args.slice(1), done);
 }
 
 // ── Snapshots ────────────────────────────────────────────────
@@ -930,13 +965,19 @@ createServer((req, res) => {
     }
     return text(405, 'method not allowed');
   }
-  const cmp = url.pathname.match(/^\/compare\/(dme|klr)(\/images)?$/);
+  const cmp = url.pathname.match(/^\/compare\/(dme|klr)(\/images|\/variants)?$/);
   if (req.method === 'GET' && cmp) {
     const send = (code, body, type = 'text/plain') => {
       res.writeHead(code, { ...CORS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
       res.end(body);
     };
-    if (cmp[2]) return send(200, JSON.stringify(compareImages(cmp[1])), 'application/json');
+    const nameOk = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
+    if (cmp[2] === '/images') return send(200, JSON.stringify(compareImages(cmp[1])), 'application/json');
+    if (cmp[2] === '/variants') {
+      const ref = url.searchParams.get('ref');
+      if (ref !== null && !nameOk(ref)) return send(400, 'ref must be an image file name');
+      return compareVariants(cmp[1], ref, send);
+    }
     const a = url.searchParams.get('a'), b = url.searchParams.get('b');
     const ok = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
     if (!ok(a) || !ok(b)) return send(400, 'a and b must be image file names');
