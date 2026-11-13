@@ -1,0 +1,63 @@
+# Tests install/install_macos.sh on a GitHub macOS runner (Apple Silicon):
+# install_macos.sh -y (Homebrew formulae, the venv, check_toolchain.sh and
+# its smoke tests: the KLR regression on Icarus Verilog and warm_idle_5s on
+# Verilator), then a new zsh login shell sources setup and runs
+# check_toolchain.sh again. The runner already has Homebrew and the Command
+# Line Tools, so the first-time steps of a clean Mac (install/test_macos_vm.sh
+# on a Tart VM covers those) aren't tested here.
+name: macOS install test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - install/**
+      - setup
+      - paths.sh
+      - .github/workflows/macos-install.yml
+
+jobs:
+  macos:
+    name: macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install (install_macos.sh -y)
+        env:
+          NONINTERACTIVE: 1
+        run: install/install_macos.sh -y
+      - name: New zsh terminal, source setup, check_toolchain.sh
+        shell: zsh -l {0}
+        run: |
+          source "$GITHUB_WORKSPACE/setup"
+          echo "DMEKLR_REPO=$DMEKLR_REPO DMEKLR_TMP=$DMEKLR_TMP VIRTUAL_ENV=$VIRTUAL_ENV"
+          "$DMEKLR_REPO/install/check_toolchain.sh" | tee "$RUNNER_TEMP/check.log"
+          grep -q "Everything required is installed" "$RUNNER_TEMP/check.log"
+          ! grep -q "not active in this shell" "$RUNNER_TEMP/check.log"
+      - name: Smoke test results (KLR regression, warm_idle_5s)
+        shell: zsh -l {0}
+        run: |
+          source "$GITHUB_WORKSPACE/setup"
+          ls -la "$DMEKLR_TMP/install_smoke/"
+          klr="$DMEKLR_TMP/install_smoke/klr.log"
+          tail -20 "$klr"
+          [ "$(grep -c 'PASS \[' "$klr")" -gt 0 ] && ! grep -q 'FAIL \[' "$klr" && ! grep -q Traceback "$klr"
+      - name: Live simulator build (build_live.sh)
+        shell: zsh -l {0}
+        run: |
+          source "$GITHUB_WORKSPACE/setup"
+          cd "$DMEKLR_REPO/dme_klr/live" && ./build_live.sh && ls -l obj/dme_klr_live
+      - name: Collect logs
+        if: always()
+        shell: zsh -l {0}
+        run: |
+          source "$GITHUB_WORKSPACE/setup" || true
+          mkdir -p "$RUNNER_TEMP/logs" && cp -R "$DMEKLR_TMP/install_smoke" "$RUNNER_TEMP/logs/" 2>/dev/null || true
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-install-logs
+          path: ${{ runner.temp }}/logs/
+          if-no-files-found: ignore
