@@ -95,6 +95,13 @@ build() {   # <file list> <exe name> [extra -D]
         -Wno-MULTIDRIVEN \
         "$@"
 }
+# Every # delay read at run time is SIM_TIME or a part of it, never 0.
+# Verilator can't see that (5.050 warns ZERODLY) and otherwise schedules
+# those delays as if they could be #0, which is slower; tell it, where it
+# has the option
+if [ "$SIM" != iverilog ] && verilator --help 2>/dev/null | grep -q -- '-sched-zero-delay'; then
+    EXTRA=(--no-sched-zero-delay ${EXTRA[@]+"${EXTRA[@]}"})
+fi
 build files    dme_klr_sim ${EXTRA[@]+"${EXTRA[@]}"}
 build files_cl dme_klr_sim_cl -DCL_MODE ${EXTRA[@]+"${EXTRA[@]}"}
 [ "$SIM" = iverilog ] && x=.vvp || x=
