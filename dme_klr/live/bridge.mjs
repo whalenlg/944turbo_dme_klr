@@ -136,8 +136,8 @@ function broadcast(line) {
 }
 
 // load: { dir, history } to start from a snapshot (see loadSnapshot), or
-// { test: { bin, runTo, id } } to run a regression test's build to the
-// moment it warned (see loadTest)
+// { test: { bin, runTo, id, args } } to run a regression test's build to
+// the moment it warned (see loadTest)
 function startSim(load = null) {
   if (!existsSync(SIM)) {
     console.error(`Simulator not found: ${SIM}\nBuild it with ./build_live.sh`);
@@ -152,7 +152,8 @@ function startSim(load = null) {
   simState = 'paused';
   const test = load?.test;
   // A test build keeps the ROMs it was compiled with
-  const romArgs = test ? [] : Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
+  // (a shared test build gets them, and the test's options, as test.args)
+  const romArgs = test ? (test.args ?? []) : Object.entries(roms).filter(([, p]) => p).map(([cpu, p]) => `+${cpu}_rom=${p}`);
   const snapArgs = test ? ['+autosnap=0', `+runto=${test.runTo}`, `+runlabel=${test.id}`]
                         : [`+snapdir=${SNAP_DIR}`, ...(snapCfg.auto ? [] : ['+autosnap=0']), ...(snapCfg.break ? ['+breakonwarn=1'] : []),
                            ...(load ? [`+load=${load.dir}`] : [])];
@@ -656,12 +657,104 @@ try {
   let t = null;
   watch(SNAP_DIR, () => { clearTimeout(t); t = setTimeout(() => broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=scan'), 500); });
 } catch { /* no fs.watch here: the list refreshes on the next snapshot */ }
+// The shared test builds (build_live.sh --tests): every test from two
+// binaries, its options as +X=<n>. The lite package ships them with
+// tests.json (test_opts.py tests-json); the developer install makes them
+// the first time a test is loaded, and again when a source is newer.
+const TESTS_RT = join(dirname(SIM), 'tests_rt');
+const TESTS_JSON = join(HERE, 'tests.json');
+const TEST_OPTS = join(REPO, 'dme_klr', 'test_opts.py');
+const rtBin = cl => join(TESTS_RT, cl ? 'cl' : 'open', 'dme_klr_live' + EXE);
+const RT_SOURCES = [...TEST_SOURCES, join(REPO, 'dme', 'bench', 'verilog', 'test_opts_gen.vh'),
+                    join(REPO, 'dme', 'bench', 'verilog', 'test_opts.vh')];
+function rtBuilt() {
+  return [false, true].every(cl => {
+    try {
+      const t = statSync(rtBin(cl)).mtimeMs;
+      return !existsSync(join(HERE, 'build_live.sh'))   // the lite package: as shipped
+          || RT_SOURCES.every(f => { try { return statSync(f).mtimeMs <= t; } catch { return true; } });
+    } catch { return false; }
+  });
+}
+// A test's +X=<n> and file list: test_opts.py from its -D flags (developer
+// install), else tests.json by name (lite package)
+function testOptions(req) {
+  const interval = req.interval_ms ?? 100;
+  if (existsSync(TEST_OPTS)) {
+    const r = spawnSync('python3', [TEST_OPTS, 'resolve', '--interval', String(interval), ...req.defines], { encoding: 'utf8' });
+    if (r.status === 0) {
+      const lines = r.stdout.split(/\r?\n/);
+      return { cl: lines.includes('files: files_cl'), args: lines.filter(l => l.startsWith('+')) };
+    }
+    console.error(`bridge: test_opts.py resolve failed: ${r.stderr?.trim()}`);
+  }
+  const t = readJson(TESTS_JSON)?.tests?.[req.test];
+  return t ? { cl: t.files === 'files_cl', args: [...t.plusargs, `+DASH_INTERVAL_MS=${interval}`] } : null;
+}
+// The ROM images and their disassembly tables as +NAME=<path>
+function pathArgs(req) {
+  const repo = REPO.replace(/\\/g, '/') + '/';
+  const out = [`+DMEKLR_REPO=${repo}`];
+  for (const cpu of ['dme', 'klr']) {
+    const CPU = cpu.toUpperCase();
+    const p = req.roms?.[cpu] && existsSync(req.roms[cpu]) ? resolve(req.roms[cpu])
+            : join(IMAGES[cpu], cpu === 'dme' ? '89DME_951pin.mem' : '89KLR_951.mem');
+    out.push(`+${CPU}_ROM_DIR=${dirname(p).replace(/\\/g, '/')}/`, `+${CPU}_ROM_FILE=${basename(p)}`);
+    const t = tablesFor(cpu, p);
+    if (t) out.push(`+${CPU}_ASM_DIR=${t.replace(/\\/g, '/')}/`);
+  }
+  return out;
+}
+let rtBuild = null;   // build_live.sh --tests in progress
+function buildTestsRt(id, test, then) {
+  const proc = spawn('bash', [join(HERE, 'build_live.sh'), '--tests'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  rtBuild = proc;
+  testBuild = { id, proc };
+  broadcast(`SIM: [SNAP] building id=${id} test=${test} starting (the shared test builds, once: a few minutes)`);
+  const tail = [];
+  const onLine = line => {
+    tail.push(line); if (tail.length > 20) tail.shift();
+    if (/^(gen_state|Built|- V|%Error|.*error:)/.test(line))
+      broadcast(`SIM: [SNAP] building id=${id} test=${test} ${line.trim().slice(0, 200)}`);
+  };
+  createInterface({ input: proc.stdout }).on('line', onLine);
+  createInterface({ input: proc.stderr }).on('line', onLine);
+  proc.on('exit', code => {
+    rtBuild = null;
+    testBuild = null;
+    if (code === 0) { broadcast(`SIM: [SNAP] building id=${id} test=${test} done`); then(); }
+    else {
+      const why = tail.filter(l => /error/i.test(l)).slice(-2).join(' | ') || tail.slice(-1)[0] || `exit ${code}`;
+      broadcast(`SIM: [SNAP] building id=${id} test=${test} failed`);
+      broadcast(`SIM: [ERROR] building the shared test builds failed: ${why.slice(0, 300)}`);
+    }
+  });
+}
+function loadTestRt(id, req) {
+  const run = () => {
+    const o = testOptions(req);
+    if (!o) return broadcast(`SIM: [ERROR] no options for test ${req.test} (no test_opts.py, and not in tests.json)`);
+    console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms on the shared ${o.cl ? 'closed-loop' : 'open-loop'} build`);
+    restartSim({ test: { bin: rtBin(o.cl), runTo: req.t_ns, id, args: [...o.args, ...pathArgs(req)] } });
+  };
+  if (rtBuilt()) { run(); return [204, '']; }
+  buildTestsRt(id, req.test, run);
+  return [202, ''];
+}
+
 function loadTest(id) {
-  if (!existsSync(join(HERE, 'build_live.sh')))
-    return [501, 'opening a regression test at a chosen time needs the developer install (the lite package has no Verilog to build it from)'];
   const req = readJson(join(snapPath(id), 'request.json'));
   if (!snapId(req?.test ?? '') || !Array.isArray(req.defines)) return [400, `snapshot ${id}: bad request.json`];
   if (testBuild) return [409, `already building ${testBuild.id}`];
+  const dev = existsSync(join(HERE, 'build_live.sh'));
+  // The shared builds: shipped (lite), or made once (developer install,
+  // unless the test's runner script is not the usual one: then it may
+  // have flags test_opts.py doesn't know, so it gets a build of its own)
+  const usual = !req.script || /[\\/](v_)?run_dashboard_tests\.sh$/.test(req.script);
+  if ((!dev && rtBuilt()) || (dev && usual && existsSync(TEST_OPTS) && process.env.DMEKLR_TEST_BUILD !== 'per-test'))
+    return loadTestRt(id, req);
+  if (!dev)
+    return [501, 'opening a regression test at a chosen time needs the shared test builds (dme_klr/live/obj/tests_rt), which this package doesn\'t have'];
   const run = () => {
     console.log(`bridge: running test ${req.test} to ${req.t_ns / 1e6} ms`);
     restartSim({ test: { bin: join(testDir(req), 'dme_klr_live' + EXE), runTo: req.t_ns, id } });

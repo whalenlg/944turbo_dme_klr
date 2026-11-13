@@ -756,8 +756,19 @@ module dme_klr_dashboard_tb;
     reg [1:0]  live_rom_cpu  /*verilator public_flat_rw*/ = 2'd0;
     reg [31:0] live_rom_req  /*verilator public_flat_rw*/ = 32'd0;
     reg [31:0] live_rom_ack  /*verilator public_flat_rd*/ = 32'd0;
+`ifdef RUNTIME_OPTS
+    // the paths come from +DME_ROM_DIR/FILE etc. (test_opts), so they are
+    // set when the sim starts, not compiled in
+    reg [8*512-1:0] live_dme_rom_path /*verilator public_flat_rd*/;
+    reg [8*512-1:0] live_klr_rom_path /*verilator public_flat_rd*/;
+    initial begin
+        live_dme_rom_path = `DME_ROM_PATH;
+        live_klr_rom_path = `KLR_ROM_PATH;
+    end
+`else
     reg [8*512-1:0] live_dme_rom_path /*verilator public_flat_rd*/ = {`DME_ROM_DIR, `DME_ROM_FILE};
     reg [8*512-1:0] live_klr_rom_path /*verilator public_flat_rd*/ = {`KLR_ROM_DIR, `KLR_ROM_FILE};
+`endif
     integer live_rom_i;
     always @(posedge dme_clk)
         if (live_rom_req != live_rom_ack) begin

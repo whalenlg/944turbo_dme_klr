@@ -191,10 +191,19 @@ snapshot directory: the test, its `-D` flags, ROM images, the time and the
 line. A rerun of the test replaces its old ones.
 
 They show in the dashboard's SNAPSHOTS list as **TEST** rows. **LOAD**
-builds that test with the debugger's hooks (`build_live.sh --test <name>`:
-the testbench's `LIVE_DEBUG` without `LIVE`, so its own stimulus stays; in
-`obj/tests/<name>/`, a few minutes the first time and reused after) and runs
-it to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
+runs that test with the debugger's hooks. These are the testbench's
+`LIVE_DEBUG` without `LIVE`, so the test's own stimulus stays. It runs on two
+shared builds that read every test option at run time (`build_live.sh
+--tests`, in `obj/tests_rt/{open,cl}/`). The first LOAD makes them, which
+takes a few minutes, and they are made again only when a source changes.
+The bridge passes the test's options as `+X=<n>` (`test_opts.py resolve`)
+along with the ROM images it ran with. A test from a runner script other
+than the usual two, or `DMEKLR_TEST_BUILD=per-test` in the bridge's
+environment, gets a build of its own instead (`build_live.sh --test
+<name>`, in `obj/tests/<name>/`). The lite package ships the shared builds
+and every test's options (`tests.json`), so its TEST rows load the same way,
+and its `run_tests.py` runs the regression tests that make them. The test
+runs to 200 ms before that moment (`DMEKLR_SNAP_LEAD_MS` when the tests run
 to change it; a time you pick with `add` is used as is), paused, so
 breakpoints, stepping and the RAM views catch the lead-up to it. Getting there takes as long as the sim needs to reach
 that time. The input controls do nothing in a test run (its inputs follow

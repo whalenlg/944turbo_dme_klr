@@ -19,6 +19,14 @@
 #    dme_klr/live/asm_tables.json    which asm_*/ goes with which ROM, for
 #                                    when asm_select.sh can't run
 #    run_lite.sh, run_lite.cmd       start the bridge
+#    dme_klr/runtime/dme_klr_sim[_cl]  the regression testbench, built once
+#                                    (build_runtime.sh), for run_tests.py
+#    dme_klr/live/obj/tests_rt/      the live sim with every test's options
+#                                    read at run time (build_live.sh --tests),
+#                                    for TEST LOAD
+#    dme_klr/live/tests.json         every test's options (test_opts.py
+#                                    tests-json)
+#    run_tests.py                    runs and checks the regression tests
 #
 #  Needs the developer install (Verilator, a C++ compiler, Python with
 #  pandas and openpyxl to make the tables). Builds into
@@ -107,8 +115,14 @@ if [ "$BUILD" = 1 ]; then
         windows-*) LDF=(-LDFLAGS "-static") ;;
     esac
     "$REPO/dme_klr/live/build_live.sh" --relocatable ${LDF[@]+"${LDF[@]}"}   # (bash 3.2: an empty array is "unbound" under set -u)
+    step "Building the live sim for TEST LOAD (build_live.sh --relocatable --tests)"
+    "$REPO/dme_klr/live/build_live.sh" --relocatable --tests ${LDF[@]+"${LDF[@]}"}
+    step "Building the regression testbench (build_runtime.sh)"
+    "$REPO/dme_klr/build_runtime.sh" --out "$OBJ/runtime" -- ${LDF[@]+"${LDF[@]}"}
 fi
-[ -x "$OBJ/dme_klr_live$EXE" ] || { echo "make_lite.sh: no $OBJ/dme_klr_live$EXE (build it first)" >&2; exit 1; }
+for f in dme_klr_live tests_rt/open/dme_klr_live tests_rt/cl/dme_klr_live runtime/dme_klr_sim runtime/dme_klr_sim_cl; do
+    [ -x "$OBJ/$f$EXE" ] || { echo "make_lite.sh: no $OBJ/$f$EXE (build it first)" >&2; exit 1; }
+done
 
 # ── 3. The package ───────────────────────────────────────────────────────
 step "Package $PKG"
@@ -117,6 +131,17 @@ mkdir -p "$PKG/dme_klr/live/obj" "$PKG/bin_images/dme" "$PKG/bin_images/klr" \
          "$PKG/dme/disassemble" "$PKG/klr/disassemble"
 
 cp "$OBJ/dme_klr_live$EXE" "$PKG/dme_klr/live/obj/"
+for v in open cl; do
+    mkdir -p "$PKG/dme_klr/live/obj/tests_rt/$v"
+    cp "$OBJ/tests_rt/$v/dme_klr_live$EXE" "$PKG/dme_klr/live/obj/tests_rt/$v/"
+done
+mkdir -p "$PKG/dme_klr/runtime"
+cp "$OBJ/runtime/dme_klr_sim$EXE" "$OBJ/runtime/dme_klr_sim_cl$EXE" "$PKG/dme_klr/runtime/"
+# The regression tests: their options, the runner and the checks
+python3 "$REPO/dme_klr/test_opts.py" tests-json > "$PKG/dme_klr/live/tests.json"
+cp "$REPO/dme_klr/live/test_snap.py" "$PKG/dme_klr/live/"
+cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
+cp "$LITE_DIR/run_tests.py" "$PKG/"
 for f in bridge.mjs map_graphs.py klr_map_graphs.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done

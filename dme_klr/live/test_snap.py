@@ -59,7 +59,15 @@ LEAD_MS = int(os.environ.get('DMEKLR_SNAP_LEAD_MS', '200'))
 
 def test_defines(name, script):
     """The -D flags run_test gets for <name> in the runner script: the
-    one-line form in its case block, else the multi-line one in run_all."""
+    one-line form in its case block, else the multi-line one in run_all.
+    Without the script (the lite package), from tests.json beside this file
+    (test_opts.py tests-json)."""
+    if not Path(script).exists():
+        try:
+            t = json.loads((LIVE / 'tests.json').read_text())['tests'].get(name)
+        except (OSError, ValueError, KeyError):
+            return None
+        return t and list(t['defines'])
     text = Path(script).read_text()
     # join continuation lines
     lines = re.sub(r'\\\n', ' ', text).split('\n')
