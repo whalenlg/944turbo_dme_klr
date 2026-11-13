@@ -185,6 +185,9 @@ public:
             {"o2",        &TB(live_o2),        16, true},
             {"knock",     &TB(live_knock),     16, true},
             {"ac",        &TB(live_ac),         8, false},   // DME T1: 1 = AC compressor on
+            {"cat",       &TB(live_cat),        8, false},   // DME T0: 0 = cat fitted, 1 = none
+            // knock on the next N revolutions; the testbench counts it down
+            {"knock_revs", &TB(live_knock_revs), 16, false},
         };
         liveFields(root->vlSymsp, fields_);
         layout_ = liveLayoutHash(fields_);
@@ -272,6 +275,7 @@ private:
     Vdme_klr_dashboard_tb___024root* root;
     double ns_per_tick_;
     std::vector<Input> inputs_;
+    uint16_t knock_revs_seen_ = 0;
 
     bool paused_ = true, quit_ = false;
     std::string stop_reason_;    // set when a stop is pending a snapshot
@@ -302,6 +306,11 @@ private:
     // ── per-timeslot checks ─────────────────────────────────
     void afterEval() {
         housekeeping();
+        // the testbench counts knock_revs down: let the dashboard see it
+        if (TB(live_knock_revs) != knock_revs_seen_) {
+            knock_revs_seen_ = TB(live_knock_revs);
+            printf("SIM: [INPUTS] %s\n", inputsLine().c_str());
+        }
         if (paused_) return;   // a warning's snapshot may have just paused
         if (stop_pending_) {
             // Wait for the testbench to emit the requested DS snapshot

@@ -786,6 +786,9 @@ comes out of the torque balance.
 | FQS (ch7) | Fuel-quality switch position 0-7 | Also scales the model's fuel energy, as the FQS tests do |
 | COOLANT, AIR TEMP, BATTERY, ALTITUDE | DME ADC ch3, ch2, ch1, ch4 | Raw bytes. The hints give the common values |
 | AC (T1) | AC compressor load | The ISV should catch it |
+| CAT (T0) | Catalytic converter fitted / not fitted | The firmware reads T0 as its has-cat flag (0 = fitted, the default) |
+| O2 SENSOR | DME P1.6/P1.7 (the O2 comparator outputs) | **auto** follows the model's mixture. LEAN, CROSS and RICH pin the sensor there |
+| KNOCK (KLR) | KLR knock sensor | **×N REVS** injects knock on the next N crank revolutions (the `TEST_KNOCK_PULSE` drop, 32 teeth after TDC), counting down as it goes. **CONTINUOUS** keeps knocking until **STOP**. The engine has to be turning |
 
 A slider sends its value when you let go. Ticking **auto** hands the input
 back to the model.
@@ -1297,7 +1300,7 @@ per line:
 | `run`, `pause` | Free-run, stop |
 | `step dme\|klr [N]` | Run N instructions of that CPU |
 | `until <ms>` | Run to that simulated time, then pause |
-| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac`, plus `o2 dme_tps klr_tps knock` (terminal only) |
+| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N |
 | `bp add\|del dme\|klr <hex>` | PC breakpoint |
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |

@@ -142,7 +142,10 @@ module klr_knock_gen (
     // runs until its 107 teeth are up or the next TDC, whichever is
     // first, even if live_knock clears.
     // (the same KNOCK_DELAY_PULSES / KNOCK_HOLD_PULSES as above)
-    wire       knock_req = (dme_klr_dashboard_tb.live_knock == 16'd1);
+    // ... or live_knock_revs > 0: the same drop on that many TDCs, counted
+    // down here as each one starts (the live panel's KNOCK x N REVS)
+    wire       knock_revs = (dme_klr_dashboard_tb.live_knock_revs != 16'd0);
+    wire       knock_req = (dme_klr_dashboard_tb.live_knock == 16'd1) || knock_revs;
     reg [7:0]  live_knock_sig = 8'd110;
     reg        live_tdc_prev = 1'b0, live_speed_prev = 1'b0;
     reg [31:0] live_pulse_count = 32'd0;
@@ -155,6 +158,8 @@ module klr_knock_gen (
             live_knock_sig   <= 8'd110;
             live_pulse_count <= 32'd0;
             live_knock_state <= knock_req ? 2'd1 : 2'd0;
+            if (knock_revs)
+                dme_klr_dashboard_tb.live_knock_revs <= dme_klr_dashboard_tb.live_knock_revs - 16'd1;
         end else if (!live_speed_prev && speed_sensor) begin
             case (live_knock_state)
                 2'd1: if (live_pulse_count + 32'd1 >= KNOCK_DELAY_PULSES) begin
