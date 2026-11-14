@@ -733,7 +733,9 @@ simulators) or ✗ and why, and the run spreads its dashboard tests over this
 machine's workers and every ✓ host's threads (**spread the tests over these
 hosts too** turns that off for a run). A host's tests write their progress
 and logs back here, so the bars, verdicts, snapshots and summary are the same
-as for local ones, and each test shows the host it ran on. If a host stops
+as for local ones, and each test shows the host it ran on. On the host, each test runs in its own folder,
+`$DMEKLR_TMP/dme_klr/remote_jobs/<id>`, deleted once its logs have been
+fetched, so the host's own logs are never overwritten. If a host stops
 answering (15 s when its bridge has stopped, 90 s otherwise), its test goes
 back in the queue and the host gets no more tests that run; one without
 iverilog drops out of the iverilog suite only. The hosts are remembered in

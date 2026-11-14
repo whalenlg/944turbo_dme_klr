@@ -20,7 +20,13 @@
 //                                   t_ms, out: [last lines]}
 //    GET    /regress/run/<id>/dash the test's .dash.log
 //    GET    /regress/run/<id>/log  its whole log, gzipped
-//    DELETE /regress/run/<id>      stop it (if running) and forget it
+//    DELETE /regress/run/<id>      stop it (if running), forget it and
+//                                  delete its folder
+//  Each job runs with its own DMEKLR_TMP, $DMEKLR_TMP/dme_klr/remote_jobs/<id>,
+//  so it never touches this machine's own logs; the folder is deleted once
+//  the other machine has its logs (or an hour after an unfetched job ends,
+//  or when the bridge stops or starts). The shared testbench for remote
+//  jobs is built once in $DMEKLR_TMP/dme_klr/remote_runtime[_iv].
 //
 //  Requests from another machine reach only /regress/*, need the token
 //  (Authorization: Bearer <token>) and must come from a private (LAN)
@@ -32,7 +38,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream, openSync, readSync, fstatSync, closeSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync, createReadStream, openSync, readSync, fstatSync, closeSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +115,15 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   const sims = { verilator: MODE === 'lite' || !!verilator, iverilog: MODE === 'dev' && has('iverilog') && has('vvp') };
 
   const jobs = new Map();
+  // Each job runs with its own DMEKLR_TMP under here, so its logs never
+  // overwrite this machine's own runs' logs; the folder goes when the
+  // job's machine has fetched them (DELETE), or the job is dropped
+  const JOBS_DIR = join(TMP_ROOT, 'dme_klr', 'remote_jobs');
+  rmSync(JOBS_DIR, { recursive: true, force: true });   // a previous bridge's leftovers
+  const rmJob = job => {
+    const go = () => { try { rmSync(job.tmp, { recursive: true, force: true }); } catch { /* in use: next start */ } };
+    if (job.proc) job.proc.once('exit', go); else go();
+  };
   const builds = {};   // sim → Promise of the shared runtime dir (developer install)
 
   function info() {
@@ -119,7 +134,8 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   // The shared testbench, built once per bridge run (run_dashboard_parallel.sh does the same)
   function runtime(sim, job) {
     if (!builds[sim]) {
-      const dir = join(TMP_ROOT, 'dme_klr', sim === 'iverilog' ? 'runtime_iv' : 'runtime');
+      // (its own folder: this machine's own runs may be using theirs)
+      const dir = join(TMP_ROOT, 'dme_klr', sim === 'iverilog' ? 'remote_runtime_iv' : 'remote_runtime');
       builds[sim] = new Promise((res, rej) => {
         const p = spawn('bash', [join(DMEKLR, 'build_runtime.sh'), '--out', dir, ...(sim === 'iverilog' ? ['--iverilog'] : [])],
                         { cwd: DMEKLR, env: { ...process.env, DMEKLR_TMP: TMP_ROOT }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -145,12 +161,17 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (!o.srchash || o.srchash !== v.srchash) return [409, `different software here: ${v.version} (srchash ${v.srchash})`];
     const id = randomBytes(6).toString('hex');
     // The ROM images, sent with the request: kept by content hash
-    const env = { ...process.env, DMEKLR_TMP: TMP_ROOT, PYTHONUNBUFFERED: '1',
+    const tmp = join(JOBS_DIR, id);
+    mkdirSync(tmp, { recursive: true });
+    const env = { ...process.env, DMEKLR_TMP: tmp, PYTHONUNBUFFERED: '1',
                   DASH_INTERVAL_MS: String(Math.min(10000, Math.max(1, +o.interval_ms || 100))) };
     for (const cpu of ['dme', 'klr']) {
       const r = o.roms?.[cpu];
       if (!r) continue;
-      if (!ROM_NAME.test(r.name ?? '') || typeof r.mem !== 'string' || r.mem.length > 1e6) return [400, `bad ${cpu} image`];
+      if (!ROM_NAME.test(r.name ?? '') || typeof r.mem !== 'string' || r.mem.length > 1e6) {
+        rmSync(tmp, { recursive: true, force: true });
+        return [400, `bad ${cpu} image`];
+      }
       const dir = join(TMP_ROOT, 'regress_roms', createHash('sha256').update(r.mem).digest('hex').slice(0, 16));
       mkdirSync(dir, { recursive: true });
       const f = join(dir, r.name);
@@ -158,8 +179,8 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       env[`${cpu.toUpperCase()}_ROM_DIR`] = dir.replace(/\\/g, '/') + '/';
       env[`${cpu.toUpperCase()}_ROM_FILE`] = r.name;
     }
-    const logdir = join(TMP_ROOT, 'dme_klr', sim === 'iverilog' ? 'dash_logs' : 'v_dash_logs');
-    const job = { id, test: o.test, sim, logdir, state: 'starting', exit: null, out: [], proc: null, startedAt: Date.now(), killed: false };
+    const logdir = join(tmp, 'dme_klr', sim === 'iverilog' ? 'dash_logs' : 'v_dash_logs');
+    const job = { id, test: o.test, sim, tmp, logdir, state: 'starting', exit: null, out: [], proc: null, startedAt: Date.now(), killed: false };
     jobs.set(id, job);
     const keep = l => { job.out.push(l.replace(ANSI, '')); if (job.out.length > 40) job.out.shift(); };
     const launch = rtDir => {
@@ -197,10 +218,11 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     } catch { try { job.proc.kill('SIGTERM'); } catch { /* gone */ } }
   }
 
-  // Finished jobs nobody fetched are dropped after a day
+  // Finished jobs nobody fetched (their machine went away) are dropped,
+  // logs and all, after an hour
   setInterval(() => {
-    for (const [id, j] of jobs) if (j.state === 'done' && Date.now() - j.endedAt > 864e5) jobs.delete(id);
-  }, 36e5).unref();
+    for (const [id, j] of jobs) if (j.state === 'done' && Date.now() - j.endedAt > 36e5) { jobs.delete(id); rmJob(j); }
+  }, 6e5).unref();
 
   function handle(req, res, url) {
     const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(body); };
@@ -221,7 +243,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (!m) return false;
     const job = jobs.get(m[1]);
     if (!job) return send(404, 'no such job', 'text/plain'), true;
-    if (req.method === 'DELETE' && !m[2]) { kill(job); jobs.delete(job.id); return send(204, ''), true; }
+    if (req.method === 'DELETE' && !m[2]) { kill(job); jobs.delete(job.id); rmJob(job); return send(204, ''), true; }
     if (req.method !== 'GET') return false;
     if (!m[2]) {
       const t = job.state === 'running' ? logTimeMs(join(job.logdir, `${job.test}.log`)) : null;
@@ -243,7 +265,10 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     return send(404, 'no log', 'text/plain'), true;
   }
 
-  return { handle, info, mode: MODE, stopAll: () => { for (const j of jobs.values()) kill(j); } };
+  return { handle, info, mode: MODE, stopAll: () => {
+    for (const j of jobs.values()) kill(j);
+    try { rmSync(JOBS_DIR, { recursive: true, force: true }); } catch { /* next start */ }
+  } };
 }
 
 
