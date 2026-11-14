@@ -188,6 +188,19 @@ for t in warm_idle_5s cl_warm_idle; do
     [ "${n:-0}" -ge 2 ]; check $? "$t.dash.log has DS snapshots (${n:-0})"
 done
 
+# As a regression host (RUN REGRESSIONS, REGRESSION HOSTS): the package's
+# VERSION.txt, /regress/info, and one test sent through remote_test.mjs the
+# way another machine's runner sends it (here over loopback, no token)
+grep -q '^srchash [0-9a-f]\{20\}' "$PKG/VERSION.txt" 2>/dev/null; check $? "VERSION.txt names the software (srchash)"
+ri="$(curl -s -m 10 "http://127.0.0.1:$PORT/regress/info")"
+case "$ri" in *'"mode":"lite"'*'"srchash":"'*'"verilator":true'*) r=0 ;; *) r=1 ;; esac
+check $r "the bridge answers as a regression host (/regress/info)"
+RH="$WORK/remote"
+( cd "$PKG" && node dme_klr/live/remote_test.mjs --host "http://127.0.0.1:$PORT" --test warm_idle_5s --out "$RH" --sim-ms 300 --log raw ) > "$WORK/remote.txt" 2>&1
+r=$?; sed 's/^/    /' "$WORK/remote.txt" | cut -c1-200
+n="$(grep -cE '^(DME: )?\[DS\]' "$RH/warm_idle_5s.dash.log" 2>/dev/null)"
+[ $r = 0 ] && [ "${n:-0}" -ge 2 ] && [ -s "$RH/warm_idle_5s.log" ]; check $? "a test sent to it as a regression host comes back with its logs (${n:-0} DS snapshots)"
+
 # The TEST row the package ships (make_lite.sh): ramp_to_6000_knock at its
 # first knock pulse, listed with no run of the test, and still there after
 # run_tests.py's runs (a run's scan replaces only rows from logs)

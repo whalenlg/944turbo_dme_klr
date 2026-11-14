@@ -706,7 +706,9 @@ smaller value gives finer playback and larger logs.
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
 (Verilator, iverilog or both, workers, per-test build, the macOS VM test,
-update first or `--no-pull`) the snapshot interval and
+update first or `--no-pull`, and the iverilog suite's debug output
+`--DME_DEBUG` / `--DME_DEEP_DEBUG` / `--KLR_DEBUG`, whose tests are each built
+on their own and always run on this machine), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests
@@ -720,6 +722,35 @@ when the panel is closed (the button shows its %) and stops with **STOP RUN**
 or when the bridge stops. The groups come from
 `dme_klr/live/test_groups.json`, made from this appendix:
 `python3 dme_klr/live/test_groups.py check` says when the two differ.
+
+**Regression hosts.** Other machines on the same LAN can take some of the
+tests. On each one, with the same software (the same commit and the same
+local changes in `dme`, `klr`, `dme_klr`, `bin_images` and `paths.sh`, a
+lite package made from them counts too), start the bridge with
+`node dme_klr/live/bridge.mjs --listen 0.0.0.0 --token <secret>`. Then, in
+the panel's **REGRESSION HOSTS** box, add it with **ADD REGRESSION HOST**:
+its host name or IP address, port (8951), the most tests it may run at once,
+and the token. The panel shows each host as ✓ (same software, its CPUs and
+simulators) or ✗ and why, and the run spreads its dashboard tests over this
+machine's workers and every ✓ host's threads (**spread the tests over these
+hosts too** turns that off for a run). A host's tests write their progress
+and logs back here, so the bars, verdicts, snapshots and summary are the same
+as for local ones, and each test shows the host it ran on. On the host, each test runs in its own folder,
+`$DMEKLR_TMP/dme_klr/remote_jobs/<id>`, deleted once its logs have been
+fetched, so the host's own logs are never overwritten. An iverilog test's waveform
+(`fst/<test>.fst`) comes back too, into this machine's `dash_logs/fst/`. If a host stops
+answering (15 s when its bridge has stopped, 90 s otherwise), its test goes
+back in the queue and the host gets no more tests that run; one without
+iverilog drops out of the iverilog suite only. The hosts are remembered in
+`$DMEKLR_TMP/dme_klr/regress_hosts.json`, tokens included (readable only by
+you). A bridge started with `--listen` answers other machines only on the
+regression endpoints, only from private LAN addresses (10/8, 172.16/12,
+192.168/16, link-local) and only with the token; it is not meant for the
+internet. The CPU regressions, the comparison and the macOS VM test still run
+here, and debug flags or `VCD_ENABLE=1` keep every test here. Under the hood
+`run_dashboard_parallel.sh` reads the hosts from `$DMEKLR_REGRESS_HOSTS` and
+runs each remote test through `live/remote_test.mjs`
+(`live/regress_host.mjs` is the host side).
 
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch
@@ -1413,8 +1444,10 @@ per line:
 
 `node bridge.mjs [--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
 [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>] [--allow-origin
-<origin>]`. `--dme-asm` / `--klr-asm` pin a listing instead of following the
-ROM.
+<origin>] [--listen <address> --token <secret>]`. `--dme-asm` / `--klr-asm` pin a listing instead of following the
+ROM. `--listen <address> --token <secret>` lets other machines on the LAN use this
+one as a regression host (see RUN REGRESSIONS); without them the bridge
+answers this machine only.
 
 ### Troubleshooting
 

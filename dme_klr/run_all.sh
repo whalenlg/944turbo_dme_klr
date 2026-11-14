@@ -7,12 +7,16 @@
 #  Usage:
 #    ./run_all.sh [--verilator | --iverilog] [--per-test-build]
 #                 [--macos-test install|lite|both|none] [--no-pull]
-#                 [--tests "NAME|GROUP ..."] [workers 1-8, default 8]
+#                 [--tests "NAME|GROUP ..."] [--DME_DEBUG] [--DME_DEEP_DEBUG]
+#                 [--KLR_DEBUG] [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  --tests runs only those dashboard tests (names, or the group names
 #  run_dashboard_parallel.sh knows) in steps 3-4; default all of them.
 #  --no-pull skips the "git checkout main" and "git pull" at the start.
+#  --DME_DEBUG / --DME_DEEP_DEBUG / --KLR_DEBUG go to the iverilog suite
+#  (step 4) only: each test is built on its own with that debug output, and
+#  every test stays on this machine (no regression hosts; large dumps).
 #  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
@@ -37,11 +41,12 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,28s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,32s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
 MACOS_TEST=both
 SUITE_TESTS=()
 PULL=1
+IV_DEBUG=()
 _next=""
 for arg in "$@"; do
     if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
@@ -55,6 +60,7 @@ for arg in "$@"; do
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
         --per-test-build) PT_OPT=(--per-test-build) ;;
+        --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) IV_DEBUG+=("$arg") ;;
         -h|--help)   usage; exit 0 ;;
         -*)          echo "run_all.sh: unknown option '$arg'" >&2; usage >&2; exit 2 ;;
         *)           ARGS+=("$arg") ;;
@@ -172,8 +178,8 @@ hdr "4/6  iverilog Dashboard Test Suite"
 if [ "$RUN_IVERILOG" = "1" ]; then
     cd "$DME_KLR"
     log "Running iverilog suite (--all) ..."
-    log "Running: bash run_dashboard_parallel.sh $WORKERS"
-    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
+    log "Running: bash run_dashboard_parallel.sh $WORKERS ${IV_DEBUG[*]+${IV_DEBUG[*]}}"
+    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} ${IV_DEBUG[@]+"${IV_DEBUG[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
     log "iverilog test suite completed"
     IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
     IV_SUMMARY=""

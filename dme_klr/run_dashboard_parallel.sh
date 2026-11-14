@@ -283,52 +283,83 @@ validate_one() {
 }
 
 # ── Worker pool ───────────────────────────────────────────────────────────────
-RUNNING=0
+# Slots: WORKERS here, plus the threads of each regression host in
+# $DMEKLR_REGRESS_HOSTS (a JSON list [{name, url, token, threads}], which the
+# dashboard's RUN REGRESSIONS panel writes; see live/regress_host.mjs). A
+# host's test runs through live/remote_test.mjs, which brings its logs back
+# here for validate_one; if the host drops (exit 75) the test goes back in
+# the queue and the host gets no more tests this run.
 COMPLETED=0
-declare -a PIDS=()
-declare -a PID_NAMES=()
 declare -a SIM_FAILED=()
+declare -a SLOT_HOST=() SLOT_PID=() SLOT_TEST=()
+declare -a H_NAME=() H_URL=() H_TOKEN=() H_OFF=()
+for ((i = 0; i < WORKERS; i++)); do SLOT_HOST+=(""); SLOT_PID+=(""); SLOT_TEST+=(""); done
+if [ -n "${DMEKLR_REGRESS_HOSTS:-}" ] && [ -f "$DMEKLR_REGRESS_HOSTS" ]; then
+    if [ ${#EXTRA_FLAGS[@]} -gt 0 ] || [ "${VCD_ENABLE:-}" = "1" ]; then
+        echo "Regression hosts not used: debug flags / VCD_ENABLE run every test here"
+    else
+        while IFS=$'\t' read -r _n _u _t _k; do
+            [ -n "$_u" ] || continue
+            _h=${#H_NAME[@]}
+            H_NAME+=("$_n"); H_URL+=("$_u"); H_TOKEN+=("$_t"); H_OFF+=(0)
+            for ((i = 0; i < _k; i++)); do SLOT_HOST+=("$_h"); SLOT_PID+=(""); SLOT_TEST+=(""); done
+            echo "Regression host: $_n, $_k thread(s)"
+        done < <(python3 -c 'import json,sys
+for h in json.load(open(sys.argv[1])):
+    print("%s\t%s\t%s\t%d" % (h["name"], h["url"], h["token"], int(h["threads"])))' "$DMEKLR_REGRESS_HOSTS")
+    fi
+fi
+QUEUE=("${TESTS[@]}")
 
 # Ctrl-C / kill: stop the running tests too. Background jobs in a script
 # ignore SIGINT, so without this they keep running after the runner is
 # gone, and a later run of the same test shares (and deletes) their log.
+# (A remote test's remote_test.mjs stops its job on the host.)
 kill_tree() {
     local c
     for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
     kill -TERM "$1" 2>/dev/null
 }
+running_count() {
+    local n=0 i
+    for i in "${!SLOT_PID[@]}"; do [ -n "${SLOT_PID[$i]}" ] && n=$((n + 1)); done
+    echo "$n"
+}
 on_interrupt() {
     trap - INT TERM
     echo ""
-    echo "  Interrupted — stopping ${#PIDS[@]} running test(s): ${PID_NAMES[*]}"
-    for pid in "${PIDS[@]}"; do kill_tree "$pid"; done
+    echo "  Interrupted — stopping $(running_count) running test(s): ${SLOT_TEST[*]}"
+    for i in "${!SLOT_PID[@]}"; do [ -n "${SLOT_PID[$i]}" ] && kill_tree "${SLOT_PID[$i]}"; done
     exit 130
 }
 trap on_interrupt INT TERM
 
 reap_finished() {
-    local NEW_PIDS=() NEW_NAMES=()
-    for i in "${!PIDS[@]}"; do
-        local pid="${PIDS[$i]}"
-        local name="${PID_NAMES[$i]}"
-        if ! kill -0 "$pid" 2>/dev/null; then
-            wait "$pid"
-            local status=$?
-            if [ $status -ne 0 ]; then
-                printf "  [SIM ERR] %-22s exit=%d\n" "$name" "$status"
-                SIM_FAILED+=("$name")
-            fi
-            validate_one "$name"
-            COMPLETED=$(( COMPLETED + 1 ))
-            printf "  [%d of %d completed]\n" "$COMPLETED" "$TOTAL"
-        else
-            NEW_PIDS+=("$pid")
-            NEW_NAMES+=("$name")
+    local i pid name status h
+    for i in "${!SLOT_PID[@]}"; do
+        pid="${SLOT_PID[$i]}"
+        [ -n "$pid" ] || continue
+        kill -0 "$pid" 2>/dev/null && continue
+        wait "$pid"
+        status=$?
+        name="${SLOT_TEST[$i]}"
+        h="${SLOT_HOST[$i]}"
+        SLOT_PID[$i]=""; SLOT_TEST[$i]=""
+        if [ -n "$h" ] && [ "$status" -eq 75 ]; then
+            # the host couldn't take it or dropped: back in the queue
+            H_OFF[$h]=1
+            QUEUE=("$name" ${QUEUE[@]+"${QUEUE[@]}"})
+            printf "  [REQUEUE] %-22s %s dropped out (see %s)\n" "$name" "${H_NAME[$h]}" "$LOGDIR/${name}.runner.log"
+            continue
         fi
+        if [ $status -ne 0 ]; then
+            printf "  [SIM ERR] %-22s exit=%d\n" "$name" "$status"
+            SIM_FAILED+=("$name")
+        fi
+        validate_one "$name"
+        COMPLETED=$(( COMPLETED + 1 ))
+        printf "  [%d of %d completed]\n" "$COMPLETED" "$TOTAL"
     done
-    PIDS=("${NEW_PIDS[@]}")
-    PID_NAMES=("${NEW_NAMES[@]}")
-    RUNNING=${#PIDS[@]}
 }
 
 # ── One build for every test (build_runtime.sh) ─────────────────────────────
@@ -355,28 +386,34 @@ else
 fi
 
 echo ""
-for test in "${TESTS[@]}"; do
-    while [ "$RUNNING" -ge "$WORKERS" ]; do
-        reap_finished
-        [ "$RUNNING" -ge "$WORKERS" ] && sleep 1
-    done
-
-    (
-        cd "$SCRIPT_DIR"
-        bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
-    ) &
-    PIDS+=("$!")
-    PID_NAMES+=("$test")
-    # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
-    printf "  [START]  %s\n" "$test"
-    RUNNING=${#PIDS[@]}
-done
-
-echo ""
-echo "  Waiting for remaining tests..."
-while [ "${#PIDS[@]}" -gt 0 ]; do
+_sim=iverilog; [ "$USE_VERILATOR" = "1" ] && _sim=verilator
+_pt=(); [ "$PER_TEST_BUILD" = "1" ] && _pt=(--per-test-build)
+while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
     reap_finished
-    [ "${#PIDS[@]}" -gt 0 ] && sleep 1
+    for i in "${!SLOT_PID[@]}"; do
+        [ ${#QUEUE[@]} -gt 0 ] || break
+        [ -z "${SLOT_PID[$i]}" ] || continue
+        h="${SLOT_HOST[$i]}"
+        [ -z "$h" ] || [ "${H_OFF[$h]}" = 0 ] || continue
+        test="${QUEUE[0]}"
+        QUEUE=(${QUEUE[@]+"${QUEUE[@]:1}"})
+        if [ -z "$h" ]; then
+            (
+                cd "$SCRIPT_DIR"
+                bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
+            ) &
+            # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
+            printf "  [START]  %s\n" "$test"
+        else
+            DMEKLR_REGRESS_TOKEN="${H_TOKEN[$h]}" node "$SCRIPT_DIR/live/remote_test.mjs" --host "${H_URL[$h]}" \
+                --test "$test" --sim "$_sim" --out "$LOGDIR" --interval "$DASH_INTERVAL_MS" ${_pt[@]+"${_pt[@]}"} \
+                >> "$LOGDIR/${test}.runner.log" 2>&1 &
+            printf "  [START]  %s  @%s\n" "$test" "${H_NAME[$h]}"
+        fi
+        SLOT_PID[$i]=$!
+        SLOT_TEST[$i]="$test"
+    done
+    [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ] && sleep 1
 done
 
 # ── Tally verdicts ────────────────────────────────────────────────────────────
