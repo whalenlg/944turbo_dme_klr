@@ -9,11 +9,14 @@
 //                       package's prebuilt Verilator simulators; there
 //                       is no iverilog in the package)
 //
-//    GET  /runall         {mode, platform, tart, cpus, groups, manual, roms, run}
+//    GET  /runall         {mode, platform, tart, cpus, groups, manual, ivDisk, roms, run}
 //                         groups: the tests in the manuals' Appendix A
 //                         groups (test_groups.json), each with its
 //                         simulated length and the anchor of its section
-//                         in manual; run: the current or last run
+//                         in manual; ivDisk: dme_klr/iv_disk_rates.json
+//                         (iv_disk_usage.sh; null in the lite package),
+//                         the iverilog debug runs' MB per simulated
+//                         second; run: the current or last run
 //    POST /runall/start   JSON body: {sims: ['verilator','iverilog'],
 //                         workers, perTestBuild, macosTest, pull,
 //                         debug: {<test>: ['DME_DEBUG'|'DME_DEEP_DEBUG'|
@@ -28,6 +31,9 @@
 //                         (run86.sh, run_carpokes.sh); default the 1989
 //                         ones. GET /runall lists them (bin_images/<cpu>
 //                         and the uploaded ones) and the named pairs
+//    GET  /runall/fqs     {exit, at, iv_dir, vl_dir, text}: fqs_analysis.py
+//                         (run_all.sh step 5) on the dash logs as they are
+//                         now, iverilog and Verilator (developer install)
 //    POST /runall/stop    stop the run and every test it started
 //
 //  Progress is simulated time: a running test's share is the newest
@@ -522,9 +528,32 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       // each group's MANUAL button: <manual>#<anchor> (the package's manual
       // in the lite package, the developer one here)
       const manual = MODE === 'lite' ? 'docs/USER_MANUAL.md' : 'docs/DEVELOPER_MANUAL.md';
-      return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual,
+      // the iverilog debug runs' disk use per simulated second, measured by
+      // iv_disk_usage.sh (the panel estimates each picked test's from it)
+      const ivDisk = MODE === 'dev' ? readJson(join(DMEKLR, 'iv_disk_rates.json')) : null;
+      return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual, ivDisk,
                          roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view(),
                          hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST) }), true;
+    }
+    if (req.method === 'GET' && url.pathname === '/runall/fqs') {
+      // The FQS analysis (fqs_analysis.py, run_all.sh's step 5) of the
+      // dash logs as they are now, iverilog and Verilator, for the panel's
+      // FQS ANALYSIS view
+      if (MODE !== 'dev') return text(404, 'the FQS analysis is in the developer install only'), true;
+      const iv = join(TMP_ROOT, 'dme_klr', 'dash_logs'), vl = join(TMP_ROOT, 'dme_klr', 'v_dash_logs');
+      const p = spawn(PY, [join(DMEKLR, 'fqs_analysis.py'), '--iv-dir', iv, '--vl-dir', vl],
+                      { cwd: DMEKLR, env: { ...process.env, DMEKLR_TMP: TMP_ROOT, PYTHONIOENCODING: 'utf-8' } });
+      const out = [];
+      const timer = setTimeout(() => p.kill(), 120000);
+      p.stdout.on('data', d => out.push(d));
+      p.stderr.on('data', d => out.push(d));
+      p.on('error', e => { clearTimeout(timer); json(500, { error: `couldn't run fqs_analysis.py: ${e.message}` }); });
+      p.on('close', code => {
+        clearTimeout(timer);
+        json(200, { exit: code, at: Date.now(), iv_dir: iv, vl_dir: vl,
+                    text: Buffer.concat(out).toString('utf8').replace(ANSI, '') });
+      });
+      return true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;
     if (req.method === 'POST' && url.pathname === '/runall/hosttest/stop') return text(hostTestStop() ? 204 : 409, ''), true;

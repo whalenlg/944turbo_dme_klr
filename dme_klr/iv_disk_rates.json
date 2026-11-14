@@ -1,0 +1,66 @@
+{
+ "format": "dme-klr-iv-disk-rates",
+ "version": 1,
+ "about": "iverilog dashboard tests: MB on disk per simulated second for each debug flag combination (key: the flags, sorted, joined by +; '' = none). kept = FST + .log.gz + .dash.log + hex dumps after the test; peak = the most one test has on disk while it runs (raw .log and VCD before gzip / vcd2fst); build_mb = its own .vvp. Made by dme_klr/iv_disk_usage.sh.",
+ "measured": {
+  "date": "2026-11-14",
+  "tests": [
+   "cl_ramp_to_6000_FQS0",
+   "cl_ramp_to_6000_FQS3",
+   "cl_ramp_to_6000_FQS7",
+   "ramp_to_6000_FQS0",
+   "ramp_to_6000_FQS7"
+  ],
+  "sim_s": 1.0
+ },
+ "configs": {
+  "": {
+   "kept_mb_per_sim_s": 5.323,
+   "fst_mb_per_sim_s": 5.206,
+   "peak_mb_per_sim_s": 91.898,
+   "build_mb": 1.07
+  },
+  "KLR_DEBUG": {
+   "kept_mb_per_sim_s": 82.221,
+   "fst_mb_per_sim_s": 78.89,
+   "peak_mb_per_sim_s": 1784.57,
+   "build_mb": 1.13
+  },
+  "DME_DEBUG": {
+   "kept_mb_per_sim_s": 115.963,
+   "fst_mb_per_sim_s": 109.81,
+   "peak_mb_per_sim_s": 1401.648,
+   "build_mb": 1.07
+  },
+  "DME_DEEP_DEBUG": {
+   "kept_mb_per_sim_s": 112.073,
+   "fst_mb_per_sim_s": 108.356,
+   "peak_mb_per_sim_s": 1183.352,
+   "build_mb": 1.07
+  },
+  "DME_DEBUG+DME_DEEP_DEBUG": {
+   "kept_mb_per_sim_s": 157.58,
+   "fst_mb_per_sim_s": 146.506,
+   "peak_mb_per_sim_s": 1804.883,
+   "build_mb": 1.07
+  },
+  "DME_DEBUG+KLR_DEBUG": {
+   "kept_mb_per_sim_s": 200.409,
+   "fst_mb_per_sim_s": 189.203,
+   "peak_mb_per_sim_s": 3004.422,
+   "build_mb": 1.13
+  },
+  "DME_DEEP_DEBUG+KLR_DEBUG": {
+   "kept_mb_per_sim_s": 197.539,
+   "fst_mb_per_sim_s": 189.241,
+   "peak_mb_per_sim_s": 2788.434,
+   "build_mb": 1.13
+  },
+  "DME_DEBUG+DME_DEEP_DEBUG+KLR_DEBUG": {
+   "kept_mb_per_sim_s": 243.567,
+   "fst_mb_per_sim_s": 226.739,
+   "peak_mb_per_sim_s": 3407.18,
+   "build_mb": 1.13
+  }
+ }
+}
