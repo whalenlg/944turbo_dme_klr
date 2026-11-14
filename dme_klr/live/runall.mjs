@@ -75,25 +75,36 @@ const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 const NAME = /^[A-Za-z0-9_]+$/;
 const MAX_OUT = 400;           // output lines kept for the panel
 const POLL_MS = 2000;          // read the running tests' logs this often
-const TAIL_BYTES = 64 * 1024;  // of each log, from the end
 const RANK = { PASS: 0, SKIP: 0, WARN: 1, FAIL: 2 };
 
 const readJson = f => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
 
 // Newest simulated time in a log, in ms (DS lines start with it, the
-// PHASE / STATUS lines carry t=<ms> ms), from its last TAIL_BYTES
+// PHASE / STATUS lines carry t=<ms> ms). Read forward from where the last
+// poll stopped (at most READ_MAX new bytes a poll), so the time only goes
+// up: a debug run (--test-debug) prints megabytes of trace between two DS
+// lines, and a look at just the end of the log often found none and sent
+// the test's bar back to 0.
+const READ_MAX = 8 * 1024 * 1024;
+const logPos = new Map();   // file → {pos, best}
 function logTimeMs(file) {
   let fd;
+  let st = logPos.get(file);
   try {
     fd = openSync(file, 'r');
     const size = fstatSync(fd).size;
-    const len = Math.min(size, TAIL_BYTES);
-    const buf = Buffer.alloc(len);
-    readSync(fd, buf, 0, len, size - len);
-    let best = 0;
-    for (const m of buf.toString('latin1').matchAll(/\[DS\] (\d+),|\bt=(\d+) ms/g)) best = Math.max(best, +(m[1] ?? m[2]));
-    return best;
-  } catch { return 0; } finally { if (fd !== undefined) closeSync(fd); }
+    if (!st || size < st.pos) st = { pos: 0, best: 0 };    // new or rewritten log
+    let from = Math.max(st.pos - 64, 0);                    // a line cut at the last read
+    if (size - from > READ_MAX) from = size - READ_MAX;
+    if (size > from) {
+      const buf = Buffer.alloc(size - from);
+      readSync(fd, buf, 0, buf.length, from);
+      for (const m of buf.toString('latin1').matchAll(/\[DS\] (\d+),|\bt=(\d+) ms/g)) st.best = Math.max(st.best, +(m[1] ?? m[2]));
+      st.pos = size;
+    }
+    logPos.set(file, st);
+    return st.best;
+  } catch { return st?.best ?? 0; } finally { if (fd !== undefined) closeSync(fd); }
 }
 
 // The ROM image pairs the developer scripts name (run89.sh, run86.sh,
@@ -385,6 +396,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     }
     if ((m = line.match(/^\s*\[START\]\s+([A-Za-z0-9_]+)(?:\s+@(\S+))?/)) && su.tests[m[1]]) {
       Object.assign(su.tests[m[1]], { state: 'running', t_s: 0, startedAt: Date.now(), host: m[2] ?? null });
+      logPos.delete(join(su.dir, `${m[1]}.log`));   // a new log: read it from the start
       su.building = false;
       return;
     }
@@ -398,7 +410,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
   function poll(r) {
     for (const su of Object.values(r.suites))
       for (const [name, t] of Object.entries(su.tests))
-        if (t.state === 'running') t.t_s = Math.min(t.len_s, logTimeMs(join(su.dir, `${name}.log`)) / 1000);
+        if (t.state === 'running') t.t_s = Math.max(t.t_s, Math.min(t.len_s, logTimeMs(join(su.dir, `${name}.log`)) / 1000));
   }
 
   function stop() {
