@@ -208,6 +208,13 @@ def test_rows(name, log, verdict, detail, interval):
 
 
 def main():
+    # the verdicts have ✓ and the like, which a Windows console or pipe's
+    # code page may not have
+    for st in (sys.stdout, sys.stderr):
+        try:
+            st.reconfigure(errors='replace')
+        except (AttributeError, ValueError):
+            pass
     o = args_of(sys.argv[1:])
     try:
         tests = json.load(open(os.path.join(LIVE, 'tests.json')))['tests']
@@ -284,10 +291,10 @@ def main():
         time.sleep(0.5)
     n = {v: sum(r[1] == v for r in res) for v in ('PASS', 'WARN', 'FAIL')}
     wall = time.time() - t0
-    with open(os.path.join(LOGDIR, 'validation.log'), 'w') as f:
+    with open(os.path.join(LOGDIR, 'validation.log'), 'w', encoding='utf-8') as f:
         for name, v, detail in res:
             f.write(f'{v}\t{name:22s}\t{detail}\n')
-    with open(os.path.join(LOGDIR, 'parallel_summary.log'), 'w') as f:
+    with open(os.path.join(LOGDIR, 'parallel_summary.log'), 'w', encoding='utf-8') as f:
         f.write(f'89 DME 951 Parallel Test Run (lite) — {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
         f.write(f'Wall time: {int(wall) // 60}m{int(wall) % 60}s   Total: {len(res)}   PASS: {n["PASS"]}   WARN: {n["WARN"]}   FAIL: {n["FAIL"]}\n\n')
         for name, v, detail in sorted(res, key=lambda r: ('FAIL', 'WARN', 'PASS').index(r[1])):
