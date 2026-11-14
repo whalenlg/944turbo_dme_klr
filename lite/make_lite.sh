@@ -37,20 +37,21 @@
 #    <out>/dmeklr-lite-<version>-<platform>/       and
 #    <out>/dmeklr-lite-<version>-<platform>.tar.gz (.zip on Windows)
 #
-#  The dashboard comes from a dme-dashboard checkout (built here with npm,
-#  which needs Node.js and, the first time, the network for npm ci) or
-#  from a dashboard already built with npm run build:lite.
+#  The dashboard is fetched from GitHub (whalenlg/dme-dashboard, main by
+#  default) into obj/lite/dme-dashboard/ and built there with npm ci and
+#  npm run build:lite, so the package is the same wherever it is made.
+#  Needs git, Node.js and the network.
 #
 #  Usage:  lite/make_lite.sh [--out <dir>] [--version <v>] [--no-build]
-#                            [--dashboard <dir>]
-#    --out <dir>        where the package goes (default $DMEKLR_TMP/lite)
-#    --version <v>      version in the name (default: git describe)
-#    --no-build         package the simulator already in obj/lite/
-#    --dashboard <dir>  a dme-dashboard checkout, or its built dist-lite/
-#                       (default: $DMEKLR_DASHBOARD, else the first of
-#                       dashboard/ (where the installers' --with-dashboard
-#                       clones it), dashboard/dme-dashboard/ and
-#                       ../dme-dashboard/ that holds a checkout)
+#                            [--dashboard-ref <ref>] [--dashboard <dir>]
+#    --out <dir>            where the package goes (default $DMEKLR_TMP/lite)
+#    --version <v>          version in the name (default: git describe)
+#    --no-build             package the simulator already in obj/lite/
+#    --dashboard-ref <ref>  the dme-dashboard branch or tag to build
+#                           (default $DMEKLR_DASHBOARD_REF, else main)
+#    --dashboard <dir>      instead of GitHub: a local dme-dashboard
+#                           checkout, or a dist-lite/ already built
+#                           (for trying dashboard changes not yet pushed)
 # ============================================================
 
 # shellcheck disable=SC2154  # the _c_* settings come from asm_select.sh's _asm_cfg
@@ -68,10 +69,12 @@ LITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$LITE_DIR/.." && pwd)"
 source "$REPO/paths.sh"
 
-OUT=""; VERSION=""; BUILD=1; DASH_SRC=""
+OUT=""; VERSION=""; BUILD=1; DASH_SRC=""; DASH_REF="${DMEKLR_DASHBOARD_REF:-main}"
+DASH_URL="https://github.com/whalenlg/dme-dashboard.git"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dashboard) DASH_SRC="$2"; shift 2 ;;
+        --dashboard-ref) DASH_REF="$2"; shift 2 ;;
         --out)      OUT="$2"; shift 2 ;;
         --version)  VERSION="$2"; shift 2 ;;
         --no-build) BUILD=0; shift ;;
@@ -81,16 +84,12 @@ done
 OUT="${OUT:-$DMEKLR_TMP/lite}"
 VERSION="${VERSION:-$(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo dev)}"
 DASH_SRC="${DASH_SRC:-${DMEKLR_DASHBOARD:-}}"
-if [ -z "$DASH_SRC" ]; then
-    for d in "$REPO/dashboard" "$REPO/dashboard/dme-dashboard" "$REPO/../dme-dashboard"; do
-        [ -f "$d/package.json" ] && [ -f "$d/index.html" ] && { DASH_SRC="$d"; break; }
-    done
-    [ -n "$DASH_SRC" ] || { echo "make_lite.sh: no dme-dashboard checkout in $REPO/dashboard, $REPO/dashboard/dme-dashboard or $REPO/../dme-dashboard (clone https://github.com/whalenlg/dme-dashboard into one, or pass --dashboard DIR / set DMEKLR_DASHBOARD)" >&2; exit 1; }
-fi
-[ -f "$DASH_SRC/index.html" ] || { echo "make_lite.sh: no dashboard at $DASH_SRC (a dme-dashboard checkout or its dist-lite/; see --dashboard)" >&2; exit 1; }
-DASH_SRC="$(cd "$DASH_SRC" && pwd)"
-if [ -f "$DASH_SRC/package.json" ] && ! grep -q '"build:lite"' "$DASH_SRC/package.json"; then
-    echo "make_lite.sh: $DASH_SRC has no npm run build:lite (pull dme-dashboard)" >&2; exit 1
+if [ -n "$DASH_SRC" ]; then
+    [ -f "$DASH_SRC/index.html" ] || { echo "make_lite.sh: no dashboard at $DASH_SRC (a dme-dashboard checkout or its dist-lite/)" >&2; exit 1; }
+    DASH_SRC="$(cd "$DASH_SRC" && pwd)"
+else
+    command -v git >/dev/null 2>&1 || { echo "make_lite.sh: needs git to fetch the dashboard" >&2; exit 1; }
+    command -v npm >/dev/null 2>&1 || { echo "make_lite.sh: needs npm (Node.js) to build the dashboard" >&2; exit 1; }
 fi
 
 EXE=""
@@ -207,9 +206,25 @@ for cpu in dme klr; do
 done
 
 # The dashboard, built for the bridge to serve at its root, offline
+if [ -z "$DASH_SRC" ]; then
+    # From GitHub: a shallow clone kept in obj/lite/, brought to the ref
+    DASH_SRC="$REPO/dme_klr/live/obj/lite/dme-dashboard"
+    step "Fetching the dashboard ($DASH_URL, $DASH_REF)"
+    if [ ! -d "$DASH_SRC/.git" ]; then
+        rm -rf "$DASH_SRC"; mkdir -p "$(dirname "$DASH_SRC")"
+        git clone -q --depth 1 --branch "$DASH_REF" "$DASH_URL" "$DASH_SRC"
+    else
+        git -C "$DASH_SRC" fetch -q --depth 1 origin "$DASH_REF"
+        git -C "$DASH_SRC" checkout -q --force FETCH_HEAD
+        git -C "$DASH_SRC" clean -qfdx -e node_modules
+    fi
+    echo "  dme-dashboard $DASH_REF at $(git -C "$DASH_SRC" rev-parse --short HEAD)"
+fi
 if [ -f "$DASH_SRC/package.json" ]; then
-    step "Building the dashboard (npm run build:lite in $DASH_SRC)"
-    ( cd "$DASH_SRC" && { [ -d node_modules/vite ] || npm ci; } && npm run build:lite ) >&2
+    grep -q '"build:lite"' "$DASH_SRC/package.json" \
+        || { echo "make_lite.sh: $DASH_SRC has no npm run build:lite (an old dme-dashboard)" >&2; exit 1; }
+    step "Building the dashboard (npm ci, npm run build:lite)"
+    ( cd "$DASH_SRC" && npm ci --no-audit --no-fund && npm run build:lite ) >&2
     DASH_BUILT="$DASH_SRC/dist-lite"
 else
     DASH_BUILT="$DASH_SRC"
@@ -219,6 +234,9 @@ if grep -rlE 'fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg\.com|cdnjs' "
     echo "make_lite.sh: the dashboard build loads something from the network (above)" >&2; exit 1
 fi
 cp -R "$DASH_BUILT" "$PKG/dashboard"
+if git -C "$DASH_SRC" rev-parse HEAD >/dev/null 2>&1; then
+    echo "dme-dashboard $(git -C "$DASH_SRC" rev-parse HEAD)" > "$PKG/dashboard/VERSION.txt"
+fi
 
 cp "$LITE_DIR/run_lite.sh" "$LITE_DIR/run_lite.cmd" "$PKG/"
 chmod +x "$PKG/run_lite.sh"

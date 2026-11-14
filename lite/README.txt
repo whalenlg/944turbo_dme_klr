@@ -69,17 +69,17 @@ CONTENTS
 
 BUILDING THIS PACKAGE (developers)
   The package is made from the developer install (the 944turbo_dme_klr
-  repository, set up by its install/ scripts) and a checkout of the
-  dashboard (whalenlg/dme-dashboard) in its dashboard/ folder (the
-  installers' --with-dashboard puts it there), dashboard/dme-dashboard/
-  or ../dme-dashboard/ (or anywhere, with --dashboard DIR or
-  DMEKLR_DASHBOARD):
-    git clone https://github.com/whalenlg/dme-dashboard dashboard
-    lite/make_lite.sh               builds the simulators, runs npm ci and
-                                    npm run build:lite in the dashboard,
-                                    and writes the package and its archive
-                                    to $DMEKLR_TMP/lite
+  repository, set up by its install/ scripts):
+    lite/make_lite.sh               builds the simulators, fetches the
+                                    dashboard from GitHub
+                                    (whalenlg/dme-dashboard, main; or
+                                    --dashboard-ref <branch or tag>),
+                                    builds it with npm, and writes the
+                                    package and its archive to
+                                    $DMEKLR_TMP/lite
     lite/test_lite.sh <archive>     checks a package on this machine
-  The dashboard alone: in dme-dashboard, npm ci once, then npm run dev (a
-  development server), npm run build (the hosted site) or npm run
-  build:lite (this package's copy, into dist-lite/).
+  dashboard/VERSION.txt names the dme-dashboard commit it was built from.
+  To package dashboard changes not yet on GitHub: --dashboard <checkout>.
+  The dashboard alone: in a dme-dashboard checkout, npm ci once, then
+  npm run dev (a development server), npm run build (the hosted site) or
+  npm run build:lite (this package's copy, into dist-lite/).

@@ -312,7 +312,8 @@ needed.
 |---|---|---|
 | Live mode, code debugger, snapshots, ROM swapping | yes | yes |
 | Disassembly workbooks; edited workbooks rebuild the listing | yes | yes |
-| Regression tests, TEST LOAD from a test's warning | not yet | yes |
+| Regression tests (`run_tests.py`), TEST LOAD from a test's warning | yes | yes |
+| Runs with no internet connection (dashboard included) | yes | with the dashboard built locally |
 | Changing the model (Verilog) | no | yes |
 | Needs | Node.js 18+; Python with `requirements.txt` (pandas, openpyxl, matplotlib, numpy); bash to rebuild listings | everything in [Dependencies](#dependencies) |
 
@@ -324,7 +325,12 @@ pip install -r requirements.txt   # once
 ./run_lite.sh                     # Windows: run_lite.cmd
 ```
 
-and open the dashboard and press **LIVE**, as in [section 5](#5-live-simulation).
+and open **http://127.0.0.1:8951/?live**: the bridge serves the
+dashboard that comes with the package, already in live mode, so no
+internet connection is needed (the hosted dashboard works too: press
+**LIVE**, as in [section 5](#5-live-simulation)). `python3 run_tests.py`
+runs the regression tests on the packaged testbench (see the package's
+README.txt); a test that warns adds a TEST row that TEST LOAD runs.
 Snapshots and the map-graph cache go to `data/` in the package folder
 (`DMEKLR_TMP` moves them). On macOS, `run_lite.sh` clears the
 downloaded-file flag on the package folder so the unsigned simulator can
@@ -350,8 +356,11 @@ lite/test_lite.sh "$DMEKLR_TMP"/lite/dmeklr-lite-*.tar.gz
 workbook, builds the simulator with `dme_klr/live/build_live.sh
 --relocatable` (in `obj/lite/`; every file path in it is relative, so it
 runs wherever the package is unpacked), and copies in the bridge, the ROM
-images, the workbooks and the scripts that make tables from them. It stops
-if any Verilog or C++ source ends up in the package.
+images, the workbooks and the scripts that make tables from them. It also
+fetches the dashboard from GitHub (whalenlg/dme-dashboard, `main`, or
+`--dashboard-ref <branch or tag>`), builds it with `npm run build:lite`
+and puts it in the package's `dashboard/`, so it needs git, Node.js and
+the network. It stops if any Verilog or C++ source ends up in the package.
 
 ### The Python venv (`944venv`)
 
