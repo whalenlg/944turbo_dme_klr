@@ -224,7 +224,7 @@ python3), activate the Python venv and set the output folder:
     source $REPO_DIR/setup
 
 Build output and logs go to \$DMEKLR_TMP, by default $(cd "$REPO_DIR/.." && pwd)/tmp
-(set DMEKLR_TMP to put them elsewhere; see docs/USER_MANUAL.md, section 1).
+(set DMEKLR_TMP to put them elsewhere; see docs/DEVELOPER_MANUAL.md, section 1).
 
 Then, for example:
     cd $REPO_DIR/klr && ./run_klr_regression

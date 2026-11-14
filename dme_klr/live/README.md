@@ -14,7 +14,7 @@ Then open the dashboard and press **LIVE**.
 
 For how to use the dashboard (log review, live mode, the code debugger and
 opening a regression test at a chosen time), see the
-[user manual](../../docs/USER_MANUAL.md).
+[developer manual](../../docs/DEVELOPER_MANUAL.md).
 
 ## ROM images
 
