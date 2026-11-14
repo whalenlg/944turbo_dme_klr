@@ -142,6 +142,11 @@ newer: Ubuntu 22.04, Arch, ...) and Windows x86_64. Each is one archive,
 The release archives are public, so no GitHub login is needed. The examples
 use release `v1.0`; for a newer one, change `v1.0` in the name and URL.
 
+Install **Node.js 18 or newer** (https://nodejs.org) first; see
+[What you need](#what-you-need). Each block below then downloads, unpacks,
+installs the Python packages and starts the simulator in one go. After the
+first time, only the last line (from the package folder) is needed.
+
 | Platform | Archive |
 |---|---|
 | macOS (Apple Silicon) | `dmeklr-lite-v1.0-macos-arm64.tar.gz` |
@@ -154,6 +159,8 @@ use release `v1.0`; for a newer one, change `v1.0` in the name and URL.
 curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-macos-arm64.tar.gz
 tar -xzf dmeklr-lite-v1.0-macos-arm64.tar.gz
 cd dmeklr-lite-v1.0-macos-arm64
+python3 -m pip install --user -r requirements.txt
+./run_lite.sh
 ```
 
 **Linux:**
@@ -162,6 +169,8 @@ cd dmeklr-lite-v1.0-macos-arm64
 curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-linux-x86_64.tar.gz
 tar -xzf dmeklr-lite-v1.0-linux-x86_64.tar.gz
 cd dmeklr-lite-v1.0-linux-x86_64
+python3 -m pip install --user -r requirements.txt   # Arch: see Installing below
+./run_lite.sh
 ```
 
 **Windows** (PowerShell):
@@ -170,6 +179,8 @@ cd dmeklr-lite-v1.0-linux-x86_64
 Invoke-WebRequest https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-windows-x86_64.zip -OutFile dmeklr-lite-v1.0-windows-x86_64.zip
 Expand-Archive dmeklr-lite-v1.0-windows-x86_64.zip -DestinationPath .
 cd dmeklr-lite-v1.0-windows-x86_64
+py -m pip install --user -r requirements.txt
+.\run_lite.cmd
 ```
 
 With the [GitHub CLI](https://cli.github.com) (`gh`) installed, this
@@ -180,8 +191,9 @@ downloads the archive for one platform on any system (`linux-x86_64` or
 gh release download v1.0 -R whalenlg/944turbo_dme_klr -p '*macos-arm64*'
 ```
 
-Then install the Python packages and start it as in
-[Installing](#installing-once) and [Starting it](#starting-it).
+Then open **http://127.0.0.1:8951/?live** in a browser
+([Starting it](#starting-it)). If pip refuses with
+"externally-managed-environment", see [Installing](#installing-once).
 
 ### What you need
 
