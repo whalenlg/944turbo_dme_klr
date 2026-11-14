@@ -9,7 +9,7 @@
 #
 #    dme_klr/live/obj/dme_klr_live   the simulator (build_live.sh --relocatable)
 #    dme_klr/live/bridge.mjs         the bridge (Node 18+), with runall.mjs and
-#                                    test_groups.json for the RUN ALL panel
+#                                    test_groups.json for the RUN REGRESSIONS panel
 #    dme_klr/live/*map_graphs.py     the MAPS tab graphs (matplotlib, numpy)
 #    bin_images/                     the ROM images
 #    {dme,klr}/disassemble/          the disassembly workbooks (.xlsx), the

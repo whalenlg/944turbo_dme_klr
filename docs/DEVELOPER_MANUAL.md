@@ -702,11 +702,14 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
 smaller value gives finer playback and larger logs.
 
-**From the dashboard.** The **RUN ALL ▸** button in the header opens a panel
+**From the dashboard.** The **RUN REGRESSIONS ▸** button in the header opens a panel
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
 (Verilator, iverilog or both, workers, per-test build, the macOS VM test,
-update first or `--no-pull`) and the snapshot interval, and lists the tests
+update first or `--no-pull`) the snapshot interval and
+the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
+and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
+uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests
 in the groups of [Appendix A](#appendix-a-regression-tests), where you pick
 whole groups or single tests. While it runs, a bar for each test shows its
 simulated time against its length, with its PASS / WARN / FAIL when it is
@@ -730,7 +733,7 @@ the right map graphs.
 
 * **Header.** The file name, the ROM images the log names, the count of
   STATUS and PHASE records, the **LIVE** button (connect to or leave the
-  simulator), **RUN ALL ▸** (run the regression suite, section 2),
+  simulator), **RUN REGRESSIONS ▸** (run the regression suite, section 2),
   **LOAD LOG** and **MANUAL ↗**, which opens this manual in a new tab.
 * **Tab rows.** Row 1 holds the DME tabs, row 2 the KLR tabs, and row 3 holds
   **TIMELINE** (DME and KLR together). In live mode it also holds **DME CODE**
@@ -1496,7 +1499,7 @@ The iverilog build (`./run_dashboard_tests.sh`) is about 10 times slower
 ([Appendix B](#appendix-b-iverilog-and-verilator)). `replay_wot_60s` is
 not in the lite package; its run time is estimated from its length.
 
-### Idle
+### <a id="tests-idle"></a>Idle
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1513,7 +1516,7 @@ not in the lite package; its run time is estimated from its length.
 | `warmup_enrichment` | 60 s | 39 min | Cold idle with lambda warm-up, to watch warm-up enrichment taper off |
 | `dme_klr_warm_idle` | 60 s | 39 min | Warm idle as a combined DME + KLR check |
 
-### Closed-loop drive cycles
+### <a id="tests-closed-loop-drive-cycles"></a>Closed-loop drive cycles
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1532,7 +1535,7 @@ not in the lite package; its run time is estimated from its length.
 | `cl_idle_controlled_by_isv` | 45 s | 31 min | As `cl_ac_halfway`, but with the idle valve's bypass air modelled so the firmware's idle control has to bring RPM back |
 | `overrun_cutoff` | 50 s | 35 min | Hold about 2100 rpm, then lift off: the firmware should cut fuel while coasting and bring it back near idle |
 
-### Open-loop RPM sweeps, ignition and idle valve
+### <a id="tests-open-loop-rpm-sweeps-ignition-and-idle-valve"></a>Open-loop RPM sweeps, ignition and idle valve
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1546,14 +1549,14 @@ not in the lite package; its run time is estimated from its length.
 | `isv_cold_idle` | 60 s | 39 min | Idle valve opening and closing during a cold idle |
 | `isv_load_droop` | 12 s | 8 min | RPM dips to 650 for 0.5 s at 5 s, to see the idle valve respond |
 
-### Fuel-quality sweeps
+### <a id="tests-fuel-quality-sweeps"></a>Fuel-quality sweeps
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
 | `cl_ramp_to_6000_FQS0` … `FQS7` | 40 s each | 28 min each | `cl_ramp_to_6000` with the fuel-quality input stepped through eight values (0x00 to 0xA7) and the engine model's fuel energy adjusted to match |
 | `ramp_to_6000_FQS0` … `FQS7` | 40 s each | 26 min each | `ramp_to_6000` with the same eight fuel-quality values |
 
-### Knock
+### <a id="tests-knock"></a>Knock
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1564,7 +1567,7 @@ not in the lite package; its run time is estimated from its length.
 | `cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH` | 10 s | 7 min | KLR knock noise-level input reading high |
 | `cl_ramp_to_6000_KLR_ADC0_NOISE_LOW` | 10 s | 7 min | KLR knock noise-level input stuck at 0x80 |
 
-### DME sensor faults
+### <a id="tests-dme-sensor-faults"></a>DME sensor faults
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1588,7 +1591,7 @@ not in the lite package; its run time is estimated from its length.
 | `speed_sensor_loss` | 8 s | 5 min | Speed (flywheel tooth) sensor signal stops at 3.5 s |
 | `speed_sensor_stuck_low` | 8 s | 5 min | Speed sensor shorted to ground from 3.5 s |
 
-### KLR sensor and wiring faults
+### <a id="tests-klr-sensor-and-wiring-faults"></a>KLR sensor and wiring faults
 
 Unless shown otherwise these run the `cl_ramp_to_3000` profile, cut short
 once the fault has shown up.
@@ -1609,7 +1612,7 @@ once the fault has shown up.
 | `cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH` | 10 s | 7 min | KLR-to-DME full-load wire stuck at the full-throttle level during a part-throttle ramp |
 | `cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW` | 10 s | 7 min | The full-load wire stuck low, so the DME never sees full throttle |
 
-### Boost
+### <a id="tests-boost"></a>Boost
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
@@ -1620,7 +1623,7 @@ once the fault has shown up.
 | `cl_ramp_to_6000_BOOST_LOW` | 20 s | 14 min | The same low boost on a ramp to 6000 rpm |
 | `cl_wot_3000_BOOST_ZERO` | 12 s | 8 min | Boost sensor shorted (0x00) at full throttle with the rev limiter set to 3000 rpm; expect DTC 3-3 at about 9.4 s |
 
-### Log replay (single-test only)
+### <a id="tests-log-replay"></a>Log replay (single-test only)
 
 | Test | Time | Run time | What it checks |
 |---|---|---|---|
