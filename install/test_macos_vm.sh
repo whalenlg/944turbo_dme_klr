@@ -48,6 +48,8 @@
 #    --skip-tests     install with install_macos.sh --skip-tests and skip
 #                     steps 4b-4e (check_toolchain.sh still runs)
 #    --keep           leave the VM running at the end, to look around
+#                     (with --lite: the package is unpacked in
+#                     ~/lite-test/dmeklr-lite-*/ in the VM)
 #                     (ssh admin@$(tart ip NAME), password admin)
 #    --replace        delete an existing VM of the same name first
 #    --lite ARCHIVE   test this lite package (dmeklr-lite-*-macos-arm64.tar.gz,
@@ -278,6 +280,12 @@ EOF
         result PASS "L3. lite package checks" "$_pass checks passed" "$(toc)"
     else
         result FAIL "L3. lite package checks" "$_pass passed, $_fail failed (L3_test_lite.log)" "$(toc)"
+    fi
+    # With --keep, the package unpacked where a user would put it, to look
+    # around in and run (./run_lite.sh) after the test
+    if [ "$KEEP" = 1 ]; then
+        vm_ssh 'cd ~/lite-test && tar -xzf ./*.tar.gz && ls -d ~/lite-test/dmeklr-lite-*/' </dev/null \
+            | sed 's/^/  unpacked: /'
     fi
     {
         echo
