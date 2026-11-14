@@ -12,8 +12,15 @@
 #    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
 #      shared test build and pauses at its time
 #    - no Verilog, C++ or simulator build scripts are in the package
+#    - with --clean: this machine has no Verilator or Icarus Verilog on the
+#      PATH and no simulator source next to the package,
+#      so nothing but the package can have made the checks pass (the CI's
+#      clean-runner jobs, and install/test_macos_vm.sh --lite)
 #
-#  Usage:  lite/test_lite.sh <package dir or .tar.gz/.zip> [--port N]
+#  Needs bash, curl, Node.js and Python 3 (python3, python or py; or set
+#  PYTHON). It only needs this one file, not the rest of the checkout.
+#
+#  Usage:  lite/test_lite.sh <package dir or .tar.gz/.zip> [--port N] [--clean]
 #  Exit 0 when every check passes.
 # ============================================================
 
@@ -26,14 +33,33 @@ for _arg in "$@"; do
 done
 
 set -uo pipefail
-SRC="${1:?usage: test_lite.sh <package dir or archive> [--port N]}"
-PORT=18951
-[ "${2:-}" = "--port" ] && PORT="$3"
+SRC="${1:?usage: test_lite.sh <package dir or archive> [--port N] [--clean]}"
+shift
+PORT=18951; CLEAN=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --port)  PORT="$2"; shift ;;
+        --clean) CLEAN=1 ;;
+        *) echo "test_lite.sh: unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+case "$SRC" in /*|[A-Za-z]:*) ;; *) SRC="$PWD/$SRC" ;; esac
+
+# Python 3, as the bridge finds it (a python.org install on Windows has no python3)
+PY="${PYTHON:-}"
+if [ -z "$PY" ]; then
+    for c in python3 python py; do
+        [ "$("$c" -c 'import sys; print(sys.version_info[0])' 2>/dev/null | tr -d '\r')" = 3 ] && { PY="$c"; break; }
+    done
+fi
+[ -n "$PY" ] || { echo "test_lite.sh: no Python 3 (python3, python or py) on the PATH" >&2; exit 2; }
 
 WORK="$(mktemp -d)"
 case "$SRC" in
     *.tar.gz) tar -xzf "$SRC" -C "$WORK" ;;
-    *.zip)    (cd "$WORK" && unzip -q "$SRC") ;;
+    *.zip)    "$PY" -m zipfile -e "$SRC" "$WORK"
+              chmod +x "$WORK"/*/run_lite.sh "$WORK"/*/dme_klr/live/obj/dme_klr_live* 2>/dev/null ;;
     *)        cp -R "$SRC" "$WORK/" ;;
 esac
 PKG="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d | head -1)"
@@ -41,6 +67,13 @@ echo "package: $PKG"
 
 FAILS=0
 check() { if [ "$1" = 0 ]; then echo "  PASS  $2"; else echo "  FAIL  $2"; FAILS=$((FAILS + 1)); fi; }
+
+if [ "$CLEAN" = 1 ]; then
+    tools="$(for t in verilator verilator_bin iverilog vvp; do command -v "$t" >/dev/null 2>&1 && printf '%s ' "$t"; done)"
+    [ -z "$tools" ]; check $? "clean machine: no Verilator or Icarus Verilog on the PATH${tools:+ (found: $tools)}"
+    near="$(find "$(dirname "$SRC")" -maxdepth 4 \( -name '*.v' -o -name '*.sv' -o -name 'build_live.sh' \) 2>/dev/null | head -3)"
+    [ -z "$near" ]; check $? "clean machine: no simulator source next to the package${near:+: $near}"
+fi
 
 LOG="$WORK/bridge.log"; EVENTS="$WORK/events.txt"
 "$PKG/run_lite.sh" --port "$PORT" > "$LOG" 2>&1 &
@@ -74,7 +107,7 @@ grep -q '^data: DME: ' "$EVENTS"; check $? "DME output reaches the dashboard"
 
 # The regression runner, on the packaged testbench
 RT_OUT="$WORK/run_tests.txt"
-( cd "$PKG" && DMEKLR_TMP="$PKG/data" python3 run_tests.py -j 2 --sim-ms 300 warm_idle_5s cl_warm_idle ) > "$RT_OUT" 2>&1
+( cd "$PKG" && DMEKLR_TMP="$PKG/data" "$PY" run_tests.py -j 2 --sim-ms 300 warm_idle_5s cl_warm_idle ) > "$RT_OUT" 2>&1
 cat "$RT_OUT" | sed 's/^/    /' | cut -c1-200
 grep -qE '^Total: 2 ' "$RT_OUT" && ! grep -q 'simulator exited' "$RT_OUT"; check $? "run_tests.py runs and checks two tests"
 for t in warm_idle_5s cl_warm_idle; do
@@ -83,7 +116,7 @@ for t in warm_idle_5s cl_warm_idle; do
 done
 
 # TEST LOAD: a TEST row at 150 ms, run on the shared test build
-( cd "$PKG" && DMEKLR_TMP="$PKG/data" python3 dme_klr/live/test_snap.py add cl_warm_idle 150 lite-check --script none ) > /dev/null 2>&1
+( cd "$PKG" && DMEKLR_TMP="$PKG/data" "$PY" dme_klr/live/test_snap.py add cl_warm_idle 150 lite-check --script none ) > /dev/null 2>&1
 SNAP_ID="$(ls "$PKG/data/dme_klr/snapshots" 2>/dev/null | grep 'cl_warm_idle-lite-check' | head -1)"
 [ -n "$SNAP_ID" ]; check $? "test_snap.py add makes a TEST row (${SNAP_ID:-none})"
 if [ -n "$SNAP_ID" ]; then

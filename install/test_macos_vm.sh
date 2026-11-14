@@ -24,6 +24,13 @@
 #  then prints PASS/FAIL for each step, copies the VM's logs back and
 #  deletes the VM.
 #
+#  With --lite it tests the lite package instead: no checkout goes into
+#  the VM, only the package archive and lite/test_lite.sh. It installs
+#  Node.js (the nodejs.org installer) and the package's Python
+#  requirements, as the package's README asks a user to, and runs
+#  test_lite.sh --clean there (bridge, listings, live sim, run_tests.py,
+#  TEST LOAD, and that the VM has no Verilog source, Verilator or iverilog).
+#
 #  The first run downloads the image (about 25 GB) into ~/.tart; later
 #  runs clone it in seconds. Each VM takes up to 50 GB while it runs.
 #  A full run takes about 20-40 minutes, mostly Homebrew downloads and the
@@ -43,6 +50,11 @@
 #    --keep           leave the VM running at the end, to look around
 #                     (ssh admin@$(tart ip NAME), password admin)
 #    --replace        delete an existing VM of the same name first
+#    --lite ARCHIVE   test this lite package (dmeklr-lite-*-macos-arm64.tar.gz,
+#                     e.g. from the Lite package workflow's artifacts or a
+#                     release) instead of the developer install
+#    --lite build     the same, with a package built here first
+#                     (lite/make_lite.sh; needs this machine's developer install)
 #    --out DIR        where to put the logs (default
 #                     $DMEKLR_TMP/macos_vm_test/<date-time>)
 #    -h, --help       this text
@@ -68,6 +80,7 @@ IMAGE="ghcr.io/cirruslabs/macos-sequoia-vanilla:latest"
 VM="dmeklr-install-test"
 REF="HEAD"; WORKTREE=0; CPU=""; MEM=""
 CLT_CHECK=1; TESTS=1; KEEP=0; REPLACE=0; OUT=""
+LITE=""
 VM_USER="admin"; VM_PASS="admin"             # the Cirrus Labs images' login
 VM_REPO='$HOME/944/944turbo_dme_klr'      # checkout path inside the VM
 
@@ -84,6 +97,7 @@ while [ $# -gt 0 ]; do
         --keep)           KEEP=1 ;;
         --replace)        REPLACE=1 ;;
         --out)            OUT="$2"; shift ;;
+        --lite)           LITE="${2:?--lite needs an archive or 'build'}"; shift ;;
         *) echo "test_macos_vm.sh: unknown option '$1' (see --help)" >&2; exit 2 ;;
     esac
     shift
@@ -108,6 +122,19 @@ if [ -z "$OUT" ]; then
 fi
 mkdir -p "$OUT" || die "can't make $OUT"
 OUT="$(cd "$OUT" && pwd)"
+
+if [ -n "$LITE" ]; then
+    if [ "$LITE" = build ]; then
+        step "Building the lite package (lite/make_lite.sh)"
+        "$REPO_DIR/lite/make_lite.sh" --out "$OUT/pkg" > "$OUT/make_lite.log" 2>&1 \
+            || die "make_lite.sh failed (see $OUT/make_lite.log)"
+        LITE="$(ls "$OUT"/pkg/dmeklr-lite-*.tar.gz | head -1)"
+        info "built $(basename "$LITE")"
+    fi
+    [ -f "$LITE" ] || die "no lite package at $LITE"
+    case "$LITE" in *.tar.gz) ;; *) die "--lite wants the macOS .tar.gz package" ;; esac
+    LITE="$(cd "$(dirname "$LITE")" && pwd)/$(basename "$LITE")"
+fi
 
 if tart get "$VM" >/dev/null 2>&1; then
     [ "$REPLACE" = 1 ] || die "a VM called $VM already exists (tart delete $VM, or pass --replace)"
@@ -162,7 +189,8 @@ vm_run() {  # vm_run <log> <shell...> <<'EOF' ... EOF
     return "${PIPESTATUS[0]}"
 }
 
-echo "${bold}Clean-VM test of install_macos.sh${nc}"
+if [ -n "$LITE" ]; then echo "${bold}Clean-VM test of the lite package${nc}"; info "package: $LITE"
+else echo "${bold}Clean-VM test of install_macos.sh${nc}"; fi
 info "image:  $IMAGE"
 info "VM:     $VM"
 if [ "$WORKTREE" = 1 ]; then info "source: $REPO_DIR (working tree)"
@@ -203,6 +231,65 @@ if ! vm_ssh 'sudo -n true' </dev/null 2>/dev/null; then
     info "enabling passwordless sudo for $VM_USER in the VM (Homebrew's installer needs it over ssh)"
     vm_ssh "echo '$VM_PASS' | sudo -S sh -c \"echo '$VM_USER ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/zz-install-test\"" \
         </dev/null >/dev/null 2>&1 || die "couldn't set up sudo in the VM"
+fi
+
+# ── Lite package: archive + test script only, then done ──────────────────
+if [ -n "$LITE" ]; then
+    step "L1. Copying only the package and lite/test_lite.sh into the VM"
+    tic
+    vm_ssh 'mkdir -p ~/lite-test' </dev/null
+    vm_ssh "cat > ~/lite-test/$(basename "$LITE")" < "$LITE" \
+        && vm_ssh 'cat > ~/lite-test/test_lite.sh && chmod +x ~/lite-test/test_lite.sh' < "$REPO_DIR/lite/test_lite.sh"
+    if [ $? = 0 ]; then result PASS "L1. copy package" "$(basename "$LITE")" "$(toc)"
+    else result FAIL "L1. copy package" "ssh copy failed" "$(toc)"; fi
+
+    step "L2. Node.js (nodejs.org installer) and the package's Python requirements"
+    tic
+    vm_run L2_prereqs.log bash -s <<'EOF'
+set -e
+cd ~/lite-test
+if ! command -v node >/dev/null 2>&1 && [ ! -x /usr/local/bin/node ]; then
+    pkg="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | awk '/\.pkg$/ {print $2; exit}')"
+    [ -n "$pkg" ] || { echo "couldn't find the Node.js installer"; exit 1; }
+    echo "installing $pkg"
+    curl -fsSLO "https://nodejs.org/dist/latest-v22.x/$pkg"
+    sudo installer -pkg "$pkg" -target / >/dev/null
+fi
+export PATH="/usr/local/bin:$PATH"
+echo "node $(node --version)"
+python3 --version || { echo "no python3 (the Command Line Tools provide one)"; exit 1; }
+d="$(mktemp -d)"; tar -xzf ./*.tar.gz -C "$d"
+python3 -m pip install --user -q -r "$d"/*/requirements.txt
+rm -rf "$d"
+python3 -c "import pandas, openpyxl, matplotlib, numpy; print('python packages OK')"
+EOF
+    if [ $? = 0 ]; then result PASS "L2. Node.js + Python packages" "$(grep -m1 '^node ' "$OUT/L2_prereqs.log")" "$(toc)"
+    else result FAIL "L2. Node.js + Python packages" "see L2_prereqs.log" "$(toc)"; fi
+
+    step "L3. test_lite.sh --clean in a new zsh terminal"
+    tic
+    vm_run L3_test_lite.log zsh -l -s <<'EOF'
+export PATH="/usr/local/bin:$PATH"
+cd ~/lite-test && ./test_lite.sh "$(ls ~/lite-test/*.tar.gz)" --clean
+EOF
+    rc=$?
+    _pass=$(grep -c '  PASS  ' "$OUT/L3_test_lite.log"); _fail=$(grep -c '  FAIL  ' "$OUT/L3_test_lite.log")
+    if [ "$rc" = 0 ] && grep -q 'ALL PASSED' "$OUT/L3_test_lite.log"; then
+        result PASS "L3. lite package checks" "$_pass checks passed" "$(toc)"
+    else
+        result FAIL "L3. lite package checks" "$_pass passed, $_fail failed (L3_test_lite.log)" "$(toc)"
+    fi
+    {
+        echo
+        echo "${bold}Summary${nc}  (macOS $SW, $IMAGE, lite package $(basename "$LITE"))"
+        for r in "${RESULTS[@]}"; do echo "  $r"; done
+        echo
+        if [ "$FAILED" = 0 ]; then echo "${green}All steps passed.${nc}"
+        else echo "${red}Some steps failed.${nc} Logs: $OUT"; fi
+        echo "Logs: $OUT"
+    } | tee "$OUT/summary.txt"
+    sed -i '' $'s/\033\\[[0-9;]*m//g' "$OUT/summary.txt" 2>/dev/null || true
+    exit "$FAILED"
 fi
 
 # ── Copy the checkout in ──────────────────────────────────────────────────
