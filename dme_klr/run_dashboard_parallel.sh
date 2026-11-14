@@ -400,7 +400,7 @@ while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
         if [ -z "$h" ]; then
             (
                 cd "$SCRIPT_DIR"
-                bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
+                exec bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
             ) &
             # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
             printf "  [START]  %s\n" "$test"
