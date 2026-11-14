@@ -20,6 +20,7 @@
 //                                   t_ms, out: [last lines]}
 //    GET    /regress/run/<id>/dash the test's .dash.log
 //    GET    /regress/run/<id>/log  its whole log, gzipped
+//    GET    /regress/run/<id>/fst  its waveform (iverilog: fst/<test>.fst)
 //    DELETE /regress/run/<id>      stop it (if running), forget it and
 //                                  delete its folder
 //  Each job runs with its own DMEKLR_TMP, $DMEKLR_TMP/dme_klr/remote_jobs/<id>,
@@ -239,7 +240,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       });
       return true;
     }
-    const m = url.pathname.match(/^\/regress\/run\/([0-9a-f]{12})(?:\/(dash|log))?$/);
+    const m = url.pathname.match(/^\/regress\/run\/([0-9a-f]{12})(?:\/(dash|log|fst))?$/);
     if (!m) return false;
     const job = jobs.get(m[1]);
     if (!job) return send(404, 'no such job', 'text/plain'), true;
@@ -250,6 +251,14 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       return send(200, JSON.stringify({ state: job.state, exit: job.exit, t_ms: t, out: job.out.slice(-30) })), true;
     }
     if (job.state !== 'done') return send(409, 'still running', 'text/plain'), true;
+    if (m[2] === 'fst') {
+      // iverilog runs leave a waveform, fst/<test>.fst, beside the logs
+      const f = join(job.logdir, 'fst', `${job.test}.fst`);
+      if (!existsSync(f)) return send(404, 'no fst', 'text/plain'), true;
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      createReadStream(f).pipe(res);
+      return true;
+    }
     if (m[2] === 'dash') {
       const f = join(job.logdir, `${job.test}.dash.log`);
       if (!existsSync(f)) return send(404, 'no dash.log', 'text/plain'), true;

@@ -6,7 +6,8 @@
 //  the hosts in $DMEKLR_REGRESS_HOSTS (see regress_host.mjs): sends the
 //  test to that host's bridge, writes its progress to <out>/<test>.log
 //  as "t=<ms> ms" lines (so the RUN REGRESSIONS panel's bars move), and
-//  when it ends fetches <test>.dash.log and the whole log into <out>,
+//  when it ends fetches <test>.dash.log and the whole log into <out>
+//  (and, for iverilog, the waveform into <out>/fst/<test>.fst),
 //  where the runner validates it as if it had run here.
 //
 //  Usage:
@@ -52,9 +53,9 @@ const who = HOST.replace(/^https?:\/\//, '');
 const say = s => console.log(`remote ${who}: ${TEST}: ${s}`);
 const H = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function call(method, path, body) {
+async function call(method, path, body, ms = 30_000) {
   const r = await fetch(HOST + path, { method, headers: { ...H, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-                                       body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(30_000) });
+                                       body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms) });
   return r;
 }
 
@@ -110,13 +111,24 @@ async function main() {
   if (st.exit === 'build') { say('the host could not build the testbench'); await forget(); return TEMPFAIL; }
   // Its logs, here, where the runner looks for them
   try {
-    const d = await call('GET', `/regress/run/${jobId}/dash`);
+    const d = await call('GET', `/regress/run/${jobId}/dash`, null, 300_000);
     if (d.ok) writeFileSync(join(OUT, `${TEST}.dash.log`), Buffer.from(await d.arrayBuffer()));
-    const l = await call('GET', `/regress/run/${jobId}/log`);
+    const l = await call('GET', `/regress/run/${jobId}/log`, null, 300_000);
     rmSync(progress, { force: true });
     if (l.ok) {
       const gz = Buffer.from(await l.arrayBuffer());
       if (LOGMODE === 'raw') writeFileSync(progress, gunzipSync(gz)); else writeFileSync(`${progress}.gz`, gz);
+    }
+    // iverilog's waveform, where run_dashboard_tests.sh leaves it here
+    // (a test whose waveform doesn't arrive still counts)
+    if (SIM === 'iverilog') {
+      try {
+        const w = await call('GET', `/regress/run/${jobId}/fst`, null, 600_000);
+        if (w.ok) {
+          mkdirSync(join(OUT, 'fst'), { recursive: true });
+          writeFileSync(join(OUT, 'fst', `${TEST}.fst`), Buffer.from(await w.arrayBuffer()));
+        }
+      } catch (e) { say(`no waveform (${e.cause?.code ?? e.message})`); }
     }
   } catch (e) {
     say(`dropped while sending the logs (${e.cause?.code ?? e.message})`);
