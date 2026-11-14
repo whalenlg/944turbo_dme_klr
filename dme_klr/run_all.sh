@@ -8,7 +8,8 @@
 #    ./run_all.sh [--verilator | --iverilog] [--per-test-build]
 #                 [--macos-test install|lite|both|none] [--no-pull]
 #                 [--tests "NAME|GROUP ..."] [--DME_DEBUG] [--DME_DEEP_DEBUG]
-#                 [--KLR_DEBUG] [workers 1-8, default 8]
+#                 [--KLR_DEBUG] [--test-debug=TEST:FLAG[+FLAG] ...]
+#                 [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  --tests runs only those dashboard tests (names, or the group names
@@ -17,6 +18,8 @@
 #  --DME_DEBUG / --DME_DEEP_DEBUG / --KLR_DEBUG go to the iverilog suite
 #  (step 4) only: each test is built on its own with that debug output, and
 #  every test stays on this machine (no regression hosts; large dumps).
+#  --test-debug=TEST:DME_DEBUG+KLR_DEBUG does that for one test only
+#  (repeatable; the dashboard panel's per-test switches).
 #  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
@@ -41,7 +44,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,32s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,35s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
 MACOS_TEST=both
 SUITE_TESTS=()
@@ -60,7 +63,7 @@ for arg in "$@"; do
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
         --per-test-build) PT_OPT=(--per-test-build) ;;
-        --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) IV_DEBUG+=("$arg") ;;
+        --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG|--test-debug=*) IV_DEBUG+=("$arg") ;;
         -h|--help)   usage; exit 0 ;;
         -*)          echo "run_all.sh: unknown option '$arg'" >&2; usage >&2; exit 2 ;;
         *)           ARGS+=("$arg") ;;
