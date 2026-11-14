@@ -126,6 +126,12 @@ for cpu in dme klr; do
     grep -q "^data: SIM: \[ASM\] $cpu .*match=content" "$EVENTS"; check $? "$cpu listing follows the loaded ROM"
 done
 
+# The RUN ALL panel's view of the package: run_tests.py, the tests in the
+# manuals' Appendix A groups
+ra="$(curl -s -m 10 "${H[@]}" "http://127.0.0.1:$PORT/runall")"
+case "$ra" in *'"mode":"lite"'*'"name":"Idle"'*'"name":"warm_idle_5s"'*) r=0 ;; *) r=1 ;; esac
+check $r "the RUN ALL panel finds run_tests.py and the test groups (/runall)"
+
 # The dashboard, offline: index.html and every asset it names, from the bridge
 idx="$(curl -s -m 10 "http://127.0.0.1:$PORT/")"
 case "$idx" in *'<div id="root">'*) r=0 ;; *) r=1 ;; esac

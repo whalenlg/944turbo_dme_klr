@@ -8,7 +8,8 @@
 #  simulator build scripts, and needs no Verilator, iverilog or GTKWave:
 #
 #    dme_klr/live/obj/dme_klr_live   the simulator (build_live.sh --relocatable)
-#    dme_klr/live/bridge.mjs         the bridge (Node 18+)
+#    dme_klr/live/bridge.mjs         the bridge (Node 18+), with runall.mjs and
+#                                    test_groups.json for the RUN ALL panel
 #    dme_klr/live/*map_graphs.py     the MAPS tab graphs (matplotlib, numpy)
 #    bin_images/                     the ROM images
 #    {dme,klr}/disassemble/          the disassembly workbooks (.xlsx), the
@@ -182,7 +183,7 @@ for _row in "ramp_to_6000_knock 20009 first knock pulse"; do
 done
 cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
 cp "$LITE_DIR/run_tests.py" "$PKG/"
-for f in bridge.mjs map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
+for f in bridge.mjs runall.mjs test_groups.json map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done
 printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"

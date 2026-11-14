@@ -697,9 +697,26 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull` |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
 smaller value gives finer playback and larger logs.
+
+**From the dashboard.** The **RUN ALL ▸** button in the header opens a panel
+that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
+must be running; `live/runall.mjs`). It has every `run_all.sh` option
+(Verilator, iverilog or both, workers, per-test build, the macOS VM test,
+update first or `--no-pull`) and the snapshot interval, and lists the tests
+in the groups of [Appendix A](#appendix-a-regression-tests), where you pick
+whole groups or single tests. While it runs, a bar for each test shows its
+simulated time against its length, with its PASS / WARN / FAIL when it is
+checked, and bars for each group, each simulator's suite and the full run
+(simulated seconds done of the total, with the time left estimated from
+the rate so far); the six steps show which one is running. The run goes on
+when the panel is closed (the button shows its %) and stops with **STOP RUN**
+or when the bridge stops. The groups come from
+`dme_klr/live/test_groups.json`, made from this appendix:
+`python3 dme_klr/live/test_groups.py check` says when the two differ.
 
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch
@@ -713,8 +730,8 @@ the right map graphs.
 
 * **Header.** The file name, the ROM images the log names, the count of
   STATUS and PHASE records, the **LIVE** button (connect to or leave the
-  simulator), **LOAD LOG** and **MANUAL ↗**, which opens this manual in
-  a new tab.
+  simulator), **RUN ALL ▸** (run the regression suite, section 2),
+  **LOAD LOG** and **MANUAL ↗**, which opens this manual in a new tab.
 * **Tab rows.** Row 1 holds the DME tabs, row 2 the KLR tabs, and row 3 holds
   **TIMELINE** (DME and KLR together). In live mode it also holds **DME CODE**
   and **KLR CODE**.
