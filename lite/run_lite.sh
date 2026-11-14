@@ -9,12 +9,19 @@ PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DMEKLR_TMP="${DMEKLR_TMP:-$PKG/data}"
 mkdir -p "$DMEKLR_TMP"
 
+# A virtual environment made here for the Python packages (README.txt,
+# SETTING UP) is used when there is one
+if [ -x "$PKG/.venv/bin/python3" ]; then
+    export PATH="$PKG/.venv/bin:$PATH" VIRTUAL_ENV="$PKG/.venv"
+fi
+
 command -v node >/dev/null 2>&1 || { echo "run_lite.sh: Node.js 18 or newer is needed (https://nodejs.org)" >&2; exit 1; }
 _major="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$_major" -ge 18 ] || { echo "run_lite.sh: Node.js $_major is too old; 18 or newer is needed" >&2; exit 1; }
 if ! python3 -c "import matplotlib, numpy, pandas, openpyxl" >/dev/null 2>&1; then
     echo "run_lite.sh: note: python3 with pandas, openpyxl, matplotlib and numpy isn't available" >&2
-    echo "  (pip install -r requirements.txt): edited workbooks won't update the listings," >&2
+    echo "  (python3 -m pip install --user -r requirements.txt, see README.txt):" >&2
+    echo "  edited workbooks won't update the listings," >&2
     echo "  and the MAPS tabs have no graphs" >&2
 fi
 

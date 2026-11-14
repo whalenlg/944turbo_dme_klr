@@ -318,12 +318,23 @@ needed.
 | Needs | Node.js 18+; Python with `requirements.txt` (pandas, openpyxl, matplotlib, numpy); bash to rebuild listings | everything in [Dependencies](#dependencies) |
 
 **Using it.** Unpack `dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` on
-Windows) anywhere, then:
+Windows) anywhere, install Node.js 18 or newer (https://nodejs.org), and
+work in the folder it unpacks to, where `requirements.txt` and
+`run_lite.sh` are:
 
 ```sh
-pip install -r requirements.txt   # once
-./run_lite.sh                     # Windows: run_lite.cmd
+tar -xzf dmeklr-lite-<version>-<platform>.tar.gz   # macOS may leave a .tar: tar -xf
+cd dmeklr-lite-<version>-<platform>
+python3 -m pip install --user -r requirements.txt   # once; Windows: py -m pip ...
+./run_lite.sh                                        # Windows: run_lite.cmd
 ```
+
+Use `python3 -m pip`: macOS has no `pip` command. On Arch Linux install
+the packages with pacman instead (`sudo pacman -S nodejs python-pandas
+python-openpyxl python-matplotlib python-numpy`); where pip refuses with
+"externally-managed-environment", make a venv in the package folder
+(`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`),
+which `run_lite.sh` then uses. The package's README.txt has the same steps.
 
 and open **http://127.0.0.1:8951/?live**: the bridge serves the
 dashboard that comes with the package, already in live mode, so no
@@ -351,6 +362,11 @@ tag also attaches them to that tag's GitHub release.
 lite/make_lite.sh                 # -> $DMEKLR_TMP/lite/dmeklr-lite-<version>-<platform>.tar.gz
 lite/test_lite.sh "$DMEKLR_TMP"/lite/dmeklr-lite-*.tar.gz
 ```
+
+`test_lite.sh` takes a package folder or archive (`.tar.gz`, `.tar` or
+`.zip`); run with none in a folder that holds one package (as
+`~/lite-test` in the macOS VM test does), it finds it there:
+`./test_lite.sh`.
 
 `make_lite.sh` makes the disassembly tables for every ROM that has a
 workbook, builds the simulator with `dme_klr/live/build_live.sh

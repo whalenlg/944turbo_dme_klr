@@ -25,7 +25,9 @@
 #  Needs bash, curl, Node.js and Python 3 (python3, python or py; or set
 #  PYTHON). It only needs this one file, not the rest of the checkout.
 #
-#  Usage:  lite/test_lite.sh <package dir or .tar.gz/.zip> [--port N] [--clean]
+#  Usage:  lite/test_lite.sh [<package dir or .tar.gz/.tar/.zip>] [--port N] [--clean]
+#  With no package named, it uses the one package (folder or archive) in
+#  the current folder.
 #  Exit 0 when every check passes.
 # ============================================================
 
@@ -38,17 +40,32 @@ for _arg in "$@"; do
 done
 
 set -uo pipefail
-SRC="${1:?usage: test_lite.sh <package dir or archive> [--port N] [--clean]}"
-shift
-PORT=18951; CLEAN=0
+USAGE="usage: test_lite.sh [<package dir or .tar.gz/.tar/.zip>] [--port N] [--clean]  (--help for more)"
+SRC=""; PORT=18951; CLEAN=0
 while [ $# -gt 0 ]; do
     case "$1" in
-        --port)  PORT="$2"; shift ;;
+        --port)  PORT="${2:?--port needs a number}"; shift ;;
         --clean) CLEAN=1 ;;
-        *) echo "test_lite.sh: unknown option $1" >&2; exit 2 ;;
+        -*) echo "test_lite.sh: unknown option $1" >&2; echo "$USAGE" >&2; exit 2 ;;
+        *)  [ -z "$SRC" ] || { echo "test_lite.sh: more than one package given" >&2; echo "$USAGE" >&2; exit 2; }
+            SRC="$1" ;;
     esac
     shift
 done
+if [ -z "$SRC" ]; then
+    # The one package here: an archive, else an unpacked folder
+    _found=()
+    for f in dmeklr-lite-*.tar.gz dmeklr-lite-*.tar dmeklr-lite-*.zip; do [ -f "$f" ] && _found+=("$f"); done
+    if [ "${#_found[@]}" = 0 ]; then
+        for f in dmeklr-lite-*/; do [ -f "$f/run_lite.sh" ] && _found+=("${f%/}"); done
+    fi
+    case "${#_found[@]}" in
+        1) SRC="${_found[0]}"; echo "test_lite.sh: testing $SRC" ;;
+        0) echo "test_lite.sh: no package (dmeklr-lite-*) in $PWD; name one" >&2; echo "$USAGE" >&2; exit 2 ;;
+        *) echo "test_lite.sh: more than one package in $PWD (${_found[*]}); name one" >&2; echo "$USAGE" >&2; exit 2 ;;
+    esac
+fi
+[ -e "$SRC" ] || { echo "test_lite.sh: no such package: $SRC" >&2; echo "$USAGE" >&2; exit 2; }
 case "$SRC" in /*|[A-Za-z]:*) ;; *) SRC="$PWD/$SRC" ;; esac
 
 # Python 3, as the bridge finds it (a python.org install on Windows has no python3)
@@ -62,7 +79,8 @@ fi
 
 WORK="$(mktemp -d)"
 case "$SRC" in
-    *.tar.gz) tar -xzf "$SRC" -C "$WORK" ;;
+    *.tar.gz|*.tgz) tar -xzf "$SRC" -C "$WORK" ;;
+    *.tar)    tar -xf "$SRC" -C "$WORK" ;;
     *.zip)    "$PY" -m zipfile -e "$SRC" "$WORK"
               chmod +x "$WORK"/*/run_lite.sh "$WORK"/*/dme_klr/live/obj/dme_klr_live* 2>/dev/null ;;
     *)        cp -R "$SRC" "$WORK/" ;;

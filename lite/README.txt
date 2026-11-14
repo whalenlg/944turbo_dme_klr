@@ -14,24 +14,40 @@ scripts that turn them into the debugger's listings are included: edit a
 workbook and the listing is rebuilt the next time that ROM loads.
 
 NEEDS
-  Node.js 18 or newer             https://nodejs.org
-  Python 3 with pandas, openpyxl, pip install -r requirements.txt
-  matplotlib and numpy            (listings from edited workbooks, and the
-                                  graphs on the MAPS tabs)
-                                  (Arch Linux: sudo pacman -S nodejs python-pandas
-                                  python-openpyxl python-matplotlib python-numpy)
+  Node.js 18 or newer             https://nodejs.org (the installer)
+  Python 3 with pandas, openpyxl, for listings from edited workbooks and
+  matplotlib and numpy            the graphs on the MAPS tabs (SETTING UP)
   bash                            to rebuild listings (on Windows, Git Bash
                                   or MSYS2); without it the packaged
                                   listings are used
 
+SETTING UP (once)
+  1. Unpack the download and open a terminal in the folder it makes,
+     dmeklr-lite-<version>-<platform> (this README's folder; on Windows a
+     Command Prompt):
+       tar -xzf dmeklr-lite-<version>-<platform>.tar.gz
+       cd dmeklr-lite-<version>-<platform>
+     (macOS may already have unpacked it, or left a .tar: tar -xf works
+     for that. On Windows: right-click the .zip, Extract All.)
+  2. Install Node.js 18 or newer from https://nodejs.org.
+  3. Install the Python packages, from this folder:
+       macOS / Linux:   python3 -m pip install --user -r requirements.txt
+       Windows:         py -m pip install --user -r requirements.txt
+       Arch Linux:      sudo pacman -S nodejs python-pandas python-openpyxl
+                        python-matplotlib python-numpy
+     (Use "python3 -m pip", not "pip": macOS has no "pip" command. If pip
+     refuses with "externally-managed-environment", make a virtual
+     environment here instead: python3 -m venv .venv, then
+     .venv/bin/pip install -r requirements.txt; run_lite.sh uses .venv
+     when it is there.)
+
 START
-  1. Open a terminal in this folder (on Windows, a Command Prompt; or
-     double-click run_lite.cmd).
-  2. Start it. This starts Node.js with the bridge, which starts the
-     simulator:
+  1. In a terminal in this folder (on Windows you can also double-click
+     run_lite.cmd), start it. This starts Node.js with the bridge, which
+     starts the simulator:
        macOS / Linux:   ./run_lite.sh
        Windows:         run_lite.cmd
-  3. Open http://127.0.0.1:8951/?live in a browser. The dashboard comes
+  2. Open http://127.0.0.1:8951/?live in a browser. The dashboard comes
      from this folder (dashboard/) and connects in live mode; no internet
      is needed. Ctrl+C in the terminal stops it.
   The bridge listens only on 127.0.0.1:8951 (--port changes it, and the
@@ -78,6 +94,8 @@ BUILDING THIS PACKAGE (developers)
                                     package and its archive to
                                     $DMEKLR_TMP/lite
     lite/test_lite.sh <archive>     checks a package on this machine
+                                    (run in the folder holding one
+                                    package, it finds it by itself)
   dashboard/VERSION.txt names the dme-dashboard commit it was built from.
   To package dashboard changes not yet on GitHub: --dashboard <checkout>.
   The dashboard alone: in a dme-dashboard checkout, npm ci once, then
