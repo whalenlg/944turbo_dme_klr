@@ -57,6 +57,12 @@ START
   On macOS, run_lite.sh clears the "downloaded from the internet" flag on
   this folder so the unsigned simulator may run.
 
+NEW VERSIONS
+  Releases: https://github.com/whalenlg/944turbo_dme_klr/releases
+  Latest build: that repository's Actions tab, Lite package workflow,
+  latest run on main, Artifacts (signed in to GitHub). The user manual
+  (docs/USER_MANUAL.md there, "The lite package") has the details.
+
 WHERE THINGS GO
   Snapshots and the map-graph cache go to data/ in this folder. Set
   DMEKLR_TMP to put them elsewhere.

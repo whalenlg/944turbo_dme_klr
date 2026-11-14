@@ -126,6 +126,22 @@ from its own location. Where the build output and logs go is one setting,
 To use the live simulator and debugger without building anything, there is
 also a [lite package](#the-lite-package-no-verilog-source).
 
+### Getting the code
+
+The developer install works from a clone of this repository (git comes
+with the Command Line Tools on macOS, `pacman -S git` on Arch, and Git for
+Windows or MSYS2 on Windows):
+
+```sh
+git clone https://github.com/whalenlg/944turbo_dme_klr.git
+cd 944turbo_dme_klr
+```
+
+The install scripts' `--with-dashboard` also clones the dashboard
+(whalenlg/dme-dashboard) into `dashboard/`, for working on it; it isn't
+needed to use it (it is published at https://whalenlg.github.io/dme-dashboard/).
+`git pull` later brings the checkout up to date.
+
 ### Before installing
 
 Run the check script first. It changes nothing; it lists each tool the repo
@@ -317,6 +333,27 @@ needed.
 | Changing the model (Verilog) | no | yes |
 | Needs | Node.js 18+; Python with `requirements.txt` (pandas, openpyxl, matplotlib, numpy); bash to rebuild listings | everything in [Dependencies](#dependencies) |
 
+**Getting it.** There are three ways, for macOS (Apple Silicon), Linux
+x86_64 (glibc 2.35 or newer: Ubuntu 22.04, Arch, ...) and Windows x86_64.
+Each package is one archive, `dmeklr-lite-<version>-<platform>.tar.gz`
+(`.zip` for Windows).
+
+1. **A release** (when there is one): the repository's
+   [Releases page](https://github.com/whalenlg/944turbo_dme_klr/releases)
+   lists each version with the three archives under *Assets*. Pushing a
+   `v*` tag (for example `git tag v1.0 && git push origin v1.0`) makes a
+   release: the `Lite package` workflow builds, tests and attaches the
+   archives to it. No release has been made yet.
+2. **The latest build**, without a release: on GitHub, open the
+   repository's **Actions** tab, pick the **Lite package** workflow, open
+   its latest successful run on `main`, and download `lite-macOS`,
+   `lite-Linux` or `lite-Windows` under *Artifacts* (you need to be signed
+   in to GitHub; artifacts are kept 90 days). The download is a `.zip`
+   holding the package archive; unzip it first (macOS's Finder may do
+   that by itself).
+3. **Build it yourself** from the developer install: see *Building it
+   yourself* below.
+
 **Using it.** Unpack `dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` on
 Windows) anywhere, install Node.js 18 or newer (https://nodejs.org), and
 work in the folder it unpacks to, where `requirements.txt` and
@@ -350,11 +387,13 @@ and openpyxl, the bridge uses the listings that came with the package, so
 an edited workbook doesn't change the listing until bash and those packages
 are available.
 
-**Getting it.** The `Lite package` GitHub Actions workflow
-(`.github/workflows/lite-package.yml`) builds it for macOS arm64, Linux
-x86_64 (glibc 2.35 or newer) and Windows x86_64, tests each one with
-`lite/test_lite.sh`, and keeps the archives as workflow artifacts. A `v*`
-tag also attaches them to that tag's GitHub release.
+**How the downloads are made.** The `Lite package` GitHub Actions
+workflow (`.github/workflows/lite-package.yml`) builds the package on each
+platform for every push to `main` that touches the simulator, the lite
+scripts or the ROMs (and for pull requests, a `v*` tag, or by hand from the
+Actions tab: *Run workflow*), tests each one with `lite/test_lite.sh` there
+and again on a clean machine, and keeps the archives as workflow
+artifacts. For a `v*` tag it also attaches them to that tag's release.
 
 **Building it yourself** (developer install):
 
