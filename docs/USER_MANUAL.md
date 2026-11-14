@@ -270,7 +270,9 @@ Each test is checked (PASS / WARN / FAIL) and writes
 `data/dme_klr/v_dash_logs/<test>.dash.log`; open it in the dashboard. Each
 kind of warning a run prints (a PASS's too), and a WARN or FAIL verdict, also
 adds a TEST row to the live page's SNAPSHOTS list
-([section 7](#7-debugging-a-log-at-a-chosen-time)).
+([section 7](#7-debugging-a-log-at-a-chosen-time)). The package ships one
+row already: `ramp_to_6000_knock` 200 ms before its first knock pulse
+(20009 ms), ready to LOAD without running the test.
 
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch

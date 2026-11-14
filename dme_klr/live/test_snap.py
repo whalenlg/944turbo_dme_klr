@@ -19,9 +19,11 @@
 #        run_dashboard_parallel.sh), one at the first t=<ms> its detail
 #        names, else at the end of the run if the log had no warning;
 #        a plain scan replaces the test's earlier requests
-#    test_snap.py add <test> <ms> [label] [--script <runner.sh>]
+#    test_snap.py add <test> <ms> [label] [--event] [--script <runner.sh>]
 #        a request for a moment you pick, without running the regression:
-#        LOAD in the dashboard then builds the test and runs it there
+#        LOAD in the dashboard then builds the test and runs it there;
+#        with --event, <ms> is an event's time and LOAD stops LEAD_MS
+#        before it, as for a warning (make_lite.sh ships rows this way)
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
 #
@@ -172,11 +174,12 @@ def scan(name, log, fail, script, verdict='FAIL'):
 
     SNAPDIR.mkdir(parents=True, exist_ok=True)
     if fail is None:
-        # a fresh run replaces this test's earlier requests
+        # a fresh run replaces this test's earlier requests from its log
+        # (not ones added by hand or shipped with the lite package)
         for d in SNAPDIR.iterdir():
             req = d / 'request.json'
             if req.is_file() and not (d / 'state.bin').exists():
-                if req_test(d) == name:
+                if req_test(d) == name and (req_reason(d) or '').startswith('log-'):
                     shutil.rmtree(d, ignore_errors=True)
     elif any(req_test(d) == name and req_reason(d) == 'validator-' + verdict.lower() for d in SNAPDIR.iterdir()):
         return 0   # this verdict is already recorded
@@ -209,12 +212,14 @@ def write_request(name, script, defines, t_ms, t_ns, reason, line, k, source, lo
     return d
 
 
-def add(name, ms, script, label):
-    """A request for a moment chosen by hand, no regression run needed"""
+def add(name, ms, script, label, event=False):
+    """A request for a moment chosen by hand, no regression run needed;
+    with event, ms is an event's time and the request opens LEAD_MS
+    before it"""
     defines = test_defines(name, script)
     if defines is None:
         sys.exit(f'test_snap.py: no test "{name}" in {script}')
-    t_ns = int(round(ms * 1e6))
+    t_ns = int(round(max(0, ms - LEAD_MS) * 1e6)) if event else int(round(ms * 1e6))
     sim = next((int(d.split('=', 1)[1]) for d in defines if d.startswith('-DSIM_TIME=')), None)
     if sim is not None and t_ns > sim:
         sys.exit(f'test_snap.py: {name} only runs to {sim / 1e6:g} ms')
@@ -227,7 +232,7 @@ def add(name, ms, script, label):
 def main(argv):
     if len(argv) < 3 or argv[1] not in ('scan', 'defines', 'add'):
         sys.exit('usage: test_snap.py scan <test> <log> [--fail|--warn <detail>] [--script <sh>]\n'
-                 '       test_snap.py add <test> <ms> [label] [--script <sh>]\n'
+                 '       test_snap.py add <test> <ms> [label] [--event] [--script <sh>]\n'
                  '       test_snap.py defines <test> [--script <sh>]')
     cmd, name, rest = argv[1], argv[2], argv[3:]
     script = DMEKLR / 'run_dashboard_tests.sh'
@@ -235,10 +240,13 @@ def main(argv):
     verdict = 'FAIL'
     log = None
     extra = []
+    event = False
     i = 0
     while i < len(rest):
         if rest[i] == '--script':
             script = Path(rest[i + 1]); i += 2
+        elif rest[i] == '--event':
+            event = True; i += 1
         elif rest[i] in ('--fail', '--warn'):
             verdict = rest[i][2:].upper()
             fail = rest[i + 1]; i += 2
@@ -252,7 +260,7 @@ def main(argv):
             ms = float(pos[0])
         except (IndexError, ValueError):
             sys.exit('test_snap.py add needs a time in ms')
-        return add(name, ms, script, ' '.join(pos[1:]))
+        return add(name, ms, script, ' '.join(pos[1:]), event)
     if cmd == 'defines':
         d = test_defines(name, script)
         if d is None:
