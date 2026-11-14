@@ -35,6 +35,10 @@
 #  Debug flags (any position, applied to every test run this
 #  invocation launches — forwarded to whichever runner is active):
 #    --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
+#  or for single tests only (repeatable; the RUN REGRESSIONS panel's
+#  per-test switches): --test-debug=<test>:DME_DEBUG+KLR_DEBUG
+#  A test with debug flags builds on its own and never goes to a
+#  regression host.
 #  Under --verilator these are still accepted but have no effect —
 #  v_run_dashboard_tests.sh always strips them before compiling.
 #
@@ -140,13 +144,34 @@ expand_tests() {
 # verbatim to every test this invocation launches.
 EXTRA_FLAGS=()
 PER_TEST_BUILD=0
+# --test-debug=<test>:<FLAG>[+<FLAG>...] (repeatable): debug flags for that
+# test only (DME_DEBUG, DME_DEEP_DEBUG, KLR_DEBUG); it builds on its own
+# and always runs here, never on a regression host (its dumps are large)
+TEST_DEBUG=()
+_has_td=0
 for _arg in "$@"; do
     case "$_arg" in
         --verilator)       USE_VERILATOR=1 ;;
         --per-test-build)  PER_TEST_BUILD=1 ;;
         --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) EXTRA_FLAGS+=("$_arg") ;;
+        --test-debug=*)    TEST_DEBUG+=("${_arg#--test-debug=}"); _has_td=1 ;;
     esac
 done
+if [ "$_has_td" = 1 ]; then
+    _NEW_ARGS=()
+    for _arg in "$@"; do case "$_arg" in --test-debug=*) ;; *) _NEW_ARGS+=("$_arg") ;; esac; done
+    set -- ${_NEW_ARGS[@]+"${_NEW_ARGS[@]}"}
+fi
+# test_debug <test>: its --test-debug flags, as --FLAG words
+test_debug() {
+    local e f
+    for e in ${TEST_DEBUG[@]+"${TEST_DEBUG[@]}"}; do
+        [ "${e%%:*}" = "$1" ] || continue
+        for f in $(echo "${e#*:}" | tr '+,' '  '); do
+            case "$f" in DME_DEBUG|DME_DEEP_DEBUG|KLR_DEBUG) printf -- '--%s ' "$f" ;; esac
+        done
+    done
+}
 if [ "$USE_VERILATOR" = "1" ] || [ ${#EXTRA_FLAGS[@]} -gt 0 ] || [ "$PER_TEST_BUILD" = "1" ]; then
     RUN_TESTS="$SCRIPT_DIR/run_dashboard_tests.sh"
     [ "$USE_VERILATOR" = "1" ] && RUN_TESTS="$SCRIPT_DIR/v_run_dashboard_tests.sh"
@@ -163,7 +188,8 @@ fi
 if [ "$1" = "--dash" ]; then shift; fi
 
 if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
-    echo "Usage: $0 [--verilator] [--per-test-build] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG] <workers 1-8> [test1 test2 ... | GROUP1 GROUP2 ...]"
+    echo "Usage: $0 [--verilator] [--per-test-build] [--DME_DEBUG] [--DME_DEEP_DEBUG] [--KLR_DEBUG]"
+    echo "          [--test-debug=<test>:<FLAG>[+<FLAG>]...] <workers 1-8> [test1 test2 ... | GROUP1 GROUP2 ...]"
     echo ""
     echo "Environment:"
     echo "  DASH_INTERVAL_MS  snapshot interval in simulated ms (default 100)"
@@ -395,12 +421,20 @@ while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
         [ -z "${SLOT_PID[$i]}" ] || continue
         h="${SLOT_HOST[$i]}"
         [ -z "$h" ] || [ "${H_OFF[$h]}" = 0 ] || continue
-        test="${QUEUE[0]}"
-        QUEUE=(${QUEUE[@]+"${QUEUE[@]:1}"})
+        # a host takes the first queued test without debug flags (those stay here)
+        _qi=0
+        if [ -n "$h" ]; then
+            while [ $_qi -lt ${#QUEUE[@]} ] && [ -n "$(test_debug "${QUEUE[$_qi]}")" ]; do _qi=$((_qi + 1)); done
+            [ $_qi -lt ${#QUEUE[@]} ] || continue
+        fi
+        test="${QUEUE[$_qi]}"
+        QUEUE=(${QUEUE[@]+"${QUEUE[@]:0:$_qi}"} ${QUEUE[@]+"${QUEUE[@]:$((_qi + 1))}"})
         if [ -z "$h" ]; then
+            _td=($(test_debug "$test"))
+            [ ${#_td[@]} -gt 0 ] && echo "  (debug: $test ${_td[*]}, built on its own)"
             (
                 cd "$SCRIPT_DIR"
-                exec bash "$RUN_TESTS" "$test" "${EXTRA_FLAGS[@]}" >> "$LOGDIR/${test}.runner.log" 2>&1
+                exec bash "$RUN_TESTS" "$test" ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} ${_td[@]+"${_td[@]}"} >> "$LOGDIR/${test}.runner.log" 2>&1
             ) &
             # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
             printf "  [START]  %s\n" "$test"
