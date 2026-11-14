@@ -9,6 +9,18 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    branches: [main]
+    paths:   # (not applied to tag pushes)
+      - lite/**
+      - dme_klr/live/**
+      - dme_klr/asm_select.sh
+      - bin_images/**
+      - dme_klr/bench/**
+      - dme/rtl/**
+      - dme/bench/**
+      - klr/rtl/**
+      - klr/bench/**
+      - .github/workflows/lite-package.yml
   pull_request:
     paths:
       - lite/**
