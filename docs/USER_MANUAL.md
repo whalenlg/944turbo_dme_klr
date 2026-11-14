@@ -144,7 +144,8 @@ use release `v1.0`; for a newer one, change `v1.0` in the name and URL.
 
 Install **Node.js 18 or newer** (https://nodejs.org) first; see
 [What you need](#what-you-need). Each block below then downloads, unpacks,
-installs the Python packages and starts the simulator in one go. After the
+installs the Python packages into a virtual environment (`.venv`) in the
+package folder, and starts the simulator in one go. After the
 first time, only the last line (from the package folder) is needed.
 
 | Platform | Archive |
@@ -159,7 +160,7 @@ first time, only the last line (from the package folder) is needed.
 curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-macos-arm64.tar.gz
 tar -xzf dmeklr-lite-v1.0-macos-arm64.tar.gz
 cd dmeklr-lite-v1.0-macos-arm64
-python3 -m pip install --user -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run_lite.sh
 ```
 
@@ -169,7 +170,7 @@ python3 -m pip install --user -r requirements.txt
 curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-linux-x86_64.tar.gz
 tar -xzf dmeklr-lite-v1.0-linux-x86_64.tar.gz
 cd dmeklr-lite-v1.0-linux-x86_64
-python3 -m pip install --user -r requirements.txt   # Arch: see notes below
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run_lite.sh
 ```
 
@@ -179,7 +180,7 @@ python3 -m pip install --user -r requirements.txt   # Arch: see notes below
 Invoke-WebRequest https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-windows-x86_64.zip -OutFile dmeklr-lite-v1.0-windows-x86_64.zip
 Expand-Archive dmeklr-lite-v1.0-windows-x86_64.zip -DestinationPath .
 cd dmeklr-lite-v1.0-windows-x86_64
-py -m pip install --user -r requirements.txt
+py -m venv .venv; .venv\Scripts\pip install -r requirements.txt
 .\run_lite.cmd
 ```
 
@@ -198,22 +199,19 @@ Notes:
 
 * **Downloaded in the browser** (Releases page or Actions): unpack the
   archive (on Windows right-click the `.zip`, *Extract All*; macOS may leave
-  a `.tar`, so use `tar -xf`), then run the `cd`, pip and `run_lite` lines
+  a `.tar`, so use `tar -xf`), then run the `cd`, venv and `run_lite` lines
   of your platform's block.
-* Use `python3 -m pip`: macOS has no `pip` command.
-* **Arch Linux:** install the packages with pacman instead of pip
-  (`sudo pacman -S nodejs python-pandas python-openpyxl python-matplotlib
-  python-numpy`).
-* **pip refuses with "externally-managed-environment":** make a venv in the
-  package folder (`python3 -m venv .venv && .venv/bin/pip install -r
-  requirements.txt`), which `run_lite.sh` then uses.
+* `run_lite.sh` and `run_lite.cmd` use `.venv` by themselves when it is in
+  the package folder; there is nothing to activate.
+* **Debian / Ubuntu:** if `python3 -m venv` says *ensurepip is not
+  available*, run `sudo apt install python3-venv` and repeat the line.
 
 ### What you need
 
 * **Node.js 18 or newer** from https://nodejs.org (the installer).
 * **Python 3** with pandas, openpyxl, matplotlib and numpy, for the graphs
-  on the MAPS tabs and for listings from edited workbooks (installed by the
-  pip line above).
+  on the MAPS tabs and for listings from edited workbooks (installed into
+  `.venv` by the line above).
 * **bash**, only to rebuild listings from edited workbooks (on Windows, Git
   Bash or MSYS2). Without it the listings that come with the package are used.
 

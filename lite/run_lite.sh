@@ -20,7 +20,7 @@ _major="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$_major" -ge 18 ] || { echo "run_lite.sh: Node.js $_major is too old; 18 or newer is needed" >&2; exit 1; }
 if ! python3 -c "import matplotlib, numpy, pandas, openpyxl" >/dev/null 2>&1; then
     echo "run_lite.sh: note: python3 with pandas, openpyxl, matplotlib and numpy isn't available" >&2
-    echo "  (python3 -m pip install --user -r requirements.txt, see README.txt):" >&2
+    echo "  (python3 -m venv .venv && .venv/bin/pip install -r requirements.txt, see README.txt):" >&2
     echo "  edited workbooks won't update the listings," >&2
     echo "  and the MAPS tabs have no graphs" >&2
 fi

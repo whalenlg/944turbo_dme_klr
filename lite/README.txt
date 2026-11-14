@@ -30,16 +30,15 @@ SETTING UP (once)
      (macOS may already have unpacked it, or left a .tar: tar -xf works
      for that. On Windows: right-click the .zip, Extract All.)
   2. Install Node.js 18 or newer from https://nodejs.org.
-  3. Install the Python packages, from this folder:
-       macOS / Linux:   python3 -m pip install --user -r requirements.txt
-       Windows:         py -m pip install --user -r requirements.txt
-       Arch Linux:      sudo pacman -S nodejs python-pandas python-openpyxl
-                        python-matplotlib python-numpy
-     (Use "python3 -m pip", not "pip": macOS has no "pip" command. If pip
-     refuses with "externally-managed-environment", make a virtual
-     environment here instead: python3 -m venv .venv, then
-     .venv/bin/pip install -r requirements.txt; run_lite.sh uses .venv
-     when it is there.)
+  3. Install the Python packages into a virtual environment (.venv) in
+     this folder:
+       macOS / Linux:   python3 -m venv .venv
+                        .venv/bin/pip install -r requirements.txt
+       Windows:         py -m venv .venv
+                        .venv\Scripts\pip install -r requirements.txt
+     run_lite.sh and run_lite.cmd use .venv by themselves; there is
+     nothing to activate. (Debian / Ubuntu: if venv says "ensurepip is not
+     available", sudo apt install python3-venv first.)
 
 START
   1. In a terminal in this folder (on Windows you can also double-click
