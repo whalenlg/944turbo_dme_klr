@@ -975,10 +975,15 @@ function mapsInfo(sha, cpu = 'dme', name = null) {
 // ── The dashboard, offline ───────────────────────────────────
 // The lite package carries a build of the dashboard (dme-dashboard's
 // npm run build:lite) in dashboard/; the bridge serves it at its root, so
-// the package needs no network. --dashboard DIR serves another build.
+// the package needs no network. --dashboard DIR serves another build. In
+// the developer install, dashboard/ is the dme-dashboard checkout: its
+// dist-lite/ is served once built (npm run build:lite), never its source.
 const DASH = (() => {
   const d = resolve(arg('dashboard', join(REPO, 'dashboard')));
-  return existsSync(join(d, 'index.html')) ? d : null;
+  for (const c of [d, join(d, 'dist-lite')]) {
+    if (existsSync(join(c, 'index.html')) && !existsSync(join(c, 'package.json'))) return c;
+  }
+  return null;
 })();
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',

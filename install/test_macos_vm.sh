@@ -57,6 +57,8 @@
 #                     release) instead of the developer install
 #    --lite build     the same, with a package built here first
 #                     (lite/make_lite.sh; needs this machine's developer install)
+#    --dashboard DIR  with --lite build: the dme-dashboard checkout to build
+#                     (default: make_lite.sh's search; or set DMEKLR_DASHBOARD)
 #    --out DIR        where to put the logs (default
 #                     $DMEKLR_TMP/macos_vm_test/<date-time>)
 #    -h, --help       this text
@@ -100,6 +102,7 @@ while [ $# -gt 0 ]; do
         --replace)        REPLACE=1 ;;
         --out)            OUT="$2"; shift ;;
         --lite)           LITE="${2:?--lite needs an archive or 'build'}"; shift ;;
+        --dashboard)      export DMEKLR_DASHBOARD="${2:?--dashboard needs a directory}"; shift ;;
         *) echo "test_macos_vm.sh: unknown option '$1' (see --help)" >&2; exit 2 ;;
     esac
     shift
