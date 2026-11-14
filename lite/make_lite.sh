@@ -155,6 +155,14 @@ printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"
 git -C "$REPO" ls-files -z bin_images dme/disassemble klr/disassemble \
     | while IFS= read -r -d '' f; do
         case "$f" in *.DS_Store|*.prev.xlsx) continue ;; esac
+        # From bin_images only what the flow reads: the ROM images (.mem,
+        # .bin), the 8048 opcode table the KLR core loads, and rom2mem.py for
+        # uploads. Not bin_images/archive or the developer-only tools.
+        case "$f" in
+            bin_images/archive/*) continue ;;
+            bin_images/*.mem|bin_images/*.bin|bin_images/*.BIN|bin_images/klr/op_ins8048.hex|bin_images/rom2mem.py) ;;
+            bin_images/*) continue ;;
+        esac
         mkdir -p "$PKG/$(dirname "$f")"
         cp -p "$REPO/$f" "$PKG/$f"
     done
