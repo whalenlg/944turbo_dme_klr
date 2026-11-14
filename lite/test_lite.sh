@@ -7,6 +7,7 @@
 #    - the bridge serves the DME and KLR listings (/asm/dme, /asm/klr)
 #    - the sim runs and pauses at 200 ms after POST /cmd "until 200"
 #    - the listings follow the ROM in the EPROM (SIM: [ASM] lines)
+#    - COMPARE IMAGES compares two packaged ROM images (rom_compare.py)
 #    - run_tests.py runs a regression test (cut to 300 ms) on the packaged
 #      testbench and checks it
 #    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
@@ -98,6 +99,11 @@ for cpu in dme klr; do
     [ "${n:-0}" -gt 1000 ]; check $? "/asm/$cpu listing ($n lines)"
     grep -q "^data: SIM: \[ASM\] $cpu .*match=content" "$EVENTS"; check $? "$cpu listing follows the loaded ROM"
 done
+
+# COMPARE IMAGES (rom_compare.py): the packaged KLR images, 86 against 87
+cmp="$(curl -s -m 120 -w ' HTTP%{http_code}' "${H[@]}" "http://127.0.0.1:$PORT/compare/klr?a=86KLR_951.mem&b=87KLR_951.mem")"
+case "$cmp" in "{"*' HTTP200') r=0 ;; *) r=1 ;; esac
+check $r "COMPARE IMAGES: 86 vs 87 KLR (${cmp##* })"
 
 curl -s -o /dev/null "${H[@]}" -X POST --data 'until 200' "http://127.0.0.1:$PORT/cmd"
 ok=1

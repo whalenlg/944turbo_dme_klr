@@ -142,7 +142,7 @@ python3 "$REPO/dme_klr/test_opts.py" tests-json > "$PKG/dme_klr/live/tests.json"
 cp "$REPO/dme_klr/live/test_snap.py" "$PKG/dme_klr/live/"
 cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
 cp "$LITE_DIR/run_tests.py" "$PKG/"
-for f in bridge.mjs map_graphs.py klr_map_graphs.py asm_full.json; do
+for f in bridge.mjs map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done
 printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"
