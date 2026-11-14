@@ -169,7 +169,7 @@ python3 -m pip install --user -r requirements.txt
 curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-linux-x86_64.tar.gz
 tar -xzf dmeklr-lite-v1.0-linux-x86_64.tar.gz
 cd dmeklr-lite-v1.0-linux-x86_64
-python3 -m pip install --user -r requirements.txt   # Arch: see Installing below
+python3 -m pip install --user -r requirements.txt   # Arch: see notes below
 ./run_lite.sh
 ```
 
@@ -192,34 +192,30 @@ gh release download v1.0 -R whalenlg/944turbo_dme_klr -p '*macos-arm64*'
 ```
 
 Then open **http://127.0.0.1:8951/?live** in a browser
-([Starting it](#starting-it)). If pip refuses with
-"externally-managed-environment", see [Installing](#installing-once).
+([Starting it](#starting-it)).
+
+Notes:
+
+* **Downloaded in the browser** (Releases page or Actions): unpack the
+  archive (on Windows right-click the `.zip`, *Extract All*; macOS may leave
+  a `.tar`, so use `tar -xf`), then run the `cd`, pip and `run_lite` lines
+  of your platform's block.
+* Use `python3 -m pip`: macOS has no `pip` command.
+* **Arch Linux:** install the packages with pacman instead of pip
+  (`sudo pacman -S nodejs python-pandas python-openpyxl python-matplotlib
+  python-numpy`).
+* **pip refuses with "externally-managed-environment":** make a venv in the
+  package folder (`python3 -m venv .venv && .venv/bin/pip install -r
+  requirements.txt`), which `run_lite.sh` then uses.
 
 ### What you need
 
 * **Node.js 18 or newer** from https://nodejs.org (the installer).
 * **Python 3** with pandas, openpyxl, matplotlib and numpy, for the graphs
-  on the MAPS tabs and for listings from edited workbooks (installed below).
+  on the MAPS tabs and for listings from edited workbooks (installed by the
+  pip line above).
 * **bash**, only to rebuild listings from edited workbooks (on Windows, Git
   Bash or MSYS2). Without it the listings that come with the package are used.
-
-### Installing (once)
-
-Unpack the archive anywhere and open a terminal in the folder it makes
-(on Windows a Command Prompt; right-click the `.zip`, *Extract All*):
-
-```sh
-tar -xzf dmeklr-lite-<version>-<platform>.tar.gz   # macOS may leave a .tar: tar -xf
-cd dmeklr-lite-<version>-<platform>
-python3 -m pip install --user -r requirements.txt   # Windows: py -m pip ...
-```
-
-Use `python3 -m pip`: macOS has no `pip` command. On Arch Linux install the
-packages with pacman instead (`sudo pacman -S nodejs python-pandas
-python-openpyxl python-matplotlib python-numpy`). Where pip refuses with
-"externally-managed-environment", make a venv in the package folder
-(`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`),
-which `run_lite.sh` then uses.
 
 ### Starting it
 
