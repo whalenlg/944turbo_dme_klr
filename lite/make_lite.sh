@@ -47,7 +47,10 @@
 #    --version <v>      version in the name (default: git describe)
 #    --no-build         package the simulator already in obj/lite/
 #    --dashboard <dir>  a dme-dashboard checkout, or its built dist-lite/
-#                       (default: ../dme-dashboard next to this checkout)
+#                       (default: $DMEKLR_DASHBOARD, else the first of
+#                       dashboard/ (where the installers' --with-dashboard
+#                       clones it), dashboard/dme-dashboard/ and
+#                       ../dme-dashboard/ that holds a checkout)
 # ============================================================
 
 # shellcheck disable=SC2154  # the _c_* settings come from asm_select.sh's _asm_cfg
@@ -77,7 +80,13 @@ while [ $# -gt 0 ]; do
 done
 OUT="${OUT:-$DMEKLR_TMP/lite}"
 VERSION="${VERSION:-$(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo dev)}"
-DASH_SRC="${DASH_SRC:-$REPO/../dme-dashboard}"
+DASH_SRC="${DASH_SRC:-${DMEKLR_DASHBOARD:-}}"
+if [ -z "$DASH_SRC" ]; then
+    for d in "$REPO/dashboard" "$REPO/dashboard/dme-dashboard" "$REPO/../dme-dashboard"; do
+        [ -f "$d/package.json" ] && [ -f "$d/index.html" ] && { DASH_SRC="$d"; break; }
+    done
+    [ -n "$DASH_SRC" ] || { echo "make_lite.sh: no dme-dashboard checkout in $REPO/dashboard, $REPO/dashboard/dme-dashboard or $REPO/../dme-dashboard (clone https://github.com/whalenlg/dme-dashboard into one, or pass --dashboard DIR / set DMEKLR_DASHBOARD)" >&2; exit 1; }
+fi
 [ -f "$DASH_SRC/index.html" ] || { echo "make_lite.sh: no dashboard at $DASH_SRC (a dme-dashboard checkout or its dist-lite/; see --dashboard)" >&2; exit 1; }
 DASH_SRC="$(cd "$DASH_SRC" && pwd)"
 if [ -f "$DASH_SRC/package.json" ] && ! grep -q '"build:lite"' "$DASH_SRC/package.json"; then
