@@ -45,6 +45,12 @@
 //                                     enabled}: add, or change (same
 //                                     host:port; a blank token keeps it)
 //    DELETE /runall/hosts?id=<host:port>
+//    POST /runall/hosttest   JSON {dev, hostId, keep, reuse, threads, tests}:
+//                            run install/test_regress_hosts.sh (developer
+//                            install; a VM needs macOS + Tart, hostId uses
+//                            a saved host and its token); GET /runall has
+//                            its state as hosttest {step, results, out, ...}
+//    POST /runall/hosttest/stop
 //  A run uses the enabled hosts whose software is the same as here
 //  (srchash) and that answer; the runners get them as
 //  $DMEKLR_REGRESS_HOSTS (a JSON file) and run their tests through
@@ -166,7 +172,10 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       else {
         const info = await r.json();
         const same = !!info.srchash && info.srchash === local().srchash;
-        st = { ok: same, info, why: same ? '' : `different software: ${info.version} there, ${local().version} here` };
+        const pyBad = info.python && info.python !== 'ok';
+        st = { ok: same && !pyBad, info,
+               why: !same ? `different software: ${info.version} there, ${local().version} here`
+                  : pyBad ? `its Python packages aren't installed (${info.python}); run its installer or pip install -r requirements.txt` : '' };
       }
     } catch (e) {
       st = { ok: false, why: `unreachable (${e.cause?.code ?? e.name}); start its bridge with --listen 0.0.0.0 --token <secret>` };
@@ -212,6 +221,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
   async function start(body) {
     if (!MODE) return [404, 'no run_all.sh or run_tests.py here'];
     if (proc || starting) return [409, 'a run is already going'];
+    if (htProc) return [409, 'the network run test is going; stop it or wait for it'];
     const cat = getCatalog();
     const o = body ?? {};
     const pick = Array.isArray(o.tests) ? [...new Set(o.tests)] : [];
@@ -388,6 +398,70 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     return true;
   }
 
+  // ── The network run test (install/test_regress_hosts.sh) ─────
+  // One at a time, and not during a run: {dev, hostId (a saved host
+  // instead of a VM), keep, reuse, threads, tests}. Its PASS / FAIL /
+  // SKIP lines and its step headers are what the panel shows.
+  const HOSTTEST = join(REPO, 'install', 'test_regress_hosts.sh');
+  let ht = null, htProc = null;
+  function hostTestStart(o) {
+    if (MODE !== 'dev' || !existsSync(HOSTTEST)) return [422, 'the network run test needs the developer install (install/test_regress_hosts.sh)'];
+    if (htProc) return [409, 'the network run test is already going'];
+    if (proc || starting) return [409, 'a regression run is going; try again when it ends'];
+    const args = [HOSTTEST];
+    const env = { ...process.env, DMEKLR_TMP: TMP_ROOT };
+    delete env.DMEKLR_REGRESS_TOKEN;
+    let target;
+    if (o.hostId) {
+      const h = hosts.find(x => x.id === o.hostId);
+      if (!h) return [404, `no regression host ${o.hostId}`];
+      args.push('--host', hostUrl(h));
+      env.DMEKLR_REGRESS_TOKEN = h.token;       // not on the command line
+      target = h.id;
+    } else {
+      if (!tart) return [422, 'a VM needs macOS on Apple Silicon with Tart; pick a host from the list instead'];
+      if (o.dev) args.push('--dev');
+      if (o.reuse) args.push('--reuse');
+      if (o.keep) args.push('--keep');
+      target = `macOS VM (${o.dev ? 'developer install' : 'lite package'})`;
+    }
+    const th = Math.floor(+o.threads);
+    if (th >= 1 && th <= 64) args.push('--threads', String(th));
+    if (Array.isArray(o.tests) && o.tests.length) {
+      const t = o.tests.filter(x => NAME.test(x));
+      if (t.length) args.push('--tests', t.join(' '));
+    }
+    ht = { target, command: ['install/test_regress_hosts.sh', ...args.slice(1)].join(' '), startedAt: Date.now(),
+           endedAt: null, exit: null, stopping: false, step: 'starting', results: [], out: [], logs: null };
+    const mine = ht;
+    console.log(`bridge: RUN REGRESSIONS: ${ht.command}`);
+    htProc = spawn('bash', args, { cwd: REPO, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    const line = raw => {
+      const l = raw.replace(ANSI, '');
+      mine.out.push(l); if (mine.out.length > 2000) mine.out.shift();
+      let m;
+      if ((m = l.match(/^==> (.*)/))) mine.step = m[1];
+      else if ((m = l.match(/^\s{4}(PASS|FAIL|SKIP)\s+(\d+[a-z]?\.[^:]*): ?(.*)$/))) mine.results.push({ status: m[1], name: m[2], detail: m[3] });
+      else if ((m = l.match(/^Logs: (.*)/))) mine.logs = m[1];
+    };
+    createInterface({ input: htProc.stdout }).on('line', line);
+    createInterface({ input: htProc.stderr }).on('line', line);
+    htProc.on('error', e => line(`couldn't start: ${e.message}`));
+    htProc.on('exit', (code, sig) => {
+      htProc = null; mine.endedAt = Date.now(); mine.exit = sig ?? code;
+      mine.step = mine.stopping ? 'stopped' : code === 0 ? 'all checks passed' : code === 1 ? 'some checks failed' : `ended (exit ${mine.exit})`;
+    });
+    return [202, ''];
+  }
+  function hostTestStop() {
+    if (!htProc) return false;
+    ht.stopping = true;
+    try { process.kill(-htProc.pid, 'SIGTERM'); } catch { try { htProc.kill('SIGTERM'); } catch { /* gone */ } }
+    return true;
+  }
+  const hostTestView = () => ht && { ...ht, running: !!htProc, elapsed_s: ((ht.endedAt ?? Date.now()) - ht.startedAt) / 1000,
+                                     out: ht.out.slice(-400) };
+
   // What the panel shows: per test and per suite the simulated seconds
   // done of the total, and for the run as a whole an estimate of the
   // time left from the simulated seconds per wall second so far
@@ -442,9 +516,22 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       // in the lite package, the developer one here)
       const manual = MODE === 'lite' ? 'docs/USER_MANUAL.md' : 'docs/DEVELOPER_MANUAL.md';
       return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual,
-                         roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view() }), true;
+                         roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view(),
+                         hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST) }), true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;
+    if (req.method === 'POST' && url.pathname === '/runall/hosttest/stop') return text(hostTestStop() ? 204 : 409, ''), true;
+    if (req.method === 'POST' && url.pathname === '/runall/hosttest') {
+      const chunks = [];
+      req.on('data', d => { chunks.push(d); if (chunks.length > 100) req.destroy(); });
+      req.on('end', () => {
+        let o;
+        try { o = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { return text(400, 'body is not JSON'); }
+        const [code, msg] = hostTestStart(o);
+        text(code, msg);
+      });
+      return true;
+    }
     if (url.pathname === '/runall/hosts') {
       if (req.method === 'GET') { hostsView(url.searchParams.has('probe')).then(v => json(200, v), e => text(500, e.message)); return true; }
       if (req.method === 'DELETE') {

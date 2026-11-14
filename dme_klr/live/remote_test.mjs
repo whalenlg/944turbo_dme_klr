@@ -20,7 +20,8 @@
 //
 //  Exit 0 the test ran (its verdict is the validator's), 1 it ran and
 //  failed there, 75 the host can't take it (unreachable, different
-//  software, no such simulator, dropped mid-run): the runner puts the
+//  software, no such simulator, missing Python packages, no dash.log,
+//  dropped mid-run): the runner puts the
 //  test back in the queue and stops using that host.
 // ============================================================
 
@@ -112,7 +113,9 @@ async function main() {
   // Its logs, here, where the runner looks for them
   try {
     const d = await call('GET', `/regress/run/${jobId}/dash`, null, 300_000);
-    if (d.ok) writeFileSync(join(OUT, `${TEST}.dash.log`), Buffer.from(await d.arrayBuffer()));
+    // no dash.log: the host couldn't run it (its setup, not the test); run it elsewhere
+    if (!d.ok) { say('the host made no dash.log; giving the test back'); await forget(); return TEMPFAIL; }
+    writeFileSync(join(OUT, `${TEST}.dash.log`), Buffer.from(await d.arrayBuffer()));
     const l = await call('GET', `/regress/run/${jobId}/log`, null, 300_000);
     rmSync(progress, { force: true });
     if (l.ok) {
