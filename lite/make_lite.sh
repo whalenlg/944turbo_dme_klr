@@ -9,7 +9,11 @@
 #
 #    dme_klr/live/obj/dme_klr_live   the simulator (build_live.sh --relocatable)
 #    dme_klr/live/bridge.mjs         the bridge (Node 18+), with runall.mjs and
-#                                    test_groups.json for the RUN REGRESSIONS panel
+#                                    test_groups.json for the RUN REGRESSIONS panel,
+#                                    regress_host.mjs / remote_test.mjs for
+#                                    regression hosts
+#    VERSION.txt                     version, commit and srchash (the
+#                                    simulator sources' hash) of this build
 #    dme_klr/live/*map_graphs.py     the MAPS tab graphs (matplotlib, numpy)
 #    bin_images/                     the ROM images
 #    {dme,klr}/disassemble/          the disassembly workbooks (.xlsx), the
@@ -183,7 +187,11 @@ for _row in "ramp_to_6000_knock 20009 first knock pulse"; do
 done
 cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
 cp "$LITE_DIR/run_tests.py" "$PKG/"
-for f in bridge.mjs runall.mjs test_groups.json map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
+# Which software this is, for regression hosts (live/regress_host.mjs):
+# the same srchash a developer install of this tree reports
+node "$REPO/dme_klr/live/regress_host.mjs" version-txt "$REPO" "$VERSION" > "$PKG/VERSION.txt" \
+    || { echo "make_lite.sh: couldn't write VERSION.txt" >&2; exit 1; }
+for f in bridge.mjs runall.mjs regress_host.mjs remote_test.mjs test_groups.json map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done
 printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"

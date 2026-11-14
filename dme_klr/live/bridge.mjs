@@ -75,10 +75,17 @@
 //  Loading restarts the sim with +load=<dir> on the snapshot's own EPROM
 //  images, replaying history.log.gz to the dashboard first.
 //
-//  Only listens on 127.0.0.1, and only pages from whalenlg.github.io,
-//  localhost or 127.0.0.1 may use it (see ALLOWED below).
+//  Listens only on 127.0.0.1 (unless --listen, below), and only pages
+//  from whalenlg.github.io, localhost or 127.0.0.1 may use it (see
+//  ALLOWED below).
+//
+//  Regression host: with --listen <addr> (e.g. 0.0.0.0) and --token <secret>
+//  another machine's RUN REGRESSIONS panel can send tests here
+//  (regress_host.mjs: /regress/*). Requests from other machines reach
+//  only those, need the token, and must come from a LAN address.
 //
 //  Usage:  node bridge.mjs [--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
+//                          [--listen <addr> --token <secret>]
 //                          [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>]
 //                          [--allow-origin <https://other.origin>]
 // ============================================================
@@ -102,6 +109,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { makeRunAll } from './runall.mjs';
+import { makeRegressHost, tokenOk, lanAddress, loopback } from './regress_host.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -1023,6 +1031,16 @@ function serveDashboard(pathname, res) {
 // its command even though the browser hides the response. Requests
 // without an Origin header (curl, a terminal) are allowed.
 // The dashboard's RUN REGRESSIONS panel: run_all.sh / run_tests.py (runall.mjs)
+// This bridge as a regression host for another machine's runs
+// (regress_host.mjs): --listen <addr> opens it to the LAN, --token (or
+// $DMEKLR_REGRESS_TOKEN) is the secret the other machine must send
+const LISTEN = arg('listen', '127.0.0.1');
+const TOKEN = arg('token', process.env.DMEKLR_REGRESS_TOKEN || '');
+if (!loopback(LISTEN) && LISTEN !== 'localhost' && TOKEN.length < 8) {
+  console.error(`bridge: --listen ${LISTEN} opens this bridge to other machines: give it --token <secret> (8 characters or more)`);
+  process.exit(1);
+}
+const regressHost = makeRegressHost({ REPO, TMP_ROOT, PY });
 const runAll = makeRunAll({
   REPO, HERE, TMP_ROOT, PY,
   // the whole .mem images, from bin_images/<cpu> and the uploads
@@ -1048,6 +1066,19 @@ const cors = o => o ? {
 createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   const origin = req.headers.origin;
+  // Another machine (with --listen): only the regression-host requests,
+  // with the token, from a LAN address
+  const peer = req.socket.remoteAddress;
+  if (!loopback(peer)) {
+    const auth = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    if (!url.pathname.startsWith('/regress/') || !lanAddress(peer) || !tokenOk(auth, TOKEN)) {
+      console.log(`bridge: refused ${req.method} ${url.pathname} from ${peer}`);
+      res.writeHead(403);
+      return res.end('not allowed from another machine');
+    }
+    return regressHost.handle(req, res, url) || (res.writeHead(404), res.end());
+  }
+  if (url.pathname.startsWith('/regress/') && regressHost.handle(req, res, url)) return;
   if (!originOk(origin)) {
     console.log(`bridge: refused ${req.method} ${url.pathname} from ${origin}`);
     res.writeHead(403);
@@ -1192,11 +1223,13 @@ createServer((req, res) => {
   if (req.method === 'GET' && DASH && serveDashboard(url.pathname, res)) return;
   res.writeHead(404, CORS);
   res.end();
-}).listen(PORT, '127.0.0.1', () => {
+}).listen(PORT, LISTEN, () => {
   console.log(`bridge: http://127.0.0.1:${PORT}  sim=${SIM}`);
+  if (!loopback(LISTEN) && LISTEN !== 'localhost')
+    console.log(`bridge: regression host for other machines on the LAN at ${LISTEN}:${PORT} (token required)`);
   if (DASH) console.log(`bridge: dashboard (offline copy) at http://127.0.0.1:${PORT}/?live`);
   console.log(`bridge: asm listings dme=${ASM.dme.length} klr=${ASM.klr.length} lines`);
   startSim();
 });
 
-process.on('SIGINT', () => { runAll.stop(); if (sim) sim.kill(); process.exit(0); });
+process.on('SIGINT', () => { runAll.stop(); regressHost.stopAll(); if (sim) sim.kill(); process.exit(0); });

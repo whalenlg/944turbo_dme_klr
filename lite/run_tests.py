@@ -20,6 +20,15 @@ Usage:
                       validator's verdicts assume the full length)
     --list            list the tests with their simulated length and exit
 
+Regression hosts: other machines running this package's bridge (or a
+developer install of the same software) with --listen and --token can take
+some of the tests. $DMEKLR_REGRESS_HOSTS names a JSON file
+[{"name", "url", "token", "threads"}] (the dashboard's RUN REGRESSIONS
+panel writes it); each host's threads run tests through
+dme_klr/live/remote_test.mjs (Node), which brings their logs back here to
+be checked like the rest. A host that drops gets no more tests, and its
+test goes back in the queue.
+
 The ROM images are the defaults (89DME_951pin.mem, 89KLR_951.mem) unless
 DME_ROM_FILE / KLR_ROM_FILE (and DME_ROM_DIR / KLR_ROM_DIR) are set, as for
 the developer install's runners.
@@ -31,8 +40,7 @@ FAIL verdict, and each kind of warning a run prints (a PASS too), leave a
 TEST row in the live page's SNAPSHOTS list (LOAD runs the test to that
 moment in the debugger).
 """
-import fnmatch, json, os, re, subprocess, sys, time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import fnmatch, json, os, re, subprocess, sys, threading, time
 
 if any(a in ('-h', '--help') for a in sys.argv[1:]):
     print(__doc__.strip())
@@ -110,6 +118,41 @@ def step_clocks(sim_ns, pct):
     return (sim_ns // 1000000) * pct // 100 * 6000 // 200
 
 
+TEMPFAIL = 75   # remote_test.mjs: the host couldn't take the test
+
+
+def run_remote(name, o, host):
+    """The test on a regression host: its log and dash.log end up in
+    LOGDIR as if it ran here. None when the host dropped out."""
+    log = os.path.join(LOGDIR, f'{name}.log')
+    print(f'  [START] {name}  @{host["name"]}', flush=True)
+    t0 = time.time()
+    cmd = ['node', os.path.join(LIVE, 'remote_test.mjs'), '--host', host['url'], '--test', name,
+           '--out', LOGDIR, '--interval', str(o['interval']), '--log', 'raw']
+    if o['sim_ms']:
+        cmd += ['--sim-ms', str(o['sim_ms'])]
+    with open(os.path.join(LOGDIR, f'{name}.remote.log'), 'w') as rf:
+        rc = subprocess.call(cmd, stdout=rf, stderr=subprocess.STDOUT,
+                             env={**os.environ, 'DMEKLR_REGRESS_TOKEN': host['token']})
+    secs = time.time() - t0
+    if rc == TEMPFAIL:
+        return None
+    if rc != 0:
+        return name, 'FAIL', f'failed on {host["name"]} (see {name}.remote.log)', secs
+    return check(name, log, os.path.join(LOGDIR, f'{name}.dash.log'), o, secs)
+
+
+def check(name, log, dash, o, secs):
+    """Validate a run's dash.log and leave its TEST rows"""
+    r = subprocess.run([sys.executable, os.path.join(DMEKLR, 'validate_dash_log.py'), name, dash, rom('dme')[1]],
+                       capture_output=True, text=True)
+    parts = (r.stdout.strip().splitlines() or ['FAIL\t\tno verdict: ' + r.stderr.strip()[-200:]])[-1].split('\t')
+    verdict = parts[0] if parts[0] in ('PASS', 'WARN', 'FAIL') else 'FAIL'
+    detail = parts[2] if len(parts) > 2 else ' '.join(parts[1:])
+    test_rows(name, log, verdict, detail, o['interval'])
+    return name, verdict, detail, secs
+
+
 def run_one(name, t, o, paths):
     plus = list(t['plusargs'])
     if o['sim_ms']:
@@ -142,13 +185,7 @@ def run_one(name, t, o, paths):
         for line in lf:
             if DASH.match(line):
                 df.write(line)
-    r = subprocess.run([sys.executable, os.path.join(DMEKLR, 'validate_dash_log.py'), name, dash, rom('dme')[1]],
-                       capture_output=True, text=True)
-    parts = (r.stdout.strip().splitlines() or ['FAIL\t\tno verdict: ' + r.stderr.strip()[-200:]])[-1].split('\t')
-    verdict = parts[0] if parts[0] in ('PASS', 'WARN', 'FAIL') else 'FAIL'
-    detail = parts[2] if len(parts) > 2 else ' '.join(parts[1:])
-    test_rows(name, log, verdict, detail, o['interval'])
-    return name, verdict, detail, secs
+    return check(name, log, dash, o, secs)
 
 
 def test_rows(name, log, verdict, detail, interval):
@@ -195,12 +232,53 @@ def main():
     col = {'PASS': '\033[32m', 'WARN': '\033[33m', 'FAIL': '\033[31m'} if sys.stdout.isatty() else {}
     reset = '\033[0m' if col else ''
     res, t0 = [], time.time()
-    with ThreadPoolExecutor(o['jobs']) as ex:
-        futs = [ex.submit(run_one, n, tests[n], o, paths) for n in names]
-        for k, f in enumerate(as_completed(futs), 1):
-            name, v, detail, secs = f.result()
-            res.append((name, v, detail))
-            print(f'  [{col.get(v, "")}{v}{reset}] {name:40s} {secs:6.0f} s  {detail}   ({k}/{len(names)})', flush=True)
+    hosts = []
+    if os.environ.get('DMEKLR_REGRESS_HOSTS'):
+        try:
+            hosts = json.load(open(os.environ['DMEKLR_REGRESS_HOSTS']))
+        except (OSError, ValueError) as e:
+            print(f'run_tests.py: regression hosts not used ({e})')
+    for h in hosts:
+        print(f'Regression host: {h["name"]}, {h["threads"]} thread(s)')
+    # One worker per slot: -j here, then each host's threads; a test whose
+    # host drops goes back on the queue for the other workers
+    queue, lock, off = list(names), threading.Lock(), set()
+    pending, local = [len(names)], [0]   # tests not yet checked, local workers running
+
+    def worker(host):
+        while True:
+            with lock:
+                if not queue or (host and host['name'] in off):
+                    if not host:
+                        local[0] -= 1
+                    return
+                n = queue.pop(0)
+            try:
+                r = run_remote(n, o, host) if host else run_one(n, tests[n], o, paths)
+            except Exception as e:   # one test's crash mustn't hang the run
+                r = (n, 'FAIL', f'runner error: {e}', 0)
+            with lock:
+                if r is None:
+                    off.add(host['name'])
+                    queue.insert(0, n)
+                    print(f'  [REQUEUE] {n}  {host["name"]} dropped out (see {n}.remote.log)', flush=True)
+                    # the local workers may all have ended already: start one
+                    if local[0] == 0:
+                        local[0] += 1
+                        threading.Thread(target=worker, args=(None,), daemon=True).start()
+                    return
+                name, v, detail, secs = r
+                res.append((name, v, detail))
+                pending[0] -= 1
+                print(f'  [{col.get(v, "")}{v}{reset}] {name:40s} {secs:6.0f} s  {detail}   ({len(res)}/{len(names)})', flush=True)
+
+    local[0] = o['jobs']
+    threads = [threading.Thread(target=worker, args=(None,), daemon=True) for _ in range(o['jobs'])]
+    threads += [threading.Thread(target=worker, args=(h,), daemon=True) for h in hosts for _ in range(int(h['threads']))]
+    for th in threads:
+        th.start()
+    while pending[0] > 0:
+        time.sleep(0.5)
     n = {v: sum(r[1] == v for r in res) for v in ('PASS', 'WARN', 'FAIL')}
     wall = time.time() - t0
     with open(os.path.join(LOGDIR, 'validation.log'), 'w') as f:

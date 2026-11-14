@@ -31,12 +31,28 @@
 //  a finished test counts whole. The suites print "[START] <test>" as
 //  each test starts and "[PASS|WARN|FAIL] <test>" as it is checked.
 //  Only one run at a time; it ends if the bridge stops.
+//
+//  Regression hosts: other machines running this bridge with --listen
+//  and --token (regress_host.mjs) share the dashboard tests. The list is
+//  kept in $DMEKLR_TMP/dme_klr/regress_hosts.json:
+//    GET    /runall/hosts[?probe=1]  {local, hosts: [{id, host, port,
+//                                     threads, enabled, token: bool,
+//                                     status: {ok, why, info}}]}
+//    POST   /runall/hosts            JSON {host, port, threads, token,
+//                                     enabled}: add, or change (same
+//                                     host:port; a blank token keeps it)
+//    DELETE /runall/hosts?id=<host:port>
+//  A run uses the enabled hosts whose software is the same as here
+//  (srchash) and that answer; the runners get them as
+//  $DMEKLR_REGRESS_HOSTS (a JSON file) and run their tests through
+//  remote_test.mjs, putting a test back in the queue if its host drops.
 // ============================================================
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
 import { cpus } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { softwareVersion } from './regress_host.mjs';
 import { createInterface } from 'node:readline';
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
@@ -124,9 +140,65 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     return catalog;
   }
 
+  // ── Regression hosts ─────────────────────────────────────────
+  const HOSTS_FILE = join(TMP_ROOT, 'dme_klr', 'regress_hosts.json');
+  let hosts = readJson(HOSTS_FILE)?.hosts ?? [];
+  const saveHosts = () => {
+    mkdirSync(dirname(HOSTS_FILE), { recursive: true });
+    writeFileSync(HOSTS_FILE, JSON.stringify({ hosts }, null, 1), { mode: 0o600 });
+  };
+  const hostUrl = h => `http://${h.host.includes(':') ? `[${h.host}]` : h.host}:${h.port}`;
+  const hostStatus = new Map();   // id → {ok, why, info, at}
+  let me = null, meAt = 0;
+  const local = () => {
+    if (!me || Date.now() - meAt > 30000) { me = softwareVersion(REPO); meAt = Date.now(); }
+    return me;
+  };
+  async function probe(h) {
+    let st;
+    try {
+      const r = await fetch(`${hostUrl(h)}/regress/info`, { headers: { Authorization: `Bearer ${h.token}` }, signal: AbortSignal.timeout(5000) });
+      if (r.status === 403) st = { ok: false, why: 'refused: wrong token, or this machine is not on its LAN' };
+      else if (!r.ok) st = { ok: false, why: `answered ${r.status}: an older bridge, or not started with --listen` };
+      else {
+        const info = await r.json();
+        const same = !!info.srchash && info.srchash === local().srchash;
+        st = { ok: same, info, why: same ? '' : `different software: ${info.version} there, ${local().version} here` };
+      }
+    } catch (e) {
+      st = { ok: false, why: `unreachable (${e.cause?.code ?? e.name}); start its bridge with --listen 0.0.0.0 --token <secret>` };
+    }
+    hostStatus.set(h.id, { ...st, at: Date.now() });
+    return st;
+  }
+  const hostView = h => ({ id: h.id, host: h.host, port: h.port, threads: h.threads, enabled: h.enabled !== false,
+                           token: !!h.token, status: hostStatus.get(h.id) ?? null });
+  async function hostsView(force) {
+    await Promise.all(hosts.filter(h => force || !hostStatus.has(h.id) || Date.now() - hostStatus.get(h.id).at > 15000).map(probe));
+    const v = local();
+    return { local: { version: v.version, mode: v.mode, cpus: cpus().length }, hosts: hosts.map(hostView) };
+  }
+  function setHost(o) {
+    const host = String(o.host ?? '').trim().replace(/^https?:\/\//, '').replace(/^\[|\]$/g, '');
+    if (!/^[A-Za-z0-9.-]{1,253}$/.test(host) && !/^[0-9A-Fa-f:]{2,45}$/.test(host)) return [400, 'a host name or IP address, please'];
+    const port = Math.floor(+o.port || 8951);
+    if (port < 1 || port > 65535) return [400, 'bad port'];
+    const id = `${host}:${port}`;
+    const old = hosts.find(h => h.id === id);
+    const token = typeof o.token === 'string' && o.token ? o.token : old?.token;
+    if (!token) return [400, 'the token the other bridge was started with (--token)'];
+    const h = { id, host, port, threads: Math.min(64, Math.max(1, Math.floor(+o.threads || old?.threads || 4))), token,
+                enabled: o.enabled ?? old?.enabled ?? true };
+    hosts = old ? hosts.map(x => (x.id === id ? h : x)) : [...hosts, h];
+    hostStatus.delete(id);
+    saveHosts();
+    return [200, ''];
+  }
+
   // ── The run ──────────────────────────────────────────────────
   let run = null;
   let proc = null;
+  let starting = false;   // checking the hosts before a run
   let timer = null;
 
   const suite = (label, dir, names, simS) => ({
@@ -134,9 +206,9 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     tests: Object.fromEntries(names.map(n => [n, { len_s: simS(n), state: 'queued', t_s: 0, verdict: null, detail: '' }])),
   });
 
-  function start(body) {
+  async function start(body) {
     if (!MODE) return [404, 'no run_all.sh or run_tests.py here'];
-    if (proc) return [409, 'a run is already going'];
+    if (proc || starting) return [409, 'a run is already going'];
     const cat = getCatalog();
     const o = body ?? {};
     const pick = Array.isArray(o.tests) ? [...new Set(o.tests)] : [];
@@ -195,12 +267,31 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       steps = [{ label: 'Dashboard regression tests (run_tests.py)', suite: 'vl' }];
     }
     steps = steps.map((s, i) => ({ n: i + 1, state: 'pending', verdict: null, note: '', ...s }));
+    // The regression hosts this run can use: enabled, answering, same software
+    const useHosts = [], hostNotes = [];
+    if (o.useHosts !== false && hosts.some(h => h.enabled !== false)) {
+      starting = true;
+      try {
+        for (const h of hosts.filter(x => x.enabled !== false)) {
+          const st = await probe(h);
+          if (st.ok) useHosts.push(h); else hostNotes.push(`RUN REGRESSIONS: not using ${h.id}: ${st.why}`);
+        }
+      } finally { starting = false; }
+      if (proc) return [409, 'a run is already going'];
+    }
+    if (useHosts.length) {
+      const f = join(TMP_ROOT, 'run_all', 'regress_hosts.run.json');
+      mkdirSync(dirname(f), { recursive: true });
+      writeFileSync(f, JSON.stringify(useHosts.map(h => ({ name: h.id, url: hostUrl(h), token: h.token, threads: h.threads }))), { mode: 0o600 });
+      env.DMEKLR_REGRESS_HOSTS = f;
+    } else delete env.DMEKLR_REGRESS_HOSTS;
     run = {
       id: Date.now().toString(36), mode: MODE, startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
       command: [MODE === 'dev' ? 'run_all.sh' : 'run_tests.py', ...args.slice(1)].join(' '),
       opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
-              roms: { dme: roms.dme.name, klr: roms.klr.name } },
-      steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [],
+              roms: { dme: roms.dme.name, klr: roms.klr.name },
+              hosts: useHosts.map(h => ({ name: h.id, threads: h.threads })) },
+      steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes],
     };
     if (MODE === 'lite') { steps[0].state = 'running'; suites.vl.startedAt = Date.now(); }
     console.log(`bridge: RUN REGRESSIONS: ${run.command}  (DME ${roms.dme.name}, KLR ${roms.klr.name})`);
@@ -258,8 +349,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     if (!su) return;
     if (/Building the shared testbench/.test(line)) { su.building = true; return; }
     if (/^\s*built in \d+ s/.test(line) || /Shared build FAILED/.test(line)) { su.building = false; return; }
-    if ((m = line.match(/^\s*\[START\]\s+([A-Za-z0-9_]+)/)) && su.tests[m[1]]) {
-      Object.assign(su.tests[m[1]], { state: 'running', t_s: 0, startedAt: Date.now() });
+    if ((m = line.match(/^\s*\[REQUEUE\]\s+([A-Za-z0-9_]+)/)) && su.tests[m[1]]) {
+      Object.assign(su.tests[m[1]], { state: 'queued', t_s: 0, host: null });
+      return;
+    }
+    if ((m = line.match(/^\s*\[START\]\s+([A-Za-z0-9_]+)(?:\s+@(\S+))?/)) && su.tests[m[1]]) {
+      Object.assign(su.tests[m[1]], { state: 'running', t_s: 0, startedAt: Date.now(), host: m[2] ?? null });
       su.building = false;
       return;
     }
@@ -343,6 +438,28 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
                          roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view() }), true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;
+    if (url.pathname === '/runall/hosts') {
+      if (req.method === 'GET') { hostsView(url.searchParams.has('probe')).then(v => json(200, v), e => text(500, e.message)); return true; }
+      if (req.method === 'DELETE') {
+        const id = url.searchParams.get('id');
+        hosts = hosts.filter(h => h.id !== id);
+        hostStatus.delete(id);
+        saveHosts();
+        return text(204, ''), true;
+      }
+      if (req.method === 'POST') {
+        const chunks = [];
+        req.on('data', d => { chunks.push(d); if (chunks.length > 100) req.destroy(); });
+        req.on('end', () => {
+          let o;
+          try { o = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { return text(400, 'body is not JSON'); }
+          const [code, msg] = setHost(o);
+          if (code !== 200) return text(code, msg);
+          hostsView(false).then(v => json(200, v), e => text(500, e.message));
+        });
+        return true;
+      }
+    }
     if (req.method === 'POST' && url.pathname === '/runall/start') {
       const chunks = [];
       let size = 0;
@@ -350,8 +467,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       req.on('end', () => {
         let body;
         try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { return text(400, 'body is not JSON'); }
-        const [code, msg] = start(body);
-        text(code, msg);
+        start(body).then(([code, msg]) => text(code, msg), e => text(500, e.message));
       });
       return true;
     }

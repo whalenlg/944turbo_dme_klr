@@ -295,6 +295,25 @@ the time left estimated from the rate so far). The run goes on when the panel
 is closed (the button shows its %) and stops with **STOP RUN** or when the
 bridge stops.
 
+**Regression hosts.** Other machines on the same LAN can take some of the
+tests. On each one, unpack the same lite package (or a developer install of
+the same software) and start it with
+`./run_lite.sh --listen 0.0.0.0 --token <secret>` (Windows:
+`run_lite.cmd --listen 0.0.0.0 --token <secret>`). Then, in the panel's
+**REGRESSION HOSTS** box, add it with **ADD REGRESSION HOST**: its host name
+or IP address, port (8951), the most tests it may run at once, and the
+token. The panel shows each host as ✓ (same software, its CPUs) or ✗ and
+why; the software check uses the package's `VERSION.txt`, so a different
+package is refused. The run spreads the tests over this machine and every ✓
+host (**spread the tests over these hosts too** turns that off for a run).
+A host's tests send their progress and logs back here, so the bars,
+verdicts, snapshots and summary are the same as for local ones, and each
+test shows the host it ran on. If a host stops answering, its test goes back
+in the queue and the host gets no more tests that run. The hosts and their
+tokens are remembered on this machine. A bridge started with `--listen`
+answers other machines only for running tests, only from private LAN
+addresses and only with the token; it is not meant for the internet.
+
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch
 the right map graphs.
@@ -955,8 +974,10 @@ per line:
 
 `./run_lite.sh` passes its options to the bridge: `[--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
 [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>] [--allow-origin
-<origin>]`. `--dme-asm` / `--klr-asm` pin a listing instead of following the
-ROM.
+<origin>] [--listen <address> --token <secret>]`. `--dme-asm` / `--klr-asm` pin a listing instead of following the
+ROM. `--listen <address> --token <secret>` lets other machines on the LAN use this
+one as a regression host (see RUN REGRESSIONS); without them the bridge
+answers this machine only.
 
 ### Troubleshooting
 
