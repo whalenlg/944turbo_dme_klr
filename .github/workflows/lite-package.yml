@@ -133,3 +133,57 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ runner.temp }}/lite/*.zip
+
+  # The package on a fresh runner of each OS, as a user would get it: no
+  # checkout (only lite/test_lite.sh is fetched), no Verilator or Icarus
+  # Verilog, Node.js and Python from their usual installers (python.org on
+  # Windows: python and py, no python3). Anything the package needs but
+  # doesn't carry fails here even when it passed on the build machine.
+  clean:
+    name: Clean ${{ matrix.name }}
+    needs: [unix, windows]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS arm64,    os: macos-15,      artifact: lite-macOS,   ext: tar.gz }
+          - { name: Linux x86_64,   os: ubuntu-latest, artifact: lite-Linux,   ext: tar.gz }
+          - { name: Windows x86_64, os: windows-latest, artifact: lite-Windows, ext: zip }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Fetch only the test script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: lite/test_lite.sh
+          sparse-checkout-cone-mode: false
+          path: t
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/pkg
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: What's on this machine
+        run: |
+          ls -l "$RUNNER_TEMP/pkg"
+          find t -type f
+          node --version
+          for c in python3 python py; do command -v "$c" >/dev/null && echo "$c: $("$c" --version 2>&1)"; done
+          for t in verilator iverilog; do command -v "$t" || echo "$t: not installed"; done
+      - name: Python packages (the package's requirements.txt)
+        run: |
+          d="$(mktemp -d)"
+          a="$(ls "$RUNNER_TEMP"/pkg/*.${{ matrix.ext }})"
+          case "$a" in *.zip) python -m zipfile -e "$a" "$d" ;; *) tar -xzf "$a" -C "$d" ;; esac
+          python -m pip install -r "$(ls "$d"/*/requirements.txt)"
+          rm -rf "$d"
+      - name: Test the package
+        run: t/lite/test_lite.sh "$(ls "$RUNNER_TEMP"/pkg/*.${{ matrix.ext }})" --clean

@@ -116,6 +116,18 @@ const KLR_ASM_PIN = arg('klr-asm', null);
 const KLR_ASM = resolve(KLR_ASM_PIN ?? join(REPO, 'klr', 'disassemble'));
 // No VCD: the sim gets the null device as its file (NUL on Windows)
 const DEVNULL = process.platform === 'win32' ? 'NUL' : '/dev/null';
+// The Python to run the helper scripts with: $PYTHON, else the first of
+// python3 / python / py that runs. (On Windows a python.org install has
+// python and py but no python3, and "python3" may be the Microsoft Store
+// stub, which only prints a message.)
+const PY = (() => {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  for (const c of ['python3', 'python', 'py']) {
+    const r = spawnSync(c, ['-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout.trim() === '3') return c;
+  }
+  return 'python3';
+})();
 const MAX_HISTORY = 500_000;   // lines kept for replay
 
 // Lines the dashboard uses; the rest ($dumpvar notices, readmem
@@ -479,7 +491,7 @@ function tablesFor(cpu, path) {
   return tablesCache.get(k);
 }
 function runCompare(args, done) {
-  const proc = spawn('python3', [ROM_COMPARE, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(PY, [ROM_COMPARE, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   const out = [], err = [];
   proc.stdout.on('data', d => out.push(d));
   proc.stderr.on('data', d => err.push(d));
@@ -681,7 +693,7 @@ function rtBuilt() {
 function testOptions(req) {
   const interval = req.interval_ms ?? 100;
   if (existsSync(TEST_OPTS)) {
-    const r = spawnSync('python3', [TEST_OPTS, 'resolve', '--interval', String(interval), ...req.defines], { encoding: 'utf8' });
+    const r = spawnSync(PY, [TEST_OPTS, 'resolve', '--interval', String(interval), ...req.defines], { encoding: 'utf8' });
     if (r.status === 0) {
       const lines = r.stdout.split(/\r?\n/);
       return { cl: lines.includes('files: files_cl'), args: lines.filter(l => l.startsWith('+')) };
@@ -902,7 +914,7 @@ function runMapQueue() {
   const sha = key.slice(4);
   mapBusy = true;
   console.log(`bridge: ${job.cpu} map graphs for ${job.rom} (${sha}) -> ${MAP_CACHE}`);
-  const proc = spawn('python3', [MAP_GRAPHS[job.cpu], job.path, '--cache', MAP_CACHE], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(PY, [MAP_GRAPHS[job.cpu], job.path, '--cache', MAP_CACHE], { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '', finished = false;
   proc.stdout.on('data', d => { out += d; });
   proc.stderr.on('data', d => { err += d; });
@@ -1027,7 +1039,7 @@ createServer((req, res) => {
         let b;
         try { b = JSON.parse(body); } catch { return text(400, 'body must be JSON {test, ms, label}'); }
         if (!snapId(b?.test ?? '') || !(+b.ms >= 0)) return text(400, 'need a test name and a time in ms');
-        const r = spawnSync('python3', [join(HERE, 'test_snap.py'), 'add', b.test, String(+b.ms),
+        const r = spawnSync(PY, [join(HERE, 'test_snap.py'), 'add', b.test, String(+b.ms),
                                         ...String(b.label ?? '').split(/\s+/).filter(Boolean)],
                             { env: { ...process.env, DMEKLR_SNAPDIR: SNAP_DIR }, encoding: 'utf8' });
         if (r.status !== 0) return text(400, (r.stderr || r.stdout || 'test_snap.py failed').trim());
