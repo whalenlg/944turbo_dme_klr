@@ -706,7 +706,9 @@ smaller value gives finer playback and larger logs.
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
 (Verilator, iverilog or both, workers, per-test build, the macOS VM test,
-update first or `--no-pull`) the snapshot interval and
+update first or `--no-pull`, and the iverilog suite's debug output
+`--DME_DEBUG` / `--DME_DEEP_DEBUG` / `--KLR_DEBUG`, whose tests are each built
+on their own and always run on this machine), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests

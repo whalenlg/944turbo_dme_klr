@@ -16,6 +16,9 @@
 //                         in manual; run: the current or last run
 //    POST /runall/start   JSON body: {sims: ['verilator','iverilog'],
 //                         workers, perTestBuild, macosTest, pull,
+//                         debug: ['DME_DEBUG'|'DME_DEEP_DEBUG'|'KLR_DEBUG']
+//                         (the iverilog suite; its tests stay here),
+//                         useHosts (false: no regression hosts),
 //                         interval_ms, sim_ms (lite), tests: [names]
 //                         (none or every test = the whole suite),
 //                         roms: {dme: <file.mem>, klr: <file.mem>}}
@@ -247,6 +250,10 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (o.perTestBuild) args.push('--per-test-build');
       args.push('--macos-test', macos);
       if (o.pull === false) args.push('--no-pull');
+      // iverilog debug output (step 4 only; those tests stay on this machine)
+      const debug = sims.includes('iverilog') && Array.isArray(o.debug)
+        ? [...new Set(o.debug)].filter(d => ['DME_DEBUG', 'DME_DEEP_DEBUG', 'KLR_DEBUG'].includes(d)) : [];
+      for (const d of debug) args.push(`--${d}`);
       if (subset) args.push('--tests', subset.join(' '));
       args.push(String(workers));
       cmd = 'bash'; cwd = DMEKLR;
