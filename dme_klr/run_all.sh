@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  DME 951 + KLR — Full Test Suite
 #  Runs: i8048 regression, i8051 regression, Verilator suite, iverilog suite,
+#        iverilog/Verilator comparison, FQS analysis, macOS install test (VM)
 #        iverilog/Verilator comparison, FQS analysis
 #
 #  Usage:
-#    ./run_all.sh [--verilator | --iverilog] [--per-test-build] [workers 1-8, default 8]
+#    ./run_all.sh [--verilator | --iverilog] [--per-test-build]
+#                 [--macos-test install|lite|both|none] [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
@@ -14,6 +15,11 @@
 #  is skipped in that case, since it needs both sides' logs.
 #  Each suite builds the testbench once and runs every test on that build;
 #  --per-test-build builds every test on its own instead.
+#  Step 6 (macOS with Tart only) then tests the install in a clean macOS
+#  VM (install/test_macos_vm.sh), when steps 1-5 had no FAIL and neither
+#  dashboard suite had more than 5 WARN tests. --macos-test picks the
+#  developer install, the lite package (built here), both (default), or
+#  none.
 # =============================================================================
 set -uo pipefail
 
@@ -25,10 +31,15 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,16s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,22s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
+MACOS_TEST=both
+_next=""
 for arg in "$@"; do
+    if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
     case "$arg" in
+        --macos-test) _next=macos ;;
+        --macos-test=*) MACOS_TEST="${arg#*=}" ;;
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
         --per-test-build) PT_OPT=(--per-test-build) ;;
@@ -43,6 +54,9 @@ else
     RUN_VERILATOR="$_want_verilator"
     RUN_IVERILOG="$_want_iverilog"
 fi
+case "$MACOS_TEST" in install|lite|both|none) ;; *)
+    echo "run_all.sh: --macos-test wants install, lite, both or none (got '$MACOS_TEST')" >&2; exit 2 ;;
+esac
 WORKERS="${ARGS[0]:-8}"
 if ! [[ "$WORKERS" =~ ^[1-8]$ ]] || [ "${#ARGS[@]}" -gt 1 ]; then
     echo "run_all.sh: workers must be a single number 1-8 (got '${ARGS[*]}')" >&2
@@ -83,7 +97,7 @@ MODE_DESC="both simulators"
 [ "$RUN_VERILATOR" = "1" ] && [ "$RUN_IVERILOG" = "0" ] && MODE_DESC="Verilator only"
 [ "$RUN_IVERILOG" = "1" ] && [ "$RUN_VERILATOR" = "0" ] && MODE_DESC="iverilog only"
 log "Workers: $WORKERS  Mode: $MODE_DESC"
-hdr "1/5  i8048 KLR Regression"
+hdr "1/6  i8048 KLR Regression"
 cd "$ROOT/klr"
 log "Running: bash run_klr_regression"
 bash run_klr_regression 2>&1 > "$RUNLOG/run_klr_regression.log" || true
@@ -96,7 +110,7 @@ else
 fi
 
 # ── 2. i8051 DME regression ───────────────────────────────────────────────────
-hdr "2/5  i8051 DME Regression"
+hdr "2/6  i8051 DME Regression"
 cd "$ROOT/dme"
 log "Running: bash run_dme_regression"
 bash run_dme_regression 2>&1 > "$RUNLOG/run_dme_regression.log" || true
@@ -109,7 +123,7 @@ else
 fi
 
 # ── 3. Verilator full suite ───────────────────────────────────────────────────
-hdr "3/5  Verilator Dashboard Test Suite"
+hdr "3/6  Verilator Dashboard Test Suite"
 if [ "$RUN_VERILATOR" = "1" ]; then
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator --all) ..."
@@ -138,7 +152,7 @@ else
 fi
 
 # ── 4. iverilog full suite ────────────────────────────────────────────────────
-hdr "4/5  iverilog Dashboard Test Suite"
+hdr "4/6  iverilog Dashboard Test Suite"
 if [ "$RUN_IVERILOG" = "1" ]; then
     cd "$DME_KLR"
     log "Running iverilog suite (--all) ..."
@@ -167,7 +181,7 @@ else
 fi
 
 # ── 5. iverilog vs Verilator comparison ───────────────────────────────────────
-hdr "5/5  iverilog vs Verilator Comparison + FQS Analysis"
+hdr "5/6  iverilog vs Verilator Comparison + FQS Analysis"
 if [ "$RUN_VERILATOR" = "0" ] || [ "$RUN_IVERILOG" = "0" ]; then
     STALE_SIDE="Verilator"
     [ "$RUN_VERILATOR" = "1" ] && STALE_SIDE="iverilog"
@@ -220,6 +234,33 @@ log "Running FQS analysis ..."
 log "Running: python3 fqs_analysis.py"
 python3 fqs_analysis.py 2>&1 | tee "$RUNLOG/fqs_analysis.log"
 echo ""
+
+# ── 6. macOS install test in a clean VM ───────────────────────────────────────
+hdr "6/6  macOS Install Test (clean VM)"
+MAX_SUITE_WARN=5
+SUITE_WARN=$(( ${VL_WARN:-0} > ${IV_WARN:-0} ? ${VL_WARN:-0} : ${IV_WARN:-0} ))
+if [ "$MACOS_TEST" = none ]; then
+    log "Skipped (--macos-test none)"
+elif [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then
+    log "Skipped (needs macOS with Tart: brew install cirruslabs/cli/tart)"
+elif [ "$FAIL" -gt 0 ] || [ "$SUITE_WARN" -gt "$MAX_SUITE_WARN" ]; then
+    log "Skipped: steps 1-5 had $FAIL FAIL and up to $SUITE_WARN WARN tests in a suite (runs only with no FAIL and <= $MAX_SUITE_WARN WARN)"
+else
+    MODES=("$MACOS_TEST"); [ "$MACOS_TEST" = both ] && MODES=(install lite)
+    for m in "${MODES[@]}"; do
+        VM_OUT="$RUNLOG/macos_vm_$m"
+        VMARGS=(--name "dmeklr-runall-$m" --replace --out "$VM_OUT")
+        [ "$m" = lite ] && VMARGS+=(--lite build)
+        log "Running: install/test_macos_vm.sh ${VMARGS[*]}"
+        bash "$ROOT/install/test_macos_vm.sh" "${VMARGS[@]}" 2>&1 | tee "$RUNLOG/macos_vm_$m.log"
+        rc=${PIPESTATUS[0]}
+        if [ "$rc" = 0 ]; then
+            ok "macOS VM, $m — all steps passed"
+        else
+            fail "macOS VM, $m — exit $rc (see $VM_OUT/summary.txt and $RUNLOG/macos_vm_$m.log)"
+        fi
+    done
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 END_TIME=$(date +%s)

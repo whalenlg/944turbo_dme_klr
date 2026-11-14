@@ -972,6 +972,39 @@ function mapsInfo(sha, cpu = 'dme', name = null) {
   return job ? reply(job.status, job) : reply('none');
 }
 
+// ── The dashboard, offline ───────────────────────────────────
+// The lite package carries a build of the dashboard (dme-dashboard's
+// npm run build:lite) in dashboard/; the bridge serves it at its root, so
+// the package needs no network. --dashboard DIR serves another build.
+const DASH = (() => {
+  const d = resolve(arg('dashboard', join(REPO, 'dashboard')));
+  return existsSync(join(d, 'index.html')) ? d : null;
+})();
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+  '.ico': 'image/x-icon',
+};
+function serveDashboard(pathname, res) {
+  let rel;
+  try { rel = decodeURIComponent(pathname); } catch { return false; }
+  if (rel === '/' || rel === '') rel = '/index.html';
+  const file = resolve(DASH, '.' + rel);
+  if (file !== DASH && !file.startsWith(DASH + (process.platform === 'win32' ? '\\' : '/'))) return false;
+  let st;
+  try { st = statSync(file); } catch { return false; }
+  if (!st.isFile()) return false;
+  const ext = (file.match(/\.[^./\\]+$/) || [''])[0].toLowerCase();
+  res.writeHead(200, {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
+    // the hashed assets never change; index.html is checked each time
+    'Cache-Control': rel === '/index.html' ? 'no-cache' : 'max-age=31536000, immutable',
+  });
+  res.end(readFileSync(file));
+  return true;
+}
+
 // ── HTTP ─────────────────────────────────────────────────────
 // Only these page origins may use the bridge: the published dashboard
 // and a dev server on this machine (--allow-origin adds more). Requests
@@ -1137,10 +1170,12 @@ createServer((req, res) => {
     });
     return;
   }
+  if (req.method === 'GET' && DASH && serveDashboard(url.pathname, res)) return;
   res.writeHead(404, CORS);
   res.end();
 }).listen(PORT, '127.0.0.1', () => {
   console.log(`bridge: http://127.0.0.1:${PORT}  sim=${SIM}`);
+  if (DASH) console.log(`bridge: dashboard (offline copy) at http://127.0.0.1:${PORT}/?live`);
   console.log(`bridge: asm listings dme=${ASM.dme.length} klr=${ASM.klr.length} lines`);
   startSim();
 });

@@ -3,3 +3,9 @@ The simulator in this package was compiled with Verilator
 Copyright 2003-2025 by Wilson Snyder and distributed under the GNU Lesser
 General Public License version 3 or the Perl Artistic License version 2.0.
 Its source is available from https://github.com/verilator/verilator.
+
+The dashboard in dashboard/ is built with React, React DOM and Recharts
+(MIT License; https://react.dev, https://recharts.org) and carries the fonts
+Share Tech Mono (Copyright 2012 Carrois Type Design) and Orbitron
+(Copyright 2018 The Orbitron Project Authors), both under the SIL Open
+Font License 1.1 (https://openfontlicense.org).

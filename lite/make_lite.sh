@@ -27,6 +27,9 @@
 #    dme_klr/live/tests.json         every test's options (test_opts.py
 #                                    tests-json)
 #    run_tests.py                    runs and checks the regression tests
+#    dashboard/                      the dashboard, built for the bridge to
+#                                    serve offline (dme-dashboard's
+#                                    npm run build:lite)
 #
 #  Needs the developer install (Verilator, a C++ compiler, Python with
 #  pandas and openpyxl to make the tables). Builds into
@@ -34,10 +37,17 @@
 #    <out>/dmeklr-lite-<version>-<platform>/       and
 #    <out>/dmeklr-lite-<version>-<platform>.tar.gz (.zip on Windows)
 #
+#  The dashboard comes from a dme-dashboard checkout (built here with npm,
+#  which needs Node.js and, the first time, the network for npm ci) or
+#  from a dashboard already built with npm run build:lite.
+#
 #  Usage:  lite/make_lite.sh [--out <dir>] [--version <v>] [--no-build]
-#    --out <dir>      where the package goes (default $DMEKLR_TMP/lite)
-#    --version <v>    version in the name (default: git describe)
-#    --no-build       package the simulator already in obj/lite/
+#                            [--dashboard <dir>]
+#    --out <dir>        where the package goes (default $DMEKLR_TMP/lite)
+#    --version <v>      version in the name (default: git describe)
+#    --no-build         package the simulator already in obj/lite/
+#    --dashboard <dir>  a dme-dashboard checkout, or its built dist-lite/
+#                       (default: ../dme-dashboard next to this checkout)
 # ============================================================
 
 # shellcheck disable=SC2154  # the _c_* settings come from asm_select.sh's _asm_cfg
@@ -55,9 +65,10 @@ LITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$LITE_DIR/.." && pwd)"
 source "$REPO/paths.sh"
 
-OUT=""; VERSION=""; BUILD=1
+OUT=""; VERSION=""; BUILD=1; DASH_SRC=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --dashboard) DASH_SRC="$2"; shift 2 ;;
         --out)      OUT="$2"; shift 2 ;;
         --version)  VERSION="$2"; shift 2 ;;
         --no-build) BUILD=0; shift ;;
@@ -66,6 +77,12 @@ while [ $# -gt 0 ]; do
 done
 OUT="${OUT:-$DMEKLR_TMP/lite}"
 VERSION="${VERSION:-$(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo dev)}"
+DASH_SRC="${DASH_SRC:-$REPO/../dme-dashboard}"
+[ -f "$DASH_SRC/index.html" ] || { echo "make_lite.sh: no dashboard at $DASH_SRC (a dme-dashboard checkout or its dist-lite/; see --dashboard)" >&2; exit 1; }
+DASH_SRC="$(cd "$DASH_SRC" && pwd)"
+if [ -f "$DASH_SRC/package.json" ] && ! grep -q '"build:lite"' "$DASH_SRC/package.json"; then
+    echo "make_lite.sh: $DASH_SRC has no npm run build:lite (pull dme-dashboard)" >&2; exit 1
+fi
 
 EXE=""
 case "$(uname -s)" in
@@ -142,7 +159,7 @@ python3 "$REPO/dme_klr/test_opts.py" tests-json > "$PKG/dme_klr/live/tests.json"
 cp "$REPO/dme_klr/live/test_snap.py" "$PKG/dme_klr/live/"
 cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
 cp "$LITE_DIR/run_tests.py" "$PKG/"
-for f in bridge.mjs map_graphs.py klr_map_graphs.py asm_full.json; do
+for f in bridge.mjs map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done
 printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"
@@ -179,6 +196,20 @@ for cpu in dme klr; do
         for f in "${_c_files[@]}"; do cp -p "$d/$f" "$PKG/$cpu/disassemble/$t/"; done
     done
 done
+
+# The dashboard, built for the bridge to serve at its root, offline
+if [ -f "$DASH_SRC/package.json" ]; then
+    step "Building the dashboard (npm run build:lite in $DASH_SRC)"
+    ( cd "$DASH_SRC" && { [ -d node_modules/vite ] || npm ci; } && npm run build:lite ) >&2
+    DASH_BUILT="$DASH_SRC/dist-lite"
+else
+    DASH_BUILT="$DASH_SRC"
+fi
+[ -f "$DASH_BUILT/index.html" ] || { echo "make_lite.sh: no index.html in $DASH_BUILT" >&2; exit 1; }
+if grep -rlE 'fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg\.com|cdnjs' "$DASH_BUILT" >&2; then
+    echo "make_lite.sh: the dashboard build loads something from the network (above)" >&2; exit 1
+fi
+cp -R "$DASH_BUILT" "$PKG/dashboard"
 
 cp "$LITE_DIR/run_lite.sh" "$LITE_DIR/run_lite.cmd" "$PKG/"
 chmod +x "$PKG/run_lite.sh"

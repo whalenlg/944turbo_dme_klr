@@ -161,6 +161,10 @@ cleanup() {
     if [ "$KEEP" = 1 ] && [ -n "$IP" ]; then
         printf '\nThe VM is still running (--keep). ssh %s@%s (password %s);\nwhen done: tart stop %s && tart delete %s\n' \
             "$VM_USER" "$IP" "$VM_PASS" "$VM" "$VM"
+        if [ -n "$LITE" ]; then
+            printf '\nTo use the hosted dashboard on it: ssh -L 8951:127.0.0.1:8951 %s@%s\nthen, in that session: cd ~/lite-test/dmeklr-lite-*/ && ./run_lite.sh\nand open https://whalenlg.github.io/dme-dashboard/ here and press LIVE.\n' \
+                "$VM_USER" "$IP"
+        fi
         return
     fi
     if tart get "$VM" >/dev/null 2>&1; then
