@@ -14,6 +14,8 @@
 #      page renders in it with every host but 127.0.0.1 unreachable
 #    - run_tests.py runs a regression test (cut to 300 ms) on the packaged
 #      testbench and checks it
+#    - the package's shipped TEST row (ramp_to_6000_knock's first knock
+#      pulse) is listed without running the test
 #    - a run's warnings and its WARN verdict become TEST rows that the
 #      bridge lists for the page's SNAPSHOTS panel (GET /snapshots)
 #    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
@@ -179,6 +181,13 @@ for t in warm_idle_5s cl_warm_idle; do
     n="$(grep -cE '^(DME: )?\[DS\]' "$PKG/data/dme_klr/v_dash_logs/$t.dash.log" 2>/dev/null)"
     [ "${n:-0}" -ge 2 ]; check $? "$t.dash.log has DS snapshots (${n:-0})"
 done
+
+# The TEST row the package ships (make_lite.sh): ramp_to_6000_knock at its
+# first knock pulse, listed with no run of the test, and still there after
+# run_tests.py's runs (a run's scan replaces only rows from logs)
+rows="$(curl -s "${H[@]}" "http://127.0.0.1:$PORT/snapshots")"
+echo "$rows" | grep -q '"test":"ramp_to_6000_knock","t_ns":19809000000,'
+check $? "the shipped ramp_to_6000_knock row (first knock pulse) is listed"
 
 # The rows run_tests.py leaves after a run, as the SNAPSHOTS panel lists
 # them: one at the warning the log printed, one at the time the WARN

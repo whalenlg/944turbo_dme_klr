@@ -76,6 +76,9 @@ REGRESSION TESTS
   Each kind of warning a run prints (a PASS's too), and a WARN or FAIL
   verdict, adds a TEST row to the live page's SNAPSHOTS list; LOAD runs
   that test to the moment it warned, paused in the debugger.
+  The list starts with one row already there: ramp_to_6000_knock just
+  before its first knock pulse (20009 ms), so you can LOAD it without
+  running the test first.
   DME_ROM_FILE / KLR_ROM_FILE pick other ROM images, as for run_lite.sh.
 
 CONTENTS

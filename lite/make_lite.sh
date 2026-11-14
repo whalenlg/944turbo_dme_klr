@@ -27,6 +27,9 @@
 #    dme_klr/live/tests.json         every test's options (test_opts.py
 #                                    tests-json)
 #    run_tests.py                    runs and checks the regression tests
+#    data/dme_klr/snapshots/         TEST rows shipped for the SNAPSHOTS
+#                                    list (ramp_to_6000_knock's first
+#                                    knock pulse)
 #    dashboard/                      the dashboard, built for the bridge to
 #                                    serve offline (dme-dashboard's
 #                                    npm run build:lite)
@@ -165,6 +168,18 @@ cp "$OBJ/runtime/dme_klr_sim$EXE" "$OBJ/runtime/dme_klr_sim_cl$EXE" "$PKG/dme_kl
 # The regression tests: their options, the runner and the checks
 python3 "$REPO/dme_klr/test_opts.py" tests-json > "$PKG/dme_klr/live/tests.json"
 cp "$REPO/dme_klr/live/test_snap.py" "$PKG/dme_klr/live/"
+# TEST rows the package ships, in data/ where run_lite.sh keeps the
+# snapshots: the SNAPSHOTS list opens these tests at an event without
+# running them first (LOAD stops 200 ms before it). ROM images by name
+# only, so LOAD uses the package's own.
+#   ramp_to_6000_knock: the first of its 5 knock pulses (KLR: [PHASE]
+#   Knock pulse: dropping knock_sensor, t=20009 ms)
+for _row in "ramp_to_6000_knock 20009 first knock pulse"; do
+    # shellcheck disable=SC2086  # test, time and label, split on purpose
+    DMEKLR_SNAPDIR="$PKG/data/dme_klr/snapshots" DME_ROM_DIR="" KLR_ROM_DIR="" \
+        python3 "$PKG/dme_klr/live/test_snap.py" add $_row --event --script none \
+        || { echo "make_lite.sh: couldn't make the TEST row: $_row" >&2; exit 1; }
+done
 cp "$REPO/dme_klr/validate_dash_log.py" "$REPO/dme_klr/rom_stamp.py" "$PKG/dme_klr/"
 cp "$LITE_DIR/run_tests.py" "$PKG/"
 for f in bridge.mjs map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
