@@ -582,6 +582,11 @@ tests are requeued and the run completes. `--host <url> --token <t>` tests
 against any machine already running `bridge.mjs --listen` instead of a VM,
 `--keep` leaves the VM and its bridge running, `--reuse` uses that VM again.
 It prints PASS / FAIL for each check. See `install/test_regress_hosts.sh --help`.
+The RUN REGRESSIONS panel runs it too: **TEST THE NETWORK RUN** under
+REGRESSION HOSTS, with the second machine (a lite or developer VM, or a host
+from the list, whose saved token it uses), `--keep`, `--reuse`, the host's
+threads and the tests, and shows its steps and checks as they come (not while
+a regression run is going).
 
 To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
 runs it in a fresh `archlinux:latest` container (Docker or Podman),

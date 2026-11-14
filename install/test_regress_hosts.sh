@@ -35,7 +35,8 @@
 #    --host URL       use this running host instead of a VM (e.g.
 #                     http://192.168.1.20:8951); needs --token; step 4 is
 #                     skipped (it would stop that bridge)
-#    --token T        the host's token (with --host; a VM gets a random one)
+#    --token T        the host's token (with --host; a VM gets a random one;
+#                     default $DMEKLR_REGRESS_TOKEN)
 #    --threads N      the host's threads (default 2)
 #    --tests "A B"    the tests (default six 5-second ones)
 #    --name NAME      VM name (default dmeklr-regress-host)
@@ -45,6 +46,9 @@
 #    --keep           leave the VM running at the end (with its bridge)
 #    --out DIR        logs (default $DMEKLR_TMP/regress_hosts_test/<date-time>)
 #    -h, --help       this text
+#
+#  The dashboard's RUN REGRESSIONS panel runs it too (REGRESSION HOSTS, TEST
+#  THE NETWORK RUN), with these switches.
 #
 #  Exit: 0 when every check passed, 1 when any failed, 2 on a usage or
 #  setup problem.
@@ -65,7 +69,7 @@ REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
 # shellcheck source=../paths.sh
 source "$REPO_DIR/paths.sh"
 
-DEV=0; LITE=""; HOST_URL=""; TOKEN=""; THREADS=2; KEEP=0; REUSE=0; OUT=""
+DEV=0; LITE=""; HOST_URL=""; TOKEN="${DMEKLR_REGRESS_TOKEN:-}"; THREADS=2; KEEP=0; REUSE=0; OUT=""
 VM="dmeklr-regress-host"; IMAGE=""
 TESTS="warm_idle_5s idle_battery_low idle_high_alt idle_poor_fuel coolant_fail airtemp_fail"
 while [ $# -gt 0 ]; do
@@ -115,7 +119,7 @@ result() {  # result PASS|FAIL|SKIP "name" "detail"
     [ "$s" = FAIL ] && { c="$red"; FAILED=1; }
     [ "$s" = SKIP ] && c="$yellow"
     RESULTS+=("$(printf '%s%-4s%s  %-40s %s' "$c" "$s" "$nc" "$2" "$3")")
-    printf '    %s%s%s  %s\n' "$c" "$s" "$nc" "$3"
+    printf '    %s%s%s  %s: %s\n' "$c" "$s" "$nc" "$2" "$3"   # (the RUN REGRESSIONS panel reads these)
 }
 check() { if [ "$1" = 0 ]; then result PASS "$2" "$3"; else result FAIL "$2" "$3"; fi; }
 
