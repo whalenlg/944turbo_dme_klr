@@ -13,7 +13,7 @@
 #  --tests runs only those dashboard tests (names, or the group names
 #  run_dashboard_parallel.sh knows) in steps 3-4; default all of them.
 #  --no-pull skips the "git checkout main" and "git pull" at the start.
-#  The dashboard's RUN ALL panel (live/runall.mjs) runs this script.
+#  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
 #  comparison + FQS analysis step that depends on both). Pass --verilator or

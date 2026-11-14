@@ -42,7 +42,7 @@
 //                      rom, error, maps: {<n>: {file, addr, dim, bytes}}, tables: {<addr>: {...}}}
 //    GET  /maps/dme/<sha>/<file>.png   one graph
 //    GET  /runall, POST /runall/start, POST /runall/stop
-//                     the dashboard's RUN ALL panel: runs dme_klr/run_all.sh
+//                     the dashboard's RUN REGRESSIONS panel: runs dme_klr/run_all.sh
 //                     (lite package: run_tests.py) with the page's options
 //                     and reports each test's progress (runall.mjs)
 //    GET  /maps/klr[?sha=<hash>|?name=<file>], /maps/klr/<sha>/<file>.png   the same for
@@ -1022,8 +1022,13 @@ function serveDashboard(pathname, res) {
 // since a plain-text POST from another site would otherwise still run
 // its command even though the browser hides the response. Requests
 // without an Origin header (curl, a terminal) are allowed.
-// The dashboard's RUN ALL panel: run_all.sh / run_tests.py (runall.mjs)
-const runAll = makeRunAll({ REPO, HERE, TMP_ROOT, PY });
+// The dashboard's RUN REGRESSIONS panel: run_all.sh / run_tests.py (runall.mjs)
+const runAll = makeRunAll({
+  REPO, HERE, TMP_ROOT, PY,
+  // the whole .mem images, from bin_images/<cpu> and the uploads
+  romImages: cpu => compareImages(cpu).filter(i => /\.mem$/i.test(i.name))
+    .map(i => ({ name: i.name, src: i.src, dir: i.src === 'repo' ? IMAGES[cpu] : join(ROM_DIR, cpu) })),
+});
 
 const ALLOWED = [
   /^https:\/\/whalenlg\.github\.io$/,

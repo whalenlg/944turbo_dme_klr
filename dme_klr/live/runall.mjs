@@ -1,5 +1,5 @@
 // ============================================================
-//  runall.mjs — the dashboard's RUN ALL panel, on the bridge
+//  runall.mjs — the dashboard's RUN REGRESSIONS panel, on the bridge
 //
 //  Runs the regression suite for the page and reports its progress:
 //    developer install  dme_klr/run_all.sh (both CPU regressions, the
@@ -9,14 +9,21 @@
 //                       package's prebuilt Verilator simulators; there
 //                       is no iverilog in the package)
 //
-//    GET  /runall         {mode, platform, tart, cpus, groups, run}
+//    GET  /runall         {mode, platform, tart, cpus, groups, manual, roms, run}
 //                         groups: the tests in the manuals' Appendix A
 //                         groups (test_groups.json), each with its
-//                         simulated length; run: the current or last run
+//                         simulated length and the anchor of its section
+//                         in manual; run: the current or last run
 //    POST /runall/start   JSON body: {sims: ['verilator','iverilog'],
 //                         workers, perTestBuild, macosTest, pull,
 //                         interval_ms, sim_ms (lite), tests: [names]
-//                         (none or every test = the whole suite)}
+//                         (none or every test = the whole suite),
+//                         roms: {dme: <file.mem>, klr: <file.mem>}}
+//                         roms: the images every test runs on, as
+//                         DME_ROM_DIR / DME_ROM_FILE and the KLR_ ones
+//                         (run86.sh, run_carpokes.sh); default the 1989
+//                         ones. GET /runall lists them (bin_images/<cpu>
+//                         and the uploaded ones) and the named pairs
 //    POST /runall/stop    stop the run and every test it started
 //
 //  Progress is simulated time: a running test's share is the newest
@@ -57,7 +64,18 @@ function logTimeMs(file) {
   } catch { return 0; } finally { if (fd !== undefined) closeSync(fd); }
 }
 
-export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
+// The ROM image pairs the developer scripts name (run89.sh, run86.sh,
+// run_carpokes.sh); listed when both images are here
+const ROM_PRESETS = [
+  { name: '1989 (stock)', dme: '89DME_951pin.mem', klr: '89KLR_951.mem' },
+  { name: '1986 (run86.sh)', dme: '28PIN_86DME.mem', klr: '86KLR_951.mem' },
+  { name: 'CarPokes performance (run_carpokes.sh)', dme: '28PIN_DME_PERFORMANCE.mem', klr: '87KLR_951.mem' },
+];
+const DEFAULT_ROM = { dme: '89DME_951pin.mem', klr: '89KLR_951.mem' };
+
+// romImages(cpu): [{name, dir, src: 'repo'|'upload'}], the whole .mem
+// images the bridge knows for that CPU
+export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
   const DMEKLR = join(REPO, 'dme_klr');
   const RUN_ALL = join(DMEKLR, 'run_all.sh');
   const RUN_TESTS = join(REPO, 'run_tests.py');
@@ -98,7 +116,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
     for (const g of readJson(join(HERE, 'test_groups.json'))?.groups ?? []) {
       const tests = g.tests.filter(t => known.has(t) && !seen.has(t));
       tests.forEach(t => seen.add(t));
-      if (tests.length) groups.push({ name: g.name, tests: tests.map(t => ({ name: t, sim_s: len[t] ?? 40 })) });
+      if (tests.length) groups.push({ name: g.name, anchor: g.anchor ?? null, tests: tests.map(t => ({ name: t, sim_s: len[t] ?? 40 })) });
     }
     const rest = all.filter(t => !seen.has(t));
     if (rest.length) groups.push({ name: 'Other', tests: rest.map(t => ({ name: t, sim_s: len[t] ?? 40 })) });
@@ -133,8 +151,21 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
     const simMs = MODE === 'lite' && +o.sim_ms > 0 ? Math.floor(+o.sim_ms) : null;
     const simS = n => simMs ? Math.min(simMs / 1000, cat.len[n] ?? 40) : (cat.len[n] ?? 40);
     const logs = d => join(TMP_ROOT, 'dme_klr', d);
+    // The ROM images: by name, from the bridge's list only
+    const roms = {};
+    for (const cpu of ['dme', 'klr']) {
+      const name = o.roms?.[cpu] || DEFAULT_ROM[cpu];
+      const img = romImages(cpu).find(i => i.name === name);
+      if (!img) return [400, `no ${cpu.toUpperCase()} image ${name}`];
+      roms[cpu] = img;
+    }
     let cmd, args, cwd, steps, suites;
     const env = { ...process.env, DASH_INTERVAL_MS: String(interval), DMEKLR_TMP: TMP_ROOT, PYTHONUNBUFFERED: '1' };
+    for (const cpu of ['dme', 'klr']) {
+      const CPU = cpu.toUpperCase();
+      env[`${CPU}_ROM_DIR`] = roms[cpu].dir.replace(/\\/g, '/').replace(/\/?$/, '/');
+      env[`${CPU}_ROM_FILE`] = roms[cpu].name;
+    }
     if (MODE === 'dev') {
       const sims = (Array.isArray(o.sims) ? o.sims : ['verilator', 'iverilog']).filter(s => s === 'verilator' || s === 'iverilog');
       if (!sims.length) return [400, 'pick Verilator, iverilog or both'];
@@ -167,16 +198,17 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
     run = {
       id: Date.now().toString(36), mode: MODE, startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
       command: [MODE === 'dev' ? 'run_all.sh' : 'run_tests.py', ...args.slice(1)].join(' '),
-      opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all' },
+      opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
+              roms: { dme: roms.dme.name, klr: roms.klr.name } },
       steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [],
     };
     if (MODE === 'lite') { steps[0].state = 'running'; suites.vl.startedAt = Date.now(); }
-    console.log(`bridge: RUN ALL: ${run.command}`);
+    console.log(`bridge: RUN REGRESSIONS: ${run.command}  (DME ${roms.dme.name}, KLR ${roms.klr.name})`);
     proc = spawn(cmd, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     const mine = run;
     createInterface({ input: proc.stdout }).on('line', l => onLine(mine, l));
     createInterface({ input: proc.stderr }).on('line', l => onLine(mine, l));
-    proc.on('error', e => onLine(mine, `RUN ALL: couldn't start ${cmd}: ${e.message}`));
+    proc.on('error', e => onLine(mine, `RUN REGRESSIONS: couldn't start ${cmd}: ${e.message}`));
     proc.on('exit', (code, signal) => {
       proc = null;
       clearInterval(timer); timer = null;
@@ -186,7 +218,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
       for (const s of mine.steps) if (s.state === 'running') s.state = mine.stopping ? 'stopped' : 'done';
       for (const su of Object.values(mine.suites))
         for (const t of Object.values(su.tests)) if (t.state === 'running') t.state = 'stopped';
-      onLine(mine, `RUN ALL: ${mine.stopping ? 'stopped' : `finished, exit ${mine.exit}`}`);
+      onLine(mine, `RUN REGRESSIONS: ${mine.stopping ? 'stopped' : `finished, exit ${mine.exit}`}`);
     });
     timer = setInterval(() => poll(mine), POLL_MS);
     return [202, ''];
@@ -297,8 +329,18 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY }) {
     const text = (code, body) => { res.writeHead(code, CORS); res.end(body); };
     if (req.method === 'GET' && url.pathname === '/runall') {
       let groups = [];
-      try { groups = MODE ? getCatalog().groups : []; } catch (e) { console.error(`bridge: RUN ALL test list: ${e.message}`); }
-      return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, run: view() }), true;
+      try { groups = MODE ? getCatalog().groups : []; } catch (e) { console.error(`bridge: RUN REGRESSIONS test list: ${e.message}`); }
+      const imgs = {};
+      for (const cpu of ['dme', 'klr']) {
+        try { imgs[cpu] = romImages(cpu).map(({ name, src }) => ({ name, src })); } catch { imgs[cpu] = []; }
+      }
+      const has = (cpu, n) => imgs[cpu].some(i => i.name === n);
+      const presets = ROM_PRESETS.filter(p => has('dme', p.dme) && has('klr', p.klr));
+      // each group's MANUAL button: <manual>#<anchor> (the package's manual
+      // in the lite package, the developer one here)
+      const manual = MODE === 'lite' ? 'docs/USER_MANUAL.md' : 'docs/DEVELOPER_MANUAL.md';
+      return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual,
+                         roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view() }), true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;
     if (req.method === 'POST' && url.pathname === '/runall/start') {

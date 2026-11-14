@@ -367,7 +367,7 @@ for test in "${TESTS[@]}"; do
     ) &
     PIDS+=("$!")
     PID_NAMES+=("$test")
-    # (the dashboard's RUN ALL panel marks the test running from this line)
+    # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
     printf "  [START]  %s\n" "$test"
     RUNNING=${#PIDS[@]}
 done

@@ -125,7 +125,7 @@ def run_one(name, t, o, paths):
     for f in (log, dash):
         if os.path.exists(f):
             os.remove(f)
-    # (the dashboard's RUN ALL panel marks the test running from this line)
+    # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
     print(f'  [START] {name}', flush=True)
     t0 = time.time()
     with open(log, 'w') as lf:

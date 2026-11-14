@@ -1,10 +1,11 @@
 {
  "format": "dme-klr-test-groups",
- "version": 1,
- "source": "docs/USER_MANUAL.md, Appendix A",
+ "version": 2,
+ "source": "docs/USER_MANUAL.md and docs/DEVELOPER_MANUAL.md, Appendix A",
  "groups": [
   {
    "name": "Idle",
+   "anchor": "tests-idle",
    "tests": [
     "warm_idle",
     "warm_idle_5s",
@@ -22,6 +23,7 @@
   },
   {
    "name": "Closed-loop drive cycles",
+   "anchor": "tests-closed-loop-drive-cycles",
    "tests": [
     "cl_warm_idle",
     "cl_cold_start",
@@ -41,6 +43,7 @@
   },
   {
    "name": "Open-loop RPM sweeps, ignition and idle valve",
+   "anchor": "tests-open-loop-rpm-sweeps-ignition-and-idle-valve",
    "tests": [
     "ramp_to_3000",
     "ramp_to_6000",
@@ -55,6 +58,7 @@
   },
   {
    "name": "Fuel-quality sweeps",
+   "anchor": "tests-fuel-quality-sweeps",
    "tests": [
     "cl_ramp_to_6000_FQS0",
     "cl_ramp_to_6000_FQS1",
@@ -76,6 +80,7 @@
   },
   {
    "name": "Knock",
+   "anchor": "tests-knock",
    "tests": [
     "ramp_to_6000_knock",
     "knock_sensor_defect",
@@ -87,6 +92,7 @@
   },
   {
    "name": "DME sensor faults",
+   "anchor": "tests-dme-sensor-faults",
    "tests": [
     "afm_open_circuit",
     "afm_short_to_ground",
@@ -111,6 +117,7 @@
   },
   {
    "name": "KLR sensor and wiring faults",
+   "anchor": "tests-klr-sensor-and-wiring-faults",
    "tests": [
     "tps_open_circuit",
     "ramp_to_redline_KLR_TPS_HIGH",
@@ -129,6 +136,7 @@
   },
   {
    "name": "Boost",
+   "anchor": "tests-boost",
    "tests": [
     "cl_ramp_to_3000_BOOST_OPEN_CIRCUIT",
     "cl_ramp_to_3000_BOOST_STEP_OVERBOOST",
@@ -137,6 +145,14 @@
     "cl_ramp_to_6000_BOOST_LOW",
     "cl_wot_3000_BOOST_ZERO"
    ]
+  },
+  {
+   "name": "Log replay (single-test only)",
+   "anchor": "tests-log-replay",
+   "tests": [
+    "replay_wot_60s"
+   ],
+   "dev_only": true
   }
  ]
 }
