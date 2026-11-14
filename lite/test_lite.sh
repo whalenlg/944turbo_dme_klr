@@ -8,6 +8,10 @@
 #    - the sim runs and pauses at 200 ms after POST /cmd "until 200"
 #    - the listings follow the ROM in the EPROM (SIM: [ASM] lines)
 #    - COMPARE IMAGES compares two packaged ROM images (rom_compare.py)
+#    - the bridge serves the packaged dashboard (dashboard/) at its root,
+#      every file the page loads is there, and nothing in it loads from the
+#      internet; with a Chrome (or Edge) found, or named in CHROME, the
+#      page renders in it with every host but 127.0.0.1 unreachable
 #    - run_tests.py runs a regression test (cut to 300 ms) on the packaged
 #      testbench and checks it
 #    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
@@ -99,6 +103,41 @@ for cpu in dme klr; do
     [ "${n:-0}" -gt 1000 ]; check $? "/asm/$cpu listing ($n lines)"
     grep -q "^data: SIM: \[ASM\] $cpu .*match=content" "$EVENTS"; check $? "$cpu listing follows the loaded ROM"
 done
+
+# The dashboard, offline: index.html and every asset it names, from the bridge
+idx="$(curl -s -m 10 "http://127.0.0.1:$PORT/")"
+case "$idx" in *'<div id="root">'*) r=0 ;; *) r=1 ;; esac
+check $r "the bridge serves the packaged dashboard at /"
+bad=""; n=0
+for a in $(printf '%s' "$idx" | grep -oE '(src|href)="/assets/[^"]+"' | sed -E 's/^[a-z]+="//; s/"$//'); do
+    n=$((n + 1))
+    c="$(curl -s -o /dev/null -w '%{http_code}' -m 10 "http://127.0.0.1:$PORT$a")"
+    [ "$c" = 200 ] || bad="$bad $a($c)"
+done
+[ "$n" -gt 0 ] && [ -z "$bad" ]; check $? "its $n scripts and stylesheets load from the bridge${bad:+:$bad}"
+ext="$(grep -rlE 'fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg\.com|cdnjs' "$PKG/dashboard" 2>/dev/null | head -3)"
+[ -d "$PKG/dashboard" ] && [ -z "$ext" ]; check $? "the dashboard loads nothing from the internet${ext:+: $ext}"
+if [ -z "${CHROME:-}" ]; then
+    for c in google-chrome google-chrome-stable chromium chromium-browser \
+             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+             "/c/Program Files/Google/Chrome/Application/chrome.exe" \
+             "/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"; do
+        command -v "$c" >/dev/null 2>&1 && { CHROME="$c"; break; }
+    done
+fi
+if [ -n "${CHROME:-}" ]; then
+    # No DNS for anything but 127.0.0.1: as on a machine with no connection
+    DOM="$WORK/dom.html"
+    "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
+        --user-data-dir="$(cygpath -w "$WORK/chrome-profile" 2>/dev/null || echo "$WORK/chrome-profile")" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" \
+        --timeout=8000 --dump-dom "http://127.0.0.1:$PORT/?live" > "$DOM" 2>/dev/null &
+    cpid=$!
+    for _ in $(seq 60); do kill -0 "$cpid" 2>/dev/null || break; sleep 1; done
+    kill "$cpid" 2>/dev/null
+    grep -q 'SIMULATION DEBUG CONSOLE' "$DOM"; check $? "the dashboard renders offline in $(basename "$CHROME")"
+else
+    echo "  (no Chrome or Edge found: skipped the browser check; set CHROME to run it)"
+fi
 
 # COMPARE IMAGES (rom_compare.py): the packaged KLR images, 86 against 87
 cmp="$(curl -s -m 120 -w ' HTTP%{http_code}' "${H[@]}" "http://127.0.0.1:$PORT/compare/klr?a=86KLR_951.mem&b=87KLR_951.mem")"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Start the lite package's live simulator for the dashboard.
 #   ./run_lite.sh [bridge options, e.g. --port 8951]
-# Then open https://whalenlg.github.io/dme-dashboard/ and press LIVE.
+# Then open the dashboard it serves, http://127.0.0.1:8951/?live (no
+# internet needed; the bridge prints the address).
 # Snapshots and map-graph caches go to $DMEKLR_TMP (default: data/ here).
 set -e
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,5 +24,5 @@ if [ "$(uname -s)" = Darwin ] && command -v xattr >/dev/null 2>&1; then
     xattr -dr com.apple.quarantine "$PKG" 2>/dev/null || true
 fi
 
-echo "Dashboard: https://whalenlg.github.io/dme-dashboard/  (press LIVE)"
+echo "Starting; then open the dashboard address the bridge prints (http://127.0.0.1:8951/?live)."
 exec node "$PKG/dme_klr/live/bridge.mjs" "$@"
