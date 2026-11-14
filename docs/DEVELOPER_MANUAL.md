@@ -1441,135 +1441,173 @@ engine model in which the firmware's own fuel and ignition set the RPM, and
 include the KLR's boost model; the plain `ramp_to_*` tests drive RPM
 directly from the testbench instead. Time is simulated seconds.
 
+### Run times
+
+The **Run time** column in the tables below is the wall-clock time for one
+test on its own. The times were measured with the Linux lite package (v1.0)
+on a 4-core cloud machine (Intel Xeon, 2.3 GHz), where a test takes about
+40 s for each simulated second: about 39 s for the plain tests and 41.5 s
+for the closed-loop (`cl_*`) ones, at any RPM. A recent desktop or an Apple
+Silicon Mac will usually be faster, but the proportions stay the same.
+
+Tests run side by side don't slow each other down as long as there is one
+CPU core for each (measured: the same test took the same time alone and with
+four running at once), so `-j N` divides the total by about N.
+`run_tests.py` starts the longest tests first, so a run can't finish sooner
+than its longest test: `cold_start` (120 simulated seconds) takes about
+78 min, `cl_condition_cycle` about 50 min and the 60 s tests about 40 min.
+Setting `-j` higher than the number of cores doesn't help.
+
+| Group | Tests | One at a time | 4 at a time (`-j 4`) | 8 at a time (`-j 8`) |
+|---|---|---|---|---|
+| Idle | 12 | 4.0 h | 78 min | 78 min |
+| Closed-loop drive cycles | 14 | 6.5 h | 1.7 h | 52 min |
+| Open-loop RPM sweeps, ignition and idle valve | 9 | 2.1 h | 39 min | 39 min |
+| Fuel-quality sweeps | 16 | 7.2 h | 1.8 h | 54 min |
+| Knock | 6 | 1.9 h | 33 min | 26 min |
+| DME sensor faults | 19 | 2.1 h | 31 min | 16 min |
+| KLR sensor and wiring faults | 13 | 75 min | 21 min | 11 min |
+| Boost | 6 | 77 min | 21 min | 21 min |
+| **All 95 tests** | 95 | **26.2 h** | **6.5 h** | **3.3 h** |
+
+The group and suite times are worked out from the single-test times, in the
+order `run_tests.py` starts them. The 8-at-a-time column assumes 8 cores of
+the same speed; the machine they were measured on has only 4.
+
+These are Verilator times (the lite package and `./v_run_dashboard_tests.sh`).
+The iverilog build (`./run_dashboard_tests.sh`) is about 10 times slower
+([Appendix B](#appendix-b-iverilog-and-verilator)). `replay_wot_60s` is
+not in the lite package; its run time is estimated from its length.
+
 ### Idle
 
-| Test | Time | What it checks |
-|---|---|---|
-| `warm_idle` | 60 s | Baseline warm idle; the reference run the other idle tests are compared with |
-| `warm_idle_5s` | 5 s | Same warm idle over the same 5 s window as the sensor-fault tests, for side-by-side comparison |
-| `cold_start` | 60 s | Cold engine start with the lambda warm-up left on |
-| `hot_idle` | 25 s | Idle with a very hot coolant reading |
-| `idle_battery_low` | 5 s | Idle with a low battery voltage reading |
-| `idle_high_alt` | 5 s | Idle with the altitude sensor at the high-altitude end of its range |
-| `altitude_disconnected` | 5 s | Altitude sensor open circuit (reads 0xFF, an impossible "below sea level" value). No DTC expected |
-| `idle_poor_fuel` | 5 s | Idle with the worst fuel-quality reading (0xA7, same as FQS7) |
-| `fuel_qual_disconnected` | 5 s | Fuel-quality sensor open circuit (0xFF). No DTC expected |
-| `ac_on_idle` | 10 s | Idle with the AC compressor on |
-| `warmup_enrichment` | 60 s | Cold idle with lambda warm-up, to watch warm-up enrichment taper off |
-| `dme_klr_warm_idle` | 60 s | Warm idle as a combined DME + KLR check |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `warm_idle` | 60 s | 39 min | Baseline warm idle; the reference run the other idle tests are compared with |
+| `warm_idle_5s` | 5 s | 3 min | Same warm idle over the same 5 s window as the sensor-fault tests, for side-by-side comparison |
+| `cold_start` | 120 s | 78 min | Cold engine start with the lambda warm-up left on |
+| `hot_idle` | 25 s | 16 min | Idle with a very hot coolant reading |
+| `idle_battery_low` | 5 s | 3 min | Idle with a low battery voltage reading |
+| `idle_high_alt` | 5 s | 3 min | Idle with the altitude sensor at the high-altitude end of its range |
+| `altitude_disconnected` | 5 s | 3 min | Altitude sensor open circuit (reads 0xFF, an impossible "below sea level" value). No DTC expected |
+| `idle_poor_fuel` | 5 s | 3 min | Idle with the worst fuel-quality reading (0xA7, same as FQS7) |
+| `fuel_qual_disconnected` | 5 s | 3 min | Fuel-quality sensor open circuit (0xFF). No DTC expected |
+| `ac_on_idle` | 10 s | 6 min | Idle with the AC compressor on |
+| `warmup_enrichment` | 60 s | 39 min | Cold idle with lambda warm-up, to watch warm-up enrichment taper off |
+| `dme_klr_warm_idle` | 60 s | 39 min | Warm idle as a combined DME + KLR check |
 
 ### Closed-loop drive cycles
 
-| Test | Time | What it checks |
-|---|---|---|
-| `cl_warm_idle` | 60 s | Closed-loop warm idle |
-| `cl_cold_start` | 60 s | Closed-loop cold start with a real cranking ramp and no lambda warm-up skip |
-| `cl_tippy_in` | 20 s | A sudden throttle blip at idle, for acceleration enrichment, then back to idle |
-| `cl_ramp_to_3000` | 30 s | Throttle opens to settle near 3000 rpm |
-| `cl_ramp_to_3000_BOOST` | 30 s | The same ramp, kept as the boost-model reference |
-| `cl_ramp_to_4500` | 35 s | Throttle opens to settle near 4500 rpm |
-| `cl_ramp_to_6000` | 40 s | Throttle opens to settle near 6000 rpm |
-| `cl_ramp_to_6000_BOOST` | 40 s | The 6000 rpm ramp with a faster throttle opening |
-| `cl_ramp_to_redline` | 15 s | Throttle to redline, to see the rev limiter |
-| `cl_condition_cycle` | 73 s | Ramp to 3000 rpm, then six 7 s phases, one at a time: cold air, cold coolant, high altitude, no cat, AC on, low battery |
-| `cl_condition_cycle_idle` | 47 s | The same six phases at idle |
-| `cl_ac_halfway` | 20 s | Warm closed-loop idle with the AC switched on halfway through |
-| `cl_idle_controlled_by_isv` | 45 s | As `cl_ac_halfway`, but with the idle valve's bypass air modelled so the firmware's idle control has to bring RPM back |
-| `overrun_cutoff` | 50 s | Hold about 2100 rpm, then lift off: the firmware should cut fuel while coasting and bring it back near idle |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `cl_warm_idle` | 60 s | 42 min | Closed-loop warm idle |
+| `cl_cold_start` | 60 s | 42 min | Closed-loop cold start with a real cranking ramp and no lambda warm-up skip |
+| `cl_tippy_in` | 20 s | 14 min | A sudden throttle blip at idle, for acceleration enrichment, then back to idle |
+| `cl_ramp_to_3000` | 30 s | 21 min | Throttle opens to settle near 3000 rpm |
+| `cl_ramp_to_3000_BOOST` | 30 s | 21 min | The same ramp, kept as the boost-model reference |
+| `cl_ramp_to_4500` | 35 s | 24 min | Throttle opens to settle near 4500 rpm |
+| `cl_ramp_to_6000` | 40 s | 28 min | Throttle opens to settle near 6000 rpm |
+| `cl_ramp_to_6000_BOOST` | 40 s | 28 min | The 6000 rpm ramp with a faster throttle opening |
+| `cl_ramp_to_redline` | 15 s | 10 min | Throttle to redline, to see the rev limiter |
+| `cl_condition_cycle` | 73 s | 50 min | Ramp to 3000 rpm, then six 7 s phases, one at a time: cold air, cold coolant, high altitude, no cat, AC on, low battery |
+| `cl_condition_cycle_idle` | 47 s | 33 min | The same six phases at idle |
+| `cl_ac_halfway` | 20 s | 14 min | Warm closed-loop idle with the AC switched on halfway through |
+| `cl_idle_controlled_by_isv` | 45 s | 31 min | As `cl_ac_halfway`, but with the idle valve's bypass air modelled so the firmware's idle control has to bring RPM back |
+| `overrun_cutoff` | 50 s | 35 min | Hold about 2100 rpm, then lift off: the firmware should cut fuel while coasting and bring it back near idle |
 
 ### Open-loop RPM sweeps, ignition and idle valve
 
-| Test | Time | What it checks |
-|---|---|---|
-| `ramp_to_3000` | 10 s | RPM ramp to 3000 |
-| `ramp_to_6000` | 40 s | RPM ramp to 6000 |
-| `ramp_to_6300` | 15 s | RPM ramp to 6300 |
-| `ramp_to_redline` | 10 s | RPM ramp to 6500 |
-| `ramp_6k_hold` | 15 s | Ramp to 6000 rpm and hold there |
-| `ignition_timing` | 15 s | Ignition advance across a fast ramp to 6000 rpm |
-| `dwell_scaling` | 15 s | Coil dwell across a slow ramp to 6000 rpm |
-| `isv_cold_idle` | 60 s | Idle valve opening and closing during a cold idle |
-| `isv_load_droop` | 12 s | RPM dips to 650 for 0.5 s at 5 s, to see the idle valve respond |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `ramp_to_3000` | 10 s | 6 min | RPM ramp to 3000 |
+| `ramp_to_6000` | 40 s | 26 min | RPM ramp to 6000 |
+| `ramp_to_6300` | 15 s | 10 min | RPM ramp to 6300 |
+| `ramp_to_redline` | 10 s | 6 min | RPM ramp to 6500 |
+| `ramp_6k_hold` | 15 s | 10 min | Ramp to 6000 rpm and hold there |
+| `ignition_timing` | 15 s | 10 min | Ignition advance across a fast ramp to 6000 rpm |
+| `dwell_scaling` | 15 s | 10 min | Coil dwell across a slow ramp to 6000 rpm |
+| `isv_cold_idle` | 60 s | 39 min | Idle valve opening and closing during a cold idle |
+| `isv_load_droop` | 12 s | 8 min | RPM dips to 650 for 0.5 s at 5 s, to see the idle valve respond |
 
 ### Fuel-quality sweeps
 
-| Test | Time | What it checks |
-|---|---|---|
-| `cl_ramp_to_6000_FQS0` … `FQS7` | 40 s each | `cl_ramp_to_6000` with the fuel-quality input stepped through eight values (0x00 to 0xA7) and the engine model's fuel energy adjusted to match |
-| `ramp_to_6000_FQS0` … `FQS7` | 40 s each | `ramp_to_6000` with the same eight fuel-quality values |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `cl_ramp_to_6000_FQS0` … `FQS7` | 40 s each | 28 min each | `cl_ramp_to_6000` with the fuel-quality input stepped through eight values (0x00 to 0xA7) and the engine model's fuel energy adjusted to match |
+| `ramp_to_6000_FQS0` … `FQS7` | 40 s each | 26 min each | `ramp_to_6000` with the same eight fuel-quality values |
 
 ### Knock
 
-| Test | Time | What it checks |
-|---|---|---|
-| `ramp_to_6000_knock` | 40 s | Knock pulses on one cylinder for 10 cycles halfway through, then RPM ramps back down, to see the KLR retard and recover |
-| `knock_sensor_defect` | 40 s | Broken connection to the knock circuit (noise level forced low), so the KLR should flag a knock sensor fault |
-| `knock_sensor_short_to_ground` | 40 s | Knock sensor signal shorted to ground |
-| `cl_ramp_to_3000_KLR_KNOCK_BLOCKED` | 30 s | The broken knock connection during a closed-loop ramp to 3000 rpm |
-| `cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH` | 10 s | KLR knock noise-level input reading high |
-| `cl_ramp_to_6000_KLR_ADC0_NOISE_LOW` | 10 s | KLR knock noise-level input stuck at 0x80 |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `ramp_to_6000_knock` | 40 s | 26 min | Knock pulses on one cylinder for 10 cycles halfway through, then RPM ramps back down, to see the KLR retard and recover |
+| `knock_sensor_defect` | 40 s | 26 min | Broken connection to the knock circuit (noise level forced low), so the KLR should flag a knock sensor fault |
+| `knock_sensor_short_to_ground` | 40 s | 26 min | Knock sensor signal shorted to ground |
+| `cl_ramp_to_3000_KLR_KNOCK_BLOCKED` | 30 s | 21 min | The broken knock connection during a closed-loop ramp to 3000 rpm |
+| `cl_ramp_to_6000_KLR_ADC0_NOISE_HIGH` | 10 s | 7 min | KLR knock noise-level input reading high |
+| `cl_ramp_to_6000_KLR_ADC0_NOISE_LOW` | 10 s | 7 min | KLR knock noise-level input stuck at 0x80 |
 
 ### DME sensor faults
 
-| Test | Time | What it checks |
-|---|---|---|
-| `afm_open_circuit` | 5 s | Air-flow meter signal lost |
-| `afm_short_to_ground` | 5 s | Air-flow meter wiper shorted to ground (0x00) |
-| `battery_disconnected` | 5 s | DME battery sense open (0x00), unlike `idle_battery_low` which is only low |
-| `coolant_fail` | 5 s | Coolant sensor shorted (0x00, reads as very hot) |
-| `coolant_open_circuit` | 5 s | Coolant sensor open (0xFF) |
-| `airtemp_fail` | 5 s | Air temperature sensor shorted (0x00) |
-| `airtemp_open_circuit` | 5 s | Air temperature sensor open (0xFF) |
-| `tps_fail` | 5 s | DME throttle/idle input held at mid-scale (0x80) |
-| `tps_ch6_short_to_ground` | 5 s | DME throttle/idle input shorted to ground (0x00) |
-| `tps_ch6_open_circuit` | 5 s | DME throttle/idle input open (0xFF) |
-| `o2_baseline` | 25 s | Normal oxygen sensor, the reference for the three below |
-| `o2_disconnected` | 25 s | Oxygen sensor disconnected (flat signal) |
-| `o2_rich_stuck` | 25 s | Oxygen sensor stuck reading rich |
-| `o2_lean_stuck` | 25 s | Oxygen sensor stuck reading lean |
-| `ref_sensor_loss` | 8 s | Reference (crank position) sensor signal stops at 3.5 s while the engine keeps running |
-| `ref_sensor_stuck_low` | 8 s | Reference sensor shorted to ground from 3.5 s |
-| `ref_sensor_missing_at_start` | 8 s | No reference signal from power-on, so the DME has to sync on the speed sensor alone |
-| `speed_sensor_loss` | 8 s | Speed (flywheel tooth) sensor signal stops at 3.5 s |
-| `speed_sensor_stuck_low` | 8 s | Speed sensor shorted to ground from 3.5 s |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `afm_open_circuit` | 5 s | 3 min | Air-flow meter signal lost |
+| `afm_short_to_ground` | 5 s | 3 min | Air-flow meter wiper shorted to ground (0x00) |
+| `battery_disconnected` | 5 s | 3 min | DME battery sense open (0x00), unlike `idle_battery_low` which is only low |
+| `coolant_fail` | 5 s | 3 min | Coolant sensor shorted (0x00, reads as very hot) |
+| `coolant_open_circuit` | 5 s | 3 min | Coolant sensor open (0xFF) |
+| `airtemp_fail` | 5 s | 3 min | Air temperature sensor shorted (0x00) |
+| `airtemp_open_circuit` | 5 s | 3 min | Air temperature sensor open (0xFF) |
+| `tps_fail` | 5 s | 3 min | DME throttle/idle input held at mid-scale (0x80) |
+| `tps_ch6_short_to_ground` | 5 s | 3 min | DME throttle/idle input shorted to ground (0x00) |
+| `tps_ch6_open_circuit` | 5 s | 3 min | DME throttle/idle input open (0xFF) |
+| `o2_baseline` | 25 s | 16 min | Normal oxygen sensor, the reference for the three below |
+| `o2_disconnected` | 25 s | 16 min | Oxygen sensor disconnected (flat signal) |
+| `o2_rich_stuck` | 25 s | 16 min | Oxygen sensor stuck reading rich |
+| `o2_lean_stuck` | 25 s | 16 min | Oxygen sensor stuck reading lean |
+| `ref_sensor_loss` | 8 s | 5 min | Reference (crank position) sensor signal stops at 3.5 s while the engine keeps running |
+| `ref_sensor_stuck_low` | 8 s | 5 min | Reference sensor shorted to ground from 3.5 s |
+| `ref_sensor_missing_at_start` | 8 s | 5 min | No reference signal from power-on, so the DME has to sync on the speed sensor alone |
+| `speed_sensor_loss` | 8 s | 5 min | Speed (flywheel tooth) sensor signal stops at 3.5 s |
+| `speed_sensor_stuck_low` | 8 s | 5 min | Speed sensor shorted to ground from 3.5 s |
 
 ### KLR sensor and wiring faults
 
 Unless shown otherwise these run the `cl_ramp_to_3000` profile, cut short
 once the fault has shown up.
 
-| Test | Time | What it checks |
-|---|---|---|
-| `tps_open_circuit` | 10 s | KLR throttle sensor open (0xFF) at idle; expect DTC 4-2 |
-| `ramp_to_redline_KLR_TPS_HIGH` | 10 s | `ramp_to_redline` with the throttle sensor allowed past its legal maximum; expect DTC 4-2 |
-| `cl_ramp_to_3000_TPS0` | 8 s | KLR throttle sensor shorted to ground (0x00) |
-| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW` | 8 s | KLR throttle sensor supply voltage low |
-| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST` | 8 s | KLR throttle sensor supply gone (0x00) |
-| `cl_ramp_to_3000_KLR_BATT_LOW` | 11 s | KLR battery reading low |
-| `cl_ramp_to_3000_KLR_BATT_DISCONNECTED` | 11 s | KLR battery sense open (reads 0) |
-| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH` | 6 s | Crank reference wire to the KLR stuck high from 3 s, holding the KLR in reset |
-| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW` | 6 s | The same wire stuck low, so the KLR never re-syncs to TDC (not yet confirmed on a real car) |
-| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH` | 6 s | DME ignition signal to the KLR stuck high from 3 s |
-| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW` | 6 s | The same signal stuck low (not yet confirmed on a real car) |
-| `cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH` | 10 s | KLR-to-DME full-load wire stuck at the full-throttle level during a part-throttle ramp |
-| `cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW` | 10 s | The full-load wire stuck low, so the DME never sees full throttle |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `tps_open_circuit` | 10 s | 6 min | KLR throttle sensor open (0xFF) at idle; expect DTC 4-2 |
+| `ramp_to_redline_KLR_TPS_HIGH` | 10 s | 6 min | `ramp_to_redline` with the throttle sensor allowed past its legal maximum; expect DTC 4-2 |
+| `cl_ramp_to_3000_TPS0` | 8 s | 6 min | KLR throttle sensor shorted to ground (0x00) |
+| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOW` | 8 s | 6 min | KLR throttle sensor supply voltage low |
+| `cl_ramp_to_3000_KLR_TPS_SUPPLY_LOST` | 8 s | 6 min | KLR throttle sensor supply gone (0x00) |
+| `cl_ramp_to_3000_KLR_BATT_LOW` | 11 s | 8 min | KLR battery reading low |
+| `cl_ramp_to_3000_KLR_BATT_DISCONNECTED` | 11 s | 8 min | KLR battery sense open (reads 0) |
+| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_HIGH` | 6 s | 4 min | Crank reference wire to the KLR stuck high from 3 s, holding the KLR in reset |
+| `cl_ramp_to_3000_KLR_TRIGGER_STUCK_LOW` | 6 s | 4 min | The same wire stuck low, so the KLR never re-syncs to TDC (not yet confirmed on a real car) |
+| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_HIGH` | 6 s | 4 min | DME ignition signal to the KLR stuck high from 3 s |
+| `cl_ramp_to_3000_KLR_IGN_IN_STUCK_LOW` | 6 s | 4 min | The same signal stuck low (not yet confirmed on a real car) |
+| `cl_ramp_to_3000_KLR_FULL_LOAD_STUCK_HIGH` | 10 s | 7 min | KLR-to-DME full-load wire stuck at the full-throttle level during a part-throttle ramp |
+| `cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW` | 10 s | 7 min | The full-load wire stuck low, so the DME never sees full throttle |
 
 ### Boost
 
-| Test | Time | What it checks |
-|---|---|---|
-| `cl_ramp_to_3000_BOOST_OPEN_CIRCUIT` | 10 s | Boost (MAP) sensor open (0xFF) |
-| `cl_ramp_to_3000_BOOST_STEP_OVERBOOST` | 30 s | Boost held at 4 psi, then raised 1 psi a second, to find where the KLR sets DTC 3-2 (overboost) |
-| `cl_ramp_to_3000_BOOST_STEP_DOWN` | 30 s | Boost lowered 1 psi a second from 4 psi into vacuum, to find where the KLR sets DTC 3-1 (boost too low) |
-| `cl_ramp_to_5000_BOOST_LOW` | 10 s | Boost reading lower than normal (a boost leak) on a ramp to 5000 rpm |
-| `cl_ramp_to_6000_BOOST_LOW` | 20 s | The same low boost on a ramp to 6000 rpm |
-| `cl_wot_3000_BOOST_ZERO` | 12 s | Boost sensor shorted (0x00) at full throttle with the rev limiter set to 3000 rpm; expect DTC 3-3 at about 9.4 s |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `cl_ramp_to_3000_BOOST_OPEN_CIRCUIT` | 10 s | 7 min | Boost (MAP) sensor open (0xFF) |
+| `cl_ramp_to_3000_BOOST_STEP_OVERBOOST` | 30 s | 21 min | Boost held at 4 psi, then raised 1 psi a second, to find where the KLR sets DTC 3-2 (overboost) |
+| `cl_ramp_to_3000_BOOST_STEP_DOWN` | 30 s | 21 min | Boost lowered 1 psi a second from 4 psi into vacuum, to find where the KLR sets DTC 3-1 (boost too low) |
+| `cl_ramp_to_5000_BOOST_LOW` | 10 s | 7 min | Boost reading lower than normal (a boost leak) on a ramp to 5000 rpm |
+| `cl_ramp_to_6000_BOOST_LOW` | 20 s | 14 min | The same low boost on a ramp to 6000 rpm |
+| `cl_wot_3000_BOOST_ZERO` | 12 s | 8 min | Boost sensor shorted (0x00) at full throttle with the rev limiter set to 3000 rpm; expect DTC 3-3 at about 9.4 s |
 
 ### Log replay (single-test only)
 
-| Test | Time | What it checks |
-|---|---|---|
-| `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 4](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
+| Test | Time | Run time | What it checks |
+|---|---|---|---|
+| `replay_wot_60s` | 60 s | about 40 min | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 4](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
 
 
 ## Appendix B. iverilog and Verilator
