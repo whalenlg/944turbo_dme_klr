@@ -166,7 +166,10 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       else {
         const info = await r.json();
         const same = !!info.srchash && info.srchash === local().srchash;
-        st = { ok: same, info, why: same ? '' : `different software: ${info.version} there, ${local().version} here` };
+        const pyBad = info.python && info.python !== 'ok';
+        st = { ok: same && !pyBad, info,
+               why: !same ? `different software: ${info.version} there, ${local().version} here`
+                  : pyBad ? `its Python packages aren't installed (${info.python}); run its installer or pip install -r requirements.txt` : '' };
       }
     } catch (e) {
       st = { ok: false, why: `unreachable (${e.cause?.code ?? e.name}); start its bridge with --listen 0.0.0.0 --token <secret>` };

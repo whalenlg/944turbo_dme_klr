@@ -123,6 +123,17 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   })();
   const sims = { verilator: MODE === 'lite' || !!verilator, iverilog: MODE === 'dev' && has('iverilog') && has('vvp') };
 
+  // The Python packages the runners need (the validator, the asm tables):
+  // without them every test fails there, so the host isn't ready
+  let pyOk = null, pyAt = 0;
+  const python = () => {
+    if (pyOk === null || Date.now() - pyAt > 60000) {
+      const r = spawnSync(PY, ['-c', 'import pandas, openpyxl, numpy'], { encoding: 'utf8' });
+      pyOk = r.status === 0 ? '' : (r.error ? `no ${PY}` : (r.stderr.trim().split('\n').pop() || 'import failed'));
+      pyAt = Date.now();
+    }
+    return pyOk;
+  };
   const jobs = new Map();
   // Each job runs with its own DMEKLR_TMP under here, so its logs never
   // overwrite this machine's own runs' logs; the folder goes when the
@@ -136,7 +147,8 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   const builds = {};   // sim → Promise of the shared runtime dir (developer install)
 
   function info() {
-    return { ...version(), sims, verilator, cpus: cpus().length,
+    const py = python();
+    return { ...version(), sims, verilator, cpus: cpus().length, python: py ? `missing: ${py}` : 'ok',
              jobs: [...jobs.values()].filter(j => j.state !== 'done').length };
   }
 
@@ -166,6 +178,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (!NAME.test(o.test ?? '')) return [400, 'bad test name'];
     const sim = o.sim === 'iverilog' ? 'iverilog' : 'verilator';
     if (!sims[sim]) return [422, `this host has no ${sim}`];
+    if (python()) return [422, `this host's Python packages aren't installed (${python()})`];
     const v = version();
     if (!o.srchash || o.srchash !== v.srchash) return [409, `different software here: ${v.version} (srchash ${v.srchash})`];
     const id = randomBytes(6).toString('hex');

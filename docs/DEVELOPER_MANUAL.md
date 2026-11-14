@@ -749,7 +749,11 @@ simulators) or ✗ and why, and the run spreads its dashboard tests over this
 machine's workers and every ✓ host's threads (**spread the tests over these
 hosts too** turns that off for a run). A host's tests write their progress
 and logs back here, so the bars, verdicts, snapshots and summary are the same
-as for local ones, and each test shows the host it ran on. On the host, each test runs in its own folder,
+as for local ones, and each test shows the host it ran on. "Same software" doesn't cover the
+Verilator or Icarus version each machine has (the panel shows the host's), so
+results can differ slightly between hosts with different versions. A host
+whose Python packages (pandas, openpyxl, numpy) don't import shows ✗ and gets
+no tests, and a test that a host can't run (no `dash.log`) runs elsewhere. On the host, each test runs in its own folder,
 `$DMEKLR_TMP/dme_klr/remote_jobs/<id>`, deleted once its logs have been
 fetched, so the host's own logs are never overwritten. An iverilog test's waveform
 (`fst/<test>.fst`) comes back too, into this machine's `dash_logs/fst/`. If a host stops
