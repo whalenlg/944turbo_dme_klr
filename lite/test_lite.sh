@@ -192,15 +192,16 @@ check $? "the shipped ramp_to_6000_knock row (first knock pulse) is listed"
 # The rows run_tests.py leaves after a run, as the SNAPSHOTS panel lists
 # them: one at the warning the log printed, one at the time the WARN
 # verdict names (a log of its own, so the check doesn't hang on whether a
-# 300 ms run warns)
+# 300 ms run warns; and a test run_tests.py didn't just run, whose WARN
+# verdict would already be recorded)
 WLOG="$WORK/lite-snap-check.log"
 printf '%s\n' 'DME: [DS] 100,0' 'DME: [WARN] t=150 ms lite snapshot check' 'DME: [DS] 200,0' > "$WLOG"
 ( cd "$PKG" && DMEKLR_TMP="$PKG/data" "$PY" -c 'import sys; sys.path.insert(0, "."); import run_tests
-run_tests.test_rows("warm_idle_5s", sys.argv[1], "WARN", "WARN: lite verdict check at t=180 ms", 100)' "$WLOG" ) > /dev/null 2>&1
+run_tests.test_rows("ramp_to_3000", sys.argv[1], "WARN", "WARN: lite verdict check at t=180 ms", 100)' "$WLOG" ) > /dev/null 2>&1
 rows="$(curl -s "${H[@]}" "http://127.0.0.1:$PORT/snapshots")"
-echo "$rows" | grep -q 'warm_idle_5s: DME: \[WARN\] t=150 ms lite snapshot check'
+echo "$rows" | grep -q 'ramp_to_3000: DME: \[WARN\] t=150 ms lite snapshot check'
 check $? "a run's warning is a TEST row the page lists"
-echo "$rows" | grep -q 'warm_idle_5s: WARN warm_idle_5s: WARN: lite verdict check'
+echo "$rows" | grep -q 'ramp_to_3000: WARN ramp_to_3000: WARN: lite verdict check'
 check $? "a WARN verdict is a TEST row the page lists"
 
 # TEST LOAD: a TEST row at 150 ms, run on the shared test build
