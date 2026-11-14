@@ -187,3 +187,32 @@ jobs:
           rm -rf "$d"
       - name: Test the package
         run: t/lite/test_lite.sh "$(ls "$RUNNER_TEMP"/pkg/*.${{ matrix.ext }})" --clean
+
+  # The Linux package on a clean Arch Linux (the developer install's distro):
+  # install/test_arch_install.sh --lite, which puts in only Node.js and the
+  # Python packages from pacman, then runs test_lite.sh --clean as a user
+  clean-arch:
+    name: Clean Arch Linux
+    needs: unix
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    timeout-minutes: 30
+    steps:
+      - name: git, for the sparse checkout
+        run: pacman -Sy --needed --noconfirm git
+      - name: Fetch only the test scripts
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            install/test_arch_install.sh
+            lite/test_lite.sh
+          sparse-checkout-cone-mode: false
+          path: t
+      - uses: actions/download-artifact@v5
+        with:
+          name: lite-Linux
+          path: /pkg
+      - name: Test the package
+        run: |
+          find t -type f
+          bash t/install/test_arch_install.sh --in-container --lite "$(ls /pkg/*.tar.gz)"

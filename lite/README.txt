@@ -18,6 +18,8 @@ NEEDS
   Python 3 with pandas, openpyxl, pip install -r requirements.txt
   matplotlib and numpy            (listings from edited workbooks, and the
                                   graphs on the MAPS tabs)
+                                  (Arch Linux: sudo pacman -S nodejs python-pandas
+                                  python-openpyxl python-matplotlib python-numpy)
   bash                            to rebuild listings (on Windows, Git Bash
                                   or MSYS2); without it the packaged
                                   listings are used

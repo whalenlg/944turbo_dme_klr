@@ -16,6 +16,13 @@
 #       in gtkwave on a virtual display (Xvfb)
 #  then prints a PASS/FAIL line per step. Exits 0 only when all pass.
 #
+#  With --lite it tests the lite package instead: no checkout goes into
+#  the container, only the package archive and lite/test_lite.sh. It
+#  installs Node.js and the Python packages from pacman, as a user would,
+#  and runs test_lite.sh --clean as the test user (bridge, listings, live
+#  sim, run_tests.py, TEST LOAD, and that the container has no Verilog
+#  source, Verilator or iverilog).
+#
 #  Usage:  install/test_arch_install.sh [options]
 #    --venv             test install_arch.sh --venv (Python packages from pip)
 #    --quick            install with --skip-tests and stop after
@@ -23,7 +30,13 @@
 #    --no-gtkwave       test install_arch.sh --no-gtkwave (skips step 6)
 #    --engine NAME      docker or podman (default: whichever is found)
 #    --image NAME       base image (default: archlinux:latest)
-#    --keep             leave the container for a look afterwards
+#    --lite ARCHIVE     test this lite package (dmeklr-lite-*-linux-x86_64.tar.gz,
+#                       e.g. the lite-Linux artifact of the Lite package
+#                       workflow, or a release) instead of the developer
+#                       install
+#    --keep             leave the container for a look afterwards (with
+#                       --lite: the package is unpacked in
+#                       /home/tester/lite-test/dmeklr-lite-*/)
 #    --in-container     run the steps here, in an Arch system that is
 #                       already running (as root); used by the container
 #                       run above and by .github/workflows/arch-install.yml
@@ -47,7 +60,7 @@ set -uo pipefail
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$INSTALL_DIR/.." && pwd)"
 
-VENV=0; GTKWAVE=1; QUICK=0; ENGINE=""; IMAGE="archlinux:latest"; KEEP=0; IN_CONTAINER=0
+VENV=0; GTKWAVE=1; QUICK=0; ENGINE=""; IMAGE="archlinux:latest"; KEEP=0; IN_CONTAINER=0; LITE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --venv)         VENV=1 ;;
@@ -56,6 +69,7 @@ while [ $# -gt 0 ]; do
         --engine)       ENGINE="${2:?--engine needs a name}"; shift ;;
         --image)        IMAGE="${2:?--image needs a name}"; shift ;;
         --keep)         KEEP=1 ;;
+        --lite)         LITE="${2:?--lite needs a package archive}"; shift ;;
         --in-container) IN_CONTAINER=1 ;;
         *) echo "test_arch_install.sh: unknown option '$1' (see --help)" >&2; exit 2 ;;
     esac
@@ -73,16 +87,21 @@ if [ "$IN_CONTAINER" = 0 ]; then
         else die "needs docker or podman"; fi
     fi
     command -v git >/dev/null 2>&1 || die "needs git (to list the checkout's files)"
+    if [ -n "$LITE" ]; then
+        [ -f "$LITE" ] || die "no lite package at $LITE"
+        case "$LITE" in *linux-x86_64.tar.gz) ;; *) die "--lite wants the Linux x86_64 .tar.gz package" ;; esac
+    fi
 
     LOGDIR="$REPO_DIR/../tmp/arch-install-test"
     mkdir -p "$LOGDIR"
-    LOG="$LOGDIR/arch-install-$(date +%Y%m%d-%H%M%S)$([ "$VENV" = 1 ] && echo -venv).log"
+    LOG="$LOGDIR/arch-install-$(date +%Y%m%d-%H%M%S)$([ "$VENV" = 1 ] && echo -venv)$([ -n "$LITE" ] && echo -lite).log"
     NAME="dmeklr-arch-test-$$"
 
     ARGS=(--in-container)
     [ "$VENV" = 1 ] && ARGS+=(--venv)
     [ "$QUICK" = 1 ] && ARGS+=(--quick)
     [ "$GTKWAVE" = 0 ] && ARGS+=(--no-gtkwave)
+    [ -n "$LITE" ] && ARGS+=(--lite "/src/pkg/$(basename "$LITE")")
 
     RUNOPTS=(--name "$NAME" -i --platform linux/amd64)
     [ "$KEEP" = 1 ] || RUNOPTS+=(--rm)
@@ -96,8 +115,21 @@ if [ "$IN_CONTAINER" = 0 ]; then
 
     step "Running the test in a fresh container ($NAME); log: $LOG"
     # The checkout's files (tracked, and new ones not ignored) go in on stdin as a
-    # tar, so the container starts from what a fresh clone would hold.
-    (cd "$REPO_DIR" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) \
+    # tar, so the container starts from what a fresh clone would hold. With
+    # --lite only this script, test_lite.sh and the package go in.
+    send_files() {
+        if [ -n "$LITE" ]; then
+            local st; st="$(mktemp -d)"
+            mkdir -p "$st/install" "$st/lite" "$st/pkg"
+            cp "$INSTALL_DIR/test_arch_install.sh" "$st/install/"
+            cp "$REPO_DIR/lite/test_lite.sh" "$st/lite/"
+            cp "$LITE" "$st/pkg/"
+            tar -C "$st" -cf - . && rm -rf "$st"
+        else
+            (cd "$REPO_DIR" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -)
+        fi
+    }
+    send_files \
         | "$ENGINE" run "${RUNOPTS[@]}" "$IMAGE" bash -c '
             mkdir -p /src && tar -xf - -C /src && exec bash /src/install/test_arch_install.sh "$@"
           ' _ "${ARGS[@]}" 2>&1 | tee "$LOG"
@@ -117,6 +149,35 @@ TREPO="$THOME/944turbo_dme_klr"
 TLOG="$THOME/tmp/arch-install-test"
 
 step "System: $(. /etc/os-release && echo "$PRETTY_NAME"), $(uname -m)"
+
+# ── --lite: the package only, with Node.js and Python from pacman ────────
+if [ -n "$LITE" ]; then
+    [ -f "$LITE" ] || die "no lite package at $LITE"
+    step "Bootstrap: a test user, Node.js and the Python packages (pacman)"
+    pacman -Syu --needed --noconfirm sudo curl nodejs python python-pandas python-openpyxl \
+        python-matplotlib python-numpy >/dev/null || die "pacman failed (no network?)"
+    id "$TUSER" >/dev/null 2>&1 || useradd -m "$TUSER"
+    LDIR="$THOME/lite-test"
+    rm -rf "$LDIR"; mkdir -p "$LDIR" "$TLOG"
+    cp "$LITE" "$LDIR/"
+    cp "$REPO_DIR/lite/test_lite.sh" "$LDIR/" || die "no lite/test_lite.sh"
+    chmod +x "$LDIR/test_lite.sh"
+    chown -R "$TUSER:$TUSER" "$THOME"
+    step "test_lite.sh --clean as $TUSER ($(node --version), $(python --version 2>&1))"
+    sudo -u "$TUSER" -H bash -lc "cd '$LDIR' && ./test_lite.sh '$LDIR/$(basename "$LITE")' --clean" 2>&1 \
+        | tee "$TLOG/test_lite.log"
+    rc=${PIPESTATUS[0]}
+    # Unpacked where a user would put it, to look around in (--keep)
+    sudo -u "$TUSER" -H bash -c "cd '$LDIR' && tar -xzf ./*.tar.gz && ls -d '$LDIR'/dmeklr-lite-*/" \
+        | sed 's/^/  unpacked: /'
+    echo
+    echo "════════ Arch lite package test: $(date -u +%Y-%m-%dT%H:%MZ) ════════"
+    echo "  package: $(basename "$LITE")"
+    pacman -Q nodejs python python-pandas 2>/dev/null | sed 's/^/  /'
+    if [ "$rc" = 0 ]; then echo "  PASS  lite package checks ($(grep -c '  PASS  ' "$TLOG/test_lite.log") passed)"; echo "All steps passed."; exit 0; fi
+    echo "  FAIL  lite package checks ($(grep -c '  FAIL  ' "$TLOG/test_lite.log") failed; log: $TLOG/test_lite.log)"
+    exit 1
+fi
 
 # A normal Arch install has sudo and a user in wheel; the container doesn't.
 step "Bootstrap: sudo and a test user"
