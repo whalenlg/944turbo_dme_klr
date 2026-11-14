@@ -5,9 +5,9 @@
 
 # Committed with CRLF; keep them byte for byte
 *.asy -text
-bin_images/klr/codes -text
-bin_images/klr/instr -text
-bin_images/klr/opcodescsv.csv -text
+bin_images/archive/klr/codes -text
+bin_images/archive/klr/instr -text
+bin_images/archive/klr/opcodescsv.csv -text
 
 # Windows batch files need CRLF
 *.cmd text eol=crlf

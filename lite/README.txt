@@ -51,6 +51,6 @@ CONTENTS
   dme_klr/runtime/                the regression testbench (run_tests.py)
   run_tests.py                    runs and checks the regression tests
   dme_klr/live/bridge.mjs         connects it to the dashboard
-  bin_images/                     DME and KLR ROM images (.mem)
+  bin_images/                     DME and KLR ROM images (.mem, .bin)
   dme/, klr/disassemble/          disassembly workbooks, scripts and tables
   NOTICE.txt                      third-party notices
