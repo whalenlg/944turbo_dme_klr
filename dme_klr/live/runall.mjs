@@ -16,8 +16,9 @@
 //                         in manual; run: the current or last run
 //    POST /runall/start   JSON body: {sims: ['verilator','iverilog'],
 //                         workers, perTestBuild, macosTest, pull,
-//                         debug: ['DME_DEBUG'|'DME_DEEP_DEBUG'|'KLR_DEBUG']
-//                         (the iverilog suite; its tests stay here),
+//                         debug: {<test>: ['DME_DEBUG'|'DME_DEEP_DEBUG'|
+//                         'KLR_DEBUG']} (that test in the iverilog suite,
+//                         built on its own, always here),
 //                         useHosts (false: no regression hosts),
 //                         interval_ms, sim_ms (lite), tests: [names]
 //                         (none or every test = the whole suite),
@@ -260,10 +261,16 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (o.perTestBuild) args.push('--per-test-build');
       args.push('--macos-test', macos);
       if (o.pull === false) args.push('--no-pull');
-      // iverilog debug output (step 4 only; those tests stay on this machine)
-      const debug = sims.includes('iverilog') && Array.isArray(o.debug)
-        ? [...new Set(o.debug)].filter(d => ['DME_DEBUG', 'DME_DEEP_DEBUG', 'KLR_DEBUG'].includes(d)) : [];
-      for (const d of debug) args.push(`--${d}`);
+      // iverilog debug output, per test (step 4 only; each builds on its
+      // own and stays on this machine): {test: ['DME_DEBUG', ...]}
+      if (sims.includes('iverilog') && o.debug && typeof o.debug === 'object' && !Array.isArray(o.debug)) {
+        const pickedSet = new Set(subset ?? cat.all);
+        for (const [t, fl] of Object.entries(o.debug)) {
+          if (!NAME.test(t) || !pickedSet.has(t) || !Array.isArray(fl)) continue;
+          const f = [...new Set(fl)].filter(d => ['DME_DEBUG', 'DME_DEEP_DEBUG', 'KLR_DEBUG'].includes(d));
+          if (f.length) args.push(`--test-debug=${t}:${f.join('+')}`);
+        }
+      }
       if (subset) args.push('--tests', subset.join(' '));
       args.push(String(workers));
       cmd = 'bash'; cwd = DMEKLR;
