@@ -573,6 +573,16 @@ npm, and `--with-dashboard` sets that up.
 
 ## 2. Setting up
 
+![Setup: browser, Node server and live simulator](manual/setup-overview.png)
+
+Live mode has three parts, all on your computer. The **browser** shows the
+dashboard. The **Node server** (`bridge.mjs`) passes the dashboard's commands,
+ROM loads and snapshot requests to the simulator, streams everything the
+simulator prints back to the page, and serves the disassembly listings and map
+graphs. The **live simulator** (`obj/dme_klr_live`) is the Verilator model of
+the DME and KLR with the closed-loop engine model. Log review needs only the
+browser.
+
 ### The dashboard
 
 Use the published page at **https://whalenlg.github.io/dme-dashboard/**, or
