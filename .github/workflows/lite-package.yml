@@ -87,20 +87,11 @@ jobs:
           b="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           git ls-remote --exit-code --heads https://github.com/whalenlg/dme-dashboard "$b" >/dev/null 2>&1 && ref="$b"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "dme-dashboard: $ref"
-      - uses: actions/checkout@v5
-        with:
-          repository: whalenlg/dme-dashboard
-          ref: ${{ steps.dash.outputs.ref }}
-          path: dme-dashboard
-      - name: Build the dashboard (npm run build:lite)
-        shell: bash
-        working-directory: dme-dashboard
-        run: npm ci && npm run build:lite
 
       - name: Build the lite package
         run: |
           verilator --version
-          lite/make_lite.sh --dashboard dme-dashboard/dist-lite --out "$RUNNER_TEMP/lite" ${{ startsWith(github.ref, 'refs/tags/v') && format('--version {0}', github.ref_name) || '' }}
+          lite/make_lite.sh --dashboard-ref "${{ steps.dash.outputs.ref }}" --out "$RUNNER_TEMP/lite" ${{ startsWith(github.ref, 'refs/tags/v') && format('--version {0}', github.ref_name) || '' }}
       - name: Test the lite package
         run: lite/test_lite.sh "$(ls "$RUNNER_TEMP"/lite/*.tar.gz)"
 
@@ -158,6 +149,8 @@ jobs:
           repository: whalenlg/dme-dashboard
           ref: ${{ steps.dash.outputs.ref }}
           path: dme-dashboard
+      # (built outside MSYS2, with the runner's Node.js; make_lite.sh
+      # fetches and builds it itself everywhere else)
       - name: Build the dashboard (npm run build:lite)
         shell: bash
         working-directory: dme-dashboard
