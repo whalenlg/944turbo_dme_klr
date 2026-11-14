@@ -191,7 +191,7 @@ done
 # As a regression host (RUN REGRESSIONS, REGRESSION HOSTS): the package's
 # VERSION.txt, /regress/info, and one test sent through remote_test.mjs the
 # way another machine's runner sends it (here over loopback, no token)
-grep -q '^srchash=[0-9a-f]\{20\}' "$PKG/VERSION.txt" 2>/dev/null; check $? "VERSION.txt names the software (srchash)"
+grep -q '^srchash [0-9a-f]\{20\}' "$PKG/VERSION.txt" 2>/dev/null; check $? "VERSION.txt names the software (srchash)"
 ri="$(curl -s -m 10 "http://127.0.0.1:$PORT/regress/info")"
 case "$ri" in *'"mode":"lite"'*'"srchash":"'*'"verilator":true'*) r=0 ;; *) r=1 ;; esac
 check $r "the bridge answers as a regression host (/regress/info)"
