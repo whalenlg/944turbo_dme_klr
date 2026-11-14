@@ -164,7 +164,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     // The ROM images, sent with the request: kept by content hash
     const tmp = join(JOBS_DIR, id);
     mkdirSync(tmp, { recursive: true });
-    const env = { ...process.env, DMEKLR_TMP: tmp, PYTHONUNBUFFERED: '1',
+    const env = { ...process.env, DMEKLR_TMP: tmp, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8',
                   DASH_INTERVAL_MS: String(Math.min(10000, Math.max(1, +o.interval_ms || 100))) };
     for (const cpu of ['dme', 'klr']) {
       const r = o.roms?.[cpu];

@@ -137,7 +137,9 @@ def run_remote(name, o, host):
     secs = time.time() - t0
     if rc == TEMPFAIL:
         return None
-    if rc != 0:
+    # (its exit is 1 when it ran but the host's run_tests.py judged it FAIL:
+    # the verdict is made here, from the logs it brought back)
+    if not os.path.exists(os.path.join(LOGDIR, f'{name}.dash.log')):
         return name, 'FAIL', f'failed on {host["name"]} (see {name}.remote.log)', secs
     return check(name, log, os.path.join(LOGDIR, f'{name}.dash.log'), o, secs)
 
@@ -145,7 +147,8 @@ def run_remote(name, o, host):
 def check(name, log, dash, o, secs):
     """Validate a run's dash.log and leave its TEST rows"""
     r = subprocess.run([sys.executable, os.path.join(DMEKLR, 'validate_dash_log.py'), name, dash, rom('dme')[1]],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding='utf-8', errors='replace',
+                       env={**os.environ, 'PYTHONIOENCODING': 'utf-8'})
     parts = (r.stdout.strip().splitlines() or ['FAIL\t\tno verdict: ' + r.stderr.strip()[-200:]])[-1].split('\t')
     verdict = parts[0] if parts[0] in ('PASS', 'WARN', 'FAIL') else 'FAIL'
     detail = parts[2] if len(parts) > 2 else ' '.join(parts[1:])
