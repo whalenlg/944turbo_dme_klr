@@ -717,6 +717,7 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
 | `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull` |
+| `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
 smaller value gives finer playback and larger logs.
@@ -727,7 +728,9 @@ must be running; `live/runall.mjs`). It has every `run_all.sh` option
 (Verilator, iverilog or both, workers, per-test build, the macOS VM test,
 update first or `--no-pull`, and the iverilog suite's debug output
 `--DME_DEBUG` / `--DME_DEEP_DEBUG` / `--KLR_DEBUG`, whose tests are each built
-on their own and always run on this machine), the snapshot interval and
+on their own and always run on this machine; with any of them ticked, each
+test, each group and the run show about how much disk the iverilog output
+takes, from `dme_klr/iv_disk_rates.json`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests
@@ -738,7 +741,9 @@ checked, and bars for each group, each simulator's suite and the full run
 (simulated seconds done of the total, with the time left estimated from
 the rate so far); the six steps show which one is running. The run goes on
 when the panel is closed (the button shows its %) and stops with **STOP RUN**
-or when the bridge stops. The groups come from
+or when the bridge stops. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
+FQS analysis) on the iverilog and Verilator dash logs as they are now and
+shows its report in the panel, with **REFRESH** to run it again. The groups come from
 `dme_klr/live/test_groups.json`, made from this appendix:
 `python3 dme_klr/live/test_groups.py check` says when the two differ.
 

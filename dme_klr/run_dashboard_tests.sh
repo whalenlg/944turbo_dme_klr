@@ -114,6 +114,17 @@ compile_and_run_klr() {
         interval="$1"; shift
     fi
 
+    # DMEKLR_SIM_TIME_NS: run the test for this many ns of simulated time
+    # instead of its own SIM_TIME (iv_disk_usage.sh --sim-s, for a quick
+    # measurement). The ramp is scaled to the shorter time like any test's.
+    if [ -n "${DMEKLR_SIM_TIME_NS:-}" ]; then
+        local -a _a2=(); local _a
+        for _a in "$@"; do
+            case "$_a" in -DSIM_TIME=*) ;; *) _a2+=("$_a") ;; esac
+        done
+        set -- ${_a2[@]+"${_a2[@]}"} "-DSIM_TIME=$DMEKLR_SIM_TIME_NS"
+    fi
+
     local vvp="${IVDIR}/dash_klr_${name}.vvp"
     local log="${LOGDIR}/${name}.log"
     local vcdfile="${VCDDIR}/${name}.vcd"
