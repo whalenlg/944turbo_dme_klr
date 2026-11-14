@@ -126,15 +126,62 @@ There are packages for macOS (Apple Silicon), Linux x86_64 (glibc 2.35 or
 newer: Ubuntu 22.04, Arch, ...) and Windows x86_64. Each is one archive,
 `dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` for Windows).
 
-* **A release** (when there is one): the repository's
+* **A release:** the repository's
   [Releases page](https://github.com/whalenlg/944turbo_dme_klr/releases)
-  lists each version with the archives under *Assets*.
+  lists each version with the archives under *Assets*. You can also
+  download from the command line (below).
 * **The latest build:** on GitHub, open the repository's **Actions** tab,
   pick the **Lite package** workflow, open its latest successful run on
   `main`, and download `lite-macOS`, `lite-Linux` or `lite-Windows` under
   *Artifacts* (you need to be signed in to GitHub; artifacts are kept 90
   days). The download is a `.zip` holding the package archive; unzip it
   first (macOS's Finder may do that by itself).
+
+#### Downloading a release from the command line
+
+The release archives are public, so no GitHub login is needed. The examples
+use release `v1.0`; for a newer one, change `v1.0` in the name and URL.
+
+| Platform | Archive |
+|---|---|
+| macOS (Apple Silicon) | `dmeklr-lite-v1.0-macos-arm64.tar.gz` |
+| Linux x86_64 | `dmeklr-lite-v1.0-linux-x86_64.tar.gz` |
+| Windows x86_64 | `dmeklr-lite-v1.0-windows-x86_64.zip` |
+
+**macOS** (Terminal):
+
+```sh
+curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-macos-arm64.tar.gz
+tar -xzf dmeklr-lite-v1.0-macos-arm64.tar.gz
+cd dmeklr-lite-v1.0-macos-arm64
+```
+
+**Linux:**
+
+```sh
+curl -LO https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-linux-x86_64.tar.gz
+tar -xzf dmeklr-lite-v1.0-linux-x86_64.tar.gz
+cd dmeklr-lite-v1.0-linux-x86_64
+```
+
+**Windows** (PowerShell):
+
+```powershell
+Invoke-WebRequest https://github.com/whalenlg/944turbo_dme_klr/releases/download/v1.0/dmeklr-lite-v1.0-windows-x86_64.zip -OutFile dmeklr-lite-v1.0-windows-x86_64.zip
+Expand-Archive dmeklr-lite-v1.0-windows-x86_64.zip -DestinationPath .
+cd dmeklr-lite-v1.0-windows-x86_64
+```
+
+With the [GitHub CLI](https://cli.github.com) (`gh`) installed, this
+downloads the archive for one platform on any system (`linux-x86_64` or
+`windows-x86_64` in place of `macos-arm64` for the others):
+
+```sh
+gh release download v1.0 -R whalenlg/944turbo_dme_klr -p '*macos-arm64*'
+```
+
+Then install the Python packages and start it as in
+[Installing](#installing-once) and [Starting it](#starting-it).
 
 ### What you need
 
