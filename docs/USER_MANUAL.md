@@ -280,6 +280,19 @@ adds a TEST row to the live page's SNAPSHOTS list
 row already: `ramp_to_6000_knock` 200 ms before its first knock pulse
 (20009 ms), ready to LOAD without running the test.
 
+**From the dashboard.** With `run_lite.sh` running, the **RUN ALL ▸**
+button in the header opens a panel that runs `run_tests.py` for you. Pick
+the tests by the groups of [Appendix A](#appendix-a-regression-tests) (whole
+groups or single tests), how many run at a time, the snapshot interval and,
+for a quick check, a length to stop each test at. iverilog and the other
+developer-install options are greyed out: the package has only the Verilator
+simulators. While it runs, a bar for each test shows its simulated time
+against its length, with its PASS / WARN / FAIL when it is checked, and bars
+for each group and the full run (simulated seconds done of the total, with
+the time left estimated from the rate so far). The run goes on when the panel
+is closed (the button shows its %) and stops with **STOP RUN** or when the
+bridge stops.
+
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch
 the right map graphs.
@@ -292,7 +305,8 @@ the right map graphs.
 
 * **Header.** The file name, the ROM images the log names, the count of
   STATUS and PHASE records, the **LIVE** button (connect to or leave the
-  simulator), **LOAD LOG** and **MANUAL ↗**, which opens this manual in
+  simulator), **RUN ALL ▸** (run the regression tests, section 2),
+  **LOAD LOG** and **MANUAL ↗**, which opens this manual in
   a new tab.
 * **Tab rows.** Row 1 holds the DME tabs, row 2 the KLR tabs, and row 3 holds
   **TIMELINE** (DME and KLR together). In live mode it also holds **DME CODE**

@@ -41,6 +41,10 @@
 //                     {status: none|generating|ready|error|unknown, sha, loaded,
 //                      rom, error, maps: {<n>: {file, addr, dim, bytes}}, tables: {<addr>: {...}}}
 //    GET  /maps/dme/<sha>/<file>.png   one graph
+//    GET  /runall, POST /runall/start, POST /runall/stop
+//                     the dashboard's RUN ALL panel: runs dme_klr/run_all.sh
+//                     (lite package: run_tests.py) with the page's options
+//                     and reports each test's progress (runall.mjs)
 //    GET  /maps/klr[?sha=<hash>|?name=<file>], /maps/klr/<sha>/<file>.png   the same for
 //                     the KLR image (klr_map_graphs.py; tables only, keyed
 //                     by address: 0C00, 0B00, 0992, 0A00, 0925, ...)
@@ -97,6 +101,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
+import { makeRunAll } from './runall.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -1017,6 +1022,9 @@ function serveDashboard(pathname, res) {
 // since a plain-text POST from another site would otherwise still run
 // its command even though the browser hides the response. Requests
 // without an Origin header (curl, a terminal) are allowed.
+// The dashboard's RUN ALL panel: run_all.sh / run_tests.py (runall.mjs)
+const runAll = makeRunAll({ REPO, HERE, TMP_ROOT, PY });
+
 const ALLOWED = [
   /^https:\/\/whalenlg\.github\.io$/,
   /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -1175,6 +1183,7 @@ createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname.startsWith('/runall') && runAll.handle(req, res, url, CORS)) return;
   if (req.method === 'GET' && DASH && serveDashboard(url.pathname, res)) return;
   res.writeHead(404, CORS);
   res.end();
@@ -1185,4 +1194,4 @@ createServer((req, res) => {
   startSim();
 });
 
-process.on('SIGINT', () => { if (sim) sim.kill(); process.exit(0); });
+process.on('SIGINT', () => { runAll.stop(); if (sim) sim.kill(); process.exit(0); });

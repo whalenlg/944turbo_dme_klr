@@ -6,8 +6,14 @@
 #
 #  Usage:
 #    ./run_all.sh [--verilator | --iverilog] [--per-test-build]
-#                 [--macos-test install|lite|both|none] [workers 1-8, default 8]
+#                 [--macos-test install|lite|both|none] [--no-pull]
+#                 [--tests "NAME|GROUP ..."] [workers 1-8, default 8]
 #    ./run_all.sh --help
+#
+#  --tests runs only those dashboard tests (names, or the group names
+#  run_dashboard_parallel.sh knows) in steps 3-4; default all of them.
+#  --no-pull skips the "git checkout main" and "git pull" at the start.
+#  The dashboard's RUN ALL panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
 #  comparison + FQS analysis step that depends on both). Pass --verilator or
@@ -31,14 +37,20 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,22s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,28s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
 MACOS_TEST=both
+SUITE_TESTS=()
+PULL=1
 _next=""
 for arg in "$@"; do
     if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
+    if [ "$_next" = tests ]; then read -r -a SUITE_TESTS <<< "$arg"; _next=""; continue; fi
     case "$arg" in
         --macos-test) _next=macos ;;
+        --tests) _next=tests ;;
+        --tests=*) read -r -a SUITE_TESTS <<< "${arg#*=}" ;;
+        --no-pull) PULL=0 ;;
         --macos-test=*) MACOS_TEST="${arg#*=}" ;;
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
@@ -64,10 +76,14 @@ if ! [[ "$WORKERS" =~ ^[1-8]$ ]] || [ "${#ARGS[@]}" -gt 1 ]; then
     exit 2
 fi
 
-echo "== git checkout main =="
-(cd "$ROOT" && git checkout main)
-echo "== git pull origin main =="
-(cd "$ROOT" && git pull origin main)
+if [ "$PULL" = 1 ]; then
+    echo "== git checkout main =="
+    (cd "$ROOT" && git checkout main)
+    echo "== git pull origin main =="
+    (cd "$ROOT" && git pull origin main)
+else
+    echo "== --no-pull: running the checkout as it is =="
+fi
 
 DME_KLR="$ROOT/dme_klr"
 source "$ROOT/paths.sh"          # DMEKLR_TMP: where the suites write
@@ -96,7 +112,7 @@ hdr()  { echo -e "\n${BOLD}═════════════════�
 MODE_DESC="both simulators"
 [ "$RUN_VERILATOR" = "1" ] && [ "$RUN_IVERILOG" = "0" ] && MODE_DESC="Verilator only"
 [ "$RUN_IVERILOG" = "1" ] && [ "$RUN_VERILATOR" = "0" ] && MODE_DESC="iverilog only"
-log "Workers: $WORKERS  Mode: $MODE_DESC"
+log "Workers: $WORKERS  Mode: $MODE_DESC  Tests: ${SUITE_TESTS[*]:-all}"
 hdr "1/6  i8048 KLR Regression"
 cd "$ROOT/klr"
 log "Running: bash run_klr_regression"
@@ -128,7 +144,7 @@ if [ "$RUN_VERILATOR" = "1" ]; then
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator --all) ..."
     log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
-    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" 2>&1 | tee "$RUNLOG/vl_suite.log"
+    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/vl_suite.log"
     log "Verilator test suite completed"
     VL_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
@@ -157,7 +173,7 @@ if [ "$RUN_IVERILOG" = "1" ]; then
     cd "$DME_KLR"
     log "Running iverilog suite (--all) ..."
     log "Running: bash run_dashboard_parallel.sh $WORKERS"
-    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" 2>&1 | tee "$RUNLOG/iv_suite.log"
+    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
     log "iverilog test suite completed"
     IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
     IV_SUMMARY=""

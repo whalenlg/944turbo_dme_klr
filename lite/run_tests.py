@@ -125,6 +125,8 @@ def run_one(name, t, o, paths):
     for f in (log, dash):
         if os.path.exists(f):
             os.remove(f)
+    # (the dashboard's RUN ALL panel marks the test running from this line)
+    print(f'  [START] {name}', flush=True)
     t0 = time.time()
     with open(log, 'w') as lf:
         rc = subprocess.call([exe, f'+vcd={os.devnull}', *plus, f'+DASH_INTERVAL_MS={o["interval"]}', *paths],
