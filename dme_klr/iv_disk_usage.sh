@@ -334,8 +334,10 @@ print("ALL_TESTS), scaled from the measured MB and wall time per simulated secon
 print("'peak, %d at once' is the space the %d longest tests need while running side by side;" % (jobs, jobs))
 print("add it to 'kept' for the most the run needs free. Wall time assumes %d workers." % jobs)
 if sim_s:
-    print("Rough: the measured runs were %s s long; a full-length test spends more of its" % sim_s)
-    print("time at high RPM, where the debug output is denser.")
+    print("Rough: the measured runs were %s s long (the ramp squeezed into that time), and" % sim_s)
+    print("startup and the build weigh more in a short run. Wall time isn't scaled from a")
+    print("short run; 'wall' is the time against the no-flag runs of this measurement")
+    print("(the manuals' rate with no flags: about 40 s per simulated second).")
 print()
 hdr = "%-13s %9s %9s %9s %17s %12s %12s" % ("config", "FST GB", "logs GB", "kept GB", "peak, %d at once" % jobs, "builds GB", "wall")
 print(hdr); print("-" * len(hdr))
@@ -346,9 +348,13 @@ for c in present:
     peak = e["peak"] * sum(longest[:jobs])
     builds = e["build_kb"] * len(suite)
     cpu = e["wall"] * tot_sim + e["build_s"] * len(suite)
+    if sim_s:
+        base = est.get("none")
+        wall_s = "x%.2f" % ((e["wall"] + e["build_s"] / float(sim_s)) / (base["wall"] + base["build_s"] / float(sim_s))) if base else "—"
+    else:
+        wall_s = fmt_t(cpu / max(jobs, 1))
     print("%-13s %9s %9s %9s %17s %12s %12s" % (
-        LABEL[c], fmt_gb(fst), fmt_gb(kept - fst), fmt_gb(kept), fmt_gb(peak), fmt_gb(builds),
-        fmt_t(cpu / max(jobs, 1))))
+        LABEL[c], fmt_gb(fst), fmt_gb(kept - fst), fmt_gb(kept), fmt_gb(peak), fmt_gb(builds), wall_s))
 print()
 
 # The rates, for the dashboard's RUN REGRESSIONS panel (dme_klr/iv_disk_rates.json,
@@ -371,7 +377,7 @@ for c in present:
     rates["configs"]["+".join(FLAGS[c])] = {
         "kept_mb_per_sim_s": round(e["kept"] / 1024, 3), "fst_mb_per_sim_s": round(e["fst"] / 1024, 3),
         "peak_mb_per_sim_s": round(e["peak"] / 1024, 3), "build_mb": round(e["build_kb"] / 1024, 2),
-        "wall_s_per_sim_s": round(e["wall"], 1)}
+        **({} if sim_s else {"wall_s_per_sim_s": round(e["wall"], 1)})}
 json.dump(rates, open(os.path.join(out, "iv_disk_rates.json"), "w"), indent=1)
 if wall:
     print("This measurement took %s with %d at a time. Files: %s" % (fmt_t(float(wall)), jobs, out))
