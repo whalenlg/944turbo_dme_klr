@@ -72,9 +72,10 @@ REGRESSION TESTS
   python3 run_tests.py -j 4 cl_ramp_*      some, 4 at a time
   They run on the prebuilt testbench in dme_klr/runtime/ and are checked as
   in the developer install (PASS / WARN / FAIL). The logs go to
-  data/dme_klr/v_dash_logs/: open a <test>.dash.log in the dashboard. A
-  WARN or FAIL adds a TEST row to the live page's SNAPSHOTS list; LOAD
-  runs that test to the moment it warned, paused in the debugger.
+  data/dme_klr/v_dash_logs/: open a <test>.dash.log in the dashboard.
+  Each kind of warning a run prints (a PASS's too), and a WARN or FAIL
+  verdict, adds a TEST row to the live page's SNAPSHOTS list; LOAD runs
+  that test to the moment it warned, paused in the debugger.
   DME_ROM_FILE / KLR_ROM_FILE pick other ROM images, as for run_lite.sh.
 
 CONTENTS

@@ -269,8 +269,9 @@ python3 run_tests.py -j 4 cl_ramp_*   # some, 4 at a time
 ```
 
 Each test is checked (PASS / WARN / FAIL) and writes
-`data/dme_klr/v_dash_logs/<test>.dash.log`; open it in the dashboard. A WARN
-or FAIL also adds a TEST row to the live page's SNAPSHOTS list
+`data/dme_klr/v_dash_logs/<test>.dash.log`; open it in the dashboard. Each
+kind of warning a run prints (a PASS's too), and a WARN or FAIL verdict, also
+adds a TEST row to the live page's SNAPSHOTS list
 ([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>

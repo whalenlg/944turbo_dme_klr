@@ -14,6 +14,8 @@
 #      page renders in it with every host but 127.0.0.1 unreachable
 #    - run_tests.py runs a regression test (cut to 300 ms) on the packaged
 #      testbench and checks it
+#    - a run's warnings and its WARN verdict become TEST rows that the
+#      bridge lists for the page's SNAPSHOTS panel (GET /snapshots)
 #    - TEST LOAD: a TEST row (test_snap.py add) loads on the packaged
 #      shared test build and pauses at its time
 #    - no Verilog, C++ or simulator build scripts are in the package
@@ -177,6 +179,20 @@ for t in warm_idle_5s cl_warm_idle; do
     n="$(grep -cE '^(DME: )?\[DS\]' "$PKG/data/dme_klr/v_dash_logs/$t.dash.log" 2>/dev/null)"
     [ "${n:-0}" -ge 2 ]; check $? "$t.dash.log has DS snapshots (${n:-0})"
 done
+
+# The rows run_tests.py leaves after a run, as the SNAPSHOTS panel lists
+# them: one at the warning the log printed, one at the time the WARN
+# verdict names (a log of its own, so the check doesn't hang on whether a
+# 300 ms run warns)
+WLOG="$WORK/lite-snap-check.log"
+printf '%s\n' 'DME: [DS] 100,0' 'DME: [WARN] t=150 ms lite snapshot check' 'DME: [DS] 200,0' > "$WLOG"
+( cd "$PKG" && DMEKLR_TMP="$PKG/data" "$PY" -c 'import sys; sys.path.insert(0, "."); import run_tests
+run_tests.test_rows("warm_idle_5s", sys.argv[1], "WARN", "WARN: lite verdict check at t=180 ms", 100)' "$WLOG" ) > /dev/null 2>&1
+rows="$(curl -s "${H[@]}" "http://127.0.0.1:$PORT/snapshots")"
+echo "$rows" | grep -q 'warm_idle_5s: DME: \[WARN\] t=150 ms lite snapshot check'
+check $? "a run's warning is a TEST row the page lists"
+echo "$rows" | grep -q 'warm_idle_5s: WARN warm_idle_5s: WARN: lite verdict check'
+check $? "a WARN verdict is a TEST row the page lists"
 
 # TEST LOAD: a TEST row at 150 ms, run on the shared test build
 ( cd "$PKG" && DMEKLR_TMP="$PKG/data" "$PY" dme_klr/live/test_snap.py add cl_warm_idle 150 lite-check --script none ) > /dev/null 2>&1

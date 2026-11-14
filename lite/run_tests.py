@@ -27,8 +27,9 @@ the developer install's runners.
 Output, in $DMEKLR_TMP/dme_klr/v_dash_logs (default <package>/data/...,
 as run_lite.sh uses): <test>.log (the whole run), <test>.dash.log (open
 it in the dashboard), validation.log and parallel_summary.log. A WARN or
-FAIL also leaves a TEST row in the live page's SNAPSHOTS list (LOAD runs
-the test to that moment in the debugger).
+FAIL verdict, and each kind of warning a run prints (a PASS too), leave a
+TEST row in the live page's SNAPSHOTS list (LOAD runs the test to that
+moment in the debugger).
 """
 import fnmatch, json, os, re, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -144,12 +145,24 @@ def run_one(name, t, o, paths):
     parts = (r.stdout.strip().splitlines() or ['FAIL\t\tno verdict: ' + r.stderr.strip()[-200:]])[-1].split('\t')
     verdict = parts[0] if parts[0] in ('PASS', 'WARN', 'FAIL') else 'FAIL'
     detail = parts[2] if len(parts) > 2 else ' '.join(parts[1:])
-    if verdict in ('WARN', 'FAIL'):
-        # a TEST row for the live page (test_snap.py reads tests.json here)
-        subprocess.run([sys.executable, os.path.join(LIVE, 'test_snap.py'), 'scan', name, log,
-                        f'--{verdict.lower()}', detail, '--script', os.path.join(DMEKLR, 'no-runner-script')],
-                       capture_output=True, env={**os.environ, 'DASH_INTERVAL_MS': str(o['interval'])})
+    test_rows(name, log, verdict, detail, o['interval'])
     return name, verdict, detail, secs
+
+
+def test_rows(name, log, verdict, detail, interval):
+    """TEST rows for the live page's SNAPSHOTS list (test_snap.py reads
+    tests.json here), as the developer runners make them: one at each kind
+    of warning the run printed (v_run_dashboard_tests.sh's plain scan, run
+    for every test, a PASS too), then, for a WARN or FAIL verdict, one at
+    the time the validator names (run_dashboard_parallel.sh). The verdict
+    scan alone adds nothing when the run printed a warning and the verdict
+    names no time: it leaves that to the plain scan."""
+    snap = [sys.executable, os.path.join(LIVE, 'test_snap.py'), 'scan', name, log]
+    script = ['--script', os.path.join(DMEKLR, 'no-runner-script')]
+    env = {**os.environ, 'DASH_INTERVAL_MS': str(interval)}
+    subprocess.run(snap + script, capture_output=True, env=env)
+    if verdict in ('WARN', 'FAIL'):
+        subprocess.run(snap + [f'--{verdict.lower()}', detail] + script, capture_output=True, env=env)
 
 
 def main():
