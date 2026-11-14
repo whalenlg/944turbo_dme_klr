@@ -167,5 +167,5 @@ if [ "$MISSING" -eq 0 ]; then
     fi
     exit 0
 fi
-echo -e "${RED}$MISSING required item(s) missing.${NC} See docs/USER_MANUAL.md, \"Install\"."
+echo -e "${RED}$MISSING required item(s) missing.${NC} See docs/DEVELOPER_MANUAL.md, \"Install\"."
 exit 1

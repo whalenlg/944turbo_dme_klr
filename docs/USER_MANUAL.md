@@ -1,5 +1,9 @@
 # DME + KLR Simulation Debug Console: User Manual
 
+> This manual is for the prebuilt **lite package**. Building from source, the
+> developer install, CI and the regression tooling are in the
+> [Developer Manual](DEVELOPER_MANUAL.md).
+
 ## Introduction
 
 The 951 Debugger was created to allow analysis of the Porsche 951 DME and KLR
@@ -25,9 +29,9 @@ It works in two ways:
 
 | | **Log review** | **Live simulation** |
 |---|---|---|
-| What you look at | A finished run: a `.dash.log` from the regression scripts or the log replay | The Verilator model running now, driven through `dme_klr/live/bridge.mjs` |
+| What you look at | A finished run: a `.dash.log` from the regression tests (`run_tests.py`) | The simulator running now, started by `run_lite.sh` |
 | What you can do | Scrub and play back through the run, read RAM, ports and flags, chart anything against time or RPM | Everything in log review, plus run / pause / step, PC and memory-condition breakpoints, change the engine inputs, save and reload whole-model snapshots, swap ROM images |
-| Needs | Only a browser | The bridge and the live simulator built on your machine |
+| Needs | Only a browser | The lite package running on your computer |
 
 The two meet in [section 7](#7-debugging-a-log-at-a-chosen-time): you find a
 moment of interest in a log, then have the simulator re-run that same test up
@@ -42,7 +46,7 @@ run time by going live or by selecting an available test:
 
 - **Closed-loop test driver**: a regression test's scripted driver and fault
   injection, plus the engine, sensor and boost models of
-  [Appendix C](#appendix-c-how-the-closed-loop-models-work).
+  [Appendix C](#appendix-b-how-the-closed-loop-models-work).
 - **Web UI test driver**: the live dashboard's controls, sent through the
   bridge. An input left on **auto** follows the closed-loop model.
 - **FTECH9 log replay driver**: every input taken row by row from a recorded
@@ -104,534 +108,75 @@ Contents
 11. [Reference](#11-reference)
 12. [Credits](#12-credits)
 - [Appendix A. Regression tests](#appendix-a-regression-tests)
-- [Appendix B. iverilog and Verilator](#appendix-b-iverilog-and-verilator)
-- [Appendix C. How the closed-loop models work](#appendix-c-how-the-closed-loop-models-work)
+- [Appendix B. How the closed-loop models work](#appendix-b-how-the-closed-loop-models-work)
 
 ---
 
 ## 1. Install
 
-Scripts in `install/` set up everything this repo needs on a fresh
-machine (macOS, Arch Linux or Windows): the C++ compiler, Verilator, Icarus
-Verilog, GTKWave, Node.js and Python with its packages. Run the one for your
-system from the top of the checkout. Each is safe to run again; what is
-already installed is left alone. Each finishes by running two short simulations to show the install
-works (see [Checking an install](#checking-an-install)); that takes a few
-minutes, and `--skip-tests` leaves it out.
-
-The checkout can be anywhere and have any name: every script finds the repo
-from its own location. Where the build output and logs go is one setting,
-`DMEKLR_TMP`; see [Install location and output folder](#install-location-and-output-folder).
-
-To use the live simulator and debugger without building anything, there is
-also a [lite package](#the-lite-package-no-verilog-source).
-
-### Getting the code
-
-The developer install works from a clone of this repository (git comes
-with the Command Line Tools on macOS, `pacman -S git` on Arch, and Git for
-Windows or MSYS2 on Windows):
-
-```sh
-git clone https://github.com/whalenlg/944turbo_dme_klr.git
-cd 944turbo_dme_klr
-```
-
-The install scripts' `--with-dashboard` also clones the dashboard
-(whalenlg/dme-dashboard) into `dashboard/`, for working on it; it isn't
-needed to use it (it is published at https://whalenlg.github.io/dme-dashboard/).
-`git pull` later brings the checkout up to date.
-
-### Before installing
-
-Run the check script first. It changes nothing; it lists each tool the repo
-needs, with the version you already have, and marks what is missing or too
-old:
-
-```sh
-install/check_toolchain.sh
-```
-
-To see exactly what an install script would do without running anything,
-add `--dry-run` (`install/install_macos.sh --dry-run`,
-`install/install_arch.sh --dry-run`). On Arch the install runs a full
-system upgrade (`pacman -Syu`), so expect that.
-
-### macOS (Homebrew)
-
-```sh
-git clone https://github.com/whalenlg/944turbo_dme_klr.git
-cd 944turbo_dme_klr
-install/install_macos.sh
-source setup                     # in every new terminal, before the scripts
-```
-
-It installs, in order:
-
-1. The **Xcode Command Line Tools** (`clang++`, `make`, `git`). If they are
-   missing it opens Apple's installer and stops; run the script again when
-   that finishes.
-2. **Homebrew**, if `brew` isn't found (it asks first; `--yes` skips the
-   question).
-3. The Homebrew formulae `verilator`, `icarus-verilog`, `node` and
-   `python`.
-4. **GTKWave**, built from source into `gtkwave/` in the repo (see
-   [GTKWave on macOS](#gtkwave-on-macos) below). `--no-gtkwave` skips it.
-5. A Python virtual environment at `944venv/` in the repo, with the packages
-   in `install/requirements.txt`. You must activate it in each new terminal;
-   see [The Python venv](#the-python-venv-944venv) below.
-6. `install/check_toolchain.sh`, then the **smoke tests**: the KLR
-   regression on Icarus Verilog and `warm_idle_5s` on Verilator (see
-   [Checking an install](#checking-an-install)).
-
-| Option | Effect |
-|---|---|
-| `--upgrade` | `brew upgrade` the formulae that are already installed |
-| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and run `npm install` there |
-| `--no-gtkwave` | Skip GTKWave |
-| `--rebuild-gtkwave` | Build GTKWave again even if it is already there |
-| `--skip-tests` | Don't run the smoke tests at the end |
-| `-y`, `--yes` | Don't ask before installing Homebrew |
-| `-n`, `--dry-run` | Print the commands without running them |
-
-Apple Silicon and Intel Macs both work.
-
-#### GTKWave on macOS
-
-Homebrew no longer has GTKWave: `brew install gtkwave` finds neither a
-formula nor a cask, and the old `gtkwave.app` from SourceForge doesn't run
-on current macOS. So `install_macos.sh` builds it from source, the same way
-GTKWave's own macOS build does:
-
-1. `brew install meson ninja pkg-config gtk+3 gtk4 gtk-mac-integration
-   json-glib desktop-file-utils shared-mime-info librsvg` (flex and gperf
-   come with the Command Line Tools).
-2. Clone `https://github.com/gtkwave/gtkwave` into `gtkwave/src/` and check
-   out a pinned commit of GTKWave 4, the version under active development
-   and the one its macOS build supports.
-3. `meson setup`, `meson compile` and `meson install` with the prefix
-   `gtkwave/` in the checkout, so it needs no `sudo` and nothing outside
-   the repo changes. `gtkwave/` is git-ignored.
-
-That takes about five minutes. It installs `gtkwave` and the converters the
-repo's scripts use (`vcd2fst`, `fst2vcd`) into `gtkwave/bin/`, which
-`source setup` puts on `PATH`. Open a waveform from the terminal:
-
-```sh
-source setup
-gtkwave "$DMEKLR_TMP/klr/fst/i8048_regression_tb.fst"
-```
-
-GTKWave is optional, so if the build fails the installer prints a warning
-and carries on. Run `install/install_macos.sh --rebuild-gtkwave` to try
-again, or to rebuild after deleting `gtkwave/`. To build a different
-GTKWave commit or tag, set `GTKWAVE_REF`
-(`GTKWAVE_REF=<commit> install/install_macos.sh --rebuild-gtkwave`). If
-`gtkwave` is already on your `PATH` from somewhere else, the installer
-leaves it alone.
-
-### Arch Linux (pacman)
-
-```sh
-git clone https://github.com/whalenlg/944turbo_dme_klr.git
-cd 944turbo_dme_klr
-install/install_arch.sh
-```
-
-It runs one `sudo pacman -Syu --needed` with `base-devel`, `git`,
-`verilator`, `iverilog`, `gtkwave`, `nodejs`, `npm`, `python`,
-`python-openpyxl`, `python-pandas`, `python-matplotlib` and
-`python-numpy`, all from the official repositories. `-Syu` upgrades the
-rest of the system too, because Arch doesn't support partial upgrades. The
-Python packages come from pacman, so there is no venv to activate. Then it
-runs `install/check_toolchain.sh` and the same smoke tests as on macOS.
-
-| Option | Effect |
-|---|---|
-| `--venv` | Install the Python packages with pip into `944venv/` instead of from pacman (then `source 944venv/bin/activate` as on macOS) |
-| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
-| `--no-gtkwave` | Skip GTKWave |
-| `--skip-tests` | Don't run the smoke tests at the end |
-| `-y`, `--yes` | Pass `--noconfirm` to pacman |
-| `-n`, `--dry-run` | Print the commands without running them |
-
-### Windows (MSYS2)
-
-On Windows the toolchain comes from [MSYS2](https://www.msys2.org/), which
-has native Windows builds of Verilator, Icarus Verilog, GTKWave, gcc,
-Node.js and Python with numpy, pandas, matplotlib and openpyxl, installed
-with its own `pacman`. Nothing is compiled from source. In PowerShell:
-
-```powershell
-# No checkout yet: installs MSYS2, clones the repo into C:\dmeklr\944turbo_dme_klr, installs
-powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Clone C:\dmeklr\944turbo_dme_klr
-
-# Or from a checkout you already have
-cd C:\dmeklr\944turbo_dme_klr
-powershell -ExecutionPolicy Bypass -File install\install_windows.ps1
-```
-
-(For the first form, download `install/install_windows.ps1` from GitHub
-on its own.) `install_windows.ps1` installs MSYS2 into `C:\msys64` if it
-isn't there (`-MsysRoot` picks another folder), then runs
-`install/install_msys2.sh` in MSYS2's **UCRT64** environment. That runs one
-`pacman -Syu --needed` with `git`, `make`, `perl` and the
-`mingw-w64-ucrt-x86_64-` packages `gcc`, `verilator`, `iverilog`,
-`gtkwave`, `nodejs`, `python`, `python-openpyxl`, `python-pandas`,
-`python-matplotlib` and `python-numpy`, then `check_toolchain.sh` and the
-same smoke tests as on macOS and Arch. If you already use MSYS2, you can
-run `install/install_msys2.sh` yourself from a UCRT64 terminal.
-
-Afterwards, work in the **MSYS2 UCRT64** terminal (Start menu, or
-`C:\msys64\ucrt64.exe`): it is a bash shell, and every command in this
-manual works there as written, starting with `source setup`. Your `C:`
-drive is `/c` in it, so `cd /c/dmeklr/944turbo_dme_klr`. The live bridge
-(`node bridge.mjs`) listens on 127.0.0.1 as on the other systems, so the
-dashboard in any Windows browser connects to it the same way.
-
-| Option | Effect |
-|---|---|
-| `-MsysRoot DIR` | Where MSYS2 is, or goes (default `C:\msys64`) |
-| `-Clone DIR` | Clone the repo into `DIR` first and install from there |
-| `-Venv` | Also make `944venv/`, a venv that sees the pacman packages (`--venv` for `install_msys2.sh`) |
-| `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
-| `-NoGtkwave` | Skip GTKWave |
-| `-SkipTests` | Don't run the smoke tests at the end |
-| `-Yes` | Don't ask pacman to confirm |
-
-Things to know on Windows:
-
-- **No spaces in the checkout's path.** Verilator's generated makefiles
-  can't build in a folder like `C:\Users\Jane Doe\...`; the installers warn
-  about it. A short path such as `C:\dmeklr` is safest.
-- **Line ends.** The repo's `.gitattributes` checks every text file out
-  with LF line ends, also with Git for Windows (whose default is CRLF), so
-  the bash scripts run. A checkout made before that file existed can be
-  fixed with `git rm --cached -r -q . && git reset --hard` (commit or
-  stash your changes first: the reset discards them).
-- **Paths.** Under MSYS2, `source setup` sets `DMEKLR_REPO` and
-  `DMEKLR_TMP` as `C:/...` paths, which both bash and the native Windows
-  tools understand.
-- **WSL instead.** On Windows 10/11 with WSL2 you can also run the Arch
-  installer inside an Arch Linux WSL distribution, as on a Linux PC. That
-  path isn't tested here; the MSYS2 one is.
-
-### The lite package (no Verilog source)
-
-The lite package is for people who want the dashboard's live mode and the
-code debugger without the developer install. It is a download with the
-simulator already built, and holds no Verilog, testbenches or simulator
-build scripts. Verilator, iverilog, GTKWave and a C++ compiler are not
+The lite package is the simulator already built, with its own copy of the
+dashboard, so it runs with no internet connection. It gives you live mode,
+the code debugger, snapshots, ROM swapping, the disassembly workbooks and the
+regression tests. Verilator, iverilog, GTKWave and a C++ compiler are not
 needed.
 
-| | Lite package | Developer install (this repo) |
-|---|---|---|
-| Live mode, code debugger, snapshots, ROM swapping | yes | yes |
-| Disassembly workbooks; edited workbooks rebuild the listing | yes | yes |
-| Regression tests (`run_tests.py`), TEST LOAD from a test's warning | yes | yes |
-| Runs with no internet connection (dashboard included) | yes | with the dashboard built locally |
-| Changing the model (Verilog) | no | yes |
-| Needs | Node.js 18+; Python with `requirements.txt` (pandas, openpyxl, matplotlib, numpy); bash to rebuild listings | everything in [Dependencies](#dependencies) |
+### Getting the package
 
-**Getting it.** There are three ways, for macOS (Apple Silicon), Linux
-x86_64 (glibc 2.35 or newer: Ubuntu 22.04, Arch, ...) and Windows x86_64.
-Each package is one archive, `dmeklr-lite-<version>-<platform>.tar.gz`
-(`.zip` for Windows).
+There are packages for macOS (Apple Silicon), Linux x86_64 (glibc 2.35 or
+newer: Ubuntu 22.04, Arch, ...) and Windows x86_64. Each is one archive,
+`dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` for Windows).
 
-1. **A release** (when there is one): the repository's
-   [Releases page](https://github.com/whalenlg/944turbo_dme_klr/releases)
-   lists each version with the three archives under *Assets*. Pushing a
-   `v*` tag (for example `git tag v1.0 && git push origin v1.0`) makes a
-   release: the `Lite package` workflow builds, tests and attaches the
-   archives to it. No release has been made yet.
-2. **The latest build**, without a release: on GitHub, open the
-   repository's **Actions** tab, pick the **Lite package** workflow, open
-   its latest successful run on `main`, and download `lite-macOS`,
-   `lite-Linux` or `lite-Windows` under *Artifacts* (you need to be signed
-   in to GitHub; artifacts are kept 90 days). The download is a `.zip`
-   holding the package archive; unzip it first (macOS's Finder may do
-   that by itself).
-3. **Build it yourself** from the developer install: see *Building it
-   yourself* below.
+* **A release** (when there is one): the repository's
+  [Releases page](https://github.com/whalenlg/944turbo_dme_klr/releases)
+  lists each version with the archives under *Assets*.
+* **The latest build:** on GitHub, open the repository's **Actions** tab,
+  pick the **Lite package** workflow, open its latest successful run on
+  `main`, and download `lite-macOS`, `lite-Linux` or `lite-Windows` under
+  *Artifacts* (you need to be signed in to GitHub; artifacts are kept 90
+  days). The download is a `.zip` holding the package archive; unzip it
+  first (macOS's Finder may do that by itself).
 
-**Using it.** Unpack `dmeklr-lite-<version>-<platform>.tar.gz` (`.zip` on
-Windows) anywhere, install Node.js 18 or newer (https://nodejs.org), and
-work in the folder it unpacks to, where `requirements.txt` and
-`run_lite.sh` are:
+### What you need
+
+* **Node.js 18 or newer** from https://nodejs.org (the installer).
+* **Python 3** with pandas, openpyxl, matplotlib and numpy, for the graphs
+  on the MAPS tabs and for listings from edited workbooks (installed below).
+* **bash**, only to rebuild listings from edited workbooks (on Windows, Git
+  Bash or MSYS2). Without it the listings that come with the package are used.
+
+### Installing (once)
+
+Unpack the archive anywhere and open a terminal in the folder it makes
+(on Windows a Command Prompt; right-click the `.zip`, *Extract All*):
 
 ```sh
 tar -xzf dmeklr-lite-<version>-<platform>.tar.gz   # macOS may leave a .tar: tar -xf
 cd dmeklr-lite-<version>-<platform>
-python3 -m pip install --user -r requirements.txt   # once; Windows: py -m pip ...
-./run_lite.sh                                        # Windows: run_lite.cmd
+python3 -m pip install --user -r requirements.txt   # Windows: py -m pip ...
 ```
 
-Use `python3 -m pip`: macOS has no `pip` command. On Arch Linux install
-the packages with pacman instead (`sudo pacman -S nodejs python-pandas
-python-openpyxl python-matplotlib python-numpy`); where pip refuses with
+Use `python3 -m pip`: macOS has no `pip` command. On Arch Linux install the
+packages with pacman instead (`sudo pacman -S nodejs python-pandas
+python-openpyxl python-matplotlib python-numpy`). Where pip refuses with
 "externally-managed-environment", make a venv in the package folder
 (`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`),
-which `run_lite.sh` then uses. The package's README.txt has the same steps.
+which `run_lite.sh` then uses.
 
-and open **http://127.0.0.1:8951/?live**: the bridge serves the
-dashboard that comes with the package, already in live mode, so no
-internet connection is needed (the hosted dashboard works too: press
-**LIVE**, as in [section 5](#5-live-simulation)). `python3 run_tests.py`
-runs the regression tests on the packaged testbench (see the package's
-README.txt); a test that warns adds a TEST row that TEST LOAD runs.
+### Starting it
+
+From the package folder:
+
+```sh
+./run_lite.sh          # Windows: run_lite.cmd (or double-click it)
+```
+
+Then open **http://127.0.0.1:8951/?live** in a browser. The dashboard comes
+from the package and connects in live mode. **Ctrl+C** in the terminal stops
+it. On macOS, `run_lite.sh` clears the downloaded-file flag on the package
+folder so the unsigned simulator can run.
+
 Snapshots and the map-graph cache go to `data/` in the package folder
-(`DMEKLR_TMP` moves them). On macOS, `run_lite.sh` clears the
-downloaded-file flag on the package folder so the unsigned simulator can
-run. Without bash (Windows with no Git Bash or MSYS2), or without pandas
-and openpyxl, the bridge uses the listings that came with the package, so
-an edited workbook doesn't change the listing until bash and those packages
-are available.
-
-**How the downloads are made.** The `Lite package` GitHub Actions
-workflow (`.github/workflows/lite-package.yml`) builds the package on each
-platform for every push to `main` that touches the simulator, the lite
-scripts or the ROMs (and for pull requests, a `v*` tag, or by hand from the
-Actions tab: *Run workflow*), tests each one with `lite/test_lite.sh` there
-and again on a clean machine, and keeps the archives as workflow
-artifacts. For a `v*` tag it also attaches them to that tag's release.
-
-**Building it yourself** (developer install):
-
-```sh
-lite/make_lite.sh                 # -> $DMEKLR_TMP/lite/dmeklr-lite-<version>-<platform>.tar.gz
-lite/test_lite.sh "$DMEKLR_TMP"/lite/dmeklr-lite-*.tar.gz
-```
-
-`test_lite.sh` takes a package folder or archive (`.tar.gz`, `.tar` or
-`.zip`); run with none in a folder that holds one package (as
-`~/lite-test` in the macOS VM test does), it finds it there:
-`./test_lite.sh`.
-
-`make_lite.sh` makes the disassembly tables for every ROM that has a
-workbook, builds the simulator with `dme_klr/live/build_live.sh
---relocatable` (in `obj/lite/`; every file path in it is relative, so it
-runs wherever the package is unpacked), and copies in the bridge, the ROM
-images, the workbooks and the scripts that make tables from them. It also
-fetches the dashboard from GitHub (whalenlg/dme-dashboard, `main`, or
-`--dashboard-ref <branch or tag>`), builds it with `npm run build:lite`
-and puts it in the package's `dashboard/`, so it needs git, Node.js and
-the network. It stops if any Verilog or C++ source ends up in the package.
-
-### The Python venv (`944venv`)
-
-The repo's Python scripts need four packages beyond the standard library:
-openpyxl, pandas, matplotlib and numpy (`install/requirements.txt`). On
-macOS these are installed into a Python virtual environment, a private
-copy of Python with its own packages, in the folder `944venv/` at the top
-of the checkout. It is required on macOS because Homebrew's Python refuses
-`pip install` into the system Python.
-
-**Activate it in every new terminal** before running any of the repo's
-scripts. `source setup` at the top of the checkout does that (and sets the
-output folder, see below); `source 944venv/bin/activate` activates just the
-venv:
-
-```sh
-cd 944turbo_dme_klr
-source setup                    # the prompt now starts with (944venv)
-```
-
-Why this matters: the test scripts, `build_live.sh` and the live bridge
-(`node bridge.mjs`, which runs the map-graph scripts) all call plain
-`python3`. Until the venv is active, `python3` is Homebrew's or Apple's,
-which doesn't have the packages, and you get errors such as
-`ModuleNotFoundError: No module named 'pandas'` or a MAPS tab with no
-graphs. Only `asm_select.sh` finds `944venv/bin/python` on its own.
-Start the bridge from a terminal where the venv is active.
-
-Other things to know:
-
-| Task | Command |
-|---|---|
-| Leave the venv | `deactivate` |
-| Activate it automatically | Add `source /path/to/your/checkout/setup` to `~/.zshrc` (or `~/.bashrc`) |
-| Check it | `install/check_toolchain.sh` reports `944venv not active in this shell` when it exists but isn't active |
-| Rebuild it (after a Homebrew Python upgrade breaks it) | `rm -rf 944venv && install/install_macos.sh` |
-| Use it on Arch | `install/install_arch.sh --venv` (by default Arch uses pacman's packages and needs no venv) |
-
-The folder is git-ignored. You don't need it at all if your `python3`
-already has the four packages, for example installed some other way: the
-check script tells you.
-
-### Install location and output folder
-
-**The checkout.** Clone it wherever you like, under any folder name. The
-scripts, the testbenches and the bridge all work out where the repo is from
-their own location; nothing in the repo names a fixed path. (The run
-scripts pass the repo's path to the Verilog as `-DDMEKLR_REPO`, so the
-testbenches find the ROM images and disassembly tables wherever the
-checkout is.)
-
-**The output folder, `DMEKLR_TMP`.** Builds, logs, snapshots and caches are
-kept out of the checkout, in one folder. By default it is `tmp/` **beside**
-the checkout, i.e. `<checkout>/../tmp`: for a checkout at
-`~/work/944turbo_dme_klr` that is `~/work/tmp`. It is created when first
-needed. To put it somewhere else, set `DMEKLR_TMP` to an absolute path
-before running anything, for example in `~/.zshrc`:
-
-```sh
-export DMEKLR_TMP="$HOME/dmeklr-output"
-```
-
-Every script honours it: the shell scripts through `paths.sh`, the Python
-tools through `dme_klr/dmeklr_paths.py`, and the bridge (`node bridge.mjs`)
-from its environment.
-
-| Under `$DMEKLR_TMP` | Written by |
-|---|---|
-| `dme_klr/dash_logs/`, `dme_klr/iverilog_vvp/` | `run_dashboard_tests.sh` (iverilog) |
-| `dme_klr/v_dash_logs/` and the Verilator builds | `v_run_dashboard_tests.sh` |
-| `dme_klr/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
-| `dme_klr/rom_compare/` | `compare_rom_variants.sh` |
-| `dme_klr/snapshots/`, `dme_klr/map_graphs/` | the live bridge (`--snapdir` / `--mapcache` override each) |
-| `klr/`, `dme/` | the i8048 and i8051 CPU regressions |
-| `run_all/` | `run_all.sh`'s own step logs |
-
-The Python analysis tools (`fqs_analysis.py`, `check_memory_location.py`,
-`compare_sim_logs.py`, …) read their default log folders from the same place.
-If you change `DMEKLR_TMP`, existing logs stay where they were: move them
-across or point the tools at them with their directory arguments.
-
-**`setup`.** `source setup` in a terminal sets `DMEKLR_REPO` and
-`DMEKLR_TMP`, activates `944venv/` when it exists, puts a locally built
-Icarus Verilog in `/opt/iverilog` and a GTKWave in `<checkout>/gtkwave/bin/`
-(where `install_macos.sh` builds it) or `<checkout>/gtkwave/` ahead of the
-system ones when they are there, and adds the checkout to
-`PATH`. It works from bash and zsh.
-
-### Checking an install
-
-Each install script finishes by running `install/check_toolchain.sh`, which you can
-also run on its own at any time. It prints each tool with its version and
-exits non-zero if anything required is missing or too old:
-
-```
-  ok       c++          Apple clang version 17.0.0
-  ok       make         GNU Make 3.81
-  ok       verilator    5.040
-  ok       iverilog     12.0 (stable)
-  ok       gtkwave      /Users/you/944turbo_dme_klr/gtkwave/bin/gtkwave
-  ok       node         24.4.0
-  ...
-```
-
-Then it runs `install/smoke_test.sh`, which sources `setup` (as a
-new terminal would) and runs two simulations that exercise the whole
-toolchain:
-
-| Test | What it runs | Passes when |
-|---|---|---|
-| `klr` | `klr/run_klr_regression`: the KLR i8048 CPU regression on Icarus Verilog, with the Python table converters | every check prints `PASS`, none `FAIL` |
-| `warm_idle_5s` | `dme_klr/v_run_dashboard_tests.sh warm_idle_5s`: the full DME+KLR model compiled with Verilator and run for 5 simulated seconds | it compiles and runs, and the dashboard log has its `[DS]` snapshots |
-
-It ends with a PASS/FAIL line for each:
-
-```
-Smoke tests
-  PASS  iverilog: KLR regression  (… checks passed, 20s)
-  PASS  verilator: warm_idle_5s  (… dashboard snapshots in …/warm_idle_5s.dash.log, 180s)
-```
-
-Most of the time is the Verilator compile. Each test's full output is in
-`$DMEKLR_TMP/install_smoke/<test>.log`, and the `warm_idle_5s` dashboard
-log is left in `$DMEKLR_TMP/dme_klr/v_dash_logs/`, ready to open in the
-dashboard. If a test fails, the install script stops with an error after
-printing the end of that test's log; the tools are installed by then, so
-once the cause is fixed, run just the tests again:
-
-```sh
-install/smoke_test.sh                 # both
-install/smoke_test.sh warm_idle_5s    # or one: klr, warm_idle_5s
-```
-
-### Testing the macOS install on a clean Mac
-
-`install/test_macos_vm.sh` checks `install_macos.sh` from scratch, without
-touching your own setup. It needs an Apple Silicon Mac with Tart
-(`brew tap openai/tools && brew install openai/tools/tart`). It clones a
-fresh macOS VM without Homebrew, copies the checkout in (the committed `HEAD`,
-or `--worktree` for your uncommitted changes too), removes the Command Line
-Tools if the image has them, checks the installer stops and asks for them,
-installs them, runs the installer (with its smoke tests) and checks the
-smoke tests' logs, then, in a new zsh terminal, sources `setup` and runs
-`check_toolchain.sh`, the live simulator build (run to 200 ms) and a GTKWave launch on
-the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
-`$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
-it running). The first run downloads the macOS image, about 25 GB; a run
-takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
-
-To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
-runs it in a fresh `archlinux:latest` container (Docker or Podman),
-including its smoke tests, then `source setup` and `check_toolchain.sh` in a
-new login shell, checks the smoke tests' output, builds and runs the live
-simulator and launches GTKWave on the KLR waveform (under Xvfb), and prints a
-PASS/FAIL line for each (`--venv` tests `install_arch.sh --venv`). The
-"Arch install test" GitHub workflow runs the same steps on pull requests
-that touch `install/`.
-
-The "Windows install test" GitHub workflow does the same for Windows on a
-clean `windows-latest` runner: it runs `install_windows.ps1`, which
-installs MSYS2 from scratch into a new folder and then the toolchain with its
-smoke tests, then `install/test_windows_install.sh` in a UCRT64 shell:
-`source setup` and `check_toolchain.sh`, the smoke tests' output, the live
-simulator build (run to 200 ms), the live bridge (a client on `/events`
-sees the simulator pause at 200 ms after `POST /cmd`) and GTKWave opening
-the KLR waveform. With `--browser` (the workflow passes it) it also opens
-the published dashboard in Edge, live on a bridge on the runner, through
-`install/dashboard_e2e.mjs`: the page must connect, show a pause sent to the
-bridge, and drive the simulator with its own ▶ RUN and ⏸ PAUSE buttons. Its
-screenshots are in the workflow's uploaded logs. It runs with and without `-Venv`, on pull requests that
-touch `install/`, and by hand from the Actions tab. You can run
-`install/test_windows_install.sh` on your own Windows install too, after
-the installer.
-
-### Dependencies
-
-Everything the repo uses outside the standard tools every Unix system has
-(bash, awk, sed, grep, gzip, …):
-
-| Dependency | Version | Used for | macOS | Arch |
-|---|---|---|---|---|
-| C++ compiler with C++20 | Apple clang 14+ or GCC 10+ | Compiling the Verilator models; `--timing` needs C++20 coroutines | Xcode Command Line Tools | `base-devel` (gcc) |
-| make | any (macOS's 3.81 is fine) | Verilator's generated build | Xcode Command Line Tools | `base-devel` |
-| git | any | Cloning; `run_all.sh` pulls `main` first | Xcode Command Line Tools | `git` |
-| Verilator | **5.038 or newer** | `v_run_dashboard_tests.sh`, `run_dashboard_parallel.sh --verilator`, `replay/run_replay.sh`, the live simulator (`live/build_live.sh`) | `verilator` | `verilator` |
-| Icarus Verilog (`iverilog`, `vvp`) | 12 or newer | `run_dashboard_tests.sh`, the i8048 and i8051 CPU regressions (`klr/run_klr_regression`, `dme/run_dme_regression`), the replay's reference run | `icarus-verilog` | `iverilog` |
-| GTKWave | any (optional) | Viewing the `.vcd` / `.fst` waveforms the testbenches can dump; its `vcd2fst` / `fst2vcd` convert them (`--vcd` runs, the replay, `extract_table_access.py`) | built from source into `gtkwave/` ([GTKWave on macOS](#gtkwave-on-macos)) | `gtkwave` |
-| Node.js | **18 or newer** | The live-sim bridge, `dme_klr/live/bridge.mjs` (standard library only, no `npm install` needed) | `node` | `nodejs` |
-| npm | comes with Node | Running the dashboard from a checkout of `dme-dashboard` | `node` | `npm` |
-| Python | 3.9 or newer | All the `.py` tools: disassembly tables, log validation and comparison, replay, map graphs | `python` | `python` |
-| openpyxl | 3.1+ | Reading and writing the disassembly workbooks (`*.xlsx`), replay stimulus | pip (venv) | `python-openpyxl` |
-| pandas | 2.0+ | Turning disassembly workbooks into the hex tables the testbenches load (`dme/disassemble/xlsx*.py`, run by the KLR regression and `asm_select.sh`), `live/asm_full.py` | pip (venv) | `python-pandas` |
-| matplotlib | 3.7+ | The ROM map graphs on the dashboard's MAPS tabs (`live/map_graphs.py`, `live/klr_map_graphs.py`), `compare_sim_logs.py --plot` | pip (venv) | `python-matplotlib` |
-| numpy | 1.24+ | The 3-D map graphs | pip (venv) | `python-numpy` |
-
-The Python packages are listed in `install/requirements.txt` for anyone
-installing them another way (`pip install -r install/requirements.txt`).
-
-The dashboard itself needs nothing installed: use the published page (see
-[section 2](#2-setting-up)). Only running it from a local checkout needs
-npm, and `--with-dashboard` sets that up.
-
-### Notes
-
-- **Where the output goes.** In `$DMEKLR_TMP`, by default `tmp/` beside the
-  checkout; see [Install location and output folder](#install-location-and-output-folder).
-- **Older Verilator.** The live simulator and the Verilator tests need
-  5.038 or newer. Homebrew and Arch both ship newer releases; on another
-  Linux whose package is older, build it from source
-  (https://verilator.org/guide/latest/install.html).
-- **Windows.** The Dependencies table's Arch package names, with the
-  `mingw-w64-ucrt-x86_64-` prefix, are the MSYS2 ones; see
-  [Windows (MSYS2)](#windows-msys2).
-- **Other Linux distributions.** Install the same things with your package
-  manager (the table above has what each is for), then run
-  `install/check_toolchain.sh`.
+(`DMEKLR_TMP` moves them). The package's `README.txt` has the same steps.
 
 ---
 
@@ -643,59 +188,35 @@ Live mode has three parts, all on your computer. The **browser** shows the
 dashboard. The **Node server** (`bridge.mjs`) passes the dashboard's commands,
 ROM loads and snapshot requests to the simulator, streams everything the
 simulator prints back to the page, and serves the disassembly listings and map
-graphs. The **live simulator** (`obj/dme_klr_live`) is the Verilator model of
+graphs. The **live simulator** (`dme_klr_live`) is the Verilator model of
 the DME and KLR with the closed-loop engine model. Log review needs only the
 browser.
 
 ### The dashboard
 
-Use the published page at **https://whalenlg.github.io/dme-dashboard/**, or
-run it from a checkout of `dme-dashboard`:
+With `run_lite.sh` running, **http://127.0.0.1:8951/?live** is all you
+need. The published page at **https://whalenlg.github.io/dme-dashboard/**
+also works: press **LIVE** to connect it to the package's bridge. Log review
+on its own needs only a browser; everything the page does with a log happens
+in the browser.
 
-```sh
-npm install
-npm run dev          # http://localhost:5173/dme-dashboard/
-```
-
-Log review needs nothing else. Everything the page does with a log happens in
-the browser.
-
-### The live simulator (for live mode and code debugging)
-
-> **Note:** This mode is not yet supported for end user installation.
-
-From `dme_klr/live/` in this repo:
-
-```sh
-./build_live.sh      # Verilator >= 5.038; builds obj/dme_klr_live (a few minutes)
-node bridge.mjs      # Node 18+; starts the sim and serves http://127.0.0.1:8951
-```
-
-(Section 1 installs all of these.)
-
-Leave `bridge.mjs` running, then press **LIVE** in the dashboard. The bridge
-listens only on 127.0.0.1 and only answers pages from `whalenlg.github.io`,
-`localhost` or `127.0.0.1` (`--allow-origin <origin>` adds another).
-
-The ROM graphs on the MAPS tabs need matplotlib, and regenerating
-full-length operands after editing a disassembly workbook
-(`python3 dme_klr/live/asm_full.py`) needs pandas and openpyxl. The install
-scripts in [section 1](#1-install) put all three in place.
-
-Rebuild with `./build_live.sh` after any change to the Verilog, the testbench
-or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
+The bridge listens only on 127.0.0.1 and only answers pages from
+`whalenlg.github.io`, `localhost` or `127.0.0.1`.
 
 ### Making logs to review
 
-| Script (in `dme_klr/`) | Writes | Notes |
-|---|---|---|
-| `./run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
-| `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
-| `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
-| `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
+The package runs the regression tests ([Appendix A](#appendix-a-regression-tests))
+on its prebuilt testbench. From the package folder:
 
-`DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
-smaller value gives finer playback and larger logs.
+```sh
+python3 run_tests.py                  # all of them (--help, --list)
+python3 run_tests.py -j 4 cl_ramp_*   # some, 4 at a time
+```
+
+Each test is checked (PASS / WARN / FAIL) and writes
+`data/dme_klr/v_dash_logs/<test>.dash.log`; open it in the dashboard. A WARN
+or FAIL also adds a TEST row to the live page's SNAPSHOTS list
+([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
 Each `.dash.log` starts with the ROM images the run used (`DME: [ROM] <file>
 sha=<hash>`). The dashboard shows them in the header and uses them to fetch
@@ -793,22 +314,13 @@ Log review is usually the first step of a debug session:
 4. To see *which code* produced it, take that time to the simulator
    ([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
-### Replay logs: recorded against simulated
-
-Logs from `replay/run_replay.sh` carry the recorded car log's own outputs
-(`REPLAY: [EXPECT]` lines). The dashboard draws them as dashed **LOG
-(expected)** traces over the matching DME charts (ignition advance, injector
-pulse, dwell, RPM) and KLR charts (retard, coil pulse, knock output and count,
-boost, full load). The tooltip shows the logged value next to the simulated
-one.
-
 ---
 
 ## 5. Live simulation
 
 ### Connecting
 
-Start `node bridge.mjs` (section 2), then do one of these:
+Start `run_lite.sh` (section 1), then do one of these:
 
 * press **LIVE ○** in the header, or **LIVE SIM** in the load-log dialog
 * open the page with `?live`, or `?live=<bridge url>` for a bridge on
@@ -1036,14 +548,13 @@ How you do that depends on where the log came from.
 
 | The log came from | Do this |
 |---|---|
-| A regression test (`run_dashboard_tests.sh`, `v_run_dashboard_tests.sh`, `run_dashboard_parallel.sh`) | **A: open the test at a time** (below) |
+| A regression test (`run_tests.py`) | **A: open the test at a time** (below) |
 | The live simulator | **B: RUN TO, or reload a snapshot** |
-| A recorded car log (`replay/run_replay.sh`, `replay_wot_60s`) | Not supported in the debugger yet, see the limits below |
 
 ### A. Open a regression test at a time
 
-The regression test is rebuilt with the debugger's hooks (breakpoints,
-stepping, the RAM views) but keeps its own scripted stimulus. It is then run
+The regression test runs in the package's debugger build (breakpoints,
+stepping, the RAM views) with its own scripted stimulus. It is then run
 to the time you give and paused. From that point it is the same run as the
 log.
 
@@ -1052,7 +563,7 @@ put the scrubber on the event. Note the time and pick a start a little
 **before** it, so your breakpoints catch the lead-up. For example, the event
 is at 2700 ms, so start at 2500 ms.
 
-**2. Connect to the simulator.** Press **LIVE** with `bridge.mjs` running.
+**2. Connect to the simulator.** Open the live page with `run_lite.sh` running.
 
 **3. Add the test at that time.** Open the **SNAPSHOTS** list (click its
 title). In the **TEST** row type the test's name (as the scripts know it, e.g.
@@ -1063,10 +574,6 @@ then press **+ ADD**. A purple **TEST** row appears:
 
 **4. LOAD it.** Press **LOAD** on the TEST row.
 
-* The first time, the bridge builds the test (`build_live.sh --test <name>`,
-  into `obj/tests/<name>/`). Progress shows under the list (`⏳ … gen_state.py
-  …`). This takes a few minutes. The build is reused next time, and rebuilt
-  when the testbench, `sim_main.cpp` or the test's flags or ROMs change.
 * Then it runs the test from t=0 to your time. This takes as long as the sim
   needs to get there, at about 20 simulated ms a second, so 2.5 s of engine
   time takes about two minutes. The charts fill in as it goes.
@@ -1094,21 +601,12 @@ Things to know:
 * **↺ RESTART** leaves the test and goes back to the ordinary live simulator.
 * **Breakpoints you set before LOAD are kept.** For a TEST row they take
   effect only from its time on, so the run up to it doesn't stop on them.
-* **Warnings make TEST rows for you.** After each regression test,
-  `test_snap.py` scans its log, and the first warning or error of each kind
-  (at most 5 per test) becomes a TEST row that starts **200 ms before** the
-  warning (`DMEKLR_SNAP_LEAD_MS` when the tests run changes this). For a FAIL
-  in `run_dashboard_parallel.sh` with no warning, the row is at the end of the
-  run. So after a regression run, the SNAPSHOTS list already holds a way into
-  every warning. **INFO** on a row shows the test, the trigger line, the time
-  it runs to, its flags, ROMs and whether it is built yet.
-* **The same from a terminal:** `dme_klr/live/test_snap.py add <test> <ms>
-  [label]` adds the row, and LOAD it in the page.
-* **Use Verilator logs when you can.** The debugger runs Verilator. A log
-  from `run_dashboard_tests.sh` (Icarus) usually matches, but in the first
-  second some tests differ while the KLR branches on uninitialised RAM, which
-  Icarus treats as X and Verilator as 0. `v_run_dashboard_tests.sh` gives a
-  log that matches the debugger's run.
+* **Warnings make TEST rows for you.** After each test, `run_tests.py`
+  scans its log, and the first warning or error of each kind (at most 5 per
+  test) becomes a TEST row that starts **200 ms before** the warning. So after
+  a regression run, the SNAPSHOTS list already holds a way into every
+  warning. **INFO** on a row shows the test, the trigger line, the time it
+  runs to, its flags and ROMs.
 * **Times line up.** The log's `t=` and the simulator's time are the same
   simulated milliseconds from reset.
 
@@ -1129,11 +627,6 @@ The live sim is deterministic for the same inputs, so to get back to a moment:
 
 ### Limits
 
-* **Replays of recorded car logs** (`run_replay.sh`, including the suite's
-  `replay_wot_60s`) can't be opened at a time in the debugger. `test_snap.py`
-  only knows the tests the runner starts with `run_test`, and the replay has
-  its own driver. Review those logs in log mode and use the dashed **LOG
-  (expected)** traces.
 * A log pasted from somewhere else, with no test or snapshot behind it, can be
   reviewed but not re-run.
 
@@ -1174,16 +667,13 @@ After a LOAD:
   let the model take over again. The other inputs are restored as they were
 * the SNAPSHOTS row shows `running from snapshot <id>`
 
-A snapshot loads only into the **same build** of the simulator. A build from
-different Verilog or another Verilator version is refused with a red message.
-After a rebuild where only `sim_main.cpp` or the compiler changed, it loads
-with each clock's phase approximated (`exact=0`, well under a microsecond). To
-share a moment with someone whose build differs, send them the INFO (inputs,
-ROMs, time) instead.
+A snapshot loads only into the **same build** of the simulator, so one from
+another package version may be refused with a red message. To share a moment
+with someone on a different version, send them the INFO (inputs, ROMs, time)
+instead.
 
-Snapshots live in `$DMEKLR_TMP/dme_klr/snapshots/` (by default `tmp/` beside the
-checkout, see section 1)
-(`node bridge.mjs --snapdir <dir>` to move them).
+Snapshots live in `data/dme_klr/snapshots/` in the package folder
+(`DMEKLR_TMP` moves them).
 
 ---
 
@@ -1292,18 +782,16 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
 
   > **Note:** Reloading the browser page resets the images to the defaults.
 
-To build or run with other images from the start, set `DME_ROM_DIR` /
-`DME_ROM_FILE` / `KLR_ROM_DIR` / `KLR_ROM_FILE` for `build_live.sh` or the
-test scripts, for example:
+To start with other images, set `DME_ROM_DIR` / `DME_ROM_FILE` /
+`KLR_ROM_DIR` / `KLR_ROM_FILE` for `run_lite.sh` or `run_tests.py`, for
+example:
 
 ```sh
-DME_ROM_DIR=~/roms/ DME_ROM_FILE=my_chip.bin ./v_run_dashboard_tests.sh warm_idle_5s
+DME_ROM_DIR=~/roms/ DME_ROM_FILE=my_chip.bin ./run_lite.sh
 ```
 
-The file may be a `.mem`, `.bin` or `.hex`. A `.bin` or `.hex` is converted
-to `$DMEKLR_TMP/roms/<cpu>/<name>.mem` first (again whenever the image is
-newer), and an image of your own gets its `variants/` workbook as above, so
-the tests' instruction traces line up with its code.
+The file may be a `.mem`, `.bin` or `.hex`; a `.bin` or `.hex` is converted
+to a `.mem` first.
 
 To convert an image yourself:
 
@@ -1344,7 +832,7 @@ flowchart TB
     SIM -- "PC, RAM" --> UI
 ```
 
-`asm_select.sh` runs automatically from the build and test scripts. It
+`asm_select.sh` runs automatically when a ROM loads. It
 picks the workbook for the ROM in use and rebuilds the generated workbook and
 tables only when their source is newer. A custom image with no workbook
 still runs, but its listing shows **ASM: no workbook** and may not line up
@@ -1387,7 +875,7 @@ per line:
 
 ### Bridge options
 
-`node bridge.mjs [--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
+`./run_lite.sh` passes its options to the bridge: `[--port 8951] [--sim obj/dme_klr_live] [--snapdir <dir>]
 [--dme-asm <dir>] [--klr-asm <dir>] [--mapcache <dir>] [--allow-origin
 <origin>]`. `--dme-asm` / `--klr-asm` pin a listing instead of following the
 ROM.
@@ -1396,13 +884,12 @@ ROM.
 
 | Symptom | Cause / fix |
 |---|---|
-| **● OFFLINE** and a red note | The bridge isn't running, or is on another port. Start `node bridge.mjs` in `dme_klr/live`, or use `?live=<url>` |
+| **● OFFLINE** and a red note | The bridge isn't running, or is on another port. Start `run_lite.sh`, or use `?live=<url>` |
 | Clicking a tab in live mode does nothing | The browser blocked the pop-up. Allow pop-ups for the page |
 | `No disassembly from the bridge.` | The bridge couldn't read the asm tables. Check its terminal output |
 | **ASM: no workbook** | The ROM image has no matching workbook, so the listing may not line up |
 | A map title shows no graph | The bridge isn't running, matplotlib is missing, or the log's ROM isn't in `bin_images/` or the uploaded images |
 | Snapshot LOAD refused (red under the list) | It was saved by a different build. Reproduce it from its INFO |
-| TEST LOAD fails with a build error | Shown as `SIM: [ERROR] building test …`. Run `./build_live.sh --test <name>` in a terminal to see the whole message |
 | `No map lookups in this log` | The log predates the `[LKUP]` lines. Re-run the test |
 
 ---
@@ -1421,15 +908,13 @@ contributions and feedback during development.
 
 ## Appendix A. Regression tests
 
-> **Note:** The full test suite will be provided in a future release that
-> also supports local live mode simulation.
-
-These are the tests in the full regression run (`./run_dashboard_tests.sh`
-with no name, or `./v_run_dashboard_tests.sh` for the Verilator build; both
-have the same list). Run one by name with `./run_dashboard_tests.sh <name>`.
-Each one writes `<name>.dash.log`, which you open in the dashboard as in
-[section 4](#4-log-review), and any of them can be opened live at a chosen
-time from a SNAPSHOTS **TEST** row ([section 7](#7-debugging-a-log-at-a-chosen-time)).
+These are the regression tests the package runs. Run them all with
+`python3 run_tests.py`, or some by name or pattern
+(`python3 run_tests.py warm_idle cl_ramp_*`); `--list` prints them with
+their lengths. Each writes `<name>.dash.log`, which you open in the dashboard
+as in [section 4](#4-log-review), and any of them can be opened live at a
+chosen time from a SNAPSHOTS **TEST** row
+([section 7](#7-debugging-a-log-at-a-chosen-time)).
 
 "Idle" tests ramp the engine from 100 rpm cranking to an 840 rpm warm idle
 unless the description says otherwise. "CL" (closed-loop) tests use the
@@ -1561,85 +1046,7 @@ once the fault has shown up.
 | `cl_ramp_to_6000_BOOST_LOW` | 20 s | The same low boost on a ramp to 6000 rpm |
 | `cl_wot_3000_BOOST_ZERO` | 12 s | Boost sensor shorted (0x00) at full throttle with the rev limiter set to 3000 rpm; expect DTC 3-3 at about 9.4 s |
 
-### Log replay (single-test only)
-
-| Test | Time | What it checks |
-|---|---|---|
-| `replay_wot_60s` | 60 s | Replays a recorded full-throttle run from a real car and compares the simulator's outputs with the logged ones (see [section 4](#replay-logs-recorded-against-simulated)). Not part of the full run, and it can't be opened from a TEST row |
-
-
-## Appendix B. iverilog and Verilator
-
-The same Verilog model (both CPUs, the ADCs, the engine and sensor models)
-is run by two different simulators. Each one is good at something the other
-isn't, so the project uses both.
-
-### iverilog (Icarus Verilog): the accuracy reference
-
-`./run_dashboard_tests.sh` runs the regression on iverilog. Logs go to
-`$DMEKLR_TMP/dme_klr/dash_logs/`.
-
-- **Exact event timing.** iverilog is an event-driven simulator that follows
-  the Verilog scheduling rules closely, including `#` delays inside the
-  testbench and sensor models. Edge-to-edge timing (ignition, injection,
-  sensor pulses, ADC conversion) comes out the way the source describes it.
-- **Worst-case start-up states.** iverilog has four-state logic: every
-  register and RAM byte starts as **X** (unknown) until something writes it.
-  If the firmware reads a location it never initialised and branches on it,
-  iverilog shows that, and the KLR core prints a `KLR: [XBRANCH]` line for
-  each 100 ms in which it happened (the core takes the not-taken path on an
-  X). This is how start-up bugs and reliance on power-on RAM contents are
-  found. A real chip's RAM powers up with whatever is in it, so X is the
-  honest model of "you can't count on this value".
-- **The cost is speed.** It is about 10x slower than Verilator, so the full
-  regression takes a long time.
-
-### Verilator: the fast simulator
-
-`./v_run_dashboard_tests.sh` runs the same tests on Verilator. Logs go to
-`$DMEKLR_TMP/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
-Verilator build.
-
-- **Speed.** Verilator compiles the model to optimised C++, so it runs about
-  10x faster than iverilog. That is what makes the live simulator and its
-  debugger usable (about 20 simulated ms per wall-clock second while
-  tracing) and keeps a full regression run short.
-- **Two-state logic.** There is no X: every register and RAM byte starts at
-  a known value (zero), so the firmware never sees an "unknown" read. Runs
-  are repeatable, but an uninitialised read that iverilog would flag simply
-  reads 0 here and goes unnoticed.
-- **Slightly different timing.** Verilator orders events within a time
-  step in its own way, and because it starts from known values it settles
-  sooner than iverilog. In a few tests (`cl_tippy_in`, for example) it
-  reaches a fast transient a little earlier and stays about a snapshot
-  ahead for the rest of the run. That is a simulator difference, not a
-  model one.
-
-### How the two are used together
-
-1. Develop and debug on Verilator: live mode, breakpoints, quick single-test
-   reruns.
-2. Run the regression on iverilog as the reference for timing and start-up
-   behaviour.
-3. Compare the two. `v_run_dashboard_tests.sh` compares each test with its
-   iverilog log when one exists, and `compare_all_logs.sh` compares a whole
-   set. Each test gets a verdict:
-
-| Verdict | Meaning |
-|---|---|
-| **MATCH** | The two logs agree |
-| **NEAR-MATCH** | Only small differences inside the allowed tolerance |
-| **NOTE** | The logs differ, but the difference starts within 500 ms of iverilog's last `KLR: [XBRANCH]`: the firmware branched on an uninitialised value (X on iverilog, 0 on Verilator) and the two runs took different paths from there. Expected, not a failure, but worth knowing about |
-| **DIFF** | A real difference to look into |
-| **ROM-MISMATCH** | The two logs used different ROM images, so they aren't compared |
-
-A DIFF means the two simulators disagree about the model itself, so treat
-the iverilog result as the reference and check what Verilator is
-simplifying. A NOTE points at firmware that depends on RAM it never set,
-which is worth a look in the debugger even though the test passes.
-
-
-## Appendix C. How the closed-loop models work
+## Appendix B. How the closed-loop models work
 
 In a closed-loop (CL) test the engine responds to the firmware: the DME's
 own fuel decides the RPM, the RPM and throttle decide the air, and the

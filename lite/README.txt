@@ -61,7 +61,7 @@ NEW VERSIONS
   Releases: https://github.com/whalenlg/944turbo_dme_klr/releases
   Latest build: that repository's Actions tab, Lite package workflow,
   latest run on main, Artifacts (signed in to GitHub). The user manual
-  (docs/USER_MANUAL.md there, "The lite package") has the details.
+  (docs/USER_MANUAL.md there) has the details.
 
 WHERE THINGS GO
   Snapshots and the map-graph cache go to data/ in this folder. Set
