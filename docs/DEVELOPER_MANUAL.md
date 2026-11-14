@@ -569,6 +569,20 @@ the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
 it running). The first run downloads the macOS image, about 25 GB; a run
 takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
 
+`install/test_regress_hosts.sh` checks RUN REGRESSIONS' regression hosts
+across two machines: this install and a macOS VM on this Mac (made with
+`test_macos_vm.sh --keep`) running the lite package built here, or, with
+`--dev`, a developer install (slower, adds the iverilog suite and its
+waveforms). It checks that the host has the same software and refuses a
+missing or wrong token and different software; that a Verilator run (and
+with `--dev` an iverilog one) sends tests to the host and gets every test's
+logs (and waveforms) back here to be validated, with nothing left in the
+host's `remote_jobs`; and that when the host's bridge stops mid-run its
+tests are requeued and the run completes. `--host <url> --token <t>` tests
+against any machine already running `bridge.mjs --listen` instead of a VM,
+`--keep` leaves the VM and its bridge running, `--reuse` uses that VM again.
+It prints PASS / FAIL for each check. See `install/test_regress_hosts.sh --help`.
+
 To test `install_arch.sh` itself on a clean system, `install/test_arch_install.sh`
 runs it in a fresh `archlinux:latest` container (Docker or Podman),
 including its smoke tests, then `source setup` and `check_toolchain.sh` in a

@@ -75,7 +75,15 @@ export function softwareVersion(REPO) {
   }
   const git = (...a) => spawnSync('git', ['-C', REPO, ...a], { encoding: 'buffer', maxBuffer: 1 << 28 });
   const head = git('rev-parse', 'HEAD');
-  if (head.status !== 0) return { mode: 'dev', version: '?', commit: null, srchash: null };
+  if (head.status !== 0) {
+    // a copy that isn't a git checkout (e.g. a VM's, install/test_regress_hosts.sh):
+    // the VERSION.txt written next to it, if any
+    if (existsSync(vfile)) {
+      const kv = Object.fromEntries(readFileSync(vfile, 'utf8').split(/\r?\n/).map(l => l.split(/\s+/, 2)).filter(p => p[1]));
+      return { mode: 'dev', version: kv.version ?? '?', commit: kv.commit ?? null, srchash: kv.srchash ?? null };
+    }
+    return { mode: 'dev', version: '?', commit: null, srchash: null };
+  }
   const h = createHash('sha256');
   h.update(git('ls-files', '-s', '--', ...SRC_PATHS).stdout ?? '');
   h.update(git('diff', 'HEAD', '--binary', '--', ...SRC_PATHS).stdout ?? '');
