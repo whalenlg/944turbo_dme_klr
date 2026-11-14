@@ -5,6 +5,13 @@ rem Then open the dashboard it serves, http://127.0.0.1:8951/?live (no internet 
 setlocal
 if "%DMEKLR_TMP%"=="" set "DMEKLR_TMP=%~dp0data"
 if not exist "%DMEKLR_TMP%" mkdir "%DMEKLR_TMP%"
+rem A virtual environment made here for the Python packages (README.txt,
+rem SETTING UP) is used when there is one
+if exist "%~dp0.venv\Scripts\python.exe" (
+  set "VIRTUAL_ENV=%~dp0.venv"
+  set "PATH=%~dp0.venv\Scripts;%PATH%"
+  set "PYTHON=%~dp0.venv\Scripts\python.exe"
+)
 where node >nul 2>nul || (echo run_lite.cmd: Node.js 18 or newer is needed ^(https://nodejs.org^) & exit /b 1)
 echo Starting; then open the dashboard address the bridge prints (http://127.0.0.1:8951/?live).
 node "%~dp0dme_klr\live\bridge.mjs" %*
