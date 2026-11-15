@@ -144,7 +144,9 @@ vm_ssh() { SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force DISPLAY="${DISPLAY:-
 # the host's folder in the VM, and how its bridge starts there
 if [ "$DEV" = 1 ]; then
     VM_DIR='$HOME/944/944turbo_dme_klr'
-    VM_START='source ./setup >/dev/null; S=dme_klr/live/obj/dme_klr_live; [ -x "$S" ] || S=/bin/cat
+    # (a non-login ssh shell doesn't read ~/.zprofile: Homebrew's PATH, node
+    # and verilator, comes from brew shellenv)
+    VM_START='eval "$(/opt/homebrew/bin/brew shellenv)"; source ./setup >/dev/null; S=dme_klr/live/obj/dme_klr_live; [ -x "$S" ] || S=/bin/cat
               nohup node dme_klr/live/bridge.mjs --sim "$S" --listen 0.0.0.0 --token "$TOK"'
 else
     VM_DIR='$(ls -d $HOME/lite-test/dmeklr-lite-*/ | head -1)'
