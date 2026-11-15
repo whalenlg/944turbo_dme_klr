@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  compare_rom_variants.sh — run multiple ROM-variant test suites back to
-#  back and diff their PASS/WARN/FAIL results.
+#  back and diff their PASS/WARN/FAIL results and their dashboard values.
 #
 #  run86.sh / run89.sh / run_carpokes.sh (and run_all.sh underneath them)
 #  each write to their ROM pair's own log folder (paths.sh):
@@ -9,10 +9,14 @@
 #    tmp/dme_klr/<variant>/v_dash_logs/   (Verilator)
 #  so running them back to back keeps every variant's results. This script
 #  runs the variants it is given, then diffs their validation.log files so
-#  you can see at a glance which tests changed verdict.
+#  you can see at a glance which tests changed verdict, and then compares
+#  each test's .dash.log values with the first variant's
+#  (compare_rom_dash.py: the comparison compare_sim_logs.py makes between
+#  iverilog and Verilator, with the [STATUS] fields that differ most), so
+#  two variants that both PASS but fuel, time or idle differently show too.
 #
 #  Usage:
-#    ./compare_rom_variants.sh [--variants v1,v2,...] [--diff-only] [run_all.sh args...]
+#    ./compare_rom_variants.sh [--variants v1,v2,...] [--diff-only] [--no-values] [run_all.sh args...]
 #
 #  Examples:
 #    ./compare_rom_variants.sh                    # 86,89,carpokes; both simulators
@@ -28,6 +32,11 @@
 #  --iverilog, a worker count — so all variants are compared under
 #  identical conditions.
 #
+#  --no-values leaves out the .dash.log value comparison (verdicts only).
+#
+#  The runs skip run_all.sh's macOS install tests (--macos-test none), which
+#  would otherwise run once per variant; pass --macos-test to have them.
+#
 #  --diff-only skips the simulation runs and just rebuilds the diff tables
 #  from the variants' log folders as they are (run_all.sh args are ignored
 #  in that mode, except --verilator / --iverilog, which pick which side is
@@ -40,7 +49,7 @@
 #  early, or only printed usage) is still diffed from its older one, with
 #  a warning naming it, so the table never mixes them up silently.
 #
-#  Diff tables are written to:
+#  Diff tables (verdicts, then values) are written to:
 #    tmp/dme_klr/rom_diff_dash_logs.log     (iverilog)
 #    tmp/dme_klr/rom_diff_v_dash_logs.log   (Verilator)
 # =============================================================================
@@ -74,6 +83,7 @@ ALL_VARIANTS=(86 89 carpokes)
 VARIANTS=()
 RUN_ALL_ARGS=()
 DIFF_ONLY=0
+VALUES=1
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -84,6 +94,9 @@ while [ $# -gt 0 ]; do
         --diff-only)
             DIFF_ONLY=1
             ;;
+        --no-values)
+            VALUES=0
+            ;;
         *)
             RUN_ALL_ARGS+=("$1")
             ;;
@@ -91,6 +104,14 @@ while [ $# -gt 0 ]; do
     shift
 done
 [ ${#VARIANTS[@]} -eq 0 ] && VARIANTS=("${ALL_VARIANTS[@]}")
+
+# run_all.sh runs its macOS install tests by default: once per variant here
+# unless asked for
+_macos=0
+for _a in ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}; do
+    case "$_a" in --macos-test|--macos-test=*) _macos=1 ;; esac
+done
+[ "$_macos" = "0" ] && RUN_ALL_ARGS+=(--macos-test none)
 
 # Which simulator side(s) to diff — same rule as run_all.sh:
 # --verilator / --iverilog restrict it, neither (or both) means both.
@@ -201,8 +222,28 @@ print(text)
 PYEOF
 }
 
+# ── Value comparison per simulator side (compare_rom_dash.py) ────────────
+values_side() {
+    local sim_dir="$1" label="$2"
+    local out="$_BASE/rom_diff_${sim_dir}.log"
+    local -a present=()
+    for v in "${VARIANTS[@]}"; do
+        ls "$_BASE/$v/$sim_dir/"*.dash.log >/dev/null 2>&1 && present+=("$v")
+    done
+    [ ${#present[@]} -lt 2 ] && return
+    echo ""
+    echo "== $label values (${present[*]}; each compared with ${present[0]}) — adding to $out =="
+    # the verdict table above starts the file; with fewer than 2 verdicts it wasn't written
+    [ -f "$out" ] && [ "$out" -nt "$STAMP" ] || : > "$out"
+    python3 "$SCRIPT_DIR/compare_rom_dash.py" --out "$out" "$_BASE" "$sim_dir" "${present[@]}"
+}
+
 [ "$_want_iv" = "1" ] && diff_side dash_logs "iverilog"
 [ "$_want_v"  = "1" ] && diff_side v_dash_logs "Verilator"
+if [ "$VALUES" = "1" ]; then
+    [ "$_want_iv" = "1" ] && values_side dash_logs "iverilog"
+    [ "$_want_v"  = "1" ] && values_side v_dash_logs "Verilator"
+fi
 
 echo ""
 echo "== compare_rom_variants complete — logs in $_BASE/<variant>/, diffs in $_BASE/rom_diff_*.log =="
