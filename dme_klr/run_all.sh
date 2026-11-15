@@ -29,19 +29,20 @@
 #  ($DMEKLR_TMP/dme_klr/<rom>: its logs, per-test builds, hex dumps and this
 #  script's step logs, run_all/), so nothing is shared while they run but
 #  the one testbench build per simulator. With more than one, every suite's
-#  lines start with [VL:<rom>] / [IV:<rom>], and the pairs run at the same
-#  time when all their tests fit the workers (suites x pairs x tests <=
-#  workers), else one pair after another. Steps 1-2 and 6 run once. Without
-#  --roms: the pair DME_ROM_FILE / KLR_ROM_FILE name (default 89).
+#  lines start with [VL:<rom>] / [IV:<rom>], and every pair's suites run at
+#  the same time, sharing the workers (below). Steps 1-2 and 6 run once.
+#  Without --roms: the pair DME_ROM_FILE / KLR_ROM_FILE name (default 89).
 #  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
 #  comparison + FQS analysis step that depends on both). Pass --verilator or
 #  --iverilog to run only that simulator's suite — the comparison/FQS step
 #  is skipped in that case, since it needs both sides' logs.
-#  When both run and all their tests fit the workers (2 x tests <= workers),
-#  the two suites run at the same time (step "3+4/6"), each with a worker
-#  per test and no regression hosts; their lines start with [VL] / [IV].
+#  When more than one suite runs (both simulators, or several ROM pairs),
+#  they all run at the same time (step "3+4/6") and share the workers and
+#  the regression hosts' threads: a thread that frees up starts the next
+#  waiting test of any suite (run_dashboard_parallel.sh's DMEKLR_SLOT_POOL).
+#  With both simulators, their lines start with [VL] / [IV].
 #  Each suite builds the testbench once and runs every test on that build;
 #  --per-test-build builds every test on its own instead.
 #  Step 6 (macOS with Tart only) then tests the install in a clean macOS
@@ -202,11 +203,10 @@ else
 fi
 
 # ── 3-4. The Verilator and iverilog dashboard suites ──────────────────────────
-# Each suite's run and its verdict line. When both suites run and all their
-# tests together fit the workers (2 x tests <= workers), they run at the same
-# time, each with as many workers as it has tests and no regression hosts;
-# their output lines then start with [VL] / [IV] (live/runall.mjs reads them
-# so), and the step header is "3+4/6".
+# Each suite's run and its verdict line. When more than one suite runs they
+# run at the same time, sharing the workers (below); their output lines then
+# start with [VL] / [IV], or [VL:<rom>] / [IV:<rom>] with several ROM pairs
+# (live/runall.mjs reads them so), and the step header is "3+4/6".
 vl_suite() {
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator) ..."
@@ -267,116 +267,87 @@ iv_verdict() {
 # read its input in blocks, holding the lines back until the suite ends)
 prefix() { local l; while IFS= read -r l || [ -n "$l" ]; do printf '[%s] %s\n' "$1" "$l"; done; }
 
-N_TESTS=$(cd "$DME_KLR" && bash run_dashboard_parallel.sh --count 1 ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>/dev/null)
-[[ "$N_TESTS" =~ ^[0-9]+$ ]] || N_TESTS=999
 N_SIMS=$(( RUN_VERILATOR + RUN_IVERILOG ))
 
-# one_pair_suites <workers>: steps 3-4 for the pair rom_env set (the
-# suites at the same time when both run and all their tests fit the
-# workers); tag "": untagged lines (one pair), else "<rom>": [VL:<rom>] /
-# [IV:<rom>] lines
+# one_pair_suites <workers>: steps 3-4 when only one suite runs (one
+# simulator, one ROM pair); the other step says it was skipped
 one_pair_suites() {
-    local w=$1 tag=$2 vt=VL it=IV
-    [ -n "$tag" ] && { vt="VL:$tag"; it="IV:$tag"; }
-    if [ "$N_SIMS" = 2 ] && [ $((2 * N_TESTS)) -le "$w" ]; then
-        [ -z "$tag" ] && hdr "3+4/6  Verilator and iverilog Dashboard Test Suites, at the same time"
-        log "$N_TESTS test(s) per suite, $((2 * N_TESTS)) in all, fit the $w workers: both suites at once, $N_TESTS worker(s) each, here only"
-        ( unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix "$vt" ) &
-        local _vl_pid=$!
-        ( unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix "$it" ) &
-        local _iv_pid=$!
-        wait $_vl_pid $_iv_pid
-        PFX="[$vt] "; vl_verdict
-        PFX="[$it] "; iv_verdict
-        PFX=""
-    elif [ -z "$tag" ]; then
-        hdr "3/6  Verilator Dashboard Test Suite"
-        if [ "$RUN_VERILATOR" = "1" ]; then
-            vl_suite "$w"
-            vl_verdict
-        else
-            log "Skipped (--iverilog only)"
-        fi
-
-        hdr "4/6  iverilog Dashboard Test Suite"
-        if [ "$RUN_IVERILOG" = "1" ]; then
-            iv_suite "$w"
-            iv_verdict
-        else
-            log "Skipped (--verilator only)"
-        fi
+    local w=$1
+    hdr "3/6  Verilator Dashboard Test Suite"
+    if [ "$RUN_VERILATOR" = "1" ]; then
+        vl_suite "$w"
+        vl_verdict
     else
-        if [ "$RUN_VERILATOR" = "1" ]; then
-            vl_suite "$w" 2>&1 | prefix "$vt"
-            PFX="[$vt] "; vl_verdict; PFX=""
-        fi
-        if [ "$RUN_IVERILOG" = "1" ]; then
-            iv_suite "$w" 2>&1 | prefix "$it"
-            PFX="[$it] "; iv_verdict; PFX=""
-        fi
+        log "Skipped (--iverilog only)"
+    fi
+
+    hdr "4/6  iverilog Dashboard Test Suite"
+    if [ "$RUN_IVERILOG" = "1" ]; then
+        iv_suite "$w"
+        iv_verdict
+    else
+        log "Skipped (--verilator only)"
     fi
 }
 
-if [ "$MULTI" = 0 ]; then
-    one_pair_suites "$WORKERS" ""
+N_SUITES=$(( N_SIMS * ${#ROMS[@]} ))
+if [ "$N_SUITES" -le 1 ]; then
+    one_pair_suites "$WORKERS"
 else
-    N_ALL=$(( N_SIMS * N_TESTS * ${#ROMS[@]} ))
-    hdr "3+4/6  Dashboard Test Suites for the ROM pairs ${ROMS[*]}"
-    if [ "$N_ALL" -le "$WORKERS" ]; then
-        log "$N_ALL test run(s) in all fit the $WORKERS workers: every pair and suite at once, $N_TESTS worker(s) each, here only"
-        # The shared testbench builds (one per simulator, every pair runs
-        # on them), once, before the pairs start: they would all build
-        # the same files at once otherwise
-        _shared_iv=1
-        for _a in ${IV_DEBUG[@]+"${IV_DEBUG[@]}"}; do case "$_a" in --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) _shared_iv=0 ;; esac; done
-        if [ ${#PT_OPT[@]} -eq 0 ]; then
-            _built=1
-            if [ "$RUN_VERILATOR" = 1 ]; then
-                log "Building the shared Verilator testbench once → $DMEKLR_TMP/dme_klr/runtime"
-                bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime" > "$RUNLOG/runtime_build.log" 2>&1 || _built=0
-            fi
-            if [ "$RUN_IVERILOG" = 1 ] && [ "$_shared_iv" = 1 ]; then
-                log "Building the shared iverilog testbench once → $DMEKLR_TMP/dme_klr/runtime_iv"
-                bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime_iv" --iverilog > "$RUNLOG/runtime_iv_build.log" 2>&1 || _built=0
-            fi
-            if [ "$_built" = 1 ]; then
-                export DMEKLR_RUNTIME_PREBUILT=1   # run_dashboard_parallel.sh uses them as they are
-            else
-                warn "A shared testbench build failed (see $RUNLOG/runtime_build.log, runtime_iv_build.log): each suite tries its own"
-            fi
+    # Several suites (both simulators, and/or several ROM pairs): all of
+    # them at once, sharing the $WORKERS workers (and the regression hosts'
+    # threads) through one pool of tokens (DMEKLR_SLOT_POOL, see
+    # run_dashboard_parallel.sh), so a thread that frees up starts the next
+    # waiting test of any suite, not only of its own
+    if [ "$MULTI" = 1 ]; then hdr "3+4/6  Dashboard Test Suites for the ROM pairs ${ROMS[*]}"
+    else hdr "3+4/6  Verilator and iverilog Dashboard Test Suites, at the same time"; fi
+    log "$N_SUITES suites at once, sharing the $WORKERS workers: a test starts on whichever worker frees up first"
+    # The shared testbench builds (one per simulator, every pair runs on
+    # them), once, before the suites start: they would all build the same
+    # files at once otherwise
+    _shared_iv=1
+    for _a in ${IV_DEBUG[@]+"${IV_DEBUG[@]}"}; do case "$_a" in --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) _shared_iv=0 ;; esac; done
+    if [ ${#PT_OPT[@]} -eq 0 ]; then
+        _built=1
+        if [ "$RUN_VERILATOR" = 1 ]; then
+            log "Building the shared Verilator testbench once → $DMEKLR_TMP/dme_klr/runtime"
+            bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime" > "$RUNLOG/runtime_build.log" 2>&1 || _built=0
         fi
-        _pids=()
-        for _r in "${ROMS[@]}"; do
-            for _s in ${RUN_VERILATOR/1/VL} ${RUN_IVERILOG/1/IV}; do
-                [ "$_s" = 0 ] && continue
-                if [ "$_s" = VL ]; then
-                    ( rom_env "$_r"; unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix "VL:$_r" ) &
-                else
-                    ( rom_env "$_r"; unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix "IV:$_r" ) &
-                fi
-                _pids+=($!)
-            done
-        done
-        wait "${_pids[@]}"
-        unset DMEKLR_RUNTIME_PREBUILT
-        for _r in "${ROMS[@]}"; do
-            rom_env "$_r"
-            [ "$RUN_VERILATOR" = 1 ] && { PFX="[VL:$_r] "; vl_verdict; }
-            [ "$RUN_IVERILOG" = 1 ] && { PFX="[IV:$_r] "; iv_verdict; }
-            PFX=""
-        done
-    else
-        log "$N_ALL test run(s) in all don't fit the $WORKERS workers: one ROM pair after another"
-        for _r in "${ROMS[@]}"; do
-            rom_env "$_r"
-            log "ROM pair $_r → $DMEKLR_LOGS"
-            one_pair_suites "$WORKERS" "$_r"
-            # the next pairs run on the shared builds this one made
-            { [ "$RUN_VERILATOR" = 0 ] || [ -n "$VL_SUMMARY" ]; } && { [ "$RUN_IVERILOG" = 0 ] || [ -n "$IV_SUMMARY" ]; } \
-                && export DMEKLR_RUNTIME_PREBUILT=1
-        done
-        unset DMEKLR_RUNTIME_PREBUILT
+        if [ "$RUN_IVERILOG" = 1 ] && [ "$_shared_iv" = 1 ]; then
+            log "Building the shared iverilog testbench once → $DMEKLR_TMP/dme_klr/runtime_iv"
+            bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime_iv" --iverilog > "$RUNLOG/runtime_iv_build.log" 2>&1 || _built=0
+        fi
+        if [ "$_built" = 1 ]; then
+            export DMEKLR_RUNTIME_PREBUILT=1   # run_dashboard_parallel.sh uses them as they are
+        else
+            warn "A shared testbench build failed (see $RUNLOG/runtime_build.log, runtime_iv_build.log): each suite tries its own"
+        fi
     fi
+    DMEKLR_SLOT_POOL="$(mktemp -d "$RUNLOG/slots.XXXXXX")"
+    export DMEKLR_SLOT_POOL DMEKLR_SLOT_POOL_N="$WORKERS"
+    _pids=()
+    for _r in "${ROMS[@]}"; do
+        for _s in ${RUN_VERILATOR/1/VL} ${RUN_IVERILOG/1/IV}; do
+            [ "$_s" = 0 ] && continue
+            _tag="$_s"; [ "$MULTI" = 1 ] && _tag="$_s:$_r"
+            if [ "$_s" = VL ]; then
+                ( rom_env "$_r"; vl_suite "$WORKERS" 2>&1 | prefix "$_tag" ) &
+            else
+                ( rom_env "$_r"; iv_suite "$WORKERS" 2>&1 | prefix "$_tag" ) &
+            fi
+            _pids+=($!)
+        done
+    done
+    wait "${_pids[@]}"
+    rm -rf "$DMEKLR_SLOT_POOL"
+    unset DMEKLR_RUNTIME_PREBUILT DMEKLR_SLOT_POOL DMEKLR_SLOT_POOL_N
+    for _r in "${ROMS[@]}"; do
+        rom_env "$_r"
+        _t=""; [ "$MULTI" = 1 ] && _t=":$_r"
+        [ "$RUN_VERILATOR" = 1 ] && { PFX="[VL$_t] "; vl_verdict; }
+        [ "$RUN_IVERILOG" = 1 ] && { PFX="[IV$_t] "; iv_verdict; }
+        PFX=""
+    done
 fi
 
 # ── 5. iverilog vs Verilator comparison ───────────────────────────────────────

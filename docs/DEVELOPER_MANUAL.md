@@ -751,9 +751,8 @@ than one, each test runs once per pair and simulator (up to six runs:
 `run_all.sh --roms`), and each pair keeps everything apart while they run, its
 logs, hex dumps, per-test builds, snapshots and step logs all in its own
 folder; only the one testbench build per simulator is shared, built before the
-pairs start. When every pair's suites fit the workers (simulators × pairs ×
-tests no more than the workers) they all run at the same time, a worker per
-test; otherwise one pair after another, each as a single pair would run. The
+pairs start. Every pair's suites run at the same time and share the workers
+(below). The
 CPU regressions and the macOS VM test run once. The progress shows a bar for
 each suite of each pair (**Verilator · 86**, **iverilog · carpokes**), and
 each test a line for each. The panel then lists the tests
@@ -770,11 +769,13 @@ and the group headers and the run line add them up (from
 simulated time against its length, with its PASS / WARN / FAIL when it is
 checked, and bars for each group, each simulator's suite and the full run
 (simulated seconds done of the total, with the time left estimated from
-the rate so far); the six steps show which one is running. When both
-simulators run and all their tests fit the workers (twice the tests is no more
-than the workers), `run_all.sh` runs the Verilator and iverilog suites at the
-same time (steps 3 and 4 together, each with a worker per test, on this machine
-only) instead of one after the other. The run goes on
+the rate so far); the six steps show which one is running. When more than one
+suite runs (both simulators, or several ROM pairs), `run_all.sh` runs them all
+at the same time (steps 3 and 4 together), sharing the workers and the
+regression hosts' threads: whenever a test ends, its thread starts the next
+waiting test of any suite, so no thread sits idle while a suite's last long
+tests finish and other suites still have tests waiting. Each suite still
+starts its own tests longest first. The run goes on
 when the panel is closed (the button shows its %) and stops with **STOP RUN**
 or when the bridge stops. With **Plot Differences** ticked (the default),
 step 5 plots each test whose iverilog and Verilator logs differ
