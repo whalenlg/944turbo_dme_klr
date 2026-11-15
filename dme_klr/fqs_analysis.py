@@ -13,8 +13,8 @@ Usage:
     python3 fqs_analysis.py --iv-dir DIR --vl-dir DIR
 
 Defaults:
-    iv: $DMEKLR_TMP/dme_klr/dash_logs
-    vl: $DMEKLR_TMP/dme_klr/v_dash_logs
+    iv: $DMEKLR_TMP/dme_klr/<rom>/dash_logs
+    vl: $DMEKLR_TMP/dme_klr/<rom>/v_dash_logs
 
 The RPM / ign / load / WOT / FQS-gate columns come from the iverilog log
 when it has steady-state data, otherwise from the Verilator log (marked

@@ -112,6 +112,7 @@ fi
 mkdir -p "$OUT" || die "can't make $OUT"
 OUT="$(cd "$OUT" && pwd)"
 LTMP="$OUT/tmp"   # this machine's DMEKLR_TMP for the runs, so they leave its own logs alone
+ROMV="$(dmeklr_rom_variant)"   # the runs' ROM pair's log folder under it (paths.sh)
 
 RESULTS=(); FAILED=0
 result() {  # result PASS|FAIL|SKIP "name" "detail"
@@ -260,7 +261,7 @@ check_run() {
 # ── 2. Verilator ─────────────────────────────────────────────────────────
 step "2. Verilator run: 1 worker here + $THREADS on the host ($TESTS)"
 run_suite 2_verilator.log --verilator
-check_run "2a. Verilator tests shared" "$OUT/2_verilator.log" "$LTMP/dme_klr/v_dash_logs"
+check_run "2a. Verilator tests shared" "$OUT/2_verilator.log" "$LTMP/dme_klr/$ROMV/v_dash_logs"
 if [ -z "$IP" ]; then
     result SKIP "2b. host's job folders cleaned up" "--host: can't look on that machine"
 else
@@ -276,10 +277,10 @@ elif ! command -v iverilog >/dev/null 2>&1; then
     result SKIP "3. iverilog + waveforms" "no iverilog here"
 else
     run_suite 3_iverilog.log
-    check_run "3a. iverilog tests shared" "$OUT/3_iverilog.log" "$LTMP/dme_klr/dash_logs"
+    check_run "3a. iverilog tests shared" "$OUT/3_iverilog.log" "$LTMP/dme_klr/$ROMV/dash_logs"
     nofst=""; nr=0
     for t in $(grep '\[START\].*@host' "$OUT/3_iverilog.log" | awk '{print $2}'); do
-        nr=$((nr + 1)); [ -s "$LTMP/dme_klr/dash_logs/fst/$t.fst" ] || nofst="$nofst $t"
+        nr=$((nr + 1)); [ -s "$LTMP/dme_klr/$ROMV/dash_logs/fst/$t.fst" ] || nofst="$nofst $t"
     done
     [ "$nr" -gt 0 ] && [ -z "$nofst" ]
     check $? "3b. remote waveforms (fst/) here" "$((nr - $(echo $nofst | wc -w))) of $nr remote tests' fst/<test>.fst${nofst:+; missing:$nofst}"
@@ -299,7 +300,7 @@ else
     wait "$_pid"
     nq=$(grep -c '\[REQUEUE\]' "$OUT/4_drop.log")
     n_tests=$(echo $TESTS | wc -w | tr -d ' ')
-    n_done=$(grep -cE $'^(PASS|WARN|FAIL)\t' "$LTMP/dme_klr/v_dash_logs/validation.log" 2>/dev/null)
+    n_done=$(grep -cE $'^(PASS|WARN|FAIL)\t' "$LTMP/dme_klr/$ROMV/v_dash_logs/validation.log" 2>/dev/null)
     [ "$nq" -gt 0 ] && [ "${n_done:-0}" = "$n_tests" ]
     check $? "4. host drops out" "$nq requeued, ${n_done:-0}/$n_tests validated"
     grep -E '\[START\]|\[REQUEUE\]|Complete' "$OUT/4_drop.log" | sed 's/^/      /'

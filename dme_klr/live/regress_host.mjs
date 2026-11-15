@@ -45,6 +45,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
+import { romVariant } from './logdirs.mjs';
 
 const NAME = /^[A-Za-z0-9_]+$/;
 const ROM_NAME = /^[A-Za-z0-9_.-]+\.mem$/i;
@@ -201,7 +202,8 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       env[`${cpu.toUpperCase()}_ROM_DIR`] = dir.replace(/\\/g, '/') + '/';
       env[`${cpu.toUpperCase()}_ROM_FILE`] = r.name;
     }
-    const logdir = join(tmp, 'dme_klr', sim === 'iverilog' ? 'dash_logs' : 'v_dash_logs');
+    // the ROM pair's log folder in the job's DMEKLR_TMP (paths.sh's DMEKLR_LOGS)
+    const logdir = join(tmp, 'dme_klr', romVariant(env.DME_ROM_FILE, env.KLR_ROM_FILE), sim === 'iverilog' ? 'dash_logs' : 'v_dash_logs');
     const job = { id, test: o.test, sim, tmp, logdir, state: 'starting', exit: null, out: [], proc: null, startedAt: Date.now(), killed: false };
     jobs.set(id, job);
     const keep = l => { job.out.push(l.replace(ANSI, '')); if (job.out.length > 40) job.out.shift(); };

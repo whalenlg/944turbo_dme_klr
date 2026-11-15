@@ -40,8 +40,9 @@
 #        NTC conversions use the same DME image)
 #        REBUILD=1 forces a rebuild
 #
-#  Output: $DMEKLR_TMP/dme_klr/replay/dash_logs/ (iverilog) or
-#          $DMEKLR_TMP/dme_klr/replay/v_dash_logs/ (Verilator), see paths.sh,
+#  Output: $DMEKLR_LOGS/replay/dash_logs/ (iverilog) or
+#          $DMEKLR_LOGS/replay/v_dash_logs/ (Verilator): DMEKLR_LOGS is the
+#          ROM pair's folder, $DMEKLR_TMP/dme_klr/<rom>, see paths.sh,
 #          so the two can run in parallel:
 #          <name>.{stim,expect}.csv
 #          <name>.log        (full sim output)
@@ -115,7 +116,7 @@ NAME="${NAME:-$(basename "$XLSX" .xlsx)}"
 # (v_dash_logs), so both can run at once
 source "$REPO_DIR/paths.sh"   # DMEKLR_TMP
 dmeklr_rom_mem || exit 1   # a .bin/.hex DME_ROM_FILE / KLR_ROM_FILE -> .mem
-REPLAY_OUT="$DMEKLR_TMP/dme_klr/replay"
+REPLAY_OUT="$DMEKLR_LOGS/replay"   # this ROM pair's folder (paths.sh)
 if [ -z "$OUT_DIR" ]; then
     if [ "$SIM" = "iverilog" ]; then OUT_DIR="$REPLAY_OUT/dash_logs"; else OUT_DIR="$REPLAY_OUT/v_dash_logs"; fi
 fi

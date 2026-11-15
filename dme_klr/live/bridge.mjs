@@ -48,11 +48,14 @@
 //    GET  /maps/klr[?sha=<hash>|?name=<file>], /maps/klr/<sha>/<file>.png   the same for
 //                     the KLR image (klr_map_graphs.py; tables only, keyed
 //                     by address: 0C00, 0B00, 0992, 0A00, 0925, ...)
-//    GET  /logs       the .dash.log files in $DMEKLR_TMP/dme_klr/v_dash_logs
-//                     and dash_logs (the regression runs' output), newest
-//                     first: [{dir, name, size, mtime}] (the dashboard's
-//                     LOAD LOG list)
-//    GET  /logs/<dir>/<name>.dash.log   one of them, as text
+//    GET  /logs       the .dash.log files in each ROM pair's folder,
+//                     $DMEKLR_TMP/dme_klr/<rom>/v_dash_logs and dash_logs
+//                     (the regression runs' output; logdirs.mjs), and in
+//                     the folders from before those (rom: null), newest
+//                     first: [{rom, dir, name, size, mtime}] (the
+//                     dashboard's LOAD LOG list)
+//    GET  /logs/<rom>/<dir>/<name>.dash.log   one of them, as text
+//    GET  /logs/<dir>/<name>.dash.log         one in the older folders
 //
 //  Map graphs: map_graphs.py draws every numbered map and directly
 //  addressed table of the DME image into <mapcache>/<sha>/, keyed by the
@@ -115,6 +118,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { makeRunAll } from './runall.mjs';
 import { makeRegressHost, tokenOk, lanAddress, loopback } from './regress_host.mjs';
+import { romVariants } from './logdirs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -551,21 +555,28 @@ function compareRoms(cpu, a, b, all, done) {
 
 // ── Logs ─────────────────────────────────────────────────────
 // The regression runs' .dash.logs (v_run_dashboard_tests.sh: v_dash_logs,
-// run_dashboard_tests.sh: dash_logs), for LOAD LOG. Only these folders and
-// only <name>.dash.log in them: a request never names a path.
+// run_dashboard_tests.sh: dash_logs) in each ROM pair's folder
+// (dme_klr/<rom>, logdirs.mjs), and in the shared folders runs used before
+// those (rom null), for LOAD LOG. Only these folders and only
+// <name>.dash.log in them: a request never names a path.
 const LOG_DIRS = ['v_dash_logs', 'dash_logs'];
 const logNameOk = n => /^[\w.+-]+\.dash\.log$/.test(n) && !n.startsWith('.');
+const logFolder = (rom, dir) => (rom == null || romVariants(TMP_ROOT).includes(rom)) && LOG_DIRS.includes(dir)
+  && join(TMP_ROOT, 'dme_klr', ...(rom == null ? [] : [rom]), dir);
 function listLogs() {
   const out = [];
-  for (const dir of LOG_DIRS) {
-    let names = [];
-    try { names = readdirSync(join(TMP_ROOT, 'dme_klr', dir)); } catch { continue; }
-    for (const name of names) {
-      if (!logNameOk(name)) continue;
-      try {
-        const st = statSync(join(TMP_ROOT, 'dme_klr', dir, name));
-        if (st.isFile()) out.push({ dir, name, size: st.size, mtime: st.mtimeMs });
-      } catch { /* gone since the listing */ }
+  for (const rom of [...romVariants(TMP_ROOT), null]) {
+    for (const dir of LOG_DIRS) {
+      const folder = logFolder(rom, dir);
+      let names = [];
+      try { names = readdirSync(folder); } catch { continue; }
+      for (const name of names) {
+        if (!logNameOk(name)) continue;
+        try {
+          const st = statSync(join(folder, name));
+          if (st.isFile()) out.push({ rom, dir, name, size: st.size, mtime: st.mtimeMs });
+        } catch { /* gone since the listing */ }
+      }
     }
   }
   return out.sort((a, b) => b.mtime - a.mtime);
@@ -1184,12 +1195,13 @@ createServer((req, res) => {
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
     return res.end(JSON.stringify(listLogs()));
   }
-  const log = url.pathname.match(/^\/logs\/([^/]+)\/([^/]+)$/);
+  const log = url.pathname.match(/^\/logs\/(?:([^/]+)\/)?([^/]+)\/([^/]+)$/);
   if (req.method === 'GET' && log) {
-    let name;
-    try { name = decodeURIComponent(log[2]); } catch { name = ''; }
-    const file = LOG_DIRS.includes(log[1]) && logNameOk(name) && join(TMP_ROOT, 'dme_klr', log[1], name);
-    if (!file || !existsSync(file)) { res.writeHead(404, CORS); return res.end(`no log ${log[1]}/${log[2]}`); }
+    let rom, name;
+    try { rom = log[1] == null ? null : decodeURIComponent(log[1]); name = decodeURIComponent(log[3]); } catch { name = ''; }
+    const folder = logFolder(rom, log[2]);
+    const file = folder && logNameOk(name) && join(folder, name);
+    if (!file || !existsSync(file)) { res.writeHead(404, CORS); return res.end(`no log ${url.pathname.slice(6)}`); }
     res.writeHead(200, { ...CORS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(readFileSync(file));
   }

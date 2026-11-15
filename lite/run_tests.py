@@ -33,8 +33,10 @@ The ROM images are the defaults (89DME_951pin.mem, 89KLR_951.mem) unless
 DME_ROM_FILE / KLR_ROM_FILE (and DME_ROM_DIR / KLR_ROM_DIR) are set, as for
 the developer install's runners.
 
-Output, in $DMEKLR_TMP/dme_klr/v_dash_logs (default <package>/data/...,
-as run_lite.sh uses): <test>.log (the whole run), <test>.dash.log (open
+Output, in $DMEKLR_TMP/dme_klr/<rom>/v_dash_logs (default <package>/data/...,
+as run_lite.sh uses; <rom> is the ROM pair's folder: 89 for the default
+pair, 86 for run86.sh's, carpokes for run_carpokes.sh's, otherwise
+the DME image's name): <test>.log (the whole run), <test>.dash.log (open
 it in the dashboard), validation.log and parallel_summary.log. A WARN or
 FAIL verdict, and each kind of warning a run prints (a PASS too), leave a
 TEST row in the live page's SNAPSHOTS list (LOAD runs the test to that
@@ -52,7 +54,14 @@ LIVE = os.path.join(DMEKLR, 'live')
 EXE = '.exe' if os.name == 'nt' else ''
 TMP = os.environ.get('DMEKLR_TMP') or os.path.join(PKG, 'data')
 os.environ['DMEKLR_TMP'] = TMP
-LOGDIR = os.path.join(TMP, 'dme_klr', 'v_dash_logs')
+# The ROM pair's log folder, named as paths.sh / dmeklr_paths.py / live/logdirs.mjs do
+_NAMED = {('89DME_951pin', '89KLR_951'): '89', ('28PIN_86DME', '86KLR_951'): '86',
+          ('28PIN_DME_PERFORMANCE', '87KLR_951'): 'carpokes'}
+_stem = lambda f: os.path.splitext(os.path.basename(f.replace('\\', '/')))[0]
+_d = _stem(os.environ.get('DME_ROM_FILE') or '89DME_951pin.mem')
+_k = _stem(os.environ.get('KLR_ROM_FILE') or '89KLR_951.mem')
+ROM_VARIANT = _NAMED.get((_d, _k)) or re.sub(r'[^A-Za-z0-9_.+-]', '_', _d)
+LOGDIR = os.path.join(TMP, 'dme_klr', ROM_VARIANT, 'v_dash_logs')
 HEXDIR = os.path.join(TMP, 'dme_klr', 'lite_hex')
 # The lines the dashboard reads (as v_run_dashboard_tests.sh greps them)
 DASH = re.compile(r'^(DME: \[DS\]|\[DS\]|KLR: \[DS\]|DME: \[PHASE\]|DME: \[STATUS\]|KLR: \[STATUS\]|KLR: \[PHASE\]'

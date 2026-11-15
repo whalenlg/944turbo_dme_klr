@@ -108,6 +108,7 @@ DME_KLR="$ROOT/dme_klr"
 source "$ROOT/paths.sh"          # DMEKLR_TMP: where the suites write
 RUNLOG="$DMEKLR_TMP/run_all"      # this script's own step logs
 mkdir -p "$RUNLOG"
+echo "== dashboard test logs: $DMEKLR_LOGS (this ROM pair's folder) =="
 PASS=0; WARN=0; FAIL=0
 START_TIME=$(date +%s)
 # Summaries older than this marker are from a previous run and must not be
@@ -172,7 +173,7 @@ vl_suite() {
     log "Verilator test suite completed"
 }
 vl_verdict() {
-    VL_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/v_dash_logs/parallel_summary.log"
+    VL_SUMMARY_LOG="$DMEKLR_LOGS/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
     [ "$VL_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
         VL_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$VL_SUMMARY_LOG" 2>/dev/null | tail -1)
@@ -198,7 +199,7 @@ iv_suite() {
     log "iverilog test suite completed"
 }
 iv_verdict() {
-    IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
+    IV_SUMMARY_LOG="$DMEKLR_LOGS/dash_logs/parallel_summary.log"
     IV_SUMMARY=""
     [ "$IV_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
         IV_SUMMARY=$(grep "Total:.*PASS:.*WARN:.*FAIL:" "$IV_SUMMARY_LOG" 2>/dev/null | tail -1)
@@ -276,8 +277,8 @@ else
 fi
 
 log "Generating detailed compare_sim_logs.py reports for differing tests ..."
-IV_DASH_DIR="$DMEKLR_TMP/dme_klr/dash_logs"
-VL_DASH_DIR="$DMEKLR_TMP/dme_klr/v_dash_logs"
+IV_DASH_DIR="$DMEKLR_LOGS/dash_logs"
+VL_DASH_DIR="$DMEKLR_LOGS/v_dash_logs"
 DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$RUNLOG/compare.log" | sort -u)
 PLOT_OPT=(--plot --plot-dir "$IV_DASH_DIR")
 [ "$PLOT" = 1 ] || { PLOT_OPT=(); log "No plots (--no-plot)"; }

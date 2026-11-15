@@ -6,16 +6,17 @@
 #  simulation logs using compare_sim_logs.py.
 #
 #  Usage:
-#    ./compare_all_logs.sh [--variant 86|89|carpokes]
+#    ./compare_all_logs.sh [--variant 86|89|carpokes|<DME image>]
 #                          [--iv-dir DIR] [--vl-dir DIR] [test1 test2 ...]
 #
-#  By default compares all known tests in tmp/dme_klr/dash_logs
-#  (iverilog) against tmp/dme_klr/v_dash_logs (Verilator).  Pass
-#  test names to compare a subset.
+#  By default compares all known tests in the ROM pair's log folder
+#  (DME_ROM_FILE / KLR_ROM_FILE, default the 1989 pair: see paths.sh),
+#  tmp/dme_klr/<rom>/dash_logs (iverilog) against
+#  tmp/dme_klr/<rom>/v_dash_logs (Verilator).  Pass test names to
+#  compare a subset.
 #
-#  --variant V   compare the results compare_rom_variants.sh archived
-#                for variant V: tmp/dme_klr/rom_compare/V/dash_logs vs
-#                tmp/dme_klr/rom_compare/V/v_dash_logs
+#  --variant V   compare that ROM pair's logs instead:
+#                tmp/dme_klr/V/dash_logs vs tmp/dme_klr/V/v_dash_logs
 #  --iv-dir DIR  iverilog log directory (overrides the default/--variant)
 #  --vl-dir DIR  Verilator log directory (overrides the default/--variant)
 #
@@ -23,9 +24,8 @@
 #    Prints MATCH/NEAR-MATCH/NOTE/DIFF/ROM-MISMATCH/SKIP per test.
 #    NOTE = the differences start with iverilog's KLR X branches
 #    (expected, not a DIFF). ROM-MISMATCH = the two logs' [ROM] lines
-#    name different DME or KLR images (e.g. the shared log folders hold
-#    different variants after compare_rom_variants.sh), so they are
-#    not compared.
+#    name different DME or KLR images (e.g. logs from before the
+#    per-ROM folders), so they are not compared.
 #    Writes summary to <Verilator log dir>/compare_all.log
 #    Exit code 0 if all MATCH/NEAR-MATCH/NOTE, 1 if any DIFF or
 #    ROM-MISMATCH.
@@ -48,8 +48,8 @@ source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 mkdir -p "$DMEKLR_TMP/dme_klr"
 BASE="$DMEKLR_TMP/dme_klr"
 
-IV_DASH_DIR="$BASE/dash_logs"
-VL_DASH_DIR="$BASE/v_dash_logs"
+IV_DASH_DIR="$DMEKLR_LOGS/dash_logs"     # this ROM pair's folder (paths.sh)
+VL_DASH_DIR="$DMEKLR_LOGS/v_dash_logs"
 
 # ── Options: --variant / --iv-dir / --vl-dir; the rest are test names ──
 VARIANT=""; IV_OVERRIDE=""; VL_OVERRIDE=""
@@ -69,8 +69,8 @@ done
 set -- ${_names[@]+"${_names[@]}"}
 
 if [ -n "$VARIANT" ]; then
-    IV_DASH_DIR="$BASE/rom_compare/$VARIANT/dash_logs"
-    VL_DASH_DIR="$BASE/rom_compare/$VARIANT/v_dash_logs"
+    IV_DASH_DIR="$BASE/$VARIANT/dash_logs"
+    VL_DASH_DIR="$BASE/$VARIANT/v_dash_logs"
 fi
 [ -n "$IV_OVERRIDE" ] && IV_DASH_DIR="$IV_OVERRIDE"
 [ -n "$VL_OVERRIDE" ] && VL_DASH_DIR="$VL_OVERRIDE"

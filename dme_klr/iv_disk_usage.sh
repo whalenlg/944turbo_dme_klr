@@ -34,7 +34,7 @@
 #                      RUN REGRESSIONS panel reads its estimates from
 #      -h, --help      this text
 #
-#  Output:  DIR/<config>/dme_klr/dash_logs/...  each configuration's files,
+#  Output:  DIR/<config>/dme_klr/<rom>/dash_logs/...  each configuration's files,
 #           as the suite leaves them (kept, so you can look at them)
 #           DIR/results.tsv   one row per test and configuration
 #           DIR/report.txt    the tables printed at the end
@@ -95,7 +95,7 @@ if [ "$1" = "--_job" ]; then
     out="$2"; cfg="$3"; test="$4"
     export DMEKLR_TMP="$out/$cfg"
     base="$DMEKLR_TMP/dme_klr"
-    logdir="$base/dash_logs"
+    logdir="$(source "$SCRIPT_DIR/../paths.sh"; echo "$DMEKLR_LOGS")/dash_logs"   # this ROM pair's folder
     mkdir -p "$DMEKLR_TMP/results" "$DMEKLR_TMP/runner"
     runner_log="$DMEKLR_TMP/runner/$test.runner.log"
     t0=$(date +%s)

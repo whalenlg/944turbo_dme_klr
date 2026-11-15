@@ -486,12 +486,23 @@ Every script honours it: the shell scripts through `paths.sh`, the Python
 tools through `dme_klr/dmeklr_paths.py`, and the bridge (`node bridge.mjs`)
 from its environment.
 
+The dashboard tests and replays write in a folder of the ROM pair they ran
+on, `dme_klr/<rom>/` (`DMEKLR_LOGS` in `paths.sh`), so runs on different
+images never overwrite each other's logs. `<rom>` comes from `DME_ROM_FILE` /
+`KLR_ROM_FILE`: **89** for the default 1989 pair (`run89.sh`), **86** for
+`run86.sh`'s, **carpokes** for `run_carpokes.sh`'s, and for any other pair
+the DME image's name without its extension, e.g. `28PIN_DME_PERFORMANCE`
+(two such runs with one DME image and different KLR images share it). The builds are shared, as they take the
+images when a test runs. Logs from before the per-ROM folders stay in
+`dme_klr/dash_logs/` and `dme_klr/v_dash_logs/`; LOAD LOG still lists them.
+
 | Under `$DMEKLR_TMP` | Written by |
 |---|---|
-| `dme_klr/dash_logs/`, `dme_klr/iverilog_vvp/` | `run_dashboard_tests.sh` (iverilog) |
-| `dme_klr/v_dash_logs/` and the Verilator builds | `v_run_dashboard_tests.sh` |
-| `dme_klr/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
-| `dme_klr/rom_compare/` | `compare_rom_variants.sh` |
+| `dme_klr/<rom>/dash_logs/` | `run_dashboard_tests.sh` (iverilog) |
+| `dme_klr/<rom>/v_dash_logs/` | `v_run_dashboard_tests.sh` (Verilator) |
+| `dme_klr/<rom>/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
+| `dme_klr/iverilog_vvp/`, `dme_klr/runtime_iv/`, and the Verilator builds | the two runners and `run_dashboard_parallel.sh` (shared by every ROM pair) |
+| `dme_klr/rom_diff_{v_,}dash_logs.log` | `compare_rom_variants.sh`, the verdicts of each ROM pair's folder side by side |
 | `dme_klr/snapshots/`, `dme_klr/map_graphs/` | the live bridge (`--snapdir` / `--mapcache` override each) |
 | `klr/`, `dme/` | the i8048 and i8051 CPU regressions |
 | `run_all/` | `run_all.sh`'s own step logs |
@@ -543,7 +554,7 @@ Smoke tests
 
 Most of the time is the Verilator compile. Each test's full output is in
 `$DMEKLR_TMP/install_smoke/<test>.log`, and the `warm_idle_5s` dashboard
-log is left in `$DMEKLR_TMP/dme_klr/v_dash_logs/`, ready to open in the
+log is left in `$DMEKLR_TMP/dme_klr/89/v_dash_logs/`, ready to open in the
 dashboard. If a test fails, the install script stops with an error after
 printing the end of that test's log; the tools are installed by then, so
 once the cause is fixed, run just the tests again:
@@ -712,10 +723,10 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 
 | Script (in `dme_klr/`) | Writes | Notes |
 |---|---|---|
-| `./run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
-| `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
+| `./run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/dash_logs/<test>.dash.log` | Icarus Verilog. With no test name it runs them all; an unknown name prints the list |
+| `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
-| `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
+| `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
 | `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
@@ -729,7 +740,9 @@ must be running; `live/runall.mjs`). It has every `run_all.sh` option
 update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
-uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests
+uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`; the run's logs go in
+that pair's folder, `$DMEKLR_TMP/dme_klr/89`, `86`, `carpokes` or
+the DME image's name, shown under the ROM pickers), and lists the tests
 in the groups of [Appendix A](#appendix-a-regression-tests), where you pick
 whole groups or single tests. Each test's line also has its iverilog debug
 switches (DME, DME deep and KLR debug, `--test-debug=<test>:DME_DEBUG+KLR_DEBUG`
@@ -751,15 +764,16 @@ when the panel is closed (the button shows its %) and stops with **STOP RUN**
 or when the bridge stops. With **Plot Differences** ticked (the default),
 step 5 plots each test whose iverilog and Verilator logs differ
 (`compare_sim_logs.py --plot`: `<test>_DME_diff.jpg` and `<test>_KLR_diff.jpg`
-in the iverilog `dash_logs`, one subplot per field that differs, iverilog
+in the run's iverilog `dash_logs`, one subplot per field that differs, iverilog
 against Verilator over simulated time), and the test's iverilog line gets a
 **◪ DME** / **◪ KLR** icon that opens its plot in a new tab (the bridge's
 `GET /runall/diff?test=<test>&ecu=DME`). Only this run's plots get an icon;
 step 5 deletes a test's older plot before it makes a new one. Unticked, step 5
 still writes its per-test comparison report (`$DMEKLR_TMP/run_all/compare_detail.log`)
 but no plots. The plots need matplotlib. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
-FQS analysis) on the iverilog and Verilator dash logs as they are now and
-shows its report in the panel, with **REFRESH** to run it again. Its
+FQS analysis) on the iverilog and Verilator dash logs of the ROM pair picked
+in the panel as they are now and shows its report in the panel, with
+**REFRESH** to run it again. Its
 **vs base** column is each test's fuel against the same test with no FQS
 override (`cl_ramp_to_6000` / `ramp_to_6000`), and **VL-IV** is Verilator
 against iverilog for the same test (0 when they agree). The groups come from
@@ -855,17 +869,18 @@ Press **LOAD LOG ▲**. The dialog opens by itself when no log is loaded. Open
 a log in any of three ways; each one loads it straight away:
 
 * **Regression logs list.** With the bridge running (`dme_klr/live/bridge.mjs`),
-  the dialog lists every `.dash.log` from the regression runs:
-  **Verilator** runs (`$DMEKLR_TMP/dme_klr/v_dash_logs`, from
-  `v_run_dashboard_tests.sh`) in blue and **iverilog** runs
-  (`$DMEKLR_TMP/dme_klr/dash_logs`, from `run_dashboard_tests.sh`) in orange.
-  Click a row to open that log.
+  the dialog lists every `.dash.log` from the regression runs, from each ROM
+  pair's folder (`$DMEKLR_TMP/dme_klr/<rom>/`, see [Install location and output folder](#install-location-and-output-folder)):
+  **Verilator** runs (`v_dash_logs`, from `v_run_dashboard_tests.sh`) in blue
+  and **iverilog** runs (`dash_logs`, from `run_dashboard_tests.sh`) in
+  orange, with the **ROM** folder each came from (**older** for the logs
+  from before the per-ROM folders). Click a row to open that log.
   * Type in the **filter** box to narrow the list. Every word must match the
-    test name or simulator, so `cl verilator` finds the Verilator
-    closed-loop runs.
+    test name, simulator or ROM folder, so `cl verilator 86` finds the
+    Verilator closed-loop runs on the 1986 images.
   * **Include Verilator logs** and **Include iverilog logs** hide either kind.
     Both are checked each time the dialog opens.
-  * Click a column heading (**Test**, **Simulator**, **Modified**, **Size**)
+  * Click a column heading (**Test**, **Simulator**, **ROM**, **Modified**, **Size**)
     to sort by it, and click it again to reverse. The list starts newest first.
   * Without the bridge, the dialog says how to start it in place of the list.
 * **BROWSE…** opens your computer's file dialog. Browsers can't choose the
@@ -879,7 +894,7 @@ Only `.dash.log` files load from disk. The file dialog can filter only on the
 last extension, so it shows every `.log`; any other file you pick or drop is
 refused with a red note. The header shows the file name, and for a log from
 the list also its folder and simulator, e.g.
-`v_dash_logs/warm_idle_5s.dash.log (Verilator)`.
+`89/v_dash_logs/warm_idle_5s.dash.log (Verilator)`.
 
 The page opens at the **end** of the run, so both scrubbers can go back from
 there. Combined DME+KLR logs, DME-only logs and the older formats all load
@@ -1747,7 +1762,7 @@ isn't, so the project uses both.
 ### iverilog (Icarus Verilog): the accuracy reference
 
 `./run_dashboard_tests.sh` runs the regression on iverilog. Logs go to
-`$DMEKLR_TMP/dme_klr/dash_logs/`.
+`$DMEKLR_TMP/dme_klr/<rom>/dash_logs/`.
 
 - **Exact event timing.** iverilog is an event-driven simulator that follows
   the Verilog scheduling rules closely, including `#` delays inside the
@@ -1767,7 +1782,7 @@ isn't, so the project uses both.
 ### Verilator: the fast simulator
 
 `./v_run_dashboard_tests.sh` runs the same tests on Verilator. Logs go to
-`$DMEKLR_TMP/dme_klr/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
+`$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/`. The live simulator (`dme_klr/live`) is also a
 Verilator build.
 
 - **Speed.** Verilator compiles the model to optimised C++, so it runs about

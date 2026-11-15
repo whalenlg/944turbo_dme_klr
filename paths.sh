@@ -11,9 +11,17 @@
 #                  i.e. <checkout>/../tmp. Set DMEKLR_TMP in your shell to
 #                  put it anywhere else (an absolute path).
 #
-#  Under DMEKLR_TMP:  dme_klr/ (dashboard tests, replay, live snapshots,
-#  map graphs), klr/ and dme/ (CPU regressions), run_all/ (run_all.sh's
-#  step logs).
+#    DMEKLR_LOGS   where the dashboard tests and replays write, one folder
+#                  per ROM pair: DMEKLR_TMP/dme_klr/<rom>, <rom> from
+#                  DME_ROM_FILE / KLR_ROM_FILE as they are when this file is
+#                  sourced (dmeklr_rom_variant): 89 (the default 1989 pair),
+#                  86 (run86.sh), carpokes (run_carpokes.sh), any other pair
+#                  the DME image's name without its extension. Under it:
+#                  dash_logs/ (iverilog), v_dash_logs/ (Verilator), replay/.
+#
+#  Under DMEKLR_TMP:  dme_klr/ (the per-ROM log folders above, the shared
+#  testbench builds, live snapshots, map graphs, regression host jobs),
+#  klr/ and dme/ (CPU regressions), run_all/ (run_all.sh's step logs).
 #
 #  dmeklr_vdefs ARRAY appends the Verilog defines that tell the testbenches
 #  the same two paths (-DDMEKLR_REPO, -DDMEKLR_TMP, each with a trailing
@@ -54,6 +62,22 @@ case "$(uname -s 2>/dev/null)" in
             *) export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-fno-declone-ctor-dtor" ;; esac ;;
 esac
 export DMEKLR_REPO DMEKLR_TMP
+
+# dmeklr_rom_variant [DME_FILE KLR_FILE]: the name of a ROM pair's log
+# folder (default: DME_ROM_FILE / KLR_ROM_FILE, unset = the 1989 images).
+# live/logdirs.mjs and dmeklr_paths.py name them the same way.
+dmeklr_rom_variant() {
+    local _d="${1:-${DME_ROM_FILE:-89DME_951pin.mem}}" _k="${2:-${KLR_ROM_FILE:-89KLR_951.mem}}"
+    _d="${_d##*/}"; _k="${_k##*/}"; _d="${_d%.*}"; _k="${_k%.*}"
+    case "$_d+$_k" in
+        89DME_951pin+89KLR_951)          echo 89 ;;
+        28PIN_86DME+86KLR_951)           echo 86 ;;
+        28PIN_DME_PERFORMANCE+87KLR_951) echo carpokes ;;
+        *) printf '%s\n' "$_d" | LC_ALL=C sed 's/[^A-Za-z0-9_.+-]/_/g' ;;
+    esac
+}
+DMEKLR_LOGS="$DMEKLR_TMP/dme_klr/$(dmeklr_rom_variant)"
+export DMEKLR_LOGS
 
 dmeklr_vdefs() {
     local _arr="${1:-rom_overrides}"

@@ -49,8 +49,7 @@ fi
 
 # Same log location convention as run_dashboard_tests.sh / v_run_dashboard_tests.sh
 source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
-VVP_DIR="$(cd "$DMEKLR_TMP/dme_klr" 2>/dev/null && pwd)"
-LOGDIR="$VVP_DIR/$LOGSUBDIR"
+LOGDIR="$DMEKLR_LOGS/$LOGSUBDIR"   # this ROM pair's folder (paths.sh)
 
 if [ ! -f "$VALIDATOR" ]; then
     echo "validate_dash_log.py not found at $VALIDATOR" >&2

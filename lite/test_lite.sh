@@ -184,7 +184,7 @@ RT_OUT="$WORK/run_tests.txt"
 cat "$RT_OUT" | sed 's/^/    /' | cut -c1-200
 grep -qE '^Total: 2 ' "$RT_OUT" && ! grep -q 'simulator exited' "$RT_OUT"; check $? "run_tests.py runs and checks two tests"
 for t in warm_idle_5s cl_warm_idle; do
-    n="$(grep -cE '^(DME: )?\[DS\]' "$PKG/data/dme_klr/v_dash_logs/$t.dash.log" 2>/dev/null)"
+    n="$(grep -cE '^(DME: )?\[DS\]' "$PKG/data/dme_klr/89/v_dash_logs/$t.dash.log" 2>/dev/null)"
     [ "${n:-0}" -ge 2 ]; check $? "$t.dash.log has DS snapshots (${n:-0})"
 done
 

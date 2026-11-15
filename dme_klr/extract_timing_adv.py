@@ -11,7 +11,7 @@ Usage:
     python3 extract_timing_adv.py [log_dir] [test1 test2 ...]
 
 Defaults:
-    log_dir : $DMEKLR_TMP/dme_klr/dash_logs   (iverilog)
+    log_dir : $DMEKLR_TMP/dme_klr/<rom>/dash_logs   (iverilog)
     tests   : the 8 cl_ramp_to_6000_FQS0-7 tests
 
 Steady-state RPM threshold defaults to 90% of the RPM implied by the test

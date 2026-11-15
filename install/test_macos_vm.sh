@@ -435,7 +435,7 @@ EOF
     vm_run 4c_warm_idle_5s.log zsh -l -s <<'EOF'
 source "$HOME/944/944turbo_dme_klr/setup" || exit 3
 tail -n 20 "$DMEKLR_TMP/install_smoke/warm_idle_5s.log"
-_d="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log"
+_d="$DMEKLR_TMP/dme_klr/89/v_dash_logs/warm_idle_5s.dash.log"
 echo "dash log: $(wc -l < "$_d" 2>/dev/null || echo missing) lines, $(grep -c '\[DS\]' "$_d" 2>/dev/null || echo 0) snapshots"
 EOF
     rc=$?
@@ -447,7 +447,7 @@ EOF
         result FAIL "4c. warm_idle_5s (Verilator)" "${_snaps:-0} snapshots (4c_warm_idle_5s.log)" "$(toc)"
     fi
     # bring the dashboard log back too, so it can be opened on the host
-    vm_ssh "cat $VM_REPO/../tmp/dme_klr/v_dash_logs/warm_idle_5s.dash.log" </dev/null \
+    vm_ssh "cat $VM_REPO/../tmp/dme_klr/89/v_dash_logs/warm_idle_5s.dash.log" </dev/null \
         > "$OUT/warm_idle_5s.dash.log" 2>/dev/null || rm -f "$OUT/warm_idle_5s.dash.log"
 
     step "4d. Live simulator: build_live.sh (Verilator) and run to 200 ms"

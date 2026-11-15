@@ -71,7 +71,8 @@ REGRESSION TESTS
   python3 run_tests.py -j 4 cl_ramp_*      some, 4 at a time
   They run on the prebuilt testbench in dme_klr/runtime/ and are checked as
   in the developer install (PASS / WARN / FAIL). The logs go to
-  data/dme_klr/v_dash_logs/. The dashboard's LOAD LOG lists them (newest
+  data/dme_klr/89/v_dash_logs/ (89: the default 1989 images; other images
+  get their own folder, e.g. 86 or carpokes). The dashboard's LOAD LOG lists them (newest
   first, with a filter and sortable columns): click one to open it.
   Each kind of warning a run prints (a PASS's too), and a WARN or FAIL
   verdict, adds a TEST row to the live page's SNAPSHOTS list; LOAD runs

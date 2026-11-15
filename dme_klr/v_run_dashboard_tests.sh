@@ -17,10 +17,10 @@
 #  iverilog-oriented per-instruction $display flood that was never
 #  meant to run under Verilator. Use run_dashboard_tests.sh for those.
 #
-#  Output: $DMEKLR_TMP/dme_klr/v_dash_logs/<test>.log.gz    (full sim output, gzipped)
+#  Output: $DMEKLR_LOGS/v_dash_logs/<test>.log.gz    (full sim output, gzipped)
 #                                                 <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          $DMEKLR_TMP/dme_klr/v_dash_logs/vcd/<test>.vcd
-#          $DMEKLR_TMP/dme_klr/v_dash_logs/hex/<test>/{rom,ram}_out.hex
+#          $DMEKLR_LOGS/v_dash_logs/vcd/<test>.vcd
+#          $DMEKLR_LOGS/v_dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -50,11 +50,11 @@ if [ "$1" = "--dash" ]; then shift; fi
 mkdir -p "$DMEKLR_TMP/dme_klr"
 VVP_DIR="$DMEKLR_TMP/dme_klr"
 VLTDIR="$VVP_DIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
-LOGDIR="$VVP_DIR/v_dash_logs"
+LOGDIR="$DMEKLR_LOGS/v_dash_logs"   # this ROM pair's folder (paths.sh)
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"
 # iverilog reference log dir (for compare_with_iv)
-IV_LOGDIR="$VVP_DIR/dash_logs"
+IV_LOGDIR="$DMEKLR_LOGS/dash_logs"
 FILES=files
 RTL=rtl/verilog
 BENCH=bench/verilog
