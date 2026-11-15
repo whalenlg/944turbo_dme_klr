@@ -118,6 +118,16 @@ workbooks), served at `/maps/klr`, in the same cache:
 
     python3 dme_klr/live/klr_map_graphs.py bin_images/klr/87KLR_951.mem [more images] [--force]
 
+## Regression logs in LOAD LOG
+
+With the bridge running, the dashboard's **LOAD LOG** window lists the
+`.dash.log` files in `$DMEKLR_TMP/dme_klr/v_dash_logs` (`v_run_dashboard_tests.sh`)
+and `dash_logs` (`run_dashboard_tests.sh`), newest first; type in the filter box
+to narrow it and click one to open it. The bridge serves them at `GET /logs`
+(the list) and `GET /logs/<dir>/<name>.dash.log`, and nothing else from those
+folders. Without the bridge, **BROWSE…** and drag-and-drop still open any
+`.dash.log`.
+
 ## Snapshots
 
 Whenever the model prints a warning or error (a line with `[WARN]`,
