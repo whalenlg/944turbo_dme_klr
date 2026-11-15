@@ -371,10 +371,27 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
   }
 
   function onLine(r, raw) {
-    const line = raw.replace(ANSI, '').replace(/\r/g, '');
+    let line = raw.replace(ANSI, '').replace(/\r/g, '');
     r.out.push(line);
     if (r.out.length > MAX_OUT) r.out.splice(0, r.out.length - MAX_OUT);
     let m;
+    // run_all.sh runs both suites at the same time when all their tests fit
+    // the workers: "3+4/6" starts both steps, and each suite's lines (and its
+    // verdict) then start with [VL] / [IV]
+    if (r.mode === 'dev' && /^\s*3\+4\/6\s+\S/.test(line)) {
+      for (const s of r.steps) if (s.state === 'running') s.state = 'done';
+      r.cur = 3;
+      for (const s of [r.steps[2], r.steps[3]]) {
+        s.state = 'running';
+        if (r.suites[s.suite]) r.suites[s.suite].startedAt = Date.now();
+      }
+      return;
+    }
+    let tagged = null;
+    if (r.mode === 'dev' && (m = line.match(/^\[(VL|IV)\] ?(.*)$/))) {
+      tagged = m[1] === 'VL' ? 3 : 4;
+      line = m[2];
+    }
     if (r.mode === 'dev' && (m = line.match(/^\s*([1-6])\/6\s+\S/))) {
       for (const s of r.steps) if (s.state === 'running') s.state = 'done';
       r.cur = +m[1];
@@ -394,14 +411,14 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (!l.includes(m[1])) l.push(m[1]);
       return;
     }
-    const step = r.steps[r.cur - 1];
+    const step = r.steps[(tagged ?? r.cur) - 1];
     if (step && /\[run_all\] (Skipped|.*Skipped)/.test(line)) { step.state = 'skipped'; step.note = line.replace(/^.*\[run_all\]\s*/, ''); return; }
     if (step && (m = line.match(/^\s*[✓⚠✗] (PASS|WARN|FAIL)\s+(.*)$/))) {
       if (step.verdict == null || RANK[m[1]] > RANK[step.verdict]) step.verdict = m[1];
       step.note = step.note ? `${step.note}; ${m[2]}` : m[2];
       return;
     }
-    const su = curSuite(r);
+    const su = tagged ? r.suites[step.suite] : curSuite(r);
     if (!su) return;
     if (/Building the shared testbench/.test(line)) { su.building = true; return; }
     if (/^\s*built in \d+ s/.test(line) || /Shared build FAILED/.test(line)) { su.building = false; return; }

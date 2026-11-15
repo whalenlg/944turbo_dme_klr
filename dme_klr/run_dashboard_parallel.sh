@@ -149,8 +149,12 @@ PER_TEST_BUILD=0
 # and always runs here, never on a regression host (its dumps are large)
 TEST_DEBUG=()
 _has_td=0
+# --count: print how many tests the arguments name and exit (run_all.sh
+# uses it to decide whether both suites fit the workers at once)
+COUNT_ONLY=0
 for _arg in "$@"; do
     case "$_arg" in
+        --count)           COUNT_ONLY=1; _has_td=1 ;;
         --verilator)       USE_VERILATOR=1 ;;
         --per-test-build)  PER_TEST_BUILD=1 ;;
         --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) EXTRA_FLAGS+=("$_arg") ;;
@@ -159,7 +163,7 @@ for _arg in "$@"; do
 done
 if [ "$_has_td" = 1 ]; then
     _NEW_ARGS=()
-    for _arg in "$@"; do case "$_arg" in --test-debug=*) ;; *) _NEW_ARGS+=("$_arg") ;; esac; done
+    for _arg in "$@"; do case "$_arg" in --test-debug=*|--count) ;; *) _NEW_ARGS+=("$_arg") ;; esac; done
     set -- ${_NEW_ARGS[@]+"${_NEW_ARGS[@]}"}
 fi
 # test_debug <test>: its --test-debug flags, as --FLAG words
@@ -214,6 +218,7 @@ if [ $# -gt 0 ]; then
 else
     TESTS=("${ALL_TESTS[@]}")
 fi
+if [ "$COUNT_ONLY" = 1 ]; then echo "${#TESTS[@]}"; exit 0; fi
 
 # ── Longest first ────────────────────────────────────────────────────────────
 # Start the tests in order of simulated length, longest first, so a long
