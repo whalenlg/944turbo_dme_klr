@@ -6,7 +6,7 @@
 #  simulation logs using compare_sim_logs.py.
 #
 #  Usage:
-#    ./compare_all_logs.sh [--variant 86|89|carpokes|<DME>+<KLR>]
+#    ./compare_all_logs.sh [--variant 86|89|carpokes|<DME image>]
 #                          [--iv-dir DIR] [--vl-dir DIR] [test1 test2 ...]
 #
 #  By default compares all known tests in the ROM pair's log folder

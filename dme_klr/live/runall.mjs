@@ -13,7 +13,7 @@
 //                         romFolders, run}
 //                         romFolders: the ROM pairs' log folders there are
 //                         ($DMEKLR_TMP/dme_klr/<rom>: 89, 86, carpokes,
-//                         <DME>+<KLR>; logdirs.mjs); run.rom / run.logs:
+//                         the DME image's name; logdirs.mjs); run.rom / run.logs:
 //                         the folder the run writes in (its ROM pair's)
 //                         groups: the tests in the manuals' Appendix A
 //                         groups (test_groups.json), each with its

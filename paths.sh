@@ -16,7 +16,7 @@
 #                  DME_ROM_FILE / KLR_ROM_FILE as they are when this file is
 #                  sourced (dmeklr_rom_variant): 89 (the default 1989 pair),
 #                  86 (run86.sh), carpokes (run_carpokes.sh), any other pair
-#                  <DME image>+<KLR image> without the extensions. Under it:
+#                  the DME image's name without its extension. Under it:
 #                  dash_logs/ (iverilog), v_dash_logs/ (Verilator), replay/.
 #
 #  Under DMEKLR_TMP:  dme_klr/ (the per-ROM log folders above, the shared
@@ -73,7 +73,7 @@ dmeklr_rom_variant() {
         89DME_951pin+89KLR_951)          echo 89 ;;
         28PIN_86DME+86KLR_951)           echo 86 ;;
         28PIN_DME_PERFORMANCE+87KLR_951) echo carpokes ;;
-        *) printf '%s+%s\n' "$_d" "$_k" | LC_ALL=C sed 's/[^A-Za-z0-9_.+-]/_/g' ;;
+        *) printf '%s\n' "$_d" | LC_ALL=C sed 's/[^A-Za-z0-9_.+-]/_/g' ;;
     esac
 }
 DMEKLR_LOGS="$DMEKLR_TMP/dme_klr/$(dmeklr_rom_variant)"

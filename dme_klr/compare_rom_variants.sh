@@ -23,7 +23,7 @@
 #
 #  --variants takes a comma-separated subset of: 86 89 carpokes (default:
 #  86,89,carpokes); with --diff-only any other ROM pair's folder name
-#  (tmp/dme_klr/<DME>+<KLR>) works too. Any other arguments are forwarded
+#  (tmp/dme_klr/<DME image>) works too. Any other arguments are forwarded
 #  verbatim to run_all.sh for every variant run — e.g. --verilator,
 #  --iverilog, a worker count — so all variants are compared under
 #  identical conditions.

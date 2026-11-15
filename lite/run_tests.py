@@ -36,7 +36,7 @@ the developer install's runners.
 Output, in $DMEKLR_TMP/dme_klr/<rom>/v_dash_logs (default <package>/data/...,
 as run_lite.sh uses; <rom> is the ROM pair's folder: 89 for the default
 pair, 86 for run86.sh's, carpokes for run_carpokes.sh's, otherwise
-<DME image>+<KLR image>): <test>.log (the whole run), <test>.dash.log (open
+the DME image's name): <test>.log (the whole run), <test>.dash.log (open
 it in the dashboard), validation.log and parallel_summary.log. A WARN or
 FAIL verdict, and each kind of warning a run prints (a PASS too), leave a
 TEST row in the live page's SNAPSHOTS list (LOAD runs the test to that
@@ -60,7 +60,7 @@ _NAMED = {('89DME_951pin', '89KLR_951'): '89', ('28PIN_86DME', '86KLR_951'): '86
 _stem = lambda f: os.path.splitext(os.path.basename(f.replace('\\', '/')))[0]
 _d = _stem(os.environ.get('DME_ROM_FILE') or '89DME_951pin.mem')
 _k = _stem(os.environ.get('KLR_ROM_FILE') or '89KLR_951.mem')
-ROM_VARIANT = _NAMED.get((_d, _k)) or re.sub(r'[^A-Za-z0-9_.+-]', '_', f'{_d}+{_k}')
+ROM_VARIANT = _NAMED.get((_d, _k)) or re.sub(r'[^A-Za-z0-9_.+-]', '_', _d)
 LOGDIR = os.path.join(TMP, 'dme_klr', ROM_VARIANT, 'v_dash_logs')
 HEXDIR = os.path.join(TMP, 'dme_klr', 'lite_hex')
 # The lines the dashboard reads (as v_run_dashboard_tests.sh greps them)

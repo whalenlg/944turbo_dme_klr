@@ -4,7 +4,7 @@
 //  The dashboard tests and replays write under $DMEKLR_TMP/dme_klr/<rom>
 //  (dash_logs, v_dash_logs, replay), <rom> from the ROM pair they ran on:
 //  89 (the default 1989 pair), 86 (run86.sh), carpokes (run_carpokes.sh),
-//  any other pair <DME image>+<KLR image> without the extensions.
+//  any other pair the DME image's name without its extension.
 //  paths.sh (dmeklr_rom_variant) and dmeklr_paths.py (rom_variant) say the
 //  same.
 // ============================================================
@@ -19,7 +19,7 @@ const stem = f => String(f).replace(/\\/g, '/').split('/').pop().replace(/\.[^.]
 // romVariant(dme, klr): the folder name of that pair (unset = the 1989 images)
 export function romVariant(dme, klr) {
   const key = `${stem(dme || DEFAULT_ROMS.dme)}+${stem(klr || DEFAULT_ROMS.klr)}`;
-  return NAMED[key] ?? key.replace(/[^A-Za-z0-9_.+-]/g, '_');
+  return NAMED[key] ?? stem(dme || DEFAULT_ROMS.dme).replace(/[^A-Za-z0-9_.+-]/g, '_');
 }
 
 // logsDir(TMP_ROOT, variant): $DMEKLR_TMP/dme_klr/<variant>

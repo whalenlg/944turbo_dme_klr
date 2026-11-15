@@ -491,8 +491,8 @@ on, `dme_klr/<rom>/` (`DMEKLR_LOGS` in `paths.sh`), so runs on different
 images never overwrite each other's logs. `<rom>` comes from `DME_ROM_FILE` /
 `KLR_ROM_FILE`: **89** for the default 1989 pair (`run89.sh`), **86** for
 `run86.sh`'s, **carpokes** for `run_carpokes.sh`'s, and for any other pair
-the two image names without their extensions, e.g.
-`28PIN_DME_PERFORMANCE+86KLR_951`. The builds are shared, as they take the
+the DME image's name without its extension, e.g. `28PIN_DME_PERFORMANCE`
+(two such runs with one DME image and different KLR images share it). The builds are shared, as they take the
 images when a test runs. Logs from before the per-ROM folders stay in
 `dme_klr/dash_logs/` and `dme_klr/v_dash_logs/`; LOAD LOG still lists them.
 
@@ -742,7 +742,7 @@ the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`; the run's logs go in
 that pair's folder, `$DMEKLR_TMP/dme_klr/89`, `86`, `carpokes` or
-`<DME>+<KLR>`, shown under the ROM pickers), and lists the tests
+the DME image's name, shown under the ROM pickers), and lists the tests
 in the groups of [Appendix A](#appendix-a-regression-tests), where you pick
 whole groups or single tests. Each test's line also has its iverilog debug
 switches (DME, DME deep and KLR debug, `--test-debug=<test>:DME_DEBUG+KLR_DEBUG`

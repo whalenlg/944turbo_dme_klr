@@ -276,8 +276,9 @@ Each test is checked (PASS / WARN / FAIL) and writes
 `data/dme_klr/89/v_dash_logs/<test>.dash.log`; open it in the dashboard.
 `89` is the folder of the default 1989 images; a run on other images writes
 in that pair's own folder (`86` for the 1986 pair, `carpokes` for the
-CarPokes one, otherwise the two image names joined by `+`), so runs on
-different images never overwrite each other's logs. Each
+CarPokes one, otherwise the DME image's name, e.g. `28PIN_DME_PERFORMANCE`), so
+runs on different DME images never overwrite each other's logs (two such runs
+with one DME image and different KLR images share a folder). Each
 kind of warning a run prints (a PASS's too), and a WARN or FAIL verdict, also
 adds a TEST row to the live page's SNAPSHOTS list
 ([section 7](#7-debugging-a-log-at-a-chosen-time)). The package ships one
