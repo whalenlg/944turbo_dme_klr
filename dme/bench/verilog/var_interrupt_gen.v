@@ -49,6 +49,10 @@ module var_interrupt_generator (
     integer period_current;
     initial period_current = `RPMCONST/`VAL_RPMSTART;  // initialised = no Z on afm_wiper at t=0
     integer tick_counter = 0;
+    // one-cycle delayed tick_counter — valid when int_1 just went low; set in
+    // the int_1 generator below, read by tooth_counter (declared here, before
+    // its first use: Icarus Verilog 13 doesn't allow a use before it)
+    integer tick_counter_prev = 0;
 
     // Define outputs and edge-state from t=0. rst is applied as a 0->1 pulse
     // at sim start (posedge), so negedge-rst reset branches never fire then;
@@ -249,7 +253,7 @@ module var_interrupt_generator (
     // at sim start (a posedge); the negedge-rst branch would otherwise never
     // fire, leaving counter at X and stalling the reference-sensor edge logic.
     reg int_1_prev = 1'b0;  // edge detector for tooth counter
-    integer tick_counter_prev = 0;  // one-cycle delayed — valid when int_1 just went low
+    // (tick_counter_prev: declared with tick_counter above)
     always @(posedge clk) begin : tooth_counter
         if (!rst) begin
             counter   <= 8'd0;

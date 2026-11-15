@@ -373,6 +373,12 @@ module var_interrupt_generator_cl (
     // ── State ────────────────────────────────────────────────────
     integer period_current;
     integer tick_counter;
+    // Declared here, before their first use (Icarus Verilog 13 doesn't allow
+    // a use before the declaration): tick_counter one cycle late (set in
+    // speed_sensor_gen, read by ref_and_dynamics), and the closed-loop ISV
+    // air added to the AFM (set next to isv_duty, read in afm_calc)
+    integer tick_counter_prev = 0;
+    integer isv_afm_add;
     integer rpm_fp;
     integer rpm_fp_min;
     integer rpm_fp_max;
@@ -485,7 +491,7 @@ module var_interrupt_generator_cl (
     integer     isv_pct10;                         // measured duty, 0.1 % units
     initial     isv_pct10  = `VAL_CL_ISV_REF_PCT10;
     reg  [63:0] isv_win_t0 = 0;
-    integer     isv_afm_add;
+    // (isv_afm_add: declared with tick_counter above)
     always @(*) isv_afm_add = ((isv_pct10 - `VAL_CL_ISV_REF_PCT10) * `VAL_CL_ISV_AIR_GAIN) / 100;
     always @(posedge clk) if (`OPT_CL_ISV_AIR) begin : isv_duty
         if ($time - isv_win_t0 >= `VAL_CL_ISV_WIN_NS) begin
@@ -538,7 +544,7 @@ module var_interrupt_generator_cl (
     // reference-sensor edge logic stalls (no int_0 pulses → RPM never measured).
     reg [7:0] counter = 8'd0;
     reg int_1_prev_cl = 1'b0;  // edge detector for tooth counter
-    integer tick_counter_prev = 0;
+    // (tick_counter_prev: declared with tick_counter above)
 `ifdef CL_DEBUG
     integer dbg_last_print_ms = -1000;   // forces first print at t=0
 `endif

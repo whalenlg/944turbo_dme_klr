@@ -173,6 +173,18 @@ module i8051_core (
     // ----------------------------------------------------------------
 
     // ----------------------------------------------------------------
+    //  Signals the SFR read helpers below use, declared before them:
+    //  Icarus Verilog 13 and later don't allow a use before the
+    //  declaration. Each is assigned / described where its logic is
+    //  (T0/T1 edge detectors, INT0/INT1 edge detectors, timers, UART RX).
+    // ----------------------------------------------------------------
+    reg  t0_dly, t1_dly;
+    reg  int0_dly, int1_dly;
+    reg  machine_cycle_pulse;
+    wire t0_overflow_now, t1_overflow_now;
+    reg  rxd_sync0, rxd_sync1;
+
+    // ----------------------------------------------------------------
     //  SFR read helper
     // ----------------------------------------------------------------
     function [7:0] sfr_read;
@@ -421,7 +433,7 @@ module i8051_core (
     // ----------------------------------------------------------------
     //  T0 / T1 falling-edge detector (counter mode)
     // ----------------------------------------------------------------
-    reg t0_dly, t1_dly;
+    // (t0_dly, t1_dly: declared above the SFR read helpers)
     wire t0_fall = (t0_dly && !t0);
     wire t1_fall = (t1_dly && !t1);
     always @(posedge clk) begin
@@ -434,7 +446,7 @@ module i8051_core (
     //  IE0 (TCON[1]) and IE1 (TCON[3]) are set here; cleared by the
     //  interrupt arbiter when the interrupt is acknowledged.
     // ----------------------------------------------------------------
-    reg int0_dly, int1_dly;
+    // (int0_dly, int1_dly: declared above the SFR read helpers)
     wire int0_fall = (int0_dly && !int0_n);
     wire int1_fall = (int1_dly && !int1_n);
 
@@ -446,20 +458,20 @@ module i8051_core (
     //  Timers tick once per machine cycle (machine_cycle_pulse).
     //  TF0/TF1 are set-only here; cleared by interrupt service or software.
     // ----------------------------------------------------------------
-    reg machine_cycle_pulse;
+    // (machine_cycle_pulse: declared above the SFR read helpers)
 
     // Combinatorial overflow detect — race-free alternative to blocking shadows.
     // These wires are HIGH on the exact clock edge when the timer overflows,
     // computed from registered state (before NBA updates) so they are visible
     // to sfr_read_latch in the same clock cycle without any inter-block race.
     // Used in sfr_read_latch to preserve TF0/TF1 during a same-cycle TCON RMW.
-    wire t0_overflow_now = machine_cycle_pulse && tcon[4] &&   // TR0 running
+    assign t0_overflow_now = machine_cycle_pulse && tcon[4] &&   // TR0 running
          ((tmod[1:0] == 2'b00 && {th0, tl0[4:0]} == 13'h1FFF) ||  // mode 0
           (tmod[1:0] == 2'b01 && {th0, tl0}      == 16'hFFFF) ||  // mode 1
           (tmod[1:0] == 2'b10 && tl0              ==  8'hFF)  ||  // mode 2
           (tmod[1:0] == 2'b11 && tl0              ==  8'hFF));     // mode 3
 
-    wire t1_overflow_now = machine_cycle_pulse && tcon[6] &&   // TR1 running
+    assign t1_overflow_now = machine_cycle_pulse && tcon[6] &&   // TR1 running
          ((tmod[5:4] == 2'b00 && {th1, tl1[4:0]} == 13'h1FFF) ||  // mode 0
           (tmod[5:4] == 2'b01 && {th1, tl1}      == 16'hFFFF) ||  // mode 1
           (tmod[5:4] == 2'b10 && tl1              ==  8'hFF));     // mode 2
@@ -675,7 +687,7 @@ module i8051_core (
     //
     // The stop-bit period (bit_cnt==rx_stop_bit) is NOT shifted into
     // rx_shift; it is only used to validate the line is high.
-    reg        rxd_sync0, rxd_sync1;
+    // (rxd_sync0, rxd_sync1: declared above the SFR read helpers)
     wire       rxd_s = rxd_sync1;
 
     reg        rx_active;
