@@ -120,7 +120,7 @@ if [ "$1" = "--_job" ]; then
     loggz=$(kb_of "$logdir/$test.log.gz" "$logdir/$test.log")
     dash=$(kb_of "$logdir/$test.dash.log")
     other=$(kb_of "$logdir/hex/$test" "$logdir/vcd/$test.vcd" "$logdir/vcd/$test.vcd.gz")
-    build=$(kb_of "$base/iverilog_vvp/dash_klr_$test.vvp")
+    build=$(kb_of "${logdir%/dash_logs}/iverilog_vvp/dash_klr_$test.vvp")   # the ROM pair's folder
     final=$(( fst + loggz + dash + other ))
     [ "$final" -gt "$peak" ] && peak=$final
     # uncompressed size of the full .log (gzip -l wraps above 4 GB, so read it)

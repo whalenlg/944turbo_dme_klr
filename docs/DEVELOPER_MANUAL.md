@@ -501,11 +501,13 @@ images when a test runs. Logs from before the per-ROM folders stay in
 | `dme_klr/<rom>/dash_logs/` | `run_dashboard_tests.sh` (iverilog) |
 | `dme_klr/<rom>/v_dash_logs/` | `v_run_dashboard_tests.sh` (Verilator) |
 | `dme_klr/<rom>/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
-| `dme_klr/iverilog_vvp/`, `dme_klr/runtime_iv/`, and the Verilator builds | the two runners and `run_dashboard_parallel.sh` (shared by every ROM pair) |
+| `dme_klr/<rom>/iverilog_vvp/`, `dme_klr/<rom>/verilator_obj/` | a test built on its own (debug switches, `--per-test-build`), in its ROM pair's folder so pairs running at once never share one |
+| `dme_klr/<rom>/run_all/` | `run_all.sh`'s step logs for that pair (the suites, the comparison, `compare_detail.log`, the FQS analysis) |
+| `dme_klr/runtime/`, `dme_klr/runtime_iv/` | `run_dashboard_parallel.sh`: the one testbench build per simulator every test and ROM pair runs on (the images are loaded when a test runs) |
 | `dme_klr/rom_diff_{v_,}dash_logs.log` | `compare_rom_variants.sh`: the verdicts of each ROM pair's folder side by side, then each test's `.dash.log` values compared with the first pair's (`compare_rom_dash.py`: the fields that differ most and by how much) |
 | `dme_klr/snapshots/`, `dme_klr/map_graphs/` | the live bridge (`--snapdir` / `--mapcache` override each) |
 | `klr/`, `dme/` | the i8048 and i8051 CPU regressions |
-| `run_all/` | `run_all.sh`'s own step logs |
+| `run_all/` | `run_all.sh`'s logs of the CPU regressions and the macOS VM test |
 
 The Python analysis tools (`fqs_analysis.py`, `check_memory_location.py`,
 `compare_sim_logs.py`, …) read their default log folders from the same place.
@@ -727,7 +729,7 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
-| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
@@ -742,7 +744,18 @@ the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`; the run's logs go in
 that pair's folder, `$DMEKLR_TMP/dme_klr/89`, `86`, `carpokes` or
-the DME image's name, shown under the ROM pickers), and lists the tests
+the DME image's name, shown under the ROM pickers). **ROM pairs** ticks the
+named pairs, **89**, **86** and **carpokes** (only 89 by default): with more
+than one, each test runs once per pair and simulator (up to six runs:
+`run_all.sh --roms`), and each pair keeps everything apart while they run, its
+logs, hex dumps, per-test builds, snapshots and step logs all in its own
+folder; only the one testbench build per simulator is shared, built before the
+pairs start. When every pair's suites fit the workers (simulators × pairs ×
+tests no more than the workers) they all run at the same time, a worker per
+test; otherwise one pair after another, each as a single pair would run. The
+CPU regressions and the macOS VM test run once. The progress shows a bar for
+each suite of each pair (**Verilator · 86**, **iverilog · carpokes**), and
+each test a line for each. The panel then lists the tests
 in the groups of [Appendix A](#appendix-a-regression-tests), where you pick
 whole groups or single tests. Each test's line also has its iverilog debug
 switches (DME, DME deep and KLR debug, `--test-debug=<test>:DME_DEBUG+KLR_DEBUG`
@@ -768,9 +781,9 @@ step 5 plots each test whose iverilog and Verilator logs differ
 in the run's iverilog `dash_logs`, one subplot per field that differs, iverilog
 against Verilator over simulated time), and the test's iverilog line gets a
 **◪ DME** / **◪ KLR** icon that opens its plot in a new tab (the bridge's
-`GET /runall/diff?test=<test>&ecu=DME`). Only this run's plots get an icon;
+`GET /runall/diff?rom=<rom>&test=<test>&ecu=DME`). Only this run's plots get an icon;
 step 5 deletes a test's older plot before it makes a new one. Unticked, step 5
-still writes its per-test comparison report (`$DMEKLR_TMP/run_all/compare_detail.log`)
+still writes its per-test comparison report (`$DMEKLR_TMP/dme_klr/<rom>/run_all/compare_detail.log`)
 but no plots. The plots need matplotlib. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
 FQS analysis) on the iverilog and Verilator dash logs of the ROM pair picked
 in the panel as they are now and shows its report in the panel, with

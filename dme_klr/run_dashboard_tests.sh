@@ -52,7 +52,8 @@ if [ "$1" = "--dash" ]; then shift; fi
 if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 mkdir -p "$DMEKLR_TMP/dme_klr"
 VVP_DIR="$DMEKLR_TMP/dme_klr"
-IVDIR="$VVP_DIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
+IVDIR="$DMEKLR_LOGS/iverilog_vvp"   # a test's own build (.vvp: debug flags, --per-test-build),
+                                    # in its ROM pair's folder: pairs running at once don't share it
 LOGDIR="$DMEKLR_LOGS/dash_logs"   # this ROM pair's folder (paths.sh)
 VCDDIR="$LOGDIR/vcd"
 VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output

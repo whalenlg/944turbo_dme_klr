@@ -49,7 +49,8 @@ MODE="dash"
 if [ "$1" = "--dash" ]; then shift; fi
 mkdir -p "$DMEKLR_TMP/dme_klr"
 VVP_DIR="$DMEKLR_TMP/dme_klr"
-VLTDIR="$VVP_DIR/verilator_obj"   # Verilator compile artifacts (exe + --Mdir obj_<name>)
+VLTDIR="$DMEKLR_LOGS/verilator_obj"   # a test's own Verilator build (exe + --Mdir obj_<name>),
+                                      # in its ROM pair's folder: pairs running at once don't share it
 LOGDIR="$DMEKLR_LOGS/v_dash_logs"   # this ROM pair's folder (paths.sh)
 VCDDIR="$LOGDIR/vcd"
 HEXDIR="$LOGDIR/hex"

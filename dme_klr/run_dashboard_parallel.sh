@@ -407,15 +407,18 @@ elif [ "$USE_VERILATOR" != "1" ] && [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
 else
     _rt_dir="$_BASE/runtime"; _rt_opt=()
     [ "$USE_VERILATOR" = "1" ] || { _rt_dir="$_BASE/runtime_iv"; _rt_opt=(--iverilog); }
-    echo "Building the shared testbench once → $_rt_dir (log: $LOGDIR/runtime_build.log)"
     mkdir -p "$LOGDIR"
     _t0=$SECONDS
-    if ! bash "$SCRIPT_DIR/build_runtime.sh" --out "$_rt_dir" "${_rt_opt[@]}" > "$LOGDIR/runtime_build.log" 2>&1; then
+    if [ "${DMEKLR_RUNTIME_PREBUILT:-}" = 1 ]; then
+        # run_all.sh --roms built it once for every ROM pair running now
+        echo "Using the shared testbench run_all.sh built → $_rt_dir"
+    elif echo "Building the shared testbench once → $_rt_dir (log: $LOGDIR/runtime_build.log)"; ! bash "$SCRIPT_DIR/build_runtime.sh" --out "$_rt_dir" "${_rt_opt[@]}" > "$LOGDIR/runtime_build.log" 2>&1; then
         tail -20 "$LOGDIR/runtime_build.log"
         echo "Shared build FAILED (log above). Run again with --per-test-build to build each test on its own."
         exit 1
+    else
+        echo "  built in $(( SECONDS - _t0 )) s"
     fi
-    echo "  built in $(( SECONDS - _t0 )) s"
     export DMEKLR_RUNTIME_DIR="$_rt_dir"
 fi
 
