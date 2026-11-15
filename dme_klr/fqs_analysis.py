@@ -196,9 +196,21 @@ def main():
     print(f"  RPM/ign/load/WOT/gate from IV; '*' = taken from VL (no IV data)")
     print(f"{'='*80}\n")
 
+    print(f"  vs base: fuel against the same test with no FQS override (cl_ramp_to_6000 /")
+    print(f"  ramp_to_6000); VL-IV: Verilator against iverilog for the same test (0 = they agree)\n")
     print(f"{'Test':<30} {'FQ_VAL':>6} {'Dec':>4}  "
-          f"{'IV fuel_ms':>17}  {'VL fuel_ms':>17}  {'Diff%':>6}  {'RPM':>7}  {'ign(mid)':>14}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
-    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*17}  {'-'*17}  {'-'*6}  {'-'*7}  {'-'*14}  {'-'*8}  {'-'*4}  {'-'*8}")
+          f"{'IV fuel_ms':>17}  {'vs base':>7}  {'VL fuel_ms':>17}  {'VL-IV':>6}  {'RPM':>7}  {'ign(mid)':>14}  {'Load(49)':>8}  {'WOT%':>4}  FQS gate")
+    print(f"{'-'*30} {'-'*6} {'-'*4}  {'-'*17}  {'-'*7}  {'-'*17}  {'-'*6}  {'-'*7}  {'-'*14}  {'-'*8}  {'-'*4}  {'-'*8}")
+
+    # Each family's base (no FQS override) fuel, iverilog first, for 'vs base'
+    def ss_fuel(name):
+        for d in (iv_dir, vl_dir):
+            if d:
+                ss = steady_state_stats(parse_status_lines(d / f'{name}.dash.log'), RPM_STEADY)
+                if ss and ss['fuel_avg'] > 0:
+                    return ss['fuel_avg']
+        return None
+    base_fuel = {b: ss_fuel(b) for b in {t for t, _, d in FQS_TESTS if d < 0}}
 
     results = []
     for test, fq_hex, fq_dec in FQS_TESTS:
@@ -234,6 +246,10 @@ def main():
 
         rpm_str = f"{ref_ss['rpm_avg']:.0f}{mark}" if ref_ss else "N/A"
 
+        bf = base_fuel.get(test.split('_FQS')[0])
+        own = (iv_ss or vl_ss or {}).get('fuel_avg')
+        base_str = f"{(own - bf) / bf * 100:+.1f}%" if bf and own and fq_dec >= 0 else ("   base" if fq_dec < 0 else "    N/A")
+
         if ref_timing_adv is not None:
             adv_deg = ref_timing_adv * HALF_TEETH_DEG
             timing_str = f"{ref_timing_adv:.1f}ht ({adv_deg:.1f}°){mark}"
@@ -257,7 +273,7 @@ def main():
         if diff_pct is not None and abs(diff_pct) > 50:
             vl_str = "  (not run)"
             diff_str = "   N/A"
-        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>17}  {vl_str:>17}  {diff_str:>6}  {rpm_str:>7}  {timing_str:>14}  {load_str:>8}  {wot_str:>4}  {gate_str}")
+        print(f"{test:<30} {fq_hex:>6} {fq_dec:>4}  {iv_str:>17}  {base_str:>7}  {vl_str:>17}  {diff_str:>6}  {rpm_str:>7}  {timing_str:>14}  {load_str:>8}  {wot_str:>4}  {gate_str}")
 
         results.append((test, fq_dec, iv_ss, vl_ss, diff_pct, ref_timing_adv))
 
