@@ -753,6 +753,10 @@ against iverilog for the same test (0 when they agree). The groups come from
 `dme_klr/live/test_groups.json`, made from this appendix:
 `python3 dme_klr/live/test_groups.py check` says when the two differ.
 
+![RUN REGRESSIONS: options, regression hosts and the run line](manual/run-regressions-options.png)
+
+![RUN REGRESSIONS: a test group with iverilog debug switches and their disk estimates](manual/run-regressions-tests.png)
+
 **Regression hosts.** Other machines on the same LAN can take some of the
 tests. On each one, with the same software (the same commit and the same
 local changes in `dme`, `klr`, `dme_klr`, `bin_images` and `paths.sh`, a
