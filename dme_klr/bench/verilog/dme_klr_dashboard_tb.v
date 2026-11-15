@@ -540,6 +540,10 @@ module dme_klr_dashboard_tb;
     // $dumpvars that comes first, and initial-block order isn't defined.
     // iverilog ignores any $dumpvars after t=0, so there it's #0 (still
     // t=0, after vcd.v's undelayed $dumpfile).
+    // The KLR's trigger and ign inputs after the wire-loss faults, declared
+    // here because the $dumpvars below names them (Icarus Verilog 13
+    // doesn't allow a use before the declaration); assigned further down.
+    wire ext_trigger, ext_ign;
     initial begin
 `ifdef VERILATOR
         #1;
@@ -618,13 +622,13 @@ module dme_klr_dashboard_tb;
     always @(posedge dme_clk)
         if ((`OPT_KLR_TRIGGER_STUCK_HIGH || `OPT_KLR_TRIGGER_STUCK_LOW) &&
             `DME_KLR_MS >= `VAL_TRIGGER_LOSS_T_MS) ext_trigger_lost <= 1'b1;
-    wire ext_trigger = !ext_trigger_lost ? ext_trigger_gen : `OPT_KLR_TRIGGER_STUCK_HIGH;
+    assign ext_trigger = !ext_trigger_lost ? ext_trigger_gen : `OPT_KLR_TRIGGER_STUCK_HIGH;
 
     reg ext_ign_lost = 1'b0;
     always @(posedge dme_clk)
         if ((`OPT_KLR_IGN_IN_STUCK_HIGH || `OPT_KLR_IGN_IN_STUCK_LOW) &&
             `DME_KLR_MS >= `VAL_IGN_IN_LOSS_T_MS) ext_ign_lost <= 1'b1;
-    wire ext_ign = !ext_ign_lost ? ext_ign_gen : `OPT_KLR_IGN_IN_STUCK_HIGH;
+    assign ext_ign = !ext_ign_lost ? ext_ign_gen : `OPT_KLR_IGN_IN_STUCK_HIGH;
 
     // ── KLR sub-TB ───────────────────────────────────────────
     // EXT_STIM=1: external trigger/ign signals (not internal generator)

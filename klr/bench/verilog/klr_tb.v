@@ -701,7 +701,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     //                  burst-stretcher, and not gated by knock_reset at
     //                  all. See knock_gen.v for the full derivation.
     wire       fake_knock;
-    wire       knock_reset = p2_mon[5];
+    wire       knock_reset;   // = p2_mon[5], assigned where p2_mon is declared
     wire [7:0] knock_sum;
     wire [7:0] knock_noise;
 
@@ -886,6 +886,9 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // ── Debug / monitoring wires ──────────────────────────
     wire [11:0] pc;
     wire [7:0]  ir, acc, p1_mon, p2_mon;
+    // knock_reset (declared above) — after p2_mon: Icarus Verilog 13 doesn't
+    // allow a use before the declaration
+    assign knock_reset = p2_mon[5];
     wire [10:0] ext_addr;   // {P1[2:0], bus_addr} — full MOVX address
 
     // Diagnostic LED output — P2.4, broken out from the p2_mon bus
