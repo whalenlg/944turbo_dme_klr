@@ -49,6 +49,16 @@
 //                         (run_all.sh step 5) on one ROM pair's dash logs as
 //                         they are now (default the 1989 pair's), iverilog
 //                         and Verilator (developer install)
+//    GET  /runall/romdiff?roms=<folder>,<folder>[,...][&sim=verilator|iverilog|both]
+//                         [&test=<name>][&all=1]
+//                         two to six ROM pairs' dashboard tests side by side
+//                         (rom_variant_diff.py --json, developer install):
+//                         {roms, sides: [{sim, roms, missing, images,
+//                         tests: [{test, verdicts: {<rom>: {verdict, detail}},
+//                         verdict_differs, ref, values: {<rom>: {DME|KLR:
+//                         {count, fields: [{field, ref, val, ref_last, last,
+//                         rel}]}}}}], differing, total}]}; only the tests
+//                         that differ unless all=1
 //    POST /runall/stop    stop the run and every test it started
 //    GET  /runall/diff?rom=<folder>&test=<name>&ecu=DME|KLR
 //                         the run's step 5 plot of where that test's
@@ -644,6 +654,36 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
         clearTimeout(timer);
         json(200, { exit: code, at: Date.now(), rom, iv_dir: iv, vl_dir: vl,
                     text: Buffer.concat(out).toString('utf8').replace(ANSI, '') });
+      });
+      return true;
+    }
+    if (req.method === 'GET' && url.pathname === '/runall/romdiff') {
+      // The panel's ROM VARIANTS view: two or more ROM pairs' dashboard
+      // tests side by side (rom_variant_diff.py --json)
+      if (MODE !== 'dev') return text(404, 'the ROM variant comparison is in the developer install only'), true;
+      const q = url.searchParams;
+      const roms = [...new Set((q.get('roms') ?? '').split(',').map(s => s.trim()).filter(Boolean))];
+      if (roms.length < 2 || roms.length > 6 || roms.some(r => !/^[\w.+-]+$/.test(r) || r.startsWith('.')))
+        return text(400, 'roms: two to six ROM folders, comma-separated'), true;
+      const sim = q.get('sim') ?? 'both';
+      if (!['verilator', 'iverilog', 'both'].includes(sim)) return text(400, 'sim: verilator, iverilog or both'), true;
+      const args = [join(DMEKLR, 'rom_variant_diff.py'), '--json', '--sim', sim, '--base', join(TMP_ROOT, 'dme_klr'),
+                    ...(q.get('all') === '1' ? ['--all'] : [])];
+      const t = q.get('test');
+      if (t) { if (!/^\w+$/.test(t)) return text(400, 'bad test name'), true; args.push('--test', t); }
+      const p = spawn(PY, [...args, ...roms],
+                      { cwd: DMEKLR, env: { ...process.env, DMEKLR_TMP: TMP_ROOT, PYTHONIOENCODING: 'utf-8' } });
+      const out = [], err = [];
+      const timer = setTimeout(() => p.kill(), 120000);
+      p.stdout.on('data', d => out.push(d));
+      p.stderr.on('data', d => err.push(d));
+      p.on('error', e => { clearTimeout(timer); json(500, { error: `couldn't run rom_variant_diff.py: ${e.message}` }); });
+      p.on('close', code => {
+        clearTimeout(timer);
+        let body;
+        try { body = JSON.parse(Buffer.concat(out).toString('utf8')); }
+        catch { return json(500, { error: `rom_variant_diff.py exit ${code}: ${Buffer.concat(err).toString('utf8').slice(-500)}` }); }
+        json(200, { ...body, at: Date.now() });
       });
       return true;
     }

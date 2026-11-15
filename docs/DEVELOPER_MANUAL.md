@@ -730,6 +730,7 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
 | `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
+| `python3 rom_variant_diff.py <rom> <rom> [...]` | prints | Two or more ROM folders' tests side by side: verdicts, and each DME / KLR `[STATUS]` field whose settled mean differs from the first folder's (`--sim`, `--test`, `--all`, `--json`) |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
@@ -793,6 +794,20 @@ override (`cl_ramp_to_6000` / `ramp_to_6000`), and **VL-IV** is Verilator
 against iverilog for the same test (0 when they agree). The groups come from
 `dme_klr/live/test_groups.json`, made from this appendix:
 `python3 dme_klr/live/test_groups.py check` says when the two differ.
+
+**ROM VARIANTS** compares the ROM pairs whose runs left logs (each pair's
+folder, `$DMEKLR_TMP/dme_klr/<rom>`): tick two or more folders (the first is
+the reference), pick Verilator, iverilog or both, and press **COMPARE**. For
+each test that ran on more than one of them it shows the verdicts side by
+side, and how many DME and KLR `[STATUS]` fields differ from the reference;
+click a test for the validator's detail line per pair, an **OPEN** link to
+each pair's log, and the fields that differ most (settled mean over the second
+half of the run, last values, and the difference). **matching tests too**
+lists the tests that are the same everywhere as well. To compare two pairs,
+run the same tests on each first (pick the pair under the ROM pickers and
+**START RUN**). It runs `rom_variant_diff.py` on the bridge
+(`GET /runall/romdiff`); from the command line, `compare_rom_variants.sh`
+runs the variants and compares them (`compare_rom_dash.py`).
 
 ![RUN REGRESSIONS: options, regression hosts and the run line](manual/run-regressions-options.png)
 
