@@ -125,6 +125,25 @@ def req_test(d):
         return None
 
 
+def req_roms(d):
+    try:
+        return json.loads((d / 'request.json').read_text()).get('roms')
+    except (OSError, ValueError):
+        return None
+
+
+def same_run(d, name):
+    """d is a request of this test on these ROM images: a run on another
+    ROM pair (run_all.sh --roms, at the same time or not) keeps its own"""
+    r = req_roms(d)
+    if req_test(d) != name:
+        return False
+    if not isinstance(r, dict):
+        return True
+    names = lambda x: {k: os.path.basename(str(v)) for k, v in x.items()}
+    return names(r) == names(roms())
+
+
 def req_reason(d):
     try:
         r = json.loads((d / 'request.json').read_text())
@@ -179,9 +198,9 @@ def scan(name, log, fail, script, verdict='FAIL'):
         for d in SNAPDIR.iterdir():
             req = d / 'request.json'
             if req.is_file() and not (d / 'state.bin').exists():
-                if req_test(d) == name and (req_reason(d) or '').startswith('log-'):
+                if same_run(d, name) and (req_reason(d) or '').startswith('log-'):
                     shutil.rmtree(d, ignore_errors=True)
-    elif any(req_test(d) == name and req_reason(d) == 'validator-' + verdict.lower() for d in SNAPDIR.iterdir()):
+    elif any(same_run(d, name) and req_reason(d) == 'validator-' + verdict.lower() for d in SNAPDIR.iterdir()):
         return 0   # this verdict is already recorded
 
     defines = test_defines(name, script) or []

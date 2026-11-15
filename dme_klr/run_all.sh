@@ -9,7 +9,7 @@
 #                 [--macos-test install|lite|both|none] [--no-pull]
 #                 [--tests "NAME|GROUP ..."] [--DME_DEBUG] [--DME_DEEP_DEBUG]
 #                 [--KLR_DEBUG] [--test-debug=TEST:FLAG[+FLAG] ...]
-#                 [--no-plot] [workers 1-8, default 8]
+#                 [--no-plot] [--roms "89 86 carpokes"] [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  --tests runs only those dashboard tests (names, or the group names
@@ -24,6 +24,15 @@
 #  (compare_sim_logs.py --plot: <test>_DME_diff.jpg / <test>_KLR_diff.jpg
 #  in the iverilog dash_logs); --no-plot skips the plots (the panel's
 #  Plot Differences box off).
+#  --roms runs steps 3-5 for each of those ROM pairs (89: the 1989 images,
+#  86: run86.sh's, carpokes: run_carpokes.sh's), each in its own folder
+#  ($DMEKLR_TMP/dme_klr/<rom>: its logs, per-test builds, hex dumps and this
+#  script's step logs, run_all/), so nothing is shared while they run but
+#  the one testbench build per simulator. With more than one, every suite's
+#  lines start with [VL:<rom>] / [IV:<rom>], and the pairs run at the same
+#  time when all their tests fit the workers (suites x pairs x tests <=
+#  workers), else one pair after another. Steps 1-2 and 6 run once. Without
+#  --roms: the pair DME_ROM_FILE / KLR_ROM_FILE name (default 89).
 #  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
@@ -58,13 +67,17 @@ SUITE_TESTS=()
 PULL=1
 IV_DEBUG=()
 PLOT=1
+ROMS=()
 _next=""
 for arg in "$@"; do
     if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
     if [ "$_next" = tests ]; then read -r -a SUITE_TESTS <<< "$arg"; _next=""; continue; fi
+    if [ "$_next" = roms ]; then read -r -a ROMS <<< "$(echo "$arg" | tr ',' ' ')"; _next=""; continue; fi
     case "$arg" in
         --macos-test) _next=macos ;;
         --tests) _next=tests ;;
+        --roms) _next=roms ;;
+        --roms=*) read -r -a ROMS <<< "$(echo "${arg#*=}" | tr ',' ' ')" ;;
         --tests=*) read -r -a SUITE_TESTS <<< "${arg#*=}" ;;
         --no-pull) PULL=0 ;;
         --no-plot) PLOT=0 ;;
@@ -88,6 +101,11 @@ fi
 case "$MACOS_TEST" in install|lite|both|none) ;; *)
     echo "run_all.sh: --macos-test wants install, lite, both or none (got '$MACOS_TEST')" >&2; exit 2 ;;
 esac
+for _r in ${ROMS[@]+"${ROMS[@]}"}; do
+    case "$_r" in 89|86|carpokes) ;; *)
+        echo "run_all.sh: --roms takes 89, 86 and carpokes (got '$_r')" >&2; exit 2 ;;
+    esac
+done
 WORKERS="${ARGS[0]:-8}"
 if ! [[ "$WORKERS" =~ ^[1-8]$ ]] || [ "${#ARGS[@]}" -gt 1 ]; then
     echo "run_all.sh: workers must be a single number 1-8 (got '${ARGS[*]}')" >&2
@@ -106,10 +124,34 @@ fi
 
 DME_KLR="$ROOT/dme_klr"
 source "$ROOT/paths.sh"          # DMEKLR_TMP: where the suites write
-RUNLOG="$DMEKLR_TMP/run_all"      # this script's own step logs
+RUNLOG="$DMEKLR_TMP/run_all"      # this script's own logs of steps 1, 2 and 6
 mkdir -p "$RUNLOG"
-echo "== dashboard test logs: $DMEKLR_LOGS (this ROM pair's folder) =="
+
+# rom_env <89|86|carpokes>: that ROM pair's images and log folder
+# (DMEKLR_LOGS) for what runs next in this shell; PRUN: its step logs
+rom_env() {
+    case "$1" in
+        89)       export DME_ROM_FILE=89DME_951pin.mem KLR_ROM_FILE=89KLR_951.mem ;;
+        86)       export DME_ROM_FILE=28PIN_86DME.mem KLR_ROM_FILE=86KLR_951.mem ;;
+        carpokes) export DME_ROM_FILE=28PIN_DME_PERFORMANCE.mem KLR_ROM_FILE=87KLR_951.mem ;;
+    esac
+    [ -n "$1" ] && unset DME_ROM_DIR KLR_ROM_DIR   # the repo's bin_images
+    DMEKLR_LOGS="$DMEKLR_TMP/dme_klr/$(dmeklr_rom_variant)"
+    export DMEKLR_LOGS
+    PRUN="$DMEKLR_LOGS/run_all"
+    mkdir -p "$PRUN"
+}
+# The pairs to run: --roms, or the one the environment names ("" = as it is)
+MULTI=0
+if [ ${#ROMS[@]} -eq 0 ]; then ROMS=(""); elif [ ${#ROMS[@]} -gt 1 ]; then MULTI=1; fi
+rom_env "${ROMS[0]}"
+if [ "$MULTI" = 1 ]; then
+    echo "== dashboard test logs: one folder per ROM pair, $DMEKLR_TMP/dme_klr/{$(IFS=,; echo "${ROMS[*]}")} =="
+else
+    echo "== dashboard test logs: $DMEKLR_LOGS (this ROM pair's folder) =="
+fi
 PASS=0; WARN=0; FAIL=0
+SUITE_WARN_MAX=0   # the most WARN tests of any dashboard suite (step 6 runs only up to 5)
 START_TIME=$(date +%s)
 # Summaries older than this marker are from a previous run and must not be
 # reported as this run's result (e.g. a suite that exits without running).
@@ -133,7 +175,7 @@ hdr()  { echo -e "\n${BOLD}═════════════════�
 MODE_DESC="both simulators"
 [ "$RUN_VERILATOR" = "1" ] && [ "$RUN_IVERILOG" = "0" ] && MODE_DESC="Verilator only"
 [ "$RUN_IVERILOG" = "1" ] && [ "$RUN_VERILATOR" = "0" ] && MODE_DESC="iverilog only"
-log "Workers: $WORKERS  Mode: $MODE_DESC  Tests: ${SUITE_TESTS[*]:-all}"
+log "Workers: $WORKERS  Mode: $MODE_DESC  Tests: ${SUITE_TESTS[*]:-all}${ROMS[0]:+  ROM pairs: ${ROMS[*]}}"
 hdr "1/6  i8048 KLR Regression"
 cd "$ROOT/klr"
 log "Running: bash run_klr_regression"
@@ -169,10 +211,11 @@ vl_suite() {
     cd "$DME_KLR"
     log "Running Verilator suite (--verilator) ..."
     log "Running: bash run_dashboard_parallel.sh --verilator $1"
-    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/vl_suite.log"
+    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$PRUN/vl_suite.log"
     log "Verilator test suite completed"
 }
 vl_verdict() {
+    local V="Verilator"; [ "$MULTI" = 1 ] && V="Verilator ($(dmeklr_rom_variant))"
     VL_SUMMARY_LOG="$DMEKLR_LOGS/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
     [ "$VL_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
@@ -182,23 +225,25 @@ vl_verdict() {
     VL_FAIL=$(echo "$VL_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
     VL_TOTAL=$(echo "$VL_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
     if [ -z "$VL_SUMMARY" ]; then
-        fail "Verilator — no summary from this run (suite did not complete)"
+        fail "$V — no summary from this run (suite did not complete)"
     elif [ "${VL_FAIL:-0}" -eq 0 ] && [ "${VL_WARN:-0}" -eq 0 ]; then
-        ok "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
+        ok "$V — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
     elif [ "${VL_FAIL:-0}" -eq 0 ]; then
-        warn "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
+        warn "$V — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
     else
-        fail "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
+        fail "$V — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
     fi
+    [ "${VL_WARN:-0}" -gt "$SUITE_WARN_MAX" ] && SUITE_WARN_MAX=${VL_WARN:-0}
 }
 iv_suite() {
     cd "$DME_KLR"
     log "Running iverilog suite ..."
     log "Running: bash run_dashboard_parallel.sh $1 ${IV_DEBUG[*]+${IV_DEBUG[*]}}"
-    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} ${IV_DEBUG[@]+"${IV_DEBUG[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
+    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} ${IV_DEBUG[@]+"${IV_DEBUG[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$PRUN/iv_suite.log"
     log "iverilog test suite completed"
 }
 iv_verdict() {
+    local V="iverilog "; [ "$MULTI" = 1 ] && V="iverilog ($(dmeklr_rom_variant))"
     IV_SUMMARY_LOG="$DMEKLR_LOGS/dash_logs/parallel_summary.log"
     IV_SUMMARY=""
     [ "$IV_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
@@ -208,14 +253,15 @@ iv_verdict() {
     IV_FAIL=$(echo "$IV_SUMMARY" | grep -o 'FAIL: *[0-9]*' | grep -o '[0-9]*')
     IV_TOTAL=$(echo "$IV_SUMMARY" | grep -o 'Total: *[0-9]*' | grep -o '[0-9]*')
     if [ -z "$IV_SUMMARY" ]; then
-        fail "iverilog  — no summary from this run (suite did not complete)"
+        fail "$V — no summary from this run (suite did not complete)"
     elif [ "${IV_FAIL:-0}" -eq 0 ] && [ "${IV_WARN:-0}" -eq 0 ]; then
-        ok "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
+        ok "$V — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
     elif [ "${IV_FAIL:-0}" -eq 0 ]; then
-        warn "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
+        warn "$V — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
     else
-        fail "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
+        fail "$V — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
     fi
+    [ "${IV_WARN:-0}" -gt "$SUITE_WARN_MAX" ] && SUITE_WARN_MAX=${IV_WARN:-0}
 }
 # prefix <tag>: each line with "[tag] " as it comes (a read loop: awk may
 # read its input in blocks, holding the lines back until the suite ends)
@@ -223,32 +269,113 @@ prefix() { local l; while IFS= read -r l || [ -n "$l" ]; do printf '[%s] %s\n' "
 
 N_TESTS=$(cd "$DME_KLR" && bash run_dashboard_parallel.sh --count 1 ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>/dev/null)
 [[ "$N_TESTS" =~ ^[0-9]+$ ]] || N_TESTS=999
-if [ "$RUN_VERILATOR" = 1 ] && [ "$RUN_IVERILOG" = 1 ] && [ $((2 * N_TESTS)) -le "$WORKERS" ]; then
-    hdr "3+4/6  Verilator and iverilog Dashboard Test Suites, at the same time"
-    log "$N_TESTS test(s) per suite, $((2 * N_TESTS)) in all, fit the $WORKERS workers: both suites at once, $N_TESTS worker(s) each, here only"
-    ( unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix VL ) &
-    _vl_pid=$!
-    ( unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix IV ) &
-    _iv_pid=$!
-    wait $_vl_pid $_iv_pid
-    PFX="[VL] "; vl_verdict
-    PFX="[IV] "; iv_verdict
-    PFX=""
-else
-    hdr "3/6  Verilator Dashboard Test Suite"
-    if [ "$RUN_VERILATOR" = "1" ]; then
-        vl_suite "$WORKERS"
-        vl_verdict
-    else
-        log "Skipped (--iverilog only)"
-    fi
+N_SIMS=$(( RUN_VERILATOR + RUN_IVERILOG ))
 
-    hdr "4/6  iverilog Dashboard Test Suite"
-    if [ "$RUN_IVERILOG" = "1" ]; then
-        iv_suite "$WORKERS"
-        iv_verdict
+# one_pair_suites <workers>: steps 3-4 for the pair rom_env set (the
+# suites at the same time when both run and all their tests fit the
+# workers); tag "": untagged lines (one pair), else "<rom>": [VL:<rom>] /
+# [IV:<rom>] lines
+one_pair_suites() {
+    local w=$1 tag=$2 vt=VL it=IV
+    [ -n "$tag" ] && { vt="VL:$tag"; it="IV:$tag"; }
+    if [ "$N_SIMS" = 2 ] && [ $((2 * N_TESTS)) -le "$w" ]; then
+        [ -z "$tag" ] && hdr "3+4/6  Verilator and iverilog Dashboard Test Suites, at the same time"
+        log "$N_TESTS test(s) per suite, $((2 * N_TESTS)) in all, fit the $w workers: both suites at once, $N_TESTS worker(s) each, here only"
+        ( unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix "$vt" ) &
+        local _vl_pid=$!
+        ( unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix "$it" ) &
+        local _iv_pid=$!
+        wait $_vl_pid $_iv_pid
+        PFX="[$vt] "; vl_verdict
+        PFX="[$it] "; iv_verdict
+        PFX=""
+    elif [ -z "$tag" ]; then
+        hdr "3/6  Verilator Dashboard Test Suite"
+        if [ "$RUN_VERILATOR" = "1" ]; then
+            vl_suite "$w"
+            vl_verdict
+        else
+            log "Skipped (--iverilog only)"
+        fi
+
+        hdr "4/6  iverilog Dashboard Test Suite"
+        if [ "$RUN_IVERILOG" = "1" ]; then
+            iv_suite "$w"
+            iv_verdict
+        else
+            log "Skipped (--verilator only)"
+        fi
     else
-        log "Skipped (--verilator only)"
+        if [ "$RUN_VERILATOR" = "1" ]; then
+            vl_suite "$w" 2>&1 | prefix "$vt"
+            PFX="[$vt] "; vl_verdict; PFX=""
+        fi
+        if [ "$RUN_IVERILOG" = "1" ]; then
+            iv_suite "$w" 2>&1 | prefix "$it"
+            PFX="[$it] "; iv_verdict; PFX=""
+        fi
+    fi
+}
+
+if [ "$MULTI" = 0 ]; then
+    one_pair_suites "$WORKERS" ""
+else
+    N_ALL=$(( N_SIMS * N_TESTS * ${#ROMS[@]} ))
+    hdr "3+4/6  Dashboard Test Suites for the ROM pairs ${ROMS[*]}"
+    if [ "$N_ALL" -le "$WORKERS" ]; then
+        log "$N_ALL test run(s) in all fit the $WORKERS workers: every pair and suite at once, $N_TESTS worker(s) each, here only"
+        # The shared testbench builds (one per simulator, every pair runs
+        # on them), once, before the pairs start: they would all build
+        # the same files at once otherwise
+        _shared_iv=1
+        for _a in ${IV_DEBUG[@]+"${IV_DEBUG[@]}"}; do case "$_a" in --DME_DEBUG|--DME_DEEP_DEBUG|--KLR_DEBUG) _shared_iv=0 ;; esac; done
+        if [ ${#PT_OPT[@]} -eq 0 ]; then
+            _built=1
+            if [ "$RUN_VERILATOR" = 1 ]; then
+                log "Building the shared Verilator testbench once → $DMEKLR_TMP/dme_klr/runtime"
+                bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime" > "$RUNLOG/runtime_build.log" 2>&1 || _built=0
+            fi
+            if [ "$RUN_IVERILOG" = 1 ] && [ "$_shared_iv" = 1 ]; then
+                log "Building the shared iverilog testbench once → $DMEKLR_TMP/dme_klr/runtime_iv"
+                bash "$DME_KLR/build_runtime.sh" --out "$DMEKLR_TMP/dme_klr/runtime_iv" --iverilog > "$RUNLOG/runtime_iv_build.log" 2>&1 || _built=0
+            fi
+            if [ "$_built" = 1 ]; then
+                export DMEKLR_RUNTIME_PREBUILT=1   # run_dashboard_parallel.sh uses them as they are
+            else
+                warn "A shared testbench build failed (see $RUNLOG/runtime_build.log, runtime_iv_build.log): each suite tries its own"
+            fi
+        fi
+        _pids=()
+        for _r in "${ROMS[@]}"; do
+            for _s in ${RUN_VERILATOR/1/VL} ${RUN_IVERILOG/1/IV}; do
+                [ "$_s" = 0 ] && continue
+                if [ "$_s" = VL ]; then
+                    ( rom_env "$_r"; unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix "VL:$_r" ) &
+                else
+                    ( rom_env "$_r"; unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix "IV:$_r" ) &
+                fi
+                _pids+=($!)
+            done
+        done
+        wait "${_pids[@]}"
+        unset DMEKLR_RUNTIME_PREBUILT
+        for _r in "${ROMS[@]}"; do
+            rom_env "$_r"
+            [ "$RUN_VERILATOR" = 1 ] && { PFX="[VL:$_r] "; vl_verdict; }
+            [ "$RUN_IVERILOG" = 1 ] && { PFX="[IV:$_r] "; iv_verdict; }
+            PFX=""
+        done
+    else
+        log "$N_ALL test run(s) in all don't fit the $WORKERS workers: one ROM pair after another"
+        for _r in "${ROMS[@]}"; do
+            rom_env "$_r"
+            log "ROM pair $_r → $DMEKLR_LOGS"
+            one_pair_suites "$WORKERS" "$_r"
+            # the next pairs run on the shared builds this one made
+            { [ "$RUN_VERILATOR" = 0 ] || [ -n "$VL_SUMMARY" ]; } && { [ "$RUN_IVERILOG" = 0 ] || [ -n "$IV_SUMMARY" ]; } \
+                && export DMEKLR_RUNTIME_PREBUILT=1
+        done
+        unset DMEKLR_RUNTIME_PREBUILT
     fi
 fi
 
@@ -259,62 +386,71 @@ if [ "$RUN_VERILATOR" = "0" ] || [ "$RUN_IVERILOG" = "0" ]; then
     [ "$RUN_VERILATOR" = "1" ] && STALE_SIDE="iverilog"
     log "WARNING - Comparison against older logs ($STALE_SIDE logs are from a previous run, not this one)"
 fi
-cd "$DME_KLR"
-log "Comparing iverilog vs Verilator logs ..."
-log "Running: bash compare_all_logs.sh"
-bash compare_all_logs.sh 2>&1 | tee "$RUNLOG/compare.log"
-CMP_MATCH=$(grep -oE "MATCH=[0-9]+" "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
-CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
-CMP_NOTE=$(grep -oE "NOTE=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
-CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
-CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  "$RUNLOG/compare.log" | tail -1 | grep -oE "[0-9]+")
-if [ "${CMP_DIFF:-0}" -eq 0 ]; then
-    ok "iverilog == Verilator — ${CMP_MATCH:-?} tests match${CMP_NOTE:+, ${CMP_NOTE} NOTE (X-init differences, expected)}"
-elif [ "${CMP_DIFF:-0}" -le 4 ]; then
-    warn "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
-else
-    fail "iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see $RUNLOG/compare.log)"
-fi
+# compare_pair: step 5 for the pair rom_env set
+compare_pair() {
+    local RP=""; [ "$MULTI" = 1 ] && RP="$(dmeklr_rom_variant): "
+    cd "$DME_KLR"
+    log "Comparing iverilog vs Verilator logs ..."
+    log "Running: bash compare_all_logs.sh"
+    bash compare_all_logs.sh 2>&1 | tee "$PRUN/compare.log"
+    CMP_MATCH=$(grep -oE "[[:space:]]MATCH=[0-9]+" "$PRUN/compare.log" | tail -1 | grep -oE "[0-9]+")
+    CMP_NEAR=$(grep -oE "NEAR=[0-9]+"  "$PRUN/compare.log" | tail -1 | grep -oE "[0-9]+")
+    CMP_NOTE=$(grep -oE "NOTE=[0-9]+"  "$PRUN/compare.log" | tail -1 | grep -oE "[0-9]+")
+    CMP_DIFF=$(grep -oE "DIFF=[0-9]+"  "$PRUN/compare.log" | tail -1 | grep -oE "[0-9]+")
+    CMP_SKIP=$(grep -oE "SKIP=[0-9]+"  "$PRUN/compare.log" | tail -1 | grep -oE "[0-9]+")
+    if [ "${CMP_DIFF:-0}" -eq 0 ]; then
+        ok "${RP}iverilog == Verilator — ${CMP_MATCH:-?} tests match${CMP_NOTE:+, ${CMP_NOTE} NOTE (X-init differences, expected)}"
+    elif [ "${CMP_DIFF:-0}" -le 4 ]; then
+        warn "${RP}iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (known timing-sensitive tests)"
+    else
+        fail "${RP}iverilog vs Verilator — MATCH=${CMP_MATCH:-?} NEAR=${CMP_NEAR:-0} NOTE=${CMP_NOTE:-0} DIFF=${CMP_DIFF:-?} SKIP=${CMP_SKIP:-0} (see $PRUN/compare.log)"
+    fi
 
-log "Generating detailed compare_sim_logs.py reports for differing tests ..."
-IV_DASH_DIR="$DMEKLR_LOGS/dash_logs"
-VL_DASH_DIR="$DMEKLR_LOGS/v_dash_logs"
-DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$RUNLOG/compare.log" | sort -u)
-PLOT_OPT=(--plot --plot-dir "$IV_DASH_DIR")
-[ "$PLOT" = 1 ] || { PLOT_OPT=(); log "No plots (--no-plot)"; }
-if [ -n "$DIFF_TESTS" ]; then
-    > "$RUNLOG/compare_detail.log"
-    for t in $DIFF_TESTS; do
-        iv_log="$IV_DASH_DIR/${t}.dash.log"
-        vl_log="$VL_DASH_DIR/${t}.dash.log"
-        if [ -f "$iv_log" ] && [ -f "$vl_log" ]; then
-            # an older run's plot of this test must not stand for this one
-            [ "$PLOT" = 1 ] && rm -f "$IV_DASH_DIR/${t}_DME_diff.jpg" "$IV_DASH_DIR/${t}_KLR_diff.jpg"
-            log "  compare_sim_logs.py: $t"
-            {
-                echo "===== $t ====="
-                python3 "$DME_KLR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$t" \
-                    -v ${PLOT_OPT[@]+"${PLOT_OPT[@]}"}
-                echo ""
-            } 2>&1 | tee -a "$RUNLOG/compare_detail.log"
-        else
-            warn "  skipping $t (log file missing: $iv_log or $vl_log)"
-        fi
-    done
-    log "Per-test detail: $RUNLOG/compare_detail.log${PLOT_OPT[0]+   Plots: $IV_DASH_DIR}"
-else
-    log "No differing tests — skipping detailed compare_sim_logs.py reports"
-fi
+    log "Generating detailed compare_sim_logs.py reports for differing tests ..."
+    IV_DASH_DIR="$DMEKLR_LOGS/dash_logs"
+    VL_DASH_DIR="$DMEKLR_LOGS/v_dash_logs"
+    DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$PRUN/compare.log" | sort -u)
+    PLOT_OPT=(--plot --plot-dir "$IV_DASH_DIR")
+    [ "$PLOT" = 1 ] || { PLOT_OPT=(); log "No plots (--no-plot)"; }
+    if [ -n "$DIFF_TESTS" ]; then
+        > "$PRUN/compare_detail.log"
+        for t in $DIFF_TESTS; do
+            iv_log="$IV_DASH_DIR/${t}.dash.log"
+            vl_log="$VL_DASH_DIR/${t}.dash.log"
+            if [ -f "$iv_log" ] && [ -f "$vl_log" ]; then
+                # an older run's plot of this test must not stand for this one
+                [ "$PLOT" = 1 ] && rm -f "$IV_DASH_DIR/${t}_DME_diff.jpg" "$IV_DASH_DIR/${t}_KLR_diff.jpg"
+                log "  compare_sim_logs.py: $t"
+                {
+                    echo "===== $t ====="
+                    python3 "$DME_KLR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$t" \
+                        -v ${PLOT_OPT[@]+"${PLOT_OPT[@]}"}
+                    echo ""
+                } 2>&1 | tee -a "$PRUN/compare_detail.log"
+            else
+                warn "  ${RP}skipping $t (log file missing: $iv_log or $vl_log)"
+            fi
+        done
+        log "Per-test detail: $PRUN/compare_detail.log${PLOT_OPT[0]+   Plots: $IV_DASH_DIR}"
+    else
+        log "No differing tests — skipping detailed compare_sim_logs.py reports"
+    fi
 
-log "Running FQS analysis ..."
-log "Running: python3 fqs_analysis.py"
-python3 fqs_analysis.py 2>&1 | tee "$RUNLOG/fqs_analysis.log"
-echo ""
+    log "Running FQS analysis ..."
+    log "Running: python3 fqs_analysis.py"
+    python3 fqs_analysis.py 2>&1 | tee "$PRUN/fqs_analysis.log"
+    echo ""
+}
+for _r in "${ROMS[@]}"; do
+    rom_env "$_r"
+    [ "$MULTI" = 1 ] && log "ROM pair $_r → $DMEKLR_LOGS"
+    compare_pair
+done
 
 # ── 6. macOS install test in a clean VM ───────────────────────────────────────
 hdr "6/6  macOS Install Test (clean VM)"
 MAX_SUITE_WARN=5
-SUITE_WARN=$(( ${VL_WARN:-0} > ${IV_WARN:-0} ? ${VL_WARN:-0} : ${IV_WARN:-0} ))
+SUITE_WARN=$SUITE_WARN_MAX
 if [ "$MACOS_TEST" = none ]; then
     log "Skipped (--macos-test none)"
 elif [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then

@@ -32,7 +32,13 @@
 //                         difference plots),
 //                         interval_ms, sim_ms (lite), tests: [names]
 //                         (none or every test = the whole suite),
-//                         roms: {dme: <file.mem>, klr: <file.mem>}}
+//                         roms: {dme: <file.mem>, klr: <file.mem>},
+//                         pairs: ['89', '86', 'carpokes'] (developer
+//                         install; two or more: run_all.sh --roms, each
+//                         pair in its own folder, in place of roms)}
+//                         With pairs the suites are 'vl:<rom>' /
+//                         'iv:<rom>' (one per pair and simulator) and the
+//                         lines [VL:<rom>] / [IV:<rom>]; run.roms lists them.
 //                         roms: the images every test runs on, as
 //                         DME_ROM_DIR / DME_ROM_FILE and the KLR_ ones
 //                         (run86.sh, run_carpokes.sh); default the 1989
@@ -44,12 +50,12 @@
 //                         they are now (default the 1989 pair's), iverilog
 //                         and Verilator (developer install)
 //    POST /runall/stop    stop the run and every test it started
-//    GET  /runall/diff?test=<name>&ecu=DME|KLR
+//    GET  /runall/diff?rom=<folder>&test=<name>&ecu=DME|KLR
 //                         the run's step 5 plot of where that test's
 //                         iverilog and Verilator logs differ
-//                         (compare_sim_logs.py --plot, a JPEG in the
-//                         iverilog dash_logs); run.diffs lists them as
-//                         {<test>: ['DME', 'KLR']}
+//                         (compare_sim_logs.py --plot, a JPEG in that
+//                         pair's iverilog dash_logs); run.diffs lists them as
+//                         {<rom>: {<test>: ['DME', 'KLR']}}
 //
 //  Progress is simulated time: a running test's share is the newest
 //  "t=<ms> ms" or "[DS] <ms>," in its log against the test's length,
@@ -269,6 +275,19 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     const interval = Math.min(10000, Math.max(1, Math.floor(+o.interval_ms || 100)));
     const simMs = MODE === 'lite' && +o.sim_ms > 0 ? Math.floor(+o.sim_ms) : null;
     const simS = n => simMs ? Math.min(simMs / 1000, cat.len[n] ?? 40) : (cat.len[n] ?? 40);
+    // Several of the named pairs at once (developer install): run_all.sh
+    // --roms, each pair in its own folder
+    const PAIRS = ['89', '86', 'carpokes'];
+    const pairs = MODE === 'dev' && Array.isArray(o.pairs) ? PAIRS.filter(p => o.pairs.includes(p)) : [];
+    if (Array.isArray(o.pairs) && MODE === 'dev' && !pairs.length) return [400, 'no ROM pair picked'];
+    if (pairs.length === 1) {
+      const pr = ROM_PRESETS.find(x => romVariant(x.dme, x.klr) === pairs[0]);
+      o.roms = { dme: pr.dme, klr: pr.klr };
+    }
+    const multi = pairs.length > 1;
+    for (const pr of multi ? ROM_PRESETS.filter(x => pairs.includes(romVariant(x.dme, x.klr))) : []) {
+      for (const cpu of ['dme', 'klr']) if (!romImages(cpu).some(i => i.name === pr[cpu])) return [400, `no ${cpu.toUpperCase()} image ${pr[cpu]} (${pr.name})`];
+    }
     // The ROM images: by name, from the bridge's list only
     const roms = {};
     for (const cpu of ['dme', 'klr']) {
@@ -278,12 +297,14 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       roms[cpu] = img;
     }
     // the runs write in that pair's folder, $DMEKLR_TMP/dme_klr/<rom> (paths.sh)
-    const rom = romVariant(roms.dme.name, roms.klr.name);
+    const rom = multi ? pairs[0] : romVariant(roms.dme.name, roms.klr.name);
+    const romList = multi ? pairs : [rom];
     const logs = d => join(logsDir(TMP_ROOT, rom), d);
     let cmd, args, cwd, steps, suites;
     const env = { ...process.env, DASH_INTERVAL_MS: String(interval), DMEKLR_TMP: TMP_ROOT, PYTHONUNBUFFERED: '1' };
     for (const cpu of ['dme', 'klr']) {
       const CPU = cpu.toUpperCase();
+      if (multi) { delete env[`${CPU}_ROM_DIR`]; delete env[`${CPU}_ROM_FILE`]; continue; }   // run_all.sh sets each pair's
       env[`${CPU}_ROM_DIR`] = roms[cpu].dir.replace(/\\/g, '/').replace(/\/?$/, '/');
       env[`${CPU}_ROM_FILE`] = roms[cpu].name;
     }
@@ -308,14 +329,21 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
         }
       }
       if (subset) args.push('--tests', subset.join(' '));
+      if (multi) args.push('--roms', pairs.join(' '));
       args.push(String(workers));
       cmd = 'bash'; cwd = DMEKLR;
       suites = {};
-      if (sims.includes('verilator')) suites.vl = suite('Verilator', logs('v_dash_logs'), names, simS);
-      if (sims.includes('iverilog')) suites.iv = suite('iverilog', logs('dash_logs'), names, simS);
+      const key = (k, r) => multi ? `${k}:${r}` : k;
+      for (const r of romList) {
+        const dir = d => join(logsDir(TMP_ROOT, r), d);
+        if (sims.includes('verilator')) suites[key('vl', r)] = { ...suite('Verilator', dir('v_dash_logs'), names, simS), sim: 'vl', rom: r };
+        if (sims.includes('iverilog')) suites[key('iv', r)] = { ...suite('iverilog', dir('dash_logs'), names, simS), sim: 'iv', rom: r };
+      }
+      const of = k => Object.keys(suites).filter(x => suites[x].sim === k);
       steps = [
         { label: 'i8048 KLR regression' }, { label: 'i8051 DME regression' },
-        { label: 'Verilator dashboard suite', suite: 'vl' }, { label: 'iverilog dashboard suite', suite: 'iv' },
+        { label: `Verilator dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'vl', suites: of('vl') },
+        { label: `iverilog dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'iv', suites: of('iv') },
         { label: 'iverilog vs Verilator comparison + FQS analysis' }, { label: 'macOS install test (clean VM)' },
       ];
     } else {
@@ -323,7 +351,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (simMs) args.push('--sim-ms', String(simMs));
       if (subset) args.push(...subset);
       cmd = PY; cwd = REPO;
-      suites = { vl: suite('Verilator', logs('v_dash_logs'), names, simS) };
+      suites = { vl: { ...suite('Verilator', logs('v_dash_logs'), names, simS), sim: 'vl', rom } };
       steps = [{ label: 'Dashboard regression tests (run_tests.py)', suite: 'vl' }];
     }
     steps = steps.map((s, i) => ({ n: i + 1, state: 'pending', verdict: null, note: '', ...s }));
@@ -346,16 +374,16 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       env.DMEKLR_REGRESS_HOSTS = f;
     } else delete env.DMEKLR_REGRESS_HOSTS;
     run = {
-      id: Date.now().toString(36), mode: MODE, rom, logs: logsDir(TMP_ROOT, rom),
+      id: Date.now().toString(36), mode: MODE, rom, roms: romList, logs: logsDir(TMP_ROOT, rom),
       startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
       command: [MODE === 'dev' ? 'run_all.sh' : 'run_tests.py', ...args.slice(1)].join(' '),
       opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
-              roms: { dme: roms.dme.name, klr: roms.klr.name },
+              roms: multi ? { pairs } : { dme: roms.dme.name, klr: roms.klr.name },
               hosts: useHosts.map(h => ({ name: h.id, threads: h.threads })) },
       steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes], diffs: {},
     };
     if (MODE === 'lite') { steps[0].state = 'running'; suites.vl.startedAt = Date.now(); }
-    console.log(`bridge: RUN REGRESSIONS: ${run.command}  (DME ${roms.dme.name}, KLR ${roms.klr.name})`);
+    console.log(`bridge: RUN REGRESSIONS: ${run.command}  (${multi ? `ROM pairs ${pairs.join(', ')}` : `DME ${roms.dme.name}, KLR ${roms.klr.name}`})`);
     proc = spawn(cmd, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     const mine = run;
     createInterface({ input: proc.stdout }).on('line', l => onLine(mine, l));
@@ -394,21 +422,22 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       r.cur = 3;
       for (const s of [r.steps[2], r.steps[3]]) {
         s.state = 'running';
-        if (r.suites[s.suite]) r.suites[s.suite].startedAt = Date.now();
+        for (const k of s.suites ?? [s.suite]) if (r.suites[k]) r.suites[k].startedAt = Date.now();
       }
       return;
     }
-    let tagged = null;
-    if (r.mode === 'dev' && (m = line.match(/^\[(VL|IV)\] ?(.*)$/))) {
+    let tagged = null, tagSuite = null;
+    if (r.mode === 'dev' && (m = line.match(/^\[(VL|IV)(?::([\w.+-]+))?\] ?(.*)$/))) {
       tagged = m[1] === 'VL' ? 3 : 4;
-      line = m[2];
+      tagSuite = m[1].toLowerCase() + (m[2] ? `:${m[2]}` : '');
+      line = m[3];
     }
     if (r.mode === 'dev' && (m = line.match(/^\s*([1-6])\/6\s+\S/))) {
       for (const s of r.steps) if (s.state === 'running') s.state = 'done';
       r.cur = +m[1];
       const s = r.steps[r.cur - 1];
       s.state = 'running';
-      if (s.suite && r.suites[s.suite]) r.suites[s.suite].startedAt = Date.now();
+      for (const k of s.suites ?? [s.suite]) if (k && r.suites[k]) r.suites[k].startedAt = Date.now();
       return;
     }
     if (r.mode === 'dev' && /^\s*SUMMARY\s*$/.test(line)) {
@@ -417,8 +446,10 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       return;
     }
     // step 5's difference plots (compare_sim_logs.py --plot)
-    if (r.mode === 'dev' && (m = line.match(/^(DME|KLR) plot written to .*?([A-Za-z0-9_]+)_(DME|KLR)_diff\.jpg\b/)) && m[1] === m[3]) {
-      const l = (r.diffs[m[2]] ??= []);
+    // (in its ROM pair's dash_logs: .../dme_klr/<rom>/dash_logs/<test>_DME_diff.jpg)
+    if (r.mode === 'dev' && (m = line.match(/^(DME|KLR) plot written to (.*?)([A-Za-z0-9_]+)_(DME|KLR)_diff\.jpg\b/)) && m[1] === m[4]) {
+      const rom = m[2].replace(/\\/g, '/').match(/([^/]+)\/dash_logs\/$/)?.[1] ?? r.rom;
+      const l = ((r.diffs[rom] ??= {})[m[3]] ??= []);
       if (!l.includes(m[1])) l.push(m[1]);
       return;
     }
@@ -429,7 +460,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       step.note = step.note ? `${step.note}; ${m[2]}` : m[2];
       return;
     }
-    const su = tagged ? r.suites[step.suite] : curSuite(r);
+    const su = tagged ? r.suites[tagSuite] : curSuite(r);
     if (!su) return;
     if (/Building the shared testbench/.test(line)) { su.building = true; return; }
     if (/^\s*built in \d+ s/.test(line) || /Shared build FAILED/.test(line)) { su.building = false; return; }
@@ -548,19 +579,20 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
         if (t.verdict && counts[t.verdict] != null) counts[t.verdict]++;
       }
       done += d; total += tot;
-      suites[k] = { label: su.label, building: su.building, done_s: d, total_s: tot, counts, tests: su.tests };
+      suites[k] = { label: su.label, sim: su.sim, rom: su.rom, building: su.building, done_s: d, total_s: tot, counts, tests: su.tests };
     }
     const firstStart = Math.min(...Object.values(run.suites).flatMap(su => Object.values(su.tests).map(t => t.startedAt ?? Infinity)));
     const wall = isFinite(firstStart) ? (now - firstStart) / 1000 : 0;
     const rate = wall > 30 && done > 0 ? done / wall : null;   // simulated s per wall s
     // A suite's step takes its worst test verdict when it printed none
     const steps = run.steps.map(s => {
-      const su = s.suite && suites[s.suite];
-      if (s.verdict || s.state !== 'done' || !su || !(su.counts.PASS + su.counts.WARN + su.counts.FAIL)) return s;
-      return { ...s, verdict: su.counts.FAIL ? 'FAIL' : su.counts.WARN ? 'WARN' : 'PASS' };
+      const sus = (s.suites ?? [s.suite]).map(k => k && suites[k]).filter(Boolean);
+      const c = k => sus.reduce((a, su) => a + su.counts[k], 0);
+      if (s.verdict || s.state !== 'done' || !sus.length || !(c('PASS') + c('WARN') + c('FAIL'))) return s;
+      return { ...s, verdict: c('FAIL') ? 'FAIL' : c('WARN') ? 'WARN' : 'PASS' };
     });
     return {
-      id: run.id, mode: run.mode, rom: run.rom, logs: run.logs, command: run.command, opts: run.opts,
+      id: run.id, mode: run.mode, rom: run.rom, roms: run.roms, logs: run.logs, command: run.command, opts: run.opts,
       startedAt: run.startedAt, endedAt: run.endedAt, exit: run.exit, stopping: run.stopping, running: !!proc,
       elapsed_s: (now - run.startedAt) / 1000, done_s: done, total_s: total,
       eta_s: proc && rate ? (total - done) / rate : null,
@@ -579,7 +611,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
         try { imgs[cpu] = romImages(cpu).map(({ name, src }) => ({ name, src })); } catch { imgs[cpu] = []; }
       }
       const has = (cpu, n) => imgs[cpu].some(i => i.name === n);
-      const presets = ROM_PRESETS.filter(p => has('dme', p.dme) && has('klr', p.klr));
+      const presets = ROM_PRESETS.filter(p => has('dme', p.dme) && has('klr', p.klr)).map(p => ({ ...p, folder: romVariant(p.dme, p.klr) }));
       // each group's MANUAL button: <manual>#<anchor> (the package's manual
       // in the lite package, the developer one here)
       const manual = MODE === 'lite' ? 'docs/USER_MANUAL.md' : 'docs/DEVELOPER_MANUAL.md';
@@ -618,8 +650,9 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     if (req.method === 'GET' && url.pathname === '/runall/diff') {
       // a step 5 plot this run made (only those: the name comes from run.diffs)
       const t = url.searchParams.get('test') ?? '', ecu = url.searchParams.get('ecu') ?? '';
-      if (!run?.diffs?.[t]?.includes(ecu)) return text(404, 'no such plot in this run'), true;
-      const f = join(run.logs, 'dash_logs', `${t}_${ecu}_diff.jpg`);
+      const rom = url.searchParams.get('rom') ?? run?.rom;
+      if (!Object.hasOwn(run?.diffs ?? {}, rom) || !run.diffs[rom][t]?.includes(ecu)) return text(404, 'no such plot in this run'), true;
+      const f = join(logsDir(TMP_ROOT, rom), 'dash_logs', `${t}_${ecu}_diff.jpg`);
       let data;
       try { data = readFileSync(f); } catch { return text(404, `${f} is gone`), true; }
       res.writeHead(200, { ...CORS, 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });
