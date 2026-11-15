@@ -716,7 +716,7 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
-| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull` |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
@@ -726,7 +726,7 @@ smaller value gives finer playback and larger logs.
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
 (Verilator, iverilog or both, workers, per-test build, the macOS VM test,
-update first or `--no-pull`), the snapshot interval and
+update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
 uploaded, passed as `DME_ROM_FILE` / `KLR_ROM_FILE`), and lists the tests
@@ -744,7 +744,16 @@ checked, and bars for each group, each simulator's suite and the full run
 (simulated seconds done of the total, with the time left estimated from
 the rate so far); the six steps show which one is running. The run goes on
 when the panel is closed (the button shows its %) and stops with **STOP RUN**
-or when the bridge stops. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
+or when the bridge stops. With **Plot Differences** ticked (the default),
+step 5 plots each test whose iverilog and Verilator logs differ
+(`compare_sim_logs.py --plot`: `<test>_DME_diff.jpg` and `<test>_KLR_diff.jpg`
+in the iverilog `dash_logs`, one subplot per field that differs, iverilog
+against Verilator over simulated time), and the test's iverilog line gets a
+**◪ DME** / **◪ KLR** icon that opens its plot in a new tab (the bridge's
+`GET /runall/diff?test=<test>&ecu=DME`). Only this run's plots get an icon;
+step 5 deletes a test's older plot before it makes a new one. Unticked, step 5
+still writes its per-test comparison report (`$DMEKLR_TMP/run_all/compare_detail.log`)
+but no plots. The plots need matplotlib. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
 FQS analysis) on the iverilog and Verilator dash logs as they are now and
 shows its report in the panel, with **REFRESH** to run it again. Its
 **vs base** column is each test's fuel against the same test with no FQS
@@ -755,7 +764,7 @@ against iverilog for the same test (0 when they agree). The groups come from
 
 ![RUN REGRESSIONS: options, regression hosts and the run line](manual/run-regressions-options.png)
 
-![RUN REGRESSIONS: a test group with iverilog debug switches and their disk estimates](manual/run-regressions-tests.png)
+![RUN REGRESSIONS: a finished test group with iverilog debug switches, their disk estimates and the Plot Differences icons](manual/run-regressions-tests.png)
 
 **Regression hosts.** Other machines on the same LAN can take some of the
 tests. On each one, with the same software (the same commit and the same
