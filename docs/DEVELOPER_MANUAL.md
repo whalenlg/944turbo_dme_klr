@@ -748,7 +748,8 @@ whole groups or single tests. Each test's line also has its iverilog debug
 switches (DME, DME deep and KLR debug, `--test-debug=<test>:DME_DEBUG+KLR_DEBUG`
 to `run_all.sh`): only the tests you tick get the debug output, since it
 makes large dumps; each of those is built on its own and always runs on this
-machine. Each test with a switch on shows about how much disk its output takes
+machine, and keeps its full log uncompressed (`dash_logs/<test>.log`, not
+`.log.gz` as other tests do) so you can open and grep it as it is. Each test with a switch on shows about how much disk its output takes
 (in decimal GB, as Finder and Explorer count them),
 and the group headers and the run line add them up (from
 `dme_klr/iv_disk_rates.json`, measured by `iv_disk_usage.sh`). While it runs, a bar for each test shows its

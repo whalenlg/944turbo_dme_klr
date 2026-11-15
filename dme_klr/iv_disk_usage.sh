@@ -116,15 +116,17 @@ if [ "$1" = "--_job" ]; then
     t1=$(date +%s)
     [ -n "$t_build" ] || t_build=0
     fst=$(kb_of "$logdir/fst/$test.fst")
-    loggz=$(kb_of "$logdir/$test.log.gz")
+    # the full log: .log.gz, or the plain .log a debug run keeps
+    loggz=$(kb_of "$logdir/$test.log.gz" "$logdir/$test.log")
     dash=$(kb_of "$logdir/$test.dash.log")
-    other=$(kb_of "$logdir/hex/$test" "$logdir/vcd/$test.vcd" "$logdir/vcd/$test.vcd.gz" "$logdir/$test.log")
+    other=$(kb_of "$logdir/hex/$test" "$logdir/vcd/$test.vcd" "$logdir/vcd/$test.vcd.gz")
     build=$(kb_of "$base/iverilog_vvp/dash_klr_$test.vvp")
     final=$(( fst + loggz + dash + other ))
     [ "$final" -gt "$peak" ] && peak=$final
     # uncompressed size of the full .log (gzip -l wraps above 4 GB, so read it)
     raw=0
-    [ -f "$logdir/$test.log.gz" ] && raw=$(( $(gzip -dc "$logdir/$test.log.gz" | wc -c) / 1024 ))
+    if [ -f "$logdir/$test.log.gz" ]; then raw=$(( $(gzip -dc "$logdir/$test.log.gz" | wc -c) / 1024 ))
+    elif [ -f "$logdir/$test.log" ]; then raw=$(kb_of "$logdir/$test.log"); fi
     status=ok
     [ "$rc" -eq 0 ] || status="exit$rc"
     grep -q "SIM FAILED\|COMPILE FAILED" "$runner_log" && status=failed
@@ -287,7 +289,7 @@ def fmt_t(s):
     return "%dh%02dm" % (s // 3600, (s % 3600) // 60) if s >= 3600 else "%dm%02ds" % (s // 60, s % 60)
 
 print()
-print("Per test (MB; logs = .log.gz + .dash.log + hex dumps; kept = FST + logs;")
+print("Per test (MB; logs = full log (.log.gz, or a debug run's plain .log) + .dash.log + hex dumps; kept = FST + logs;")
 print("peak = most on disk at once while it ran; raw log = the .log before gzip)")
 if sim_s:
     print("Every test ran for %s simulated s (--sim-s)." % sim_s)
@@ -365,7 +367,8 @@ FLAGS = {"none": [], "klr": ["KLR_DEBUG"], "dme": ["DME_DEBUG"], "deep": ["DME_D
 import json, time
 rates = {"format": "dme-klr-iv-disk-rates", "version": 1,
          "about": "iverilog dashboard tests: MB on disk per simulated second for each debug flag "
-                  "combination (key: the flags, sorted, joined by +; '' = none). kept = FST + .log.gz "
+                  "combination (key: the flags, sorted, joined by +; '' = none). kept = FST + the full log "
+                  "(.log.gz; a debug run keeps its plain .log) "
                   "+ .dash.log + hex dumps after the test; peak = the most one test has on disk while it "
                   "runs (raw .log and VCD before gzip / vcd2fst); build_mb = its own .vvp. "
                   "Made by dme_klr/iv_disk_usage.sh.",
