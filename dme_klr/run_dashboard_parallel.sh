@@ -306,8 +306,11 @@ validate_one() {
     printf "%s\t%-22s\t%s\n" "$verdict" "$name" "$detail" >> "$VALIDATION_LOG"
     # A WARN or FAIL verdict with no warning line in the run: still note
     # it for the live dashboard (at the end of the run; live/test_snap.py)
-    if { [ "$verdict" = "FAIL" ] || [ "$verdict" = "WARN" ]; } && [ -f "$LOGDIR/${name}.log.gz" ]; then
-        python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$LOGDIR/${name}.log.gz" \
+    # (the full log: <test>.log.gz, or the plain <test>.log a debug run keeps)
+    local _full="$LOGDIR/${name}.log.gz"
+    [ -f "$_full" ] || _full="$LOGDIR/${name}.log"
+    if { [ "$verdict" = "FAIL" ] || [ "$verdict" = "WARN" ]; } && [ -f "$_full" ]; then
+        python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$_full" \
             "--$(echo "$verdict" | tr A-Z a-z)" "$detail" --script "$RUN_TESTS" >/dev/null || true
     fi
     return $rc

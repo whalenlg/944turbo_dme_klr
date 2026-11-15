@@ -17,7 +17,9 @@
 #  interval override): --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
 #  Added on top of whatever the named test already compiles with.
 #
-#  Output: $DMEKLR_LOGS/dash_logs/<test>.log.gz    (full sim output, gzipped)
+#  Output: $DMEKLR_LOGS/dash_logs/<test>.log.gz    (full sim output, gzipped;
+#                                               a run with a debug flag keeps
+#                                               it as plain <test>.log)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
 #          $DMEKLR_LOGS/dash_logs/vcd/<test>.vcd.gz
 #          $DMEKLR_LOGS/dash_logs/hex/<test>/{rom,ram}_out.hex
@@ -302,12 +304,23 @@ compile_and_run_klr() {
         | tee -a "$LOGDIR/summary.log"
 
     # Everything the tools read is in the .dash.log now; keep the full
-    # output (a debug run's instruction trace can be GBs) compressed
-    gzip -f "$log"
+    # output compressed. A run with a debug flag (--DME_DEBUG,
+    # --DME_DEEP_DEBUG, --KLR_DEBUG) keeps it as a plain .log, to read and
+    # grep as it is (its trace can be GBs, so it takes that much disk).
+    local _debug=0
+    for arg in "$@"; do
+        case "$arg" in -DDME_DEBUG|-DDME_DEEP_DEBUG|-DKLR_DEBUG) _debug=1 ;; esac
+    done
+    local _full="$log"
+    if [ "$_debug" = 1 ]; then
+        echo "  Debug run: full log kept uncompressed → $log"
+    else
+        gzip -f "$log"; _full="$log.gz"
+    fi
 
     # A warning or error in the run: note where, so the live dashboard can
     # open the test at that moment (dme_klr/live/test_snap.py)
-    python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$log.gz" --script "${BASH_SOURCE[0]}" || true
+    python3 "$SCRIPT_DIR/live/test_snap.py" scan "$name" "$_full" --script "${BASH_SOURCE[0]}" || true
 }
 
 # --------------------------------------------------------

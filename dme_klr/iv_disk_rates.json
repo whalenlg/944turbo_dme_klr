@@ -1,7 +1,7 @@
 {
  "format": "dme-klr-iv-disk-rates",
  "version": 1,
- "about": "iverilog dashboard tests: MB on disk per simulated second for each debug flag combination (key: the flags, sorted, joined by +; '' = none). kept = FST + .log.gz + .dash.log + hex dumps after the test; peak = the most one test has on disk while it runs (raw .log and VCD before gzip / vcd2fst); build_mb = its own .vvp. Made by dme_klr/iv_disk_usage.sh. Closed-loop (cl_*) rates; the 1 s measurement had the open-loop ramp_to_* tests about 15-35% lower, so open-loop estimates run high.",
+ "about": "iverilog dashboard tests: MB on disk per simulated second for each debug flag combination (key: the flags, sorted, joined by +; '' = none). kept = FST + the full log (.log.gz; a debug run keeps it as a plain .log) + .dash.log + hex dumps after the test; log_mb_per_sim_s = a debug run's plain .log; peak = the most one test has on disk while it runs (raw .log and VCD before gzip / vcd2fst); build_mb = its own .vvp. Made by dme_klr/iv_disk_usage.sh. Closed-loop (cl_*) rates; the 1 s measurement had the open-loop ramp_to_* tests about 15-35% lower, so open-loop estimates run high.",
  "measured": {
   "date": "2026-11-14",
   "source": "full-length run on the Mac: cl_ramp_to_6000_FQS0..7 (40 s each), one flag combination per test, 8 at once, 3 h 28 min; kept and FST from the files it left (FST + .log.gz + .dash.log). peak scaled from the 1 s iv_disk_usage.sh measurement by the FST ratio; wall assumes all 8 started together",
@@ -15,7 +15,8 @@
    "cl_ramp_to_6000_FQS6",
    "cl_ramp_to_6000_FQS7"
   ],
-  "sim_s": 40
+  "sim_s": 40,
+  "log_note": "debug configurations' kept rates updated 2026-11-15 for the plain .log a debug run now keeps: FST + .dash.log/hex + the .log's uncompressed size from that run (FQS1..7: 4.10, 1.47, 5.56, 3.45, 7.54, 4.92, 9.01 GB)"
  },
  "configs": {
   "": {
@@ -26,53 +27,60 @@
    "wall_s_per_sim_s": 234
   },
   "KLR_DEBUG": {
-   "kept_mb_per_sim_s": 74.2,
+   "kept_mb_per_sim_s": 105.0,
    "fst_mb_per_sim_s": 68.2,
    "peak_mb_per_sim_s": 1542.5,
    "build_mb": 1.13,
-   "wall_s_per_sim_s": 268
+   "wall_s_per_sim_s": 268,
+   "log_mb_per_sim_s": 36.8
   },
   "DME_DEBUG": {
-   "kept_mb_per_sim_s": 125.0,
+   "kept_mb_per_sim_s": 205.1,
    "fst_mb_per_sim_s": 118.7,
    "peak_mb_per_sim_s": 1515.5,
    "build_mb": 1.07,
-   "wall_s_per_sim_s": 261
+   "wall_s_per_sim_s": 261,
+   "log_mb_per_sim_s": 86.2
   },
   "DME_DEEP_DEBUG": {
-   "kept_mb_per_sim_s": 122.3,
+   "kept_mb_per_sim_s": 220.9,
    "fst_mb_per_sim_s": 118.3,
    "peak_mb_per_sim_s": 1291.5,
    "build_mb": 1.07,
-   "wall_s_per_sim_s": 252
+   "wall_s_per_sim_s": 252,
+   "log_mb_per_sim_s": 102.5
   },
   "DME_DEBUG+DME_DEEP_DEBUG": {
-   "kept_mb_per_sim_s": 168.6,
+   "kept_mb_per_sim_s": 345.7,
    "fst_mb_per_sim_s": 157.1,
    "peak_mb_per_sim_s": 1935.6,
    "build_mb": 1.07,
-   "wall_s_per_sim_s": 276
+   "wall_s_per_sim_s": 276,
+   "log_mb_per_sim_s": 188.5
   },
   "DME_DEBUG+KLR_DEBUG": {
-   "kept_mb_per_sim_s": 197.1,
+   "kept_mb_per_sim_s": 305.3,
    "fst_mb_per_sim_s": 182.2,
    "peak_mb_per_sim_s": 2892.5,
    "build_mb": 1.13,
-   "wall_s_per_sim_s": 300
+   "wall_s_per_sim_s": 300,
+   "log_mb_per_sim_s": 123.0
   },
   "DME_DEEP_DEBUG+KLR_DEBUG": {
-   "kept_mb_per_sim_s": 195.5,
+   "kept_mb_per_sim_s": 322.9,
    "fst_mb_per_sim_s": 183.8,
    "peak_mb_per_sim_s": 2708.6,
    "build_mb": 1.13,
-   "wall_s_per_sim_s": 297
+   "wall_s_per_sim_s": 297,
+   "log_mb_per_sim_s": 139.0
   },
   "DME_DEBUG+DME_DEEP_DEBUG+KLR_DEBUG": {
-   "kept_mb_per_sim_s": 243.9,
+   "kept_mb_per_sim_s": 448.5,
    "fst_mb_per_sim_s": 223.2,
    "peak_mb_per_sim_s": 3353.4,
    "build_mb": 1.13,
-   "wall_s_per_sim_s": 312
+   "wall_s_per_sim_s": 312,
+   "log_mb_per_sim_s": 225.2
   }
  }
 }
