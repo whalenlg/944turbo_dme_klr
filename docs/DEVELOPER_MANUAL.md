@@ -830,11 +830,35 @@ the right map graphs.
 
 ### Opening a log
 
-1. Press **LOAD LOG ▲**. The dialog opens by itself when no log is loaded.
-2. Drag the `.dash.log` file onto the text box, or paste its text.
-3. Press **PARSE & LOAD →**.
+Press **LOAD LOG ▲**. The dialog opens by itself when no log is loaded. Open
+a log in any of three ways; each one loads it straight away:
+
+* **Regression logs list.** With the bridge running (`dme_klr/live/bridge.mjs`),
+  the dialog lists every `.dash.log` from the regression runs:
+  **Verilator** runs (`$DMEKLR_TMP/dme_klr/v_dash_logs`, from
+  `v_run_dashboard_tests.sh`) in blue and **iverilog** runs
+  (`$DMEKLR_TMP/dme_klr/dash_logs`, from `run_dashboard_tests.sh`) in orange.
+  Click a row to open that log.
+  * Type in the **filter** box to narrow the list. Every word must match the
+    test name or simulator, so `cl verilator` finds the Verilator
+    closed-loop runs.
+  * **Include Verilator logs** and **Include iverilog logs** hide either kind.
+    Both are checked each time the dialog opens.
+  * Click a column heading (**Test**, **Simulator**, **Modified**, **Size**)
+    to sort by it, and click it again to reverse. The list starts newest first.
+  * Without the bridge, the dialog says how to start it in place of the list.
+* **BROWSE…** opens your computer's file dialog. Browsers can't choose the
+  folder it starts in. It opens in the last folder you used, so after you
+  browse to `v_dash_logs` once it usually opens there again.
+* **Drag and drop** a `.dash.log` onto the dialog.
 
 ![Load log dialog](manual/load-log-modal.png)
+
+Only `.dash.log` files load from disk. The file dialog can filter only on the
+last extension, so it shows every `.log`; any other file you pick or drop is
+refused with a red note. The header shows the file name, and for a log from
+the list also its folder and simulator, e.g.
+`v_dash_logs/warm_idle_5s.dash.log (Verilator)`.
 
 The page opens at the **end** of the run, so both scrubbers can go back from
 there. Combined DME+KLR logs, DME-only logs and the older formats all load
@@ -1219,7 +1243,7 @@ The live sim is deterministic for the same inputs, so to get back to a moment:
   only knows the tests the runner starts with `run_test`, and the replay has
   its own driver. Review those logs in log mode and use the dashed **LOG
   (expected)** traces.
-* A log pasted from somewhere else, with no test or snapshot behind it, can be
+* A log from somewhere else, with no test or snapshot behind it, can be
   reviewed but not re-run.
 
 ---
