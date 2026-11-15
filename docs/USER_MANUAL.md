@@ -273,7 +273,11 @@ python3 run_tests.py -j 4 cl_ramp_*   # some, 4 at a time
 ```
 
 Each test is checked (PASS / WARN / FAIL) and writes
-`data/dme_klr/v_dash_logs/<test>.dash.log`; open it in the dashboard. Each
+`data/dme_klr/89/v_dash_logs/<test>.dash.log`; open it in the dashboard.
+`89` is the folder of the default 1989 images; a run on other images writes
+in that pair's own folder (`86` for the 1986 pair, `carpokes` for the
+CarPokes one, otherwise the two image names joined by `+`), so runs on
+different images never overwrite each other's logs. Each
 kind of warning a run prints (a PASS's too), and a WARN or FAIL verdict, also
 adds a TEST row to the live page's SNAPSHOTS list
 ([section 7](#7-debugging-a-log-at-a-chosen-time)). The package ships one
@@ -369,17 +373,19 @@ Press **LOAD LOG ▲**. The dialog opens by itself when no log is loaded. Open
 a log in any of three ways; each one loads it straight away:
 
 * **Regression logs list.** With the bridge running (`dme_klr/live/bridge.mjs`),
-  the dialog lists every `.dash.log` from the regression runs:
-  **Verilator** runs (`$DMEKLR_TMP/dme_klr/v_dash_logs`, from
-  `v_run_dashboard_tests.sh`) in blue and **iverilog** runs
-  (`$DMEKLR_TMP/dme_klr/dash_logs`, from `run_dashboard_tests.sh`) in orange.
-  Click a row to open that log.
+  the dialog lists every `.dash.log` from the regression runs, from each ROM
+  pair's folder (`$DMEKLR_TMP/dme_klr/<rom>/`: `89`, `86`, `carpokes`, …):
+  **Verilator** runs (`v_dash_logs`, from `v_run_dashboard_tests.sh` or
+  `run_tests.py`) in blue and **iverilog** runs (`dash_logs`, from
+  `run_dashboard_tests.sh`) in orange, with the **ROM** folder each came
+  from (**older** for logs from before the per-ROM folders). Click a row to
+  open that log.
   * Type in the **filter** box to narrow the list. Every word must match the
-    test name or simulator, so `cl verilator` finds the Verilator
-    closed-loop runs.
+    test name, simulator or ROM folder, so `cl verilator 86` finds the
+    Verilator closed-loop runs on the 1986 images.
   * **Include Verilator logs** and **Include iverilog logs** hide either kind.
     Both are checked each time the dialog opens.
-  * Click a column heading (**Test**, **Simulator**, **Modified**, **Size**)
+  * Click a column heading (**Test**, **Simulator**, **ROM**, **Modified**, **Size**)
     to sort by it, and click it again to reverse. The list starts newest first.
   * Without the bridge, the dialog says how to start it in place of the list.
 * **BROWSE…** opens your computer's file dialog. Browsers can't choose the
@@ -393,7 +399,7 @@ Only `.dash.log` files load from disk. The file dialog can filter only on the
 last extension, so it shows every `.log`; any other file you pick or drop is
 refused with a red note. The header shows the file name, and for a log from
 the list also its folder and simulator, e.g.
-`v_dash_logs/warm_idle_5s.dash.log (Verilator)`.
+`89/v_dash_logs/warm_idle_5s.dash.log (Verilator)`.
 
 The page opens at the **end** of the run, so both scrubbers can go back from
 there. Combined DME+KLR logs, DME-only logs and the older formats all load

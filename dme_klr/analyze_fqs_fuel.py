@@ -31,7 +31,7 @@ Usage:
     python3 analyze_fqs_fuel.py [log_dir] [test1 test2 ...] [--expected p0 p1 ...]
 
 Defaults:
-    log_dir  : $DMEKLR_TMP/dme_klr/dash_logs   (iverilog)
+    log_dir  : $DMEKLR_TMP/dme_klr/<rom>/dash_logs   (iverilog)
     tests    : the 8 cl_ramp_to_6000_FQS0-7 tests
     expected : 0 3 -3 6 0 3 -3 6   (the standard FQS0-7 fuel_pct pattern)
 """

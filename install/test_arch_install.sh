@@ -251,7 +251,7 @@ if check "${INST[*]}" "${INST[*]}"; then
              && ! grep -q "FAIL \[" "$l"'
         check "verilator: warm_idle_5s" \
             'source ./setup && verilator --version && ls -l "$DMEKLR_TMP/install_smoke/warm_idle_5s.log" \
-             && f="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log" && ls -l "$f" \
+             && f="$DMEKLR_TMP/dme_klr/89/v_dash_logs/warm_idle_5s.dash.log" && ls -l "$f" \
              && n=$(grep -c "\[DS\]" "$f") && echo "$n [DS] snapshot lines" && [ "$n" -gt 10 ]'
         check "verilator: live build" \
             'source ./setup && cd dme_klr/live && ./build_live.sh && ls -l obj/dme_klr_live \

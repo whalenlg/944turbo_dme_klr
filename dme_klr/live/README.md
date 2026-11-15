@@ -121,10 +121,12 @@ workbooks), served at `/maps/klr`, in the same cache:
 ## Regression logs in LOAD LOG
 
 With the bridge running, the dashboard's **LOAD LOG** window lists the
-`.dash.log` files in `$DMEKLR_TMP/dme_klr/v_dash_logs` (`v_run_dashboard_tests.sh`)
-and `dash_logs` (`run_dashboard_tests.sh`), newest first; type in the filter box
+`.dash.log` files in each ROM pair's folder, `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs`
+(`v_run_dashboard_tests.sh`) and `dash_logs` (`run_dashboard_tests.sh`) (`logdirs.mjs`),
+newest first; type in the filter box
 to narrow it and click one to open it. The bridge serves them at `GET /logs`
-(the list) and `GET /logs/<dir>/<name>.dash.log`, and nothing else from those
+(the list) and `GET /logs/<rom>/<dir>/<name>.dash.log` (`GET /logs/<dir>/<name>.dash.log`
+for the folders from before the per-ROM ones), and nothing else from those
 folders. Without the bridge, **BROWSE…** and drag-and-drop still open any
 `.dash.log`.
 

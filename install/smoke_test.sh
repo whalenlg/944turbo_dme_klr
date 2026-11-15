@@ -83,7 +83,7 @@ for t in "${TESTS[@]}"; do
     warm_idle_5s)
         printf '\n%s==> Smoke test: warm_idle_5s (Verilator compile + 5 s simulated; a few minutes)%s\n' "$bold" "$nc"
         echo "+ dme_klr/v_run_dashboard_tests.sh warm_idle_5s   (log: $log)"
-        dash="$DMEKLR_TMP/dme_klr/v_dash_logs/warm_idle_5s.dash.log"
+        dash="${DMEKLR_LOGS:-$DMEKLR_TMP/dme_klr/89}/v_dash_logs/warm_idle_5s.dash.log"
         rm -f "$dash"   # so an old run's log can't pass for this one
         (cd "$REPO_DIR/dme_klr" && ./v_run_dashboard_tests.sh warm_idle_5s) > "$log" 2>&1
         rc=$?

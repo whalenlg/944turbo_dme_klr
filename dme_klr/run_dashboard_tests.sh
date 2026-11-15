@@ -17,10 +17,10 @@
 #  interval override): --DME_DEBUG --DME_DEEP_DEBUG --KLR_DEBUG
 #  Added on top of whatever the named test already compiles with.
 #
-#  Output: $DMEKLR_TMP/dme_klr/dash_logs/<test>.log.gz    (full sim output, gzipped)
+#  Output: $DMEKLR_LOGS/dash_logs/<test>.log.gz    (full sim output, gzipped)
 #                                               <test>.dash.log  (DS + PHASE — load this into dashboard)
-#          $DMEKLR_TMP/dme_klr/dash_logs/vcd/<test>.vcd.gz
-#          $DMEKLR_TMP/dme_klr/dash_logs/hex/<test>/{rom,ram}_out.hex
+#          $DMEKLR_LOGS/dash_logs/vcd/<test>.vcd.gz
+#          $DMEKLR_LOGS/dash_logs/hex/<test>/{rom,ram}_out.hex
 #
 #  DASH_INTERVAL_MS: snapshot interval in simulated ms (default 100).
 #  Smaller = more dashboard resolution, larger log files.
@@ -51,7 +51,7 @@ if [ "$1" = "--vcd" ]; then VCD_ENABLE=1; shift; fi
 mkdir -p "$DMEKLR_TMP/dme_klr"
 VVP_DIR="$DMEKLR_TMP/dme_klr"
 IVDIR="$VVP_DIR/iverilog_vvp"   # iverilog compile artifacts (.vvp)
-LOGDIR="$VVP_DIR/dash_logs"
+LOGDIR="$DMEKLR_LOGS/dash_logs"   # this ROM pair's folder (paths.sh)
 VCDDIR="$LOGDIR/vcd"
 VCD_ENABLE="${VCD_ENABLE:-0}"  # set to 1 or pass --vcd to enable VCD output
 FSTDIR="$LOGDIR/fst"

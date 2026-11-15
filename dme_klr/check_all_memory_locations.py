@@ -25,8 +25,8 @@ Examples:
     python3 check_all_memory_locations.py dash_logs v_dash_logs
 
 Defaults to both the iverilog and Verilator log directories:
-    $DMEKLR_TMP/dme_klr/dash_logs
-    $DMEKLR_TMP/dme_klr/v_dash_logs
+    $DMEKLR_TMP/dme_klr/<rom>/dash_logs
+    $DMEKLR_TMP/dme_klr/<rom>/v_dash_logs
 """
 import sys
 import argparse

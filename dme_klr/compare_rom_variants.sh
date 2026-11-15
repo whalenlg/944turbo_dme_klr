@@ -4,13 +4,12 @@
 #  back and diff their PASS/WARN/FAIL results.
 #
 #  run86.sh / run89.sh / run_carpokes.sh (and run_all.sh underneath them)
-#  all write to the same fixed output paths (tmp/dme_klr/dash_logs,
-#  tmp/dme_klr/v_dash_logs) regardless of which ROM ran, so running them
-#  back to back silently overwrites the previous variant's results. This
-#  script archives each variant's validation.log/parallel_summary.log/
-#  per-test *.log files to its own directory right after that variant's
-#  run finishes, then diffs the archived validation.log files across
-#  variants so you can see at a glance which tests changed verdict.
+#  each write to their ROM pair's own log folder (paths.sh):
+#    tmp/dme_klr/<variant>/dash_logs/     (iverilog)
+#    tmp/dme_klr/<variant>/v_dash_logs/   (Verilator)
+#  so running them back to back keeps every variant's results. This script
+#  runs the variants it is given, then diffs their validation.log files so
+#  you can see at a glance which tests changed verdict.
 #
 #  Usage:
 #    ./compare_rom_variants.sh [--variants v1,v2,...] [--diff-only] [run_all.sh args...]
@@ -19,40 +18,31 @@
 #    ./compare_rom_variants.sh                    # 86,89,carpokes; both simulators
 #    ./compare_rom_variants.sh --iverilog 4        # iverilog only, 4 workers
 #    ./compare_rom_variants.sh --variants 86,89    # just those two
-#    ./compare_rom_variants.sh --diff-only         # re-diff archived results, no sims
+#    ./compare_rom_variants.sh --diff-only         # re-diff the logs there are, no sims
 #    ./compare_rom_variants.sh --help              # this text
 #
 #  --variants takes a comma-separated subset of: 86 89 carpokes (default:
-#  86,89,carpokes). Any other arguments are forwarded verbatim to
-#  run_all.sh for every variant run — e.g. --verilator, --iverilog, a
-#  worker count — so all variants are compared under identical conditions.
+#  86,89,carpokes); with --diff-only any other ROM pair's folder name
+#  (tmp/dme_klr/<DME>+<KLR>) works too. Any other arguments are forwarded
+#  verbatim to run_all.sh for every variant run — e.g. --verilator,
+#  --iverilog, a worker count — so all variants are compared under
+#  identical conditions.
 #
-#  --diff-only skips the simulation runs and archiving and just rebuilds
-#  the diff tables from what is already under tmp/dme_klr/rom_compare/
-#  (run_all.sh args are ignored in that mode, except --verilator /
-#  --iverilog, which pick which side is diffed — as they do for a full run).
+#  --diff-only skips the simulation runs and just rebuilds the diff tables
+#  from the variants' log folders as they are (run_all.sh args are ignored
+#  in that mode, except --verilator / --iverilog, which pick which side is
+#  diffed — as they do for a full run).
 #
 #  NOTE: run_all.sh itself starts with `git checkout main && git pull
 #  origin main`, so this runs that once per variant.
 #
-#  Archived per-variant results land in:
-#    tmp/dme_klr/rom_compare/<variant>/dash_logs/*.log     (iverilog)
-#    tmp/dme_klr/rom_compare/<variant>/v_dash_logs/*.log   (Verilator)
-#  (validation.log, parallel_summary.log, and every per-test *.log/
-#  *.dash.log — vcd/hex/compiled-binary artifacts are NOT archived, to
-#  keep this lightweight; re-run a single variant if you need those for
-#  a specific test.)
-#
-#  A side is archived only if that variant's run wrote a fresh
-#  validation.log for it (newer than the run's start); otherwise the
-#  existing archive is left untouched — so a run that died early, or
-#  only printed usage, can't overwrite good results with stale logs.
-#  When a side is archived, the archive it replaces is kept as
-#  rom_compare/<variant>/<side>.prev/ (one generation).
+#  A variant whose run left no new validation.log for a side (it died
+#  early, or only printed usage) is still diffed from its older one, with
+#  a warning naming it, so the table never mixes them up silently.
 #
 #  Diff tables are written to:
-#    tmp/dme_klr/rom_compare/diff_dash_logs.log     (iverilog)
-#    tmp/dme_klr/rom_compare/diff_v_dash_logs.log   (Verilator)
+#    tmp/dme_klr/rom_diff_dash_logs.log     (iverilog)
+#    tmp/dme_klr/rom_diff_v_dash_logs.log   (Verilator)
 # =============================================================================
 set -uo pipefail
 
@@ -77,8 +67,8 @@ done
 source "$SCRIPT_DIR/../paths.sh"   # DMEKLR_REPO, DMEKLR_TMP
 mkdir -p "$DMEKLR_TMP/dme_klr"
 _BASE="$DMEKLR_TMP/dme_klr"
-COMPARE_DIR="$_BASE/rom_compare"
-mkdir -p "$COMPARE_DIR"
+STAMP="$(mktemp)"   # the start of this script: logs older than it are from before
+trap 'rm -f "$STAMP"' EXIT
 
 ALL_VARIANTS=(86 89 carpokes)
 VARIANTS=()
@@ -102,10 +92,10 @@ while [ $# -gt 0 ]; do
 done
 [ ${#VARIANTS[@]} -eq 0 ] && VARIANTS=("${ALL_VARIANTS[@]}")
 
-# Which simulator side(s) to archive and diff — same rule as run_all.sh:
+# Which simulator side(s) to diff — same rule as run_all.sh:
 # --verilator / --iverilog restrict it, neither (or both) means both.
-# Without this, a --verilator run would still archive and diff whatever
-# stale dash_logs an earlier iverilog run left behind.
+# Without this, a --verilator run would still diff whatever stale
+# dash_logs an earlier iverilog run left behind.
 _want_v=0; _want_iv=0
 for _a in ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}; do
     case "$_a" in
@@ -129,7 +119,7 @@ variant_script() {
 
 echo "== compare_rom_variants: ${VARIANTS[*]} =="
 
-[ "$DIFF_ONLY" = "1" ] && echo "   (--diff-only: using archived results in $COMPARE_DIR, no sims run)"
+[ "$DIFF_ONLY" = "1" ] && echo "   (--diff-only: using the logs in $_BASE/<variant>/, no sims run)"
 
 for v in "${VARIANTS[@]}"; do
     [ "$DIFF_ONLY" = "1" ] && break
@@ -143,39 +133,22 @@ for v in "${VARIANTS[@]}"; do
     # ${arr[@]+...} form: bash 3.2 (macOS /bin/bash) treats an empty array
     # expansion as unbound under `set -u`, so guard it.
     echo "== Running $v (${script##*/}${RUN_ALL_ARGS[@]+ ${RUN_ALL_ARGS[*]}}) =="
-    # Stamp the start of this variant's run: a side is archived only if
-    # its validation.log is newer than this, i.e. this run produced it.
-    stamp="$COMPARE_DIR/.run_start_$v"
-    touch "$stamp"
     "$script" ${RUN_ALL_ARGS[@]+"${RUN_ALL_ARGS[@]}"}
     rc=$?
-
-    dest="$COMPARE_DIR/$v"
     for sim_dir in "${SIM_DIRS[@]}"; do
-        if [ ! -f "$_BASE/$sim_dir/validation.log" ] || \
-           [ ! "$_BASE/$sim_dir/validation.log" -nt "$stamp" ]; then
-            echo "  NOT archiving $sim_dir: no new validation.log from this run" \
-                 "(exit $rc) — keeping rom_compare/$v/$sim_dir/ as it was" >&2
-            continue
-        fi
-        echo "  archiving $sim_dir/*.log -> rom_compare/$v/$sim_dir/"
-        if [ -d "$dest/$sim_dir" ]; then
-            rm -rf "$dest/$sim_dir.prev"
-            mv "$dest/$sim_dir" "$dest/$sim_dir.prev"
-        fi
-        mkdir -p "$dest/$sim_dir"
-        cp "$_BASE/$sim_dir"/*.log "$dest/$sim_dir/" 2>/dev/null || true
+        f="$_BASE/$v/$sim_dir/validation.log"
+        [ -f "$f" ] && [ "$f" -nt "$STAMP" ] || \
+            echo "  WARNING: $v/$sim_dir: no new validation.log from this run (exit $rc); the diff uses the older one, if any" >&2
     done
-    rm -f "$stamp"
 done
 
 # ── Diff table per simulator side ────────────────────────────────────────
 diff_side() {
     local sim_dir="$1" label="$2"
-    local out="$COMPARE_DIR/diff_${sim_dir}.log"
+    local out="$_BASE/rom_diff_${sim_dir}.log"
     local -a present=()
     for v in "${VARIANTS[@]}"; do
-        [ -f "$COMPARE_DIR/$v/$sim_dir/validation.log" ] && present+=("$v")
+        [ -f "$_BASE/$v/$sim_dir/validation.log" ] && present+=("$v")
     done
     if [ ${#present[@]} -lt 2 ]; then
         echo ""
@@ -185,7 +158,7 @@ diff_side() {
 
     echo ""
     echo "== $label diff (${present[*]}) — writing $out =="
-    python3 - "$out" "$COMPARE_DIR" "$sim_dir" "${present[@]}" <<'PYEOF'
+    python3 - "$out" "$_BASE" "$sim_dir" "${present[@]}" <<'PYEOF'
 import sys
 
 out_path, compare_dir, sim_dir = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -232,4 +205,4 @@ PYEOF
 [ "$_want_v"  = "1" ] && diff_side v_dash_logs "Verilator"
 
 echo ""
-echo "== compare_rom_variants complete — results in $COMPARE_DIR =="
+echo "== compare_rom_variants complete — logs in $_BASE/<variant>/, diffs in $_BASE/rom_diff_*.log =="

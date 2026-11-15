@@ -975,7 +975,7 @@ def main():
     parser.add_argument('--plot-dir', default=str(IV_LOGS),
                          metavar='DIR',
                          help='Directory to write --plot JPEGs into (created if missing). '
-                              'Default: $DMEKLR_TMP/dme_klr/dash_logs')
+                              'Default: $DMEKLR_TMP/dme_klr/<rom>/dash_logs')
     parser.add_argument('--open', dest='open_plot', action='store_true',
                          help='After --plot writes the JPEGs, open them in macOS Preview.')
     parser.add_argument('--list-fields', action='store_true',

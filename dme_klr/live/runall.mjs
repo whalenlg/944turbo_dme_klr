@@ -9,7 +9,12 @@
 //                       package's prebuilt Verilator simulators; there
 //                       is no iverilog in the package)
 //
-//    GET  /runall         {mode, platform, tart, cpus, groups, manual, ivDisk, roms, run}
+//    GET  /runall         {mode, platform, tart, cpus, groups, manual, ivDisk, roms,
+//                         romFolders, run}
+//                         romFolders: the ROM pairs' log folders there are
+//                         ($DMEKLR_TMP/dme_klr/<rom>: 89, 86, carpokes,
+//                         <DME>+<KLR>; logdirs.mjs); run.rom / run.logs:
+//                         the folder the run writes in (its ROM pair's)
 //                         groups: the tests in the manuals' Appendix A
 //                         groups (test_groups.json), each with its
 //                         simulated length and the anchor of its section
@@ -33,9 +38,11 @@
 //                         (run86.sh, run_carpokes.sh); default the 1989
 //                         ones. GET /runall lists them (bin_images/<cpu>
 //                         and the uploaded ones) and the named pairs
-//    GET  /runall/fqs     {exit, at, iv_dir, vl_dir, text}: fqs_analysis.py
-//                         (run_all.sh step 5) on the dash logs as they are
-//                         now, iverilog and Verilator (developer install)
+//    GET  /runall/fqs[?rom=<folder>|?dme=<image>&klr=<image>]
+//                         {exit, at, rom, iv_dir, vl_dir, text}: fqs_analysis.py
+//                         (run_all.sh step 5) on one ROM pair's dash logs as
+//                         they are now (default the 1989 pair's), iverilog
+//                         and Verilator (developer install)
 //    POST /runall/stop    stop the run and every test it started
 //    GET  /runall/diff?test=<name>&ecu=DME|KLR
 //                         the run's step 5 plot of where that test's
@@ -78,6 +85,7 @@ import { cpus } from 'node:os';
 import { dirname, join } from 'node:path';
 import { softwareVersion } from './regress_host.mjs';
 import { createInterface } from 'node:readline';
+import { romVariant, romVariants, logsDir } from './logdirs.mjs';
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 const NAME = /^[A-Za-z0-9_]+$/;
@@ -261,7 +269,6 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     const interval = Math.min(10000, Math.max(1, Math.floor(+o.interval_ms || 100)));
     const simMs = MODE === 'lite' && +o.sim_ms > 0 ? Math.floor(+o.sim_ms) : null;
     const simS = n => simMs ? Math.min(simMs / 1000, cat.len[n] ?? 40) : (cat.len[n] ?? 40);
-    const logs = d => join(TMP_ROOT, 'dme_klr', d);
     // The ROM images: by name, from the bridge's list only
     const roms = {};
     for (const cpu of ['dme', 'klr']) {
@@ -270,6 +277,9 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (!img) return [400, `no ${cpu.toUpperCase()} image ${name}`];
       roms[cpu] = img;
     }
+    // the runs write in that pair's folder, $DMEKLR_TMP/dme_klr/<rom> (paths.sh)
+    const rom = romVariant(roms.dme.name, roms.klr.name);
+    const logs = d => join(logsDir(TMP_ROOT, rom), d);
     let cmd, args, cwd, steps, suites;
     const env = { ...process.env, DASH_INTERVAL_MS: String(interval), DMEKLR_TMP: TMP_ROOT, PYTHONUNBUFFERED: '1' };
     for (const cpu of ['dme', 'klr']) {
@@ -336,7 +346,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       env.DMEKLR_REGRESS_HOSTS = f;
     } else delete env.DMEKLR_REGRESS_HOSTS;
     run = {
-      id: Date.now().toString(36), mode: MODE, startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
+      id: Date.now().toString(36), mode: MODE, rom, logs: logsDir(TMP_ROOT, rom),
+      startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
       command: [MODE === 'dev' ? 'run_all.sh' : 'run_tests.py', ...args.slice(1)].join(' '),
       opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
               roms: { dme: roms.dme.name, klr: roms.klr.name },
@@ -549,7 +560,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       return { ...s, verdict: su.counts.FAIL ? 'FAIL' : su.counts.WARN ? 'WARN' : 'PASS' };
     });
     return {
-      id: run.id, mode: run.mode, command: run.command, opts: run.opts,
+      id: run.id, mode: run.mode, rom: run.rom, logs: run.logs, command: run.command, opts: run.opts,
       startedAt: run.startedAt, endedAt: run.endedAt, exit: run.exit, stopping: run.stopping, running: !!proc,
       elapsed_s: (now - run.startedAt) / 1000, done_s: done, total_s: total,
       eta_s: proc && rate ? (total - done) / rate : null,
@@ -576,7 +587,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       // iv_disk_usage.sh (the panel estimates each picked test's from it)
       const ivDisk = MODE === 'dev' ? readJson(join(DMEKLR, 'iv_disk_rates.json')) : null;
       return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual, ivDisk,
-                         roms: { images: imgs, presets, default: DEFAULT_ROM }, run: view(),
+                         roms: { images: imgs, presets, default: DEFAULT_ROM }, romFolders: romVariants(TMP_ROOT), run: view(),
                          hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST) }), true;
     }
     if (req.method === 'GET' && url.pathname === '/runall/fqs') {
@@ -584,7 +595,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       // dash logs as they are now, iverilog and Verilator, for the panel's
       // FQS ANALYSIS view
       if (MODE !== 'dev') return text(404, 'the FQS analysis is in the developer install only'), true;
-      const iv = join(TMP_ROOT, 'dme_klr', 'dash_logs'), vl = join(TMP_ROOT, 'dme_klr', 'v_dash_logs');
+      // of one ROM pair's folder: ?rom=<folder> (GET /runall's romFolders),
+      // or ?dme=<image>&klr=<image>; default the 1989 pair's
+      const q = url.searchParams;
+      const rom = q.get('rom') ?? romVariant(q.get('dme'), q.get('klr'));
+      if (!/^[\w.+-]+$/.test(rom) || rom.startsWith('.')) return text(400, 'not a ROM folder'), true;
+      const iv = join(logsDir(TMP_ROOT, rom), 'dash_logs'), vl = join(logsDir(TMP_ROOT, rom), 'v_dash_logs');
       const p = spawn(PY, [join(DMEKLR, 'fqs_analysis.py'), '--iv-dir', iv, '--vl-dir', vl],
                       { cwd: DMEKLR, env: { ...process.env, DMEKLR_TMP: TMP_ROOT, PYTHONIOENCODING: 'utf-8' } });
       const out = [];
@@ -594,7 +610,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       p.on('error', e => { clearTimeout(timer); json(500, { error: `couldn't run fqs_analysis.py: ${e.message}` }); });
       p.on('close', code => {
         clearTimeout(timer);
-        json(200, { exit: code, at: Date.now(), iv_dir: iv, vl_dir: vl,
+        json(200, { exit: code, at: Date.now(), rom, iv_dir: iv, vl_dir: vl,
                     text: Buffer.concat(out).toString('utf8').replace(ANSI, '') });
       });
       return true;
@@ -603,7 +619,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       // a step 5 plot this run made (only those: the name comes from run.diffs)
       const t = url.searchParams.get('test') ?? '', ecu = url.searchParams.get('ecu') ?? '';
       if (!run?.diffs?.[t]?.includes(ecu)) return text(404, 'no such plot in this run'), true;
-      const f = join(TMP_ROOT, 'dme_klr', 'dash_logs', `${t}_${ecu}_diff.jpg`);
+      const f = join(run.logs, 'dash_logs', `${t}_${ecu}_diff.jpg`);
       let data;
       try { data = readFileSync(f); } catch { return text(404, `${f} is gone`), true; }
       res.writeHead(200, { ...CORS, 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });

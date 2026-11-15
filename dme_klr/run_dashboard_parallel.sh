@@ -210,7 +210,7 @@ if [ -z "$1" ] || ! [[ "$1" =~ ^[1-8]$ ]]; then
 fi
 
 # Set LOGDIR based on simulator
-LOGDIR="$_BASE/$( [ "$USE_VERILATOR" = "1" ] && echo v_dash_logs || echo dash_logs )"
+LOGDIR="$DMEKLR_LOGS/$( [ "$USE_VERILATOR" = "1" ] && echo v_dash_logs || echo dash_logs )"   # this ROM pair's folder
 
 WORKERS="$1"; shift
 if [ $# -gt 0 ]; then
