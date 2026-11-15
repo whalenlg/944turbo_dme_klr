@@ -23,6 +23,8 @@
 //                         'KLR_DEBUG']} (that test in the iverilog suite,
 //                         built on its own, always here),
 //                         useHosts (false: no regression hosts),
+//                         plot (false: run_all.sh --no-plot, no step 5
+//                         difference plots),
 //                         interval_ms, sim_ms (lite), tests: [names]
 //                         (none or every test = the whole suite),
 //                         roms: {dme: <file.mem>, klr: <file.mem>}}
@@ -35,6 +37,12 @@
 //                         (run_all.sh step 5) on the dash logs as they are
 //                         now, iverilog and Verilator (developer install)
 //    POST /runall/stop    stop the run and every test it started
+//    GET  /runall/diff?test=<name>&ecu=DME|KLR
+//                         the run's step 5 plot of where that test's
+//                         iverilog and Verilator logs differ
+//                         (compare_sim_logs.py --plot, a JPEG in the
+//                         iverilog dash_logs); run.diffs lists them as
+//                         {<test>: ['DME', 'KLR']}
 //
 //  Progress is simulated time: a running test's share is the newest
 //  "t=<ms> ms" or "[DS] <ms>," in its log against the test's length,
@@ -278,6 +286,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       if (o.perTestBuild) args.push('--per-test-build');
       args.push('--macos-test', macos);
       if (o.pull === false) args.push('--no-pull');
+      if (o.plot === false) args.push('--no-plot');
       // iverilog debug output, per test (step 4 only; each builds on its
       // own and stays on this machine): {test: ['DME_DEBUG', ...]}
       if (sims.includes('iverilog') && o.debug && typeof o.debug === 'object' && !Array.isArray(o.debug)) {
@@ -332,7 +341,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
               roms: { dme: roms.dme.name, klr: roms.klr.name },
               hosts: useHosts.map(h => ({ name: h.id, threads: h.threads })) },
-      steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes],
+      steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes], diffs: {},
     };
     if (MODE === 'lite') { steps[0].state = 'running'; suites.vl.startedAt = Date.now(); }
     console.log(`bridge: RUN REGRESSIONS: ${run.command}  (DME ${roms.dme.name}, KLR ${roms.klr.name})`);
@@ -377,6 +386,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     if (r.mode === 'dev' && /^\s*SUMMARY\s*$/.test(line)) {
       for (const s of r.steps) if (s.state === 'running') s.state = 'done';
       r.cur = 0;
+      return;
+    }
+    // step 5's difference plots (compare_sim_logs.py --plot)
+    if (r.mode === 'dev' && (m = line.match(/^(DME|KLR) plot written to .*?([A-Za-z0-9_]+)_(DME|KLR)_diff\.jpg\b/)) && m[1] === m[3]) {
+      const l = (r.diffs[m[2]] ??= []);
+      if (!l.includes(m[1])) l.push(m[1]);
       return;
     }
     const step = r.steps[r.cur - 1];
@@ -521,7 +536,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       startedAt: run.startedAt, endedAt: run.endedAt, exit: run.exit, stopping: run.stopping, running: !!proc,
       elapsed_s: (now - run.startedAt) / 1000, done_s: done, total_s: total,
       eta_s: proc && rate ? (total - done) / rate : null,
-      steps, cur: run.cur, suites, out: run.out,
+      steps, cur: run.cur, suites, out: run.out, diffs: run.diffs,
     };
   }
 
@@ -565,6 +580,17 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
         json(200, { exit: code, at: Date.now(), iv_dir: iv, vl_dir: vl,
                     text: Buffer.concat(out).toString('utf8').replace(ANSI, '') });
       });
+      return true;
+    }
+    if (req.method === 'GET' && url.pathname === '/runall/diff') {
+      // a step 5 plot this run made (only those: the name comes from run.diffs)
+      const t = url.searchParams.get('test') ?? '', ecu = url.searchParams.get('ecu') ?? '';
+      if (!run?.diffs?.[t]?.includes(ecu)) return text(404, 'no such plot in this run'), true;
+      const f = join(TMP_ROOT, 'dme_klr', 'dash_logs', `${t}_${ecu}_diff.jpg`);
+      let data;
+      try { data = readFileSync(f); } catch { return text(404, `${f} is gone`), true; }
+      res.writeHead(200, { ...CORS, 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });
+      res.end(data);
       return true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;

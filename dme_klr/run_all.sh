@@ -9,7 +9,7 @@
 #                 [--macos-test install|lite|both|none] [--no-pull]
 #                 [--tests "NAME|GROUP ..."] [--DME_DEBUG] [--DME_DEEP_DEBUG]
 #                 [--KLR_DEBUG] [--test-debug=TEST:FLAG[+FLAG] ...]
-#                 [workers 1-8, default 8]
+#                 [--no-plot] [workers 1-8, default 8]
 #    ./run_all.sh --help
 #
 #  --tests runs only those dashboard tests (names, or the group names
@@ -20,6 +20,10 @@
 #  every test stays on this machine (no regression hosts; large dumps).
 #  --test-debug=TEST:DME_DEBUG+KLR_DEBUG does that for one test only
 #  (repeatable; the dashboard panel's per-test switches).
+#  Step 5 plots each test whose iverilog and Verilator logs differ
+#  (compare_sim_logs.py --plot: <test>_DME_diff.jpg / <test>_KLR_diff.jpg
+#  in the iverilog dash_logs); --no-plot skips the plots (the panel's
+#  Plot Differences box off).
 #  The dashboard's RUN REGRESSIONS panel (live/runall.mjs) runs this script.
 #
 #  By default runs both the Verilator and iverilog dashboard suites (and the
@@ -44,12 +48,13 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,35s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,39s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
 MACOS_TEST=both
 SUITE_TESTS=()
 PULL=1
 IV_DEBUG=()
+PLOT=1
 _next=""
 for arg in "$@"; do
     if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
@@ -59,6 +64,8 @@ for arg in "$@"; do
         --tests) _next=tests ;;
         --tests=*) read -r -a SUITE_TESTS <<< "${arg#*=}" ;;
         --no-pull) PULL=0 ;;
+        --no-plot) PLOT=0 ;;
+        --plot) PLOT=1 ;;
         --macos-test=*) MACOS_TEST="${arg#*=}" ;;
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
@@ -233,24 +240,28 @@ log "Generating detailed compare_sim_logs.py reports for differing tests ..."
 IV_DASH_DIR="$DMEKLR_TMP/dme_klr/dash_logs"
 VL_DASH_DIR="$DMEKLR_TMP/dme_klr/v_dash_logs"
 DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$RUNLOG/compare.log" | sort -u)
+PLOT_OPT=(--plot --plot-dir "$IV_DASH_DIR")
+[ "$PLOT" = 1 ] || { PLOT_OPT=(); log "No plots (--no-plot)"; }
 if [ -n "$DIFF_TESTS" ]; then
     > "$RUNLOG/compare_detail.log"
     for t in $DIFF_TESTS; do
         iv_log="$IV_DASH_DIR/${t}.dash.log"
         vl_log="$VL_DASH_DIR/${t}.dash.log"
         if [ -f "$iv_log" ] && [ -f "$vl_log" ]; then
+            # an older run's plot of this test must not stand for this one
+            [ "$PLOT" = 1 ] && rm -f "$IV_DASH_DIR/${t}_DME_diff.jpg" "$IV_DASH_DIR/${t}_KLR_diff.jpg"
             log "  compare_sim_logs.py: $t"
             {
                 echo "===== $t ====="
                 python3 "$DME_KLR/compare_sim_logs.py" --dash "$iv_log" "$vl_log" "$t" \
-                    -v --plot --plot-dir "$IV_DASH_DIR"
+                    -v ${PLOT_OPT[@]+"${PLOT_OPT[@]}"}
                 echo ""
             } 2>&1 | tee -a "$RUNLOG/compare_detail.log"
         else
             warn "  skipping $t (log file missing: $iv_log or $vl_log)"
         fi
     done
-    log "Per-test detail: $RUNLOG/compare_detail.log   Plots: $IV_DASH_DIR"
+    log "Per-test detail: $RUNLOG/compare_detail.log${PLOT_OPT[0]+   Plots: $IV_DASH_DIR}"
 else
     log "No differing tests — skipping detailed compare_sim_logs.py reports"
 fi
