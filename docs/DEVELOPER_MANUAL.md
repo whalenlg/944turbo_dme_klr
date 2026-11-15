@@ -502,7 +502,7 @@ images when a test runs. Logs from before the per-ROM folders stay in
 | `dme_klr/<rom>/v_dash_logs/` | `v_run_dashboard_tests.sh` (Verilator) |
 | `dme_klr/<rom>/replay/{v_,}dash_logs/` | `replay/run_replay.sh` |
 | `dme_klr/iverilog_vvp/`, `dme_klr/runtime_iv/`, and the Verilator builds | the two runners and `run_dashboard_parallel.sh` (shared by every ROM pair) |
-| `dme_klr/rom_diff_{v_,}dash_logs.log` | `compare_rom_variants.sh`, the verdicts of each ROM pair's folder side by side |
+| `dme_klr/rom_diff_{v_,}dash_logs.log` | `compare_rom_variants.sh`: the verdicts of each ROM pair's folder side by side, then each test's `.dash.log` values compared with the first pair's (`compare_rom_dash.py`: the fields that differ most and by how much) |
 | `dme_klr/snapshots/`, `dme_klr/map_graphs/` | the live bridge (`--snapdir` / `--mapcache` override each) |
 | `klr/`, `dme/` | the i8048 and i8051 CPU regressions |
 | `run_all/` | `run_all.sh`'s own step logs |
