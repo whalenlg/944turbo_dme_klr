@@ -246,12 +246,18 @@ host_jobs_left() {  # job folders left on the host (VM only)
     [ -n "$IP" ] || { echo "?"; return; }
     vm_ssh 'ls -A $HOME/regress-host-tmp/dme_klr/remote_jobs 2>/dev/null | wc -l | tr -d " "' </dev/null
 }
+# The tests that ran on the host: their last [START] there, not requeued
+# after it (a requeued test runs again here, so it doesn't count)
+host_tests() {  # host_tests <log>
+    awk '/\[START\]/ { last[$2] = ($3 == "@host") } /\[REQUEUE\]/ { last[$2] = 0 }
+         END { for (t in last) if (last[t]) print t }' "$1"
+}
 # check_run <name> <log> <logdir> : every test validated here, some on the host
 check_run() {
     local name="$1" log="$2" dir="$3" n_tests n_done n_remote missing="" t
     n_tests=$(echo $TESTS | wc -w | tr -d ' ')
     n_done=$(grep -cE $'^(PASS|WARN|FAIL)\t' "$dir/validation.log" 2>/dev/null); n_done=${n_done:-0}
-    n_remote=$(grep -c '\[START\].*@host' "$log")
+    n_remote=$(host_tests "$log" | wc -l | tr -d ' ')
     for t in $TESTS; do
         [ -s "$dir/$t.dash.log" ] && [ -s "$dir/$t.log.gz" ] || missing="$missing $t"
     done
@@ -281,7 +287,7 @@ else
     run_suite 3_iverilog.log
     check_run "3a. iverilog tests shared" "$OUT/3_iverilog.log" "$LTMP/dme_klr/$ROMV/dash_logs"
     nofst=""; nr=0
-    for t in $(grep '\[START\].*@host' "$OUT/3_iverilog.log" | awk '{print $2}'); do
+    for t in $(host_tests "$OUT/3_iverilog.log"); do
         nr=$((nr + 1)); [ -s "$LTMP/dme_klr/$ROMV/dash_logs/fst/$t.fst" ] || nofst="$nofst $t"
     done
     [ "$nr" -gt 0 ] && [ -z "$nofst" ]
