@@ -424,9 +424,10 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     r.out.push(line);
     if (r.out.length > MAX_OUT) r.out.splice(0, r.out.length - MAX_OUT);
     let m;
-    // run_all.sh runs both suites at the same time when all their tests fit
-    // the workers: "3+4/6" starts both steps, and each suite's lines (and its
-    // verdict) then start with [VL] / [IV]
+    // run_all.sh runs every suite at the same time (both simulators, several
+    // ROM pairs), sharing the workers: "3+4/6" starts both steps, and each
+    // suite's lines (and its verdict) then start with [VL] / [IV], or
+    // [VL:<rom>] / [IV:<rom>]
     if (r.mode === 'dev' && /^\s*3\+4\/6\s+\S/.test(line)) {
       for (const s of r.steps) if (s.state === 'running') s.state = 'done';
       r.cur = 3;

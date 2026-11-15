@@ -326,7 +326,7 @@ validate_one() {
 COMPLETED=0
 declare -a SIM_FAILED=()
 declare -a SLOT_HOST=() SLOT_PID=() SLOT_TEST=()
-declare -a H_NAME=() H_URL=() H_TOKEN=() H_OFF=()
+declare -a H_NAME=() H_URL=() H_TOKEN=() H_OFF=() H_THREADS=()
 for ((i = 0; i < WORKERS; i++)); do SLOT_HOST+=(""); SLOT_PID+=(""); SLOT_TEST+=(""); done
 if [ -n "${DMEKLR_REGRESS_HOSTS:-}" ] && [ -f "$DMEKLR_REGRESS_HOSTS" ]; then
     if [ ${#EXTRA_FLAGS[@]} -gt 0 ] || [ "${VCD_ENABLE:-}" = "1" ]; then
@@ -335,7 +335,7 @@ if [ -n "${DMEKLR_REGRESS_HOSTS:-}" ] && [ -f "$DMEKLR_REGRESS_HOSTS" ]; then
         while IFS=$'\t' read -r _n _u _t _k; do
             [ -n "$_u" ] || continue
             _h=${#H_NAME[@]}
-            H_NAME+=("$_n"); H_URL+=("$_u"); H_TOKEN+=("$_t"); H_OFF+=(0)
+            H_NAME+=("$_n"); H_URL+=("$_u"); H_TOKEN+=("$_t"); H_OFF+=(0); H_THREADS+=("$_k")
             for ((i = 0; i < _k; i++)); do SLOT_HOST+=("$_h"); SLOT_PID+=(""); SLOT_TEST+=(""); done
             echo "Regression host: $_n, $_k thread(s)"
         done < <(python3 -c 'import json,sys
@@ -344,6 +344,30 @@ for h in json.load(open(sys.argv[1])):
     fi
 fi
 QUEUE=("${TESTS[@]}")
+
+# ── Threads shared with other suites (run_all.sh) ───────────────────────────
+# DMEKLR_SLOT_POOL=<dir>: run_all.sh starts several suites at once (both
+# simulators, several ROM pairs) and they share its workers: a test starts
+# only when it takes a token, an atomic mkdir of <dir>/local.<n> (n below
+# DMEKLR_SLOT_POOL_N) or, on a regression host, <dir>/h_<host>.<n> (n below
+# its threads), and gives it back when it ends. So a thread one suite frees
+# goes to whichever suite has a test waiting, instead of idling until that
+# suite's last long tests end.
+POOL="${DMEKLR_SLOT_POOL:-}"
+[ -n "$POOL" ] && [ -d "$POOL" ] || POOL=""
+declare -a SLOT_TOKEN=()
+for i in "${!SLOT_PID[@]}"; do SLOT_TOKEN+=(""); done
+pool_take() {  # pool_take <key> <count>: prints the token taken; 1 if none is free
+    local k
+    for ((k = 0; k < $2; k++)); do
+        mkdir "$POOL/$1.$k" 2>/dev/null && { echo "$POOL/$1.$k"; return 0; }
+    done
+    return 1
+}
+pool_give() {  # pool_give <slot>
+    [ -n "${SLOT_TOKEN[$1]}" ] && rmdir "${SLOT_TOKEN[$1]}" 2>/dev/null
+    SLOT_TOKEN[$1]=""
+}
 
 # Ctrl-C / kill: stop the running tests too. Background jobs in a script
 # ignore SIGINT, so without this they keep running after the runner is
@@ -363,7 +387,7 @@ on_interrupt() {
     trap - INT TERM
     echo ""
     echo "  Interrupted — stopping $(running_count) running test(s): ${SLOT_TEST[*]}"
-    for i in "${!SLOT_PID[@]}"; do [ -n "${SLOT_PID[$i]}" ] && kill_tree "${SLOT_PID[$i]}"; done
+    for i in "${!SLOT_PID[@]}"; do [ -n "${SLOT_PID[$i]}" ] && kill_tree "${SLOT_PID[$i]}"; pool_give "$i"; done
     exit 130
 }
 trap on_interrupt INT TERM
@@ -379,6 +403,7 @@ reap_finished() {
         name="${SLOT_TEST[$i]}"
         h="${SLOT_HOST[$i]}"
         SLOT_PID[$i]=""; SLOT_TEST[$i]=""
+        pool_give "$i"
         if [ -n "$h" ] && [ "$status" -eq 75 ]; then
             # the host couldn't take it or dropped: back in the queue
             H_OFF[$h]=1
@@ -437,6 +462,12 @@ while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
         if [ -n "$h" ]; then
             while [ $_qi -lt ${#QUEUE[@]} ] && [ -n "$(test_debug "${QUEUE[$_qi]}")" ]; do _qi=$((_qi + 1)); done
             [ $_qi -lt ${#QUEUE[@]} ] || continue
+        fi
+        # sharing threads with other suites: wait for a free one
+        if [ -n "$POOL" ]; then
+            if [ -z "$h" ]; then _tok=$(pool_take local "${DMEKLR_SLOT_POOL_N:-$WORKERS}") || continue
+            else _tok=$(pool_take "h_${H_NAME[$h]//[^A-Za-z0-9_.-]/_}" "${H_THREADS[$h]}") || continue; fi
+            SLOT_TOKEN[$i]="$_tok"
         fi
         test="${QUEUE[$_qi]}"
         QUEUE=(${QUEUE[@]+"${QUEUE[@]:0:$_qi}"} ${QUEUE[@]+"${QUEUE[@]:$((_qi + 1))}"})
