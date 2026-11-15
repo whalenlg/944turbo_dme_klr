@@ -30,6 +30,9 @@
 #  comparison + FQS analysis step that depends on both). Pass --verilator or
 #  --iverilog to run only that simulator's suite — the comparison/FQS step
 #  is skipped in that case, since it needs both sides' logs.
+#  When both run and all their tests fit the workers (2 x tests <= workers),
+#  the two suites run at the same time (step "3+4/6"), each with a worker
+#  per test and no regression hosts; their lines start with [VL] / [IV].
 #  Each suite builds the testbench once and runs every test on that build;
 #  --per-test-build builds every test on its own instead.
 #  Step 6 (macOS with Tart only) then tests the install in a clean macOS
@@ -48,7 +51,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,39s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,42s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
 MACOS_TEST=both
 SUITE_TESTS=()
@@ -116,10 +119,11 @@ trap 'rm -f "$RUN_MARKER"' EXIT
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
+PFX=""   # "[VL] " / "[IV] ": the suites' verdicts when they ran at the same time
 log()  { echo -e "${CYAN}[run_all]${NC} $*"; }
-ok()   { echo -e "${GREEN}  ✓ PASS${NC}  $*"; ((PASS++)); }
-warn() { echo -e "${YELLOW}  ⚠ WARN${NC}  $*"; ((WARN++)); }
-fail() { echo -e "${RED}  ✗ FAIL${NC}  $*"; ((FAIL++)); }
+ok()   { echo -e "${PFX}${GREEN}  ✓ PASS${NC}  $*"; ((PASS++)); }
+warn() { echo -e "${PFX}${YELLOW}  ⚠ WARN${NC}  $*"; ((WARN++)); }
+fail() { echo -e "${PFX}${RED}  ✗ FAIL${NC}  $*"; ((FAIL++)); }
 hdr()  { echo -e "\n${BOLD}══════════════════════════════════════════════════════${NC}"; \
           echo -e "${BOLD}  $*${NC}"; \
           echo -e "${BOLD}══════════════════════════════════════════════════════${NC}"; }
@@ -154,14 +158,20 @@ else
     fail "i8051 regression — ${FAILED:-?} test(s) FAILED (see $RUNLOG/run_dme_regression.log)"
 fi
 
-# ── 3. Verilator full suite ───────────────────────────────────────────────────
-hdr "3/6  Verilator Dashboard Test Suite"
-if [ "$RUN_VERILATOR" = "1" ]; then
+# ── 3-4. The Verilator and iverilog dashboard suites ──────────────────────────
+# Each suite's run and its verdict line. When both suites run and all their
+# tests together fit the workers (2 x tests <= workers), they run at the same
+# time, each with as many workers as it has tests and no regression hosts;
+# their output lines then start with [VL] / [IV] (live/runall.mjs reads them
+# so), and the step header is "3+4/6".
+vl_suite() {
     cd "$DME_KLR"
-    log "Running Verilator suite (--verilator --all) ..."
-    log "Running: bash run_dashboard_parallel.sh --verilator $WORKERS"
-    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/vl_suite.log"
+    log "Running Verilator suite (--verilator) ..."
+    log "Running: bash run_dashboard_parallel.sh --verilator $1"
+    bash run_dashboard_parallel.sh --verilator ${PT_OPT[@]+"${PT_OPT[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/vl_suite.log"
     log "Verilator test suite completed"
+}
+vl_verdict() {
     VL_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/v_dash_logs/parallel_summary.log"
     VL_SUMMARY=""
     [ "$VL_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
@@ -179,18 +189,15 @@ if [ "$RUN_VERILATOR" = "1" ]; then
     else
         fail "Verilator — PASS=${VL_PASS:-?} WARN=${VL_WARN:-?} FAIL=${VL_FAIL:-?} / ${VL_TOTAL:-?} tests"
     fi
-else
-    log "Skipped (--iverilog only)"
-fi
-
-# ── 4. iverilog full suite ────────────────────────────────────────────────────
-hdr "4/6  iverilog Dashboard Test Suite"
-if [ "$RUN_IVERILOG" = "1" ]; then
+}
+iv_suite() {
     cd "$DME_KLR"
-    log "Running iverilog suite (--all) ..."
-    log "Running: bash run_dashboard_parallel.sh $WORKERS ${IV_DEBUG[*]+${IV_DEBUG[*]}}"
-    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} ${IV_DEBUG[@]+"${IV_DEBUG[@]}"} "$WORKERS" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
+    log "Running iverilog suite ..."
+    log "Running: bash run_dashboard_parallel.sh $1 ${IV_DEBUG[*]+${IV_DEBUG[*]}}"
+    bash run_dashboard_parallel.sh ${PT_OPT[@]+"${PT_OPT[@]}"} ${IV_DEBUG[@]+"${IV_DEBUG[@]}"} "$1" ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>&1 | tee "$RUNLOG/iv_suite.log"
     log "iverilog test suite completed"
+}
+iv_verdict() {
     IV_SUMMARY_LOG="$DMEKLR_TMP/dme_klr/dash_logs/parallel_summary.log"
     IV_SUMMARY=""
     [ "$IV_SUMMARY_LOG" -nt "$RUN_MARKER" ] && \
@@ -208,8 +215,40 @@ if [ "$RUN_IVERILOG" = "1" ]; then
     else
         fail "iverilog  — PASS=${IV_PASS:-?} WARN=${IV_WARN:-?} FAIL=${IV_FAIL:-?} / ${IV_TOTAL:-?} tests"
     fi
+}
+# prefix <tag>: each line with "[tag] " as it comes (a read loop: awk may
+# read its input in blocks, holding the lines back until the suite ends)
+prefix() { local l; while IFS= read -r l || [ -n "$l" ]; do printf '[%s] %s\n' "$1" "$l"; done; }
+
+N_TESTS=$(cd "$DME_KLR" && bash run_dashboard_parallel.sh --count 1 ${SUITE_TESTS[@]+"${SUITE_TESTS[@]}"} 2>/dev/null)
+[[ "$N_TESTS" =~ ^[0-9]+$ ]] || N_TESTS=999
+if [ "$RUN_VERILATOR" = 1 ] && [ "$RUN_IVERILOG" = 1 ] && [ $((2 * N_TESTS)) -le "$WORKERS" ]; then
+    hdr "3+4/6  Verilator and iverilog Dashboard Test Suites, at the same time"
+    log "$N_TESTS test(s) per suite, $((2 * N_TESTS)) in all, fit the $WORKERS workers: both suites at once, $N_TESTS worker(s) each, here only"
+    ( unset DMEKLR_REGRESS_HOSTS; vl_suite "$N_TESTS" 2>&1 | prefix VL ) &
+    _vl_pid=$!
+    ( unset DMEKLR_REGRESS_HOSTS; iv_suite "$N_TESTS" 2>&1 | prefix IV ) &
+    _iv_pid=$!
+    wait $_vl_pid $_iv_pid
+    PFX="[VL] "; vl_verdict
+    PFX="[IV] "; iv_verdict
+    PFX=""
 else
-    log "Skipped (--verilator only)"
+    hdr "3/6  Verilator Dashboard Test Suite"
+    if [ "$RUN_VERILATOR" = "1" ]; then
+        vl_suite "$WORKERS"
+        vl_verdict
+    else
+        log "Skipped (--iverilog only)"
+    fi
+
+    hdr "4/6  iverilog Dashboard Test Suite"
+    if [ "$RUN_IVERILOG" = "1" ]; then
+        iv_suite "$WORKERS"
+        iv_verdict
+    else
+        log "Skipped (--verilator only)"
+    fi
 fi
 
 # ── 5. iverilog vs Verilator comparison ───────────────────────────────────────
