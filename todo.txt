@@ -1,37 +1,36 @@
+Fix replay compile
 
-KLR
-Cleanup rdata , wdata and addresses
-Fake WN, RN pulses.
+Resort button in code windows
 
+Add switch for t0?
 
-Cleanup debug messages, read and write cycles
+Test multi machine
 
-Others
+Got error loading a ref_sensor_stuck_low snapshot:
+building the shared test builds failed: %Error: 'make -C /Users/mike/coding_projects/944/DME_sim/dme_klr/live/obj/tests_rt/open -f Vdme_klr_dashboard_tb.mk -j 10' exited with 2 | %Error: Command Failed /opt/homebrew/Cellar/verilator/5.054/bin/verilator_bin --cc --exe --build --timing -j 0 -O3 --x-assign fast --x-initial fast --noassert -C
 
-Add zooms to the graphs in the GUI
+Scan logs looking for a bit set/cleared or memory address/value 
 
-Mystery of the 8a case (mem reference) - MOX?
+Code search should include label names as operands
 
-Fix the IGN out missing pulses
+Code window - click on. Label, move to that label
 
-Check for overboosts
+Change code resolution - 10ms
 
-Chec for overrpm
+Custom rom regression not appearing in dashboard 
 
-Check rpm limits (poke a smaller value?)
+Serial loop back
 
-Code 4-2 on 6k+ tests
+Add Idle Set Switch (ground to load signal)
+
+ROM Poke values
+
+Improve release process to include all logs
+
 
 Cylinder tracking in log files and signal in tb
 
-Fail tests for all inputs
-
-
 KLR
-Trigger
-IGN from DME
-
-
 Better analysis of CV_PWM & tie in to boost level 
 Better analysis of IdleCtrlValveOpen
 Check DME relay active
@@ -46,11 +45,6 @@ And knock and boost correction PHASE updates for KLR - report degrees an kpa's
 
 Changing ps from C9 eliminated fed code 1-1
 
-Add monitor to extract table lookups
-
-S/w emulator:
-
-Outputs - see page 1 of DME + KLR
 
 Diag LEDs & stream decode
 
