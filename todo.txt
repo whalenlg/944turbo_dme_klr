@@ -8,7 +8,7 @@ Test multi machine
 
 Got error loading a ref_sensor_stuck_low snapshot:
 building the shared test builds failed: %Error: 'make -C /Users/mike/coding_projects/944/DME_sim/dme_klr/live/obj/tests_rt/open -f Vdme_klr_dashboard_tb.mk -j 10' exited with 2 | %Error: Command Failed /opt/homebrew/Cellar/verilator/5.054/bin/verilator_bin --cc --exe --build --timing -j 0 -O3 --x-assign fast --x-initial fast --noassert -C
-
+ 
 Scan logs looking for a bit set/cleared or memory address/value 
 
 Code search should include label names as operands
@@ -20,6 +20,10 @@ Change code resolution - 10ms
 Custom rom regression not appearing in dashboard 
 
 Serial loop back
+
+Add SBUF and other SFR's to the trace
+
+Can't set breakpoints with a new ROM (from regression log).
 
 Add Idle Set Switch (ground to load signal)
 
