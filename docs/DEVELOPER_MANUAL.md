@@ -796,6 +796,21 @@ against iverilog for the same test (0 when they agree). The groups come from
 `dme_klr/live/test_groups.json`, made from this appendix:
 `python3 dme_klr/live/test_groups.py check` says when the two differ.
 
+**Changing a run as it goes.** While a run is going, the run line has a
+**THREADS** row: **−** / **+** beside *here* and beside each regression host
+the run uses change how many tests run at a time there (here 1 up to 8 or
+the CPU count, whichever is more; a host 0 to 64, where 0 sends it no more
+tests). With several suites at once the counts are what they all share. The
+**CANCEL QUEUED** buttons stop tests that haven't started from ever starting:
+all of the Verilator suite's, all of the iverilog suite's, one suite's (on its
+bar, with several ROM pairs), or one test group's (on the group's line, in
+every suite). A cancelled test shows *cancelled*, isn't in the suite's
+verdicts or total (`parallel_summary.log` lists it under `Cancelled`), and
+the run goes on with the rest. Neither change stops a test that is already
+running: it ends as it would have. The panel writes both into
+`$DMEKLR_TMP/run_all/control/` (`$DMEKLR_RUN_CONTROL`), which
+`run_dashboard_parallel.sh` and `run_tests.py` read before starting each test.
+
 **ROM VARIANTS** compares the ROM pairs whose runs left logs (each pair's
 folder, `$DMEKLR_TMP/dme_klr/<rom>`): tick two or more folders (the first is
 the reference), pick Verilator, iverilog or both, and press **COMPARE**. For

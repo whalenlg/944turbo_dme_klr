@@ -67,6 +67,15 @@ HEXDIR = os.path.join(TMP, 'dme_klr', 'lite_hex')
 DASH = re.compile(r'^(DME: \[DS\]|\[DS\]|KLR: \[DS\]|DME: \[PHASE\]|DME: \[STATUS\]|KLR: \[STATUS\]|KLR: \[PHASE\]'
                   r'|KLR: \[SPARK\]|DME: \[SEED\]|DME: \[WARN\]|DME: \[LKUP\]|KLR: \[LKUP\])')
 fwd = lambda p: p.replace('\\', '/')
+_out = threading.Lock()
+
+
+def say(line):
+    """One whole line to stdout: print() from several threads can write
+    one's text before another's newline, and the panel reads lines"""
+    with _out:
+        sys.stdout.write(line + '\n')
+        sys.stdout.flush()
 
 
 def args_of(argv):
@@ -134,7 +143,7 @@ def run_remote(name, o, host):
     """The test on a regression host: its log and dash.log end up in
     LOGDIR as if it ran here. None when the host dropped out."""
     log = os.path.join(LOGDIR, f'{name}.log')
-    print(f'  [START] {name}  @{host["name"]}', flush=True)
+    say(f'  [START] {name}  @{host["name"]}')
     t0 = time.time()
     cmd = ['node', os.path.join(LIVE, 'remote_test.mjs'), '--host', host['url'], '--test', name,
            '--out', LOGDIR, '--interval', str(o['interval']), '--log', 'raw']
@@ -181,7 +190,7 @@ def run_one(name, t, o, paths):
         if os.path.exists(f):
             os.remove(f)
     # (the dashboard's RUN REGRESSIONS panel marks the test running from this line)
-    print(f'  [START] {name}', flush=True)
+    say(f'  [START] {name}')
     t0 = time.time()
     with open(log, 'w') as lf:
         rc = subprocess.call([exe, f'+vcd={os.devnull}', *plus, f'+DASH_INTERVAL_MS={o["interval"]}', *paths],
@@ -214,6 +223,48 @@ def test_rows(name, log, verdict, detail, interval):
     subprocess.run(snap + script, capture_output=True, env=env)
     if verdict in ('WARN', 'FAIL'):
         subprocess.run(snap + [f'--{verdict.lower()}', detail] + script, capture_output=True, env=env)
+
+
+def read_control(limit, hosts, queue, cancelled):
+    """RUN CONTROL: the RUN REGRESSIONS panel (live/runall.mjs) changes the
+    run as it goes through $DMEKLR_RUN_CONTROL, a folder (as
+    run_dashboard_parallel.sh reads it):
+      threads  "local <n>" (tests at a time here, 1 or more) and
+               "host <name> <n>" (a regression host's threads, 0: no more
+               tests there) lines; a test already running ends as it would
+      cancel   "<sim> <rom> <test>" lines, shell patterns (* for any); sim
+               vl here, rom the ROM pair's folder (ROM_VARIANT): a queued
+               test that matches never starts ("[CANCEL] <test>")"""
+    d = os.environ.get('DMEKLR_RUN_CONTROL')
+    if not d or not os.path.isdir(d):
+        return
+    try:
+        with open(os.path.join(d, 'threads'), encoding='utf-8') as f:
+            for line in f:
+                w = line.split()
+                if len(w) == 2 and w[0] == 'local' and w[1].isdigit() and int(w[1]) >= 1:
+                    limit[None] = int(w[1])
+                elif len(w) == 3 and w[0] == 'host' and w[1] in hosts and w[2].isdigit():
+                    limit[w[1]] = int(w[2])
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(d, 'cancel'), encoding='utf-8') as f:
+            pats = [w for w in (line.split() for line in f) if len(w) == 3]
+    except OSError:
+        pats = []
+    if not pats or not queue:
+        return
+    keep = []
+    for n in queue:
+        if any(fnmatch.fnmatchcase('vl', s) and fnmatch.fnmatchcase(ROM_VARIANT, r) and fnmatch.fnmatchcase(n, t)
+               for s, r, t in pats):
+            cancelled.append(n)
+            # (the RUN REGRESSIONS panel marks the test cancelled from this line)
+            say(f'  [CANCEL] {n}')
+        else:
+            keep.append(n)
+    queue[:] = keep
 
 
 def main():
@@ -259,44 +310,43 @@ def main():
             print(f'run_tests.py: regression hosts not used ({e})')
     for h in hosts:
         print(f'Regression host: {h["name"]}, {h["threads"]} thread(s)')
-    # One worker per slot: -j here, then each host's threads; a test whose
-    # host drops goes back on the queue for the other workers
+    # A dispatcher starts each test on a thread of its own when a slot is
+    # free: -j here, each host's threads there (RUN CONTROL can change them
+    # as the run goes: read_control); a test whose host drops goes back on
+    # the queue, and that host gets no more tests
     queue, lock, off = list(names), threading.Lock(), set()
-    pending, local = [len(names)], [0]   # tests not yet checked, local workers running
+    limit = {None: o['jobs'], **{h['name']: int(h['threads']) for h in hosts}}
+    running = {k: 0 for k in limit}
+    cancelled = []
+    by_name = {h['name']: h for h in hosts}
 
-    def worker(host):
-        while True:
-            with lock:
-                if not queue or (host and host['name'] in off):
-                    if not host:
-                        local[0] -= 1
-                    return
-                n = queue.pop(0)
-            try:
-                r = run_remote(n, o, host) if host else run_one(n, tests[n], o, paths)
-            except Exception as e:   # one test's crash mustn't hang the run
-                r = (n, 'FAIL', f'runner error: {e}', 0)
-            with lock:
-                if r is None:
-                    off.add(host['name'])
-                    queue.insert(0, n)
-                    print(f'  [REQUEUE] {n}  {host["name"]} dropped out (see {n}.remote.log)', flush=True)
-                    # the local workers may all have ended already: start one
-                    if local[0] == 0:
-                        local[0] += 1
-                        threading.Thread(target=worker, args=(None,), daemon=True).start()
-                    return
-                name, v, detail, secs = r
-                res.append((name, v, detail))
-                pending[0] -= 1
-                print(f'  [{col.get(v, "")}{v}{reset}] {name:40s} {secs:6.0f} s  {detail}   ({len(res)}/{len(names)})', flush=True)
+    def job(n, host):
+        try:
+            r = run_remote(n, o, host) if host else run_one(n, tests[n], o, paths)
+        except Exception as e:   # one test's crash mustn't hang the run
+            r = (n, 'FAIL', f'runner error: {e}', 0)
+        with lock:
+            running[host['name'] if host else None] -= 1
+            if r is None:
+                off.add(host['name'])
+                queue.insert(0, n)
+                say(f'  [REQUEUE] {n}  {host["name"]} dropped out (see {n}.remote.log)')
+                return
+            name, v, detail, secs = r
+            res.append((name, v, detail))
+            say(f'  [{col.get(v, "")}{v}{reset}] {name:40s} {secs:6.0f} s  '
+                f'{detail}   ({len(res)}/{len(names) - len(cancelled)})')
 
-    local[0] = o['jobs']
-    threads = [threading.Thread(target=worker, args=(None,), daemon=True) for _ in range(o['jobs'])]
-    threads += [threading.Thread(target=worker, args=(h,), daemon=True) for h in hosts for _ in range(int(h['threads']))]
-    for th in threads:
-        th.start()
-    while pending[0] > 0:
+    while True:
+        with lock:
+            read_control(limit, by_name, queue, cancelled)
+            if not queue and not any(running.values()):
+                break
+            for key in [None, *by_name]:
+                while queue and running[key] < limit[key] and key not in off:
+                    n = queue.pop(0)
+                    running[key] += 1
+                    threading.Thread(target=job, args=(n, by_name.get(key)), daemon=True).start()
         time.sleep(0.5)
     n = {v: sum(r[1] == v for r in res) for v in ('PASS', 'WARN', 'FAIL')}
     wall = time.time() - t0
@@ -305,10 +355,15 @@ def main():
             f.write(f'{v}\t{name:22s}\t{detail}\n')
     with open(os.path.join(LOGDIR, 'parallel_summary.log'), 'w', encoding='utf-8') as f:
         f.write(f'89 DME 951 Parallel Test Run (lite) — {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
-        f.write(f'Wall time: {int(wall) // 60}m{int(wall) % 60}s   Total: {len(res)}   PASS: {n["PASS"]}   WARN: {n["WARN"]}   FAIL: {n["FAIL"]}\n\n')
+        f.write(f'Wall time: {int(wall) // 60}m{int(wall) % 60}s   Total: {len(res)}   PASS: {n["PASS"]}   WARN: {n["WARN"]}   FAIL: {n["FAIL"]}'
+                + (f'   CANCELLED: {len(cancelled)}' if cancelled else '') + '\n')
+        if cancelled:
+            f.write(f'Cancelled (never started): {" ".join(cancelled)}\n')
+        f.write('\n')
         for name, v, detail in sorted(res, key=lambda r: ('FAIL', 'WARN', 'PASS').index(r[1])):
             f.write(f'  {v:6s} {name:22s} {detail}\n')
-    print(f'Total: {len(res)}   PASS: {n["PASS"]}   WARN: {n["WARN"]}   FAIL: {n["FAIL"]}   ({int(wall) // 60}m{int(wall) % 60}s)')
+    print(f'Total: {len(res)}   PASS: {n["PASS"]}   WARN: {n["WARN"]}   FAIL: {n["FAIL"]}'
+          + (f'   CANCELLED: {len(cancelled)}' if cancelled else '') + f'   ({int(wall) // 60}m{int(wall) % 60}s)')
     return 1 if n['FAIL'] else 0
 
 
