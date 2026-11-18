@@ -1,35 +1,36 @@
 Fix replay compile
 
-Restart button in code windows
+Save log
 
-Add switch for t0?
+Can't see data before 1st 100ms
 
 Got error loading a ref_sensor_stuck_low snapshot:
 building the shared test builds failed: %Error: 'make -C /Users/mike/coding_projects/944/DME_sim/dme_klr/live/obj/tests_rt/open -f Vdme_klr_dashboard_tb.mk -j 10' exited with 2 | %Error: Command Failed /opt/homebrew/Cellar/verilator/5.054/bin/verilator_bin --cc --exe --build --timing -j 0 -O3 --x-assign fast --x-initial fast --noassert -C
  
-Scan logs looking for a bit set/cleared or memory address/value 
+2 Scan logs looking for a bit set/cleared or memory address/value 
 
-Code search should include label names as operands
+2 Code search should include label names as operands
 
-Code window - click on. Label, move to that label
+2 Code window - click on. Label, move to that label
 
-Change code resolution - 10ms
 
-Custom rom regression not appearing in dashboard 
+2 Custom rom regression not appearing in dashboard 
 
-Add SFRs  to the trace
+1 Add SBUF  to the trace
 
-Can't set breakpoints with a new ROM (from regression log).
+2 Can't set breakpoints with a new ROM (from regression log).
 
-Add Idle Set Switch (ground to load signal)
+2 Add Idle Set Switch (ground to load signal)
 
-Ad a run regressions button to the 1st page (load, live, run regressions)
+3 Fix windows install
 
-Fix windows install
+X 1 ROM Poke values
 
-ROM Poke values
+3 Improve release process to include all logs
 
-Improve release process to include all logs
+Add hex to dec and dec to hex converter in code window
+
+
 
 
 Cylinder tracking in log files and signal in tb
