@@ -41,6 +41,11 @@
 //                              and <n> = 25 per run)
 //    breakonwarn on|off        also pause after a warning's snapshot
 //                              (default off; +breakonwarn=1)
+//    interval <ms>|default     simulated ms between DS snapshots (the
+//                              dashboard's RESOLUTION box), 1..10000;
+//                              default = the build's DASH_INTERVAL_MS.
+//                              +dash_ms=<ms> sets it at start; it is kept
+//                              across snapshot loads
 //    quit
 //
 //  Snapshots: a warning or error line from the model ([WARN], WARNING or
@@ -84,6 +89,7 @@
 //                  clock phases approximated)
 //    SIM: [SNAP]   skipped <why>                   (auto snapshot not taken)
 //    SIM: [SNAPCFG] auto=on|off break=on|off taken=<n> max=<n>
+//    SIM: [INTERVAL] ms=<n> default=<n>             (DS snapshot interval in use)
 // ============================================================
 
 #include "Vdme_klr_dashboard_tb.h"
@@ -221,8 +227,12 @@ public:
             if (!arg.empty() && loadRom(c, arg.substr(arg.find('=') + 1))) rom_arg_[c] = true;
         }
         romLines();
+        default_dash_ms_ = TB(live_dash_eff);   // live_dash_ms is still 0 here
+        std::string iv = ctx_->commandArgsPlusMatch("dash_ms=");
+        if (!iv.empty()) setInterval(std::strtol(iv.c_str() + iv.find('=') + 1, nullptr, 10));
         printf("SIM: [READY] %s\n", inputsLine().c_str());
         snapCfgLine();
+        intervalLine();
         state("paused", "start");
         // +bps=dme:024E,klr:0ABC: the breakpoints the dashboard had before a
         // LOAD, added once the snapshot is in place (after the load, or at
@@ -472,6 +482,7 @@ private:
             printf("SIM: [INPUTS] %s\n", inputsLine().c_str());
             bpLine();
             romLines();
+            intervalLine();
         } else if (cmd == "save") {
             std::string label;
             std::getline(in >> std::ws, label);
@@ -503,6 +514,17 @@ private:
             else if (v == "off") break_on_warn_ = false;
             else if (!v.empty()) return error("breakonwarn on|off");
             snapCfgLine();
+        } else if (cmd == "interval") {
+            std::string v;
+            in >> v;
+            if (v == "default") setInterval(0);
+            else if (!v.empty()) {
+                char* end = nullptr;
+                long ms = std::strtol(v.c_str(), &end, 10);
+                if (*end || ms < 1 || ms > 10000) return error("interval needs a whole number of ms, 1 to 10000, or default");
+                setInterval(static_cast<uint32_t>(ms));
+            }
+            intervalLine();
         } else if (cmd == "quit") {
             quit_ = true;
         } else {
@@ -778,6 +800,8 @@ private:
     std::string snapdir_ = "snapshots";
     bool rom_arg_[2] = {false, false};   // image given with +dme_rom= / +klr_rom=
     bool auto_snap_ = true, break_on_warn_ = false;
+    uint32_t dash_ms_ = 0;          // interval command / +dash_ms= (0 = build default)
+    uint32_t default_dash_ms_ = 100;
 #ifdef LIVE_SCRIPTED
     bool scripted_ = true;       // build_live.sh --test: the test's own stimulus
 #else
@@ -1215,6 +1239,9 @@ private:
         save_.reset();
         capturing_ = false;
         kind_last_ns_.clear();
+        // The interval is the dashboard's setting, not part of the saved run
+        setInterval(dash_ms_);
+        intervalLine();
         printf("SIM: [SNAP] loaded t_ns=%llu exact=%d dir=%s\n", static_cast<unsigned long long>(tNs()), exact ? 1 : 0,
                fs::absolute(dir).string().c_str());
         // Hold the engine at the saved operating point: rpm / afm / boost
@@ -1234,6 +1261,15 @@ private:
         bpLine();
         state("paused", "snapshot");
         return true;
+    }
+
+    // DS snapshot interval: 0 = the build's DASH_INTERVAL_MS
+    void setInterval(long ms) {
+        dash_ms_ = static_cast<uint32_t>(std::clamp(ms, 0L, 10000L));
+        TB(live_dash_ms) = dash_ms_;
+    }
+    void intervalLine() const {
+        printf("SIM: [INTERVAL] ms=%u default=%u\n", dash_ms_ ? dash_ms_ : default_dash_ms_, default_dash_ms_);
     }
 
     void snapCfgLine() const {
