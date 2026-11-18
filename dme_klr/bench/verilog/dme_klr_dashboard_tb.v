@@ -35,6 +35,14 @@
   `define LIVE_DEBUG
 `endif
 
+// Snapshot interval in ns: DASH_INTERVAL_MS, or under LIVE_DEBUG what the
+// live debugger set (live_dash_eff below)
+`ifdef LIVE_DEBUG
+  `define DASH_IV_NS ({32'd0, live_dash_eff} * 64'd1_000_000)
+`else
+  `define DASH_IV_NS (`VAL_DASH_INTERVAL_MS * 64'd1_000_000)
+`endif
+
 module dme_klr_dashboard_tb;
 
     // ── Interconnect ──────────────────────────────────────────
@@ -104,6 +112,13 @@ module dme_klr_dashboard_tb;
     // injects the live_knock = 1 drop on the next N TDCs; klr_knock_gen
     // counts it down
     reg [15:0] live_knock_revs /*verilator public_flat_rw*/ = 16'd0;
+    // Snapshot interval (the dashboard's RESOLUTION box, sim_main
+    // "interval <ms>"): 0 = DASH_INTERVAL_MS, else this many simulated ms
+    // between DS snapshots (and lookup re-logs). live_dash_eff is the
+    // interval in use, for sim_main to report.
+    reg  [31:0] live_dash_ms  /*verilator public_flat_rw*/ = 32'd0;
+    wire [31:0] live_dash_eff /*verilator public_flat_rd*/ =
+        (live_dash_ms != 32'd0) ? live_dash_ms : `VAL_DASH_INTERVAL_MS;
     // Snapshot on demand: sim_main bumps req, the scheduler below emits
     // one DS pair and copies req to ack.
     // KLR ram 3Ah / 48h for the log replay's knock filter
@@ -388,7 +403,7 @@ module dme_klr_dashboard_tb;
     // Log this result now? (changed, first, or DASH_INTERVAL_MS since the last)
     function lk_due(input [8:0] s, input [7:0] v);
         lk_due = !lk_seen[s] || lk_last[s] != v ||
-                 ($time - lk_lt[s]) >= (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
+                 ($time - lk_lt[s]) >= `DASH_IV_NS;
     endfunction
     reg [15:0] lk_pc, lk_dptr, lk_ma, lk_ta;
     reg [6:0]  lk_sp;
@@ -480,7 +495,7 @@ module dme_klr_dashboard_tb;
     initial for (lk_i = 0; lk_i < 32; lk_i = lk_i + 1) klk_seen[lk_i] = 1'b0;
     function klk_due(input [4:0] s, input [7:0] v);
         klk_due = !klk_seen[s] || klk_last[s] != v ||
-                  ($time - klk_lt[s]) >= (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
+                  ($time - klk_lt[s]) >= `DASH_IV_NS;
     endfunction
     reg [11:0] klk_pc;
     reg [15:0] klk_ta;
@@ -745,11 +760,19 @@ module dme_klr_dashboard_tb;
     always @(posedge dme_clk) begin
         if ($time >= next_snap_ns) begin
             emit_combined_snapshot;
-            next_snap_ns <= next_snap_ns + (`VAL_DASH_INTERVAL_MS * 64'd1_000_000);
+            // the next multiple of the interval: the same as + interval,
+            // and on the grid again after the live debugger changes it
+            next_snap_ns <= ($time / `DASH_IV_NS + 64'd1) * `DASH_IV_NS;
         end
 `ifdef LIVE_DEBUG
-        else if (live_snap_req != live_snap_ack)
-            emit_combined_snapshot;
+        else begin
+            if (live_snap_req != live_snap_ack)
+                emit_combined_snapshot;
+            // A shorter interval takes effect now, not after the snapshot
+            // already due: the next one moves to the next multiple of it
+            if (next_snap_ns - $time > `DASH_IV_NS)
+                next_snap_ns <= ($time / `DASH_IV_NS + 64'd1) * `DASH_IV_NS;
+        end
         live_snap_ack <= live_snap_req;
 `endif
     end
