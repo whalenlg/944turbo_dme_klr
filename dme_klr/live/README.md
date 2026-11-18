@@ -47,7 +47,9 @@ decoded again where it was edited (`disasm.mjs`, the 8051/8048 decoders of
 
 `GET /edits/<cpu>[?name=<file>]` lists what an edited image changed (text to
 copy: each place's code before and after). `POST /edits/<cpu>/save`
-`{name, use}` keeps it as `obj/roms/<cpu>/<name>.mem` (with `.edits.txt`, and
+`{name, use}` keeps it as `obj/roms/<cpu>/<name>.mem` and `<name>.bin` (raw,
+for an EPROM programmer; `GET /image/<cpu>.bin[?name=]` serves any image that
+way), with `.edits.txt`, and
 `.base` naming the original, whose workbook lists it here and in
 `asm_select.sh`). Setups are named DME + KLR pairs in `obj/roms/setups.json`:
 `GET|POST /setups`, `DELETE /setups/<name>`, `POST /setups/<name>/load[?reset=1]`;

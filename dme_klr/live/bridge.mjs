@@ -27,7 +27,9 @@
 //                     loaded one, or one by file name): {name, base, bytes,
 //                     places, text}; text lists each place's code before and after
 //    POST /edits/dme|klr/save  {name, from?, use?}: keep an edited image as
-//                     <name>.mem among the uploads (see saveEdited)
+//                     <name>.mem among the uploads, and <name>.bin (see saveEdited)
+//    GET  /image/dme|klr.bin[?name=<file>]  an image as a raw binary for an
+//                     EPROM programmer (8192 / 4096 bytes; default the loaded one)
 //    GET|POST /setups, DELETE /setups/<name>, POST /setups/<name>/load[?reset=1]
 //                     image setups: named DME + KLR pairs (see Image setups);
 //                     a change is sent as SIM: [SETUPS] changed
@@ -640,7 +642,8 @@ function editsFor(cpu, name) {
 // POST /edits/<cpu>/save  {name, from?, use?}: keep an edited image (the
 // loaded one, or one by file name) as an image of its own, <name>.mem among
 // the uploads (obj/roms/<cpu>/), with its list of edits beside it
-// (<name>.mem.edits.txt). It is then in every image list (LOAD, COMPARE,
+// (<name>.mem.edits.txt), and as a raw binary, <name>.bin, the EPROM's bytes
+// in order for programming a chip. It is then in every image list (LOAD, COMPARE,
 // RUN REGRESSIONS, setups). use: true also swaps it into the EPROM in place
 // of the edited image (paused only).
 const IMAGE_NAME = /^[\w.+-]{1,64}$/;
@@ -650,7 +653,7 @@ function saveEdited(cpu, body) {
   const name = String(b?.name ?? '').trim().replace(/\.mem$/i, '');
   if (!IMAGE_NAME.test(name) || isPatched(`${name}.mem`)) return [400, 'name: letters, digits, _ . + - (up to 64)'];
   const file = `${name}.mem`;
-  if (findImageByName(file, cpu)) return [409, `there is already a ${cpu.toUpperCase()} image named ${file}`];
+  if (findImageByName(file, cpu) || findImageByName(`${name}.bin`, cpu)) return [409, `there is already a ${cpu.toUpperCase()} image named ${name}`];
   const [code, edits] = editsFor(cpu, b?.from || null);
   if (code !== 200) return [code, edits];
   if (!edits.bytes) return [400, 'that image has no edits to save'];
@@ -661,11 +664,27 @@ function saveEdited(cpu, body) {
   mkdirSync(dir, { recursive: true });
   const path = join(dir, file);
   writeFileSync(path, readFileSync(src));
+  // and as a raw binary, the EPROM's bytes in order, for programming a chip
+  const bin = `${name}.bin`;
+  writeFileSync(join(dir, bin), imgBytes(cpu, src));
   writeFileSync(`${path}.edits.txt`, `${file}: ${edits.text}`);
   writeFileSync(`${path}.base`, `${resolve(rootOf(findImageByName(edits.base, cpu) ?? src))}\n`);   // listed from that image's workbook
   console.log(`bridge: ${cpu} edited image ${edits.name} saved as ${path}`);
   if (b?.use && !send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
-  return [200, { name: file }];
+  return [200, { name: file, bin }];
+}
+
+// GET /image/<cpu>.bin?name=<file>: an image (any the bridge knows, an edited
+// one too; default: the loaded one) as a raw binary for an EPROM programmer:
+// the whole EPROM (8192 bytes DME, 4096 KLR), unset bytes FF
+function imageBin(cpu, name) {
+  const path = name ? findImageByName(basename(name), cpu) : roms[cpu];
+  if (!path) return [404, `no ${cpu.toUpperCase()} image ${name ?? ''}`];
+  const img = /\.mem$/i.test(path) ? imgBytes(cpu, path)
+    : Buffer.concat([readFileSync(path), Buffer.alloc(ROM_SIZE[cpu], 0xFF)]).subarray(0, ROM_SIZE[cpu]);
+  if (!img) return [500, `can't read ${basename(path)}`];
+  const file = basename(path).replace(/\.patch-([0-9a-f]{8})\.mem$/i, '_modified_$1.mem').replace(/\.[^.]+$/, '.bin');
+  return [200, img, file];
 }
 
 // ── Image setups: a named DME + KLR pair ──────────────────────
@@ -1528,6 +1547,14 @@ createServer((req, res) => {
     try { name = decodeURIComponent(setup[1]); } catch { return reply([400, 'bad setup name']); }
     if (req.method === 'DELETE' && !setup[2]) return reply(deleteSetup(name));
     if (req.method === 'POST' && setup[2]) return reply(loadSetup(name, url.searchParams.get('reset') === '1'));
+  }
+  const bin = url.pathname.match(/^\/image\/(dme|klr)\.bin$/);
+  if (req.method === 'GET' && bin) {
+    const [code, body, file] = imageBin(bin[1], url.searchParams.get('name'));
+    if (code !== 200) return reply([code, body]);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-cache',
+                         'Content-Disposition': `attachment; filename="${file}"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
+    return res.end(body);
   }
   const edits = url.pathname.match(/^\/edits\/(dme|klr)$/);
   if (req.method === 'GET' && edits) {

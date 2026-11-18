@@ -1159,13 +1159,17 @@ window header, the snapshot list and its INFO, COMPARE IMAGES, the map graphs
 and a log's ROM line. **Click the red name** (or **✎ N bytes edited** in the
 code window header) for the list of edits: each changed place with the bytes
 and the code before (**was**) and after (**now**). **COPY** puts the list on
-the clipboard as plain text, for a text editor.
+the clipboard as plain text, for a text editor. **⬇ .bin** downloads the edited image as a raw
+binary, and **⬇ .bin** in the ROM IMAGES row does the same for the image in
+either EPROM.
 
 **Saving the edits as an image.** At the bottom of the list of edits:
 
 1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image is kept as
    `<name>.mem` with the uploaded images (`obj/roms/<cpu>/`), with the list of
-   edits beside it (`<name>.mem.edits.txt`). With **run it now** ticked the
+   edits beside it (`<name>.mem.edits.txt`), and as **`<name>.bin`**, the raw
+   EPROM contents (8192 bytes DME, 4096 KLR, in address order) for an EPROM
+   programmer. **⬇ \<name\>.bin** downloads it. With **run it now** ticked the
    sim switches to it in place (paused). It is then in every image list:
    **LOAD .mem**, **COMPARE IMAGES**, **RUN REGRESSIONS** and setups. Its
    debug listing is the original image's, with the edited places decoded again
