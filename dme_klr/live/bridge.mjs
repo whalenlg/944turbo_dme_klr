@@ -19,6 +19,10 @@
 //                     the running sim (CPU keeps its PC and RAM), or with
 //                     reset=1 the sim restarts at t=0 on the new image.
 //                     The sim reports the result as SIM: [ROM] / [ERROR].
+//    POST /patch?cpu=dme|klr   body {"addr": n, "bytes": [n, ...]} or {"revert": true}:
+//                     edit bytes of the image in that EPROM (the code windows'
+//                     hex column), or put back the image as it was loaded.
+//                     Only while paused. See Byte edits below.
 //    GET  /snapshots  JSON list of saved snapshots, newest first (see
 //                     Snapshots below)
 //    GET  /snapshots/<id>         everything in it: sim.json + manifest.json
@@ -74,6 +78,16 @@
 //  and the dashboard fetches /asm/<cpu> again. --dme-asm / --klr-asm pin a
 //  listing.
 //
+//  Byte edits: POST /patch writes the loaded image with the edits applied to
+//  obj/roms/<cpu>/patched/<name>.patch-<hash>.mem (named by its contents)
+//  and swaps it in with the sim's rom command, so the CPU keeps its PC and
+//  RAM and runs the edited code from the next instruction. Edits add up
+//  (each one is applied over the earlier ones), stay through RESTART and
+//  are dropped when another image is loaded. The listing stays the one for
+//  the image as loaded, decoded again where bytes were edited (disasm.mjs):
+//  edited rows carry patched: true and orig (the bytes as loaded). The
+//  bridge then sends SIM: [ASM] ... patched=<bytes edited>.
+//
 //  Snapshots: the sim saves one on every warning (and on "save" via
 //  /cmd) into <snapdir>/<id>/ and prints SIM: [SNAP] saved ... dir=.
 //  The bridge then adds manifest.json (each EPROM image's SHA-256, file
@@ -119,6 +133,7 @@ import { createInterface } from 'node:readline';
 import { makeRunAll } from './runall.mjs';
 import { makeRegressHost, tokenOk, lanAddress, loopback } from './regress_host.mjs';
 import { romVariants } from './logdirs.mjs';
+import { patchListing } from './disasm.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -452,17 +467,81 @@ function asmTables(cpu, path) {
 }
 
 // Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
-// that reuses a file name with new contents is caught too.
+// that reuses a file name with new contents is caught too. An image with
+// byte edits (POST /patch) keeps the listing of the image it was made from,
+// decoded again where it was edited.
 function followRom(cpu, path) {
   const { pin, dir: dflt } = CPU_ASM[cpu];
-  if (pin) return;
+  // The sim reports both EPROMs after a rom command: the other one didn't change
+  const same = unchanged[cpu] === resolve(path);
+  unchanged[cpu] = null;
+  if (same) return;
+  if (patches[cpu] && resolve(path) !== patches[cpu].path) patches[cpu] = null;   // another image: edits dropped
+  const p = patches[cpu];
+  const src = p ? p.base : path;
   const CPU = cpu.toUpperCase();
-  const t = asmTables(cpu, path);
-  const dir = t.dir ?? dflt, workbook = t.dir ? t.workbook : '-', img = t.img;
-  if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
-  ASM[cpu] = cpuListing(cpu, dir);
-  console.log(`bridge: ${CPU} listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM[cpu].length} lines)`);
-  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
+  // The edited image's listing comes from its base image's, made once
+  if (!(p && baseAsm[cpu]?.src === src)) {
+    if (pin) {
+      if (!p && !baseAsm[cpu]?.patched) return;
+      baseAsm[cpu] = { src, rows: cpuListing(cpu, dflt), workbook: basename(dflt), match: 'pinned' };
+    } else {
+      const t = asmTables(cpu, src);
+      const dir = t.dir ?? dflt, img = t.img;
+      if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
+      baseAsm[cpu] = { src, rows: cpuListing(cpu, dir), workbook: t.dir ? t.workbook : '-', match: img?.match ?? 'none' };
+      console.log(`bridge: ${CPU} listing for ${basename(src)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${baseAsm[cpu].rows.length} lines)`);
+    }
+  }
+  const b = baseAsm[cpu];
+  ASM[cpu] = p ? patchListing(cpu, b.rows, p.orig, p.img) : b.rows;
+  b.patched = !!p;
+  const n = p ? p.orig.reduce((c, v, i) => c + (v !== p.img[i]), 0) : 0;
+  broadcast(`SIM: [ASM] ${cpu} ${b.workbook} match=${b.match}${n ? ` patched=${n}` : ''}`);
+}
+
+// ── Byte edits (POST /patch) ─────────────────────────────────
+const ROM_SIZE = { dme: 8192, klr: 4096 };
+const patches = { dme: null, klr: null };   // { base: image as loaded, path: edited image, orig, img }
+const baseAsm = { dme: null, klr: null };   // { src, rows, workbook, match }: listing of the image as loaded
+const PATCH_DIR = join(ROM_DIR, 'patched');
+const unchanged = { dme: null, klr: null };   // the image in the EPROM a patch didn't touch
+function patchRom(cpu, body) {
+  if (cpu !== 'dme' && cpu !== 'klr') return [400, 'cpu must be dme or klr'];
+  let b;
+  try { b = JSON.parse(body); } catch { return [400, 'body must be JSON {addr, bytes} or {revert: true}']; }
+  if (!sim) return [409, 'simulator not running'];
+  if (simState !== 'paused') return [409, 'pause the simulation before editing the ROM'];
+  const size = ROM_SIZE[cpu];
+  const base = patches[cpu]?.base ?? roms[cpu];
+  if (!base) return [409, `no ${cpu.toUpperCase()} image reported by the sim yet`];
+  const orig = patches[cpu]?.orig ?? memBytes(base)?.subarray(0, size);
+  if (!orig) return [500, `can't read ${base}`];
+  const img = Buffer.from(patches[cpu]?.img ?? orig);
+  if (!b?.revert) {
+    const addr = b?.addr, bytes = b?.bytes;
+    if (!Number.isInteger(addr) || addr < 0 || addr >= size) return [400, `addr must be 0..${(size - 1).toString(16)}h`];
+    if (!Array.isArray(bytes) || !bytes.length || bytes.length > 16 || !bytes.every(v => Number.isInteger(v) && v >= 0 && v <= 255))
+      return [400, 'bytes must be 1 to 16 values 0..255'];
+    if (addr + bytes.length > size) return [400, `edit runs past the end of the ${size}-byte EPROM`];
+    img.set(bytes, addr);
+  }
+  let path;
+  if (b?.revert || img.equals(orig)) {
+    path = base;   // back to the image as loaded
+    patches[cpu] = null;
+  } else {
+    const sha = createHash('sha256').update(img).digest('hex').slice(0, 8);
+    path = join(PATCH_DIR, cpu, `${basename(base).replace(/\.mem$/i, '')}.patch-${sha}.mem`);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, Array.from(img, v => v.toString(16).toUpperCase().padStart(2, '0') + '\n').join(''));
+    patches[cpu] = { base, path, orig, img };
+  }
+  console.log(`bridge: ${cpu} ROM ${b?.revert ? 'edits reverted' : `edit at ${b.addr.toString(16)}h`} -> ${basename(path)}`);
+  if (!send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
+  const other = cpu === 'dme' ? 'klr' : 'dme';
+  unchanged[other] = roms[other] && resolve(roms[other]);
+  return [204, ''];
 }
 
 // ── ROM image compare ────────────────────────────────────────
@@ -1246,6 +1325,16 @@ createServer((req, res) => {
     if (!ASM[cpu]) { res.writeHead(404, CORS); return res.end(); }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(ASM[cpu]));
+  }
+  if (req.method === 'POST' && url.pathname === '/patch') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
+    req.on('end', () => {
+      const [code, text] = patchRom(url.searchParams.get('cpu'), body);
+      res.writeHead(code, CORS);
+      res.end(text);
+    });
+    return;
   }
   if (req.method === 'POST' && (url.pathname === '/cmd' || url.pathname === '/restart' || url.pathname === '/rom')) {
     const chunks = [];

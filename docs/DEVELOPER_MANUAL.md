@@ -1123,6 +1123,39 @@ Hover a row for the workbook's description of that line.
 * A hex address followed by **GO** goes to that address.
 * **PC** returns to the program counter. Every stop also returns there.
 
+### Editing the ROM bytes
+
+The bytes column on the right of each row can be edited, while the sim is
+paused, to change an opcode, an operand or an address in the image the sim
+is running:
+
+1. **Click the bytes** of a row (not the rest of the row, which sets a
+   breakpoint). They open as a text box.
+2. Type the new bytes in hex, with or without spaces (`02 10 08`,
+   `021008`). **Enter** writes them, **Esc** cancels. Fewer bytes than the
+   instruction has change only its first bytes; more bytes run on over the
+   instructions after it (up to 16).
+3. The edit applies **live**: the bridge loads the edited image into the
+   EPROM in place, so the CPU keeps its PC and RAM and runs the new code from
+   its next instruction. Nothing restarts.
+
+The listing is decoded again from the edited instruction, so the mnemonic and
+operands follow the new bytes, and when the instruction gets longer or
+shorter the rows after it re-flow until the code lines up with the listing
+again. Edited rows are marked with an amber **✎**, and their bytes are amber
+where they differ from the image as loaded; hover them for the original
+bytes. Decoded rows use the workbook's labels and register names where it
+has them, and plain addresses (`0x1008`) elsewhere. A KLR `call`/`jmp` is
+decoded in the 2K bank it sits in.
+
+Edits add up and stay through **↺ RESTART** (the sim boots on the edited
+image). **↶** on an edited row puts that row's original bytes back;
+**REVERT ALL** in the listing header puts back the image as it was loaded.
+Loading another image (**LOAD .mem**, or a snapshot) drops the edits. The
+edited image is saved as `obj/roms/patched/<cpu>/<name>.patch-<hash>.mem` and
+shows by that name in the ROM IMAGES row, so it can be loaded again or
+compared with **COMPARE IMAGES**.
+
 ### Breakpoints
 
 * **Click any row** in the listing to set a breakpoint there, and click it

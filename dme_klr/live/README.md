@@ -32,6 +32,19 @@ image is loaded or the bridge itself is restarted. From a terminal:
 `rom dme|klr <path>` while paused. The bridge refuses a KLR image (any
 `bin_images/klr/*.mem`, matched by content or file name) loaded into the DME.
 
+### Editing bytes from the code windows
+
+The hex bytes column of the dashboard's DME CODE / KLR CODE listing is
+editable while paused. Each edit is a `POST /patch?cpu=dme|klr` with
+`{"addr": n, "bytes": [...]}` (or `{"revert": true}`); the bridge writes the
+loaded image with every edit so far applied to
+`obj/roms/patched/<cpu>/<name>.patch-<hash>.mem` and sends `rom <cpu> <path>`,
+so the change is live (PC and RAM kept). Edits stay through restarts and are
+dropped when another image is loaded. The listing is the loaded image's,
+decoded again where it was edited (`disasm.mjs`, the 8051/8048 decoders of
+`dis8051.py` / `dis8048.py` in JavaScript); edited rows carry `patched` and
+`orig`, and the `SIM: [ASM]` line gets `patched=<bytes edited>`.
+
 Each debugger listing follows the image in that CPU's EPROM. Each time the
 sim reports an image (start, restart, load), the bridge matches it, by
 content and then by file name, against the images that have a workbook:
