@@ -1084,10 +1084,79 @@ function loadTestRt(id, req) {
   return [202, ''];
 }
 
+// ── Log-replay tests (replay_wot_60s ...) ────────────────────
+// No build of their own: the live simulator plays the log's stimulus file
+// (sim_main.cpp +stim=), made here by replay/xlsx_to_stim.py with the
+// test's run_replay.sh window args (request.json "replay", test_snap.py)
+// and kept in obj/replay/ for next time.
+const REPLAY_DIR = join(REPO, 'dme_klr', 'replay');
+function replayStimArgs(args) {
+  let xlsx = join(REPO, 'dme_klr', 'bench', 'verilog', '10_9_evening_WOT_Run.xlsx');
+  let win = [];
+  const stim = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--xlsx') xlsx = args[++i];
+    else if (a === '--segment') win = ['--segment', args[++i]];
+    else if (a === '--start-s' || a === '--end-s') win.push(a, args[++i]);
+    else if (a === '--all') win = ['--start-s', '0'];
+    else if (['--map-offset', '--afm-vref', '--afm-offset'].includes(a)) stim.push(a, args[++i]);
+    else if (a === '--o2-from-log') stim.push(a);
+    else if (a === '--') break;
+    // --name, --out-dir, --iverilog ...: how run_replay.sh runs, not what it plays
+    else if (['--name', '--out-dir'].includes(a)) i++;
+  }
+  if (!win.length) win = ['--end-s', '14'];   // run_replay.sh's default: the first WOT pull
+  return { xlsx: resolve(join(REPO, 'dme_klr'), xlsx), args: [...win, ...stim] };
+}
+function loadReplay(id, req) {
+  if (!existsSync(join(REPLAY_DIR, 'xlsx_to_stim.py')))
+    return [501, `${req.test} is a log replay, which needs dme_klr/replay/ (not in this package)`];
+  const { xlsx, args } = replayStimArgs(req.replay.args ?? []);
+  if (!existsSync(xlsx)) return [400, `${req.test}: no log ${xlsx}`];
+  const romOf = cpu => req.roms?.[cpu] && existsSync(req.roms[cpu]) ? resolve(req.roms[cpu]) : null;
+  const dmeRom = romOf('dme') ?? join(IMAGES.dme, '89DME_951pin.mem');
+  const out = join(dirname(SIM), 'replay', req.test);
+  const stimFile = out + '.stim.csv';
+  const stamp = JSON.stringify({ args, xlsx, xlsxT: statSync(xlsx).mtimeMs, dmeRom,
+                                 py: statSync(join(REPLAY_DIR, 'xlsx_to_stim.py')).mtimeMs });
+  const run = () => {
+    console.log(`bridge: replaying ${req.test} to ${req.t_ns / 1e6} ms on the live build`);
+    const romArgs = ['dme', 'klr'].filter(romOf).map(cpu => `+${cpu}_rom=${romOf(cpu)}`);
+    restartSim({ test: { bin: SIM, runTo: req.t_ns, id,
+                         args: [`+stim=${stimFile}`, `+warmup_ms=${req.replay.warmup_ms ?? 3000}`, ...romArgs] } });
+  };
+  let fresh = false;
+  try { fresh = existsSync(stimFile) && readFileSync(out + '.stamp', 'utf8') === stamp; } catch { /* make it */ }
+  if (fresh) { run(); return [204, '']; }
+  mkdirSync(dirname(out), { recursive: true });
+  broadcast(`SIM: [SNAP] building id=${id} test=${req.test} starting (the stimulus from the log, once: under a minute)`);
+  const proc = spawn(PY, [join(REPLAY_DIR, 'xlsx_to_stim.py'), xlsx, out, ...args, '--dme-rom', dmeRom],
+                     { stdio: ['ignore', 'pipe', 'pipe'] });
+  testBuild = { id, proc };
+  const tail = [];
+  const onLine = line => { tail.push(line); if (tail.length > 20) tail.shift(); };
+  createInterface({ input: proc.stdout }).on('line', onLine);
+  createInterface({ input: proc.stderr }).on('line', onLine);
+  proc.on('exit', code => {
+    testBuild = null;
+    if (code === 0 && existsSync(stimFile)) {
+      writeFileSync(out + '.stamp', stamp);
+      broadcast(`SIM: [SNAP] building id=${id} test=${req.test} done`);
+      run();
+    } else {
+      broadcast(`SIM: [SNAP] building id=${id} test=${req.test} failed`);
+      broadcast(`SIM: [ERROR] making ${req.test}'s stimulus failed: ${(tail.slice(-2).join(' | ') || `exit ${code}`).slice(0, 300)}`);
+    }
+  });
+  return [202, ''];
+}
+
 function loadTest(id) {
   const req = readJson(join(snapPath(id), 'request.json'));
   if (!snapId(req?.test ?? '') || !Array.isArray(req.defines)) return [400, `snapshot ${id}: bad request.json`];
   if (testBuild) return [409, `already building ${testBuild.id}`];
+  if (req.replay) return loadReplay(id, req);
   const dev = existsSync(join(HERE, 'build_live.sh'));
   // The shared builds: shipped (lite), or made once (developer install,
   // unless the test's runner script is not the usual one: then it may
