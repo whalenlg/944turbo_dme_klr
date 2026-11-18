@@ -150,7 +150,7 @@ const DEFAULT_ROM = { dme: '89DME_951pin.mem', klr: '89KLR_951.mem' };
 
 // romImages(cpu): [{name, dir, src: 'repo'|'upload'}], the whole .mem
 // images the bridge knows for that CPU
-export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
+export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], setups = () => [] }) {
   const DMEKLR = join(REPO, 'dme_klr');
   const RUN_ALL = join(DMEKLR, 'run_all.sh');
   const RUN_TESTS = join(REPO, 'run_tests.py');
@@ -623,6 +623,9 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       }
       const has = (cpu, n) => imgs[cpu].some(i => i.name === n);
       const presets = ROM_PRESETS.filter(p => has('dme', p.dme) && has('klr', p.klr)).map(p => ({ ...p, folder: romVariant(p.dme, p.klr) }));
+      // image setups saved from the dashboard: a pair to pick (run as roms, not --roms)
+      for (const x of setups()) if (has('dme', x.dme) && has('klr', x.klr))
+        presets.push({ name: `${x.name} (setup)`, dme: x.dme, klr: x.klr, folder: romVariant(x.dme, x.klr), custom: true });
       // each group's MANUAL button: <manual>#<anchor> (the package's manual
       // in the lite package, the developer one here)
       const manual = MODE === 'lite' ? 'docs/USER_MANUAL.md' : 'docs/DEVELOPER_MANUAL.md';

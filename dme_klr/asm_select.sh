@@ -134,6 +134,19 @@ _asm_select() {   # <dme|klr> <array name>
     if [ -z "$_sel" ]; then
         local _wb
         _wb="$(_asm_workbook "$_cpu" "$(basename "${_rom:-$_c_default}")")"
+        # An image made by editing bytes in the dashboard's code windows (kept
+        # with SAVE AS) names the image it was made from in <image>.base: it
+        # is listed with that image's tables (the edited bytes run; only the
+        # debug listing is the original's)
+        if [ -z "$_wb" ] && [ -n "$_rom" ] && [ -f "${_romdir:-$_c_roms/}$_rom.base" ]; then
+            local _base
+            _base="$(head -n 1 "${_romdir:-$_c_roms/}$_rom.base" | tr -d '\r')"
+            if [ -f "$_base" ]; then
+                echo "  $_NAME ASM: $_rom is $(basename "$_base") with bytes edited; using its tables"
+                _rom="$(basename "$_base")"; _romdir="$(dirname "$_base")/"
+                _wb="$(_asm_workbook "$_cpu" "$_rom")"
+            fi
+        fi
         if [ -z "$_wb" ]; then
             # An image without a workbook of its own: make one from the
             # reference workbook (its annotations follow the code that is

@@ -1151,10 +1151,35 @@ decoded in the 2K bank it sits in.
 Edits add up and stay through **↺ RESTART** (the sim boots on the edited
 image). **↶** on an edited row puts that row's original bytes back;
 **REVERT ALL** in the listing header puts back the image as it was loaded.
-Loading another image (**LOAD .mem**, or a snapshot) drops the edits. The
-edited image is saved as `obj/roms/patched/<cpu>/<name>.patch-<hash>.mem` and
-shows by that name in the ROM IMAGES row, so it can be loaded again or
-compared with **COMPARE IMAGES**.
+Loading another image (**LOAD .mem**, a setup or a snapshot) drops the edits.
+
+**Modified images.** While an image has edits, its name shows in **red with
+(modified)** everywhere an image name appears: the ROM IMAGES row, the code
+window header, the snapshot list and its INFO, COMPARE IMAGES, the map graphs
+and a log's ROM line. **Click the red name** (or **✎ N bytes edited** in the
+code window header) for the list of edits: each changed place with the bytes
+and the code before (**was**) and after (**now**). **COPY** puts the list on
+the clipboard as plain text, for a text editor.
+
+**Saving the edits as an image.** At the bottom of the list of edits:
+
+1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image is kept as
+   `<name>.mem` with the uploaded images (`obj/roms/<cpu>/`), with the list of
+   edits beside it (`<name>.mem.edits.txt`). With **run it now** ticked the
+   sim switches to it in place (paused). It is then in every image list:
+   **LOAD .mem**, **COMPARE IMAGES**, **RUN REGRESSIONS** and setups. Its
+   debug listing is the original image's, with the edited places decoded again
+   (`<name>.mem.base` names the original; `asm_select.sh` uses its tables).
+2. **MAKE A SETUP**: name a DME + KLR pair (the saved image and an image for
+   the other CPU) and **SAVE SETUP**.
+
+**Setups.** The **SETUP** picker in the ROM IMAGES row lists the three
+developer pairs and the saved setups. **LOAD SETUP** (paused) loads both
+images, restarting at t=0 when **RESTART AFTER LOAD** is ticked; **✕** deletes a
+saved setup (the images stay). In **RUN REGRESSIONS** a saved setup is in the
+ROM pair list as `<name> (setup)`: picking it runs every test on those two
+images (`DME_ROM_FILE` / `KLR_ROM_FILE`), with the logs in the DME image's
+folder, `tmp/dme_klr/<image name>`. Setups are kept in `obj/roms/setups.json`.
 
 ### Breakpoints
 

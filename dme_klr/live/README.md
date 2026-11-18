@@ -45,6 +45,14 @@ decoded again where it was edited (`disasm.mjs`, the 8051/8048 decoders of
 `dis8051.py` / `dis8048.py` in JavaScript); edited rows carry `patched` and
 `orig`, and the `SIM: [ASM]` line gets `patched=<bytes edited>`.
 
+`GET /edits/<cpu>[?name=<file>]` lists what an edited image changed (text to
+copy: each place's code before and after). `POST /edits/<cpu>/save`
+`{name, use}` keeps it as `obj/roms/<cpu>/<name>.mem` (with `.edits.txt`, and
+`.base` naming the original, whose workbook lists it here and in
+`asm_select.sh`). Setups are named DME + KLR pairs in `obj/roms/setups.json`:
+`GET|POST /setups`, `DELETE /setups/<name>`, `POST /setups/<name>/load[?reset=1]`;
+RUN REGRESSIONS lists the saved ones as ROM pairs.
+
 Each debugger listing follows the image in that CPU's EPROM. Each time the
 sim reports an image (start, restart, load), the bridge matches it, by
 content and then by file name, against the images that have a workbook:
