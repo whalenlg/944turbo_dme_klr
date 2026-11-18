@@ -1381,11 +1381,15 @@ The live sim is deterministic for the same inputs, so to get back to a moment:
 
 ### Limits
 
-* **Replays of recorded car logs** (`run_replay.sh`, including the suite's
-  `replay_wot_60s`) can't be opened at a time in the debugger. `test_snap.py`
-  only knows the tests the runner starts with `run_test`, and the replay has
-  its own driver. Review those logs in log mode and use the dashed **LOG
-  (expected)** traces.
+* **Replays of recorded car logs** in the suite (`replay_wot_60s`) open like
+  any other test, but on the live simulator's own build rather than a test
+  build: the bridge makes the log's stimulus file once
+  (`replay/xlsx_to_stim.py`, kept in `live/obj/replay/`) and the live sim
+  plays it row by row (`+stim=`), to the time you asked for. Times are sim
+  time, so the first 3000 ms are the replay's warm-up (the log's first row
+  held) and log t=0 is at 3000 ms. The expected **LOG (expected)** traces
+  are only in the regression run's own `.dash.log`. A replay you start by
+  hand with `run_replay.sh` (no suite test name) can't be opened this way.
 * A log from somewhere else, with no test or snapshot behind it, can be
   reviewed but not re-run.
 

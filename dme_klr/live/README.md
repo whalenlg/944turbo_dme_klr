@@ -245,6 +245,14 @@ that time. The input controls do nothing in a test run (its inputs follow
 the script), it can't be saved, and **RESTART** goes back to the live
 simulator.
 
+A log-replay test (`replay_wot_60s`: `run_replay_test` in the runner) has
+no build of its own. Its request carries the `run_replay.sh` window args
+instead of -D flags, and LOAD makes the stimulus file from the log once
+(`replay/xlsx_to_stim.py`, in `obj/replay/<test>.stim.csv`) and runs the
+live simulator with `+stim=<file> +warmup_ms=3000`, which plays its rows
+(as `replay_main.cpp` does) up to the chosen time. Its first 3000 ms are
+the warm-up, so log t=0 is sim 3000 ms.
+
 To open a test at a moment of your choosing without running the
 regression, type the test's name and a time in the **TEST … at … ms** row
 under the snapshot list (or run `live/test_snap.py add <test> <ms>
