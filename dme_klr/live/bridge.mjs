@@ -19,6 +19,20 @@
 //                     the running sim (CPU keeps its PC and RAM), or with
 //                     reset=1 the sim restarts at t=0 on the new image.
 //                     The sim reports the result as SIM: [ROM] / [ERROR].
+//    POST /patch?cpu=dme|klr   body {"addr": n, "bytes": [n, ...]} or {"revert": true}:
+//                     edit bytes of the image in that EPROM (the code windows'
+//                     hex column), or put back the image as it was loaded.
+//                     Only while paused. See Byte edits below.
+//    GET  /edits/dme|klr[?name=<file>]  what an edited image changed (the
+//                     loaded one, or one by file name): {name, base, bytes,
+//                     places, text}; text lists each place's code before and after
+//    POST /edits/dme|klr/save  {name, from?, use?}: keep an edited image as
+//                     <name>.mem among the uploads, and <name>.bin (see saveEdited)
+//    GET  /image/dme|klr.bin[?name=<file>]  an image as a raw binary for an
+//                     EPROM programmer (8192 / 4096 bytes; default the loaded one)
+//    GET|POST /setups, DELETE /setups/<name>, POST /setups/<name>/load[?reset=1]
+//                     image setups: named DME + KLR pairs (see Image setups);
+//                     a change is sent as SIM: [SETUPS] changed
 //    GET  /snapshots  JSON list of saved snapshots, newest first (see
 //                     Snapshots below)
 //    GET  /snapshots/<id>         everything in it: sim.json + manifest.json
@@ -74,6 +88,16 @@
 //  and the dashboard fetches /asm/<cpu> again. --dme-asm / --klr-asm pin a
 //  listing.
 //
+//  Byte edits: POST /patch writes the loaded image with the edits applied to
+//  obj/roms/<cpu>/patched/<name>.patch-<hash>.mem (named by its contents)
+//  and swaps it in with the sim's rom command, so the CPU keeps its PC and
+//  RAM and runs the edited code from the next instruction. Edits add up
+//  (each one is applied over the earlier ones), stay through RESTART and
+//  are dropped when another image is loaded. The listing stays the one for
+//  the image as loaded, decoded again where bytes were edited (disasm.mjs):
+//  edited rows carry patched: true and orig (the bytes as loaded). The
+//  bridge then sends SIM: [ASM] ... patched=<bytes edited>.
+//
 //  Snapshots: the sim saves one on every warning (and on "save" via
 //  /cmd) into <snapdir>/<id>/ and prints SIM: [SNAP] saved ... dir=.
 //  The bridge then adds manifest.json (each EPROM image's SHA-256, file
@@ -119,6 +143,7 @@ import { createInterface } from 'node:readline';
 import { makeRunAll } from './runall.mjs';
 import { makeRegressHost, tokenOk, lanAddress, loopback } from './regress_host.mjs';
 import { romVariants } from './logdirs.mjs';
+import { patchListing, rowBytes } from './disasm.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -455,17 +480,265 @@ function asmTables(cpu, path) {
 }
 
 // Runs on every SIM: [ROM] line (start, restart, rom command), so an upload
-// that reuses a file name with new contents is caught too.
+// that reuses a file name with new contents is caught too. An image made by
+// editing bytes (a POST /patch scratch image, or one kept with SAVE AS) is
+// listed from the image it was made from (listingOf).
 function followRom(cpu, path) {
+  // The sim reports both EPROMs after a rom command: the other one didn't change
+  const same = unchanged[cpu] === resolve(path);
+  unchanged[cpu] = null;
+  if (same) return;
+  if (patches[cpu] && resolve(path) !== patches[cpu].path) patches[cpu] = null;   // another image: live edits dropped
+  const p = patches[cpu];
+  // A live edit doesn't change the image underneath: its listing is reused
+  const { rows, workbook, match } = listingOf(cpu, path, !p);
+  if (!rows) return;   // a pinned listing (--dme-asm / --klr-asm) on an unedited image
+  ASM[cpu] = rows;
+  const n = p ? p.orig.reduce((c, v, i) => c + (v !== p.img[i]), 0) : 0;
+  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${match}${n ? ` patched=${n}` : ''}`);
+}
+
+// ── Byte edits (POST /patch) ─────────────────────────────────
+const ROM_SIZE = { dme: 8192, klr: 4096 };
+const patches = { dme: null, klr: null };   // { base: image edited, path: edited image, orig, img }
+const PATCH_DIR = join(ROM_DIR, 'patched');
+const unchanged = { dme: null, klr: null };   // the image in the EPROM a patch didn't touch
+// An image made by editing bytes names the image it was made from in
+// <file>.base (one line, a path); following those leads to the root image,
+// whose workbook lists it
+const baseOf = path => { try { return readFileSync(`${path}.base`, 'utf8').split('\n')[0].trim() || null; } catch { return null; } };
+function rootOf(path) {
+  for (let i = 0, p = path; i < 16; i++) {
+    const b = baseOf(p);
+    if (!b || !existsSync(b)) return p;
+    p = b;
+  }
+  return path;
+}
+const imgBytes = (cpu, path) => memBytes(path)?.subarray(0, ROM_SIZE[cpu]) ?? null;
+// listingOf(cpu, path, fresh): { rows, workbook, match } for an image: its
+// root image's listing (asm_select.sh / the pin), decoded again where the
+// image differs from the root. Root listings are kept per path; fresh
+// prepares the root's tables again (as every [ROM] of an unedited image does).
+const rootAsm = { dme: null, klr: null };   // { src, rows, workbook, match }
+function listingOf(cpu, path, fresh = false) {
   const { pin, dir: dflt } = CPU_ASM[cpu];
-  if (pin) return;
+  const root = rootOf(path);
+  const derived = resolve(root) !== resolve(path);
+  if (fresh || rootAsm[cpu]?.src !== root) {
+    if (pin) {
+      if (!derived && !rootAsm[cpu]?.derived && rootAsm[cpu]) return {};
+      rootAsm[cpu] = { src: root, rows: cpuListing(cpu, dflt), workbook: basename(dflt), match: 'pinned' };
+    } else {
+      const CPU = cpu.toUpperCase();
+      const t = asmTables(cpu, root);
+      const dir = t.dir ?? dflt, img = t.img;
+      if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
+      rootAsm[cpu] = { src: root, rows: cpuListing(cpu, dir), workbook: t.dir ? t.workbook : '-', match: img?.match ?? 'none' };
+      console.log(`bridge: ${CPU} listing for ${basename(root)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${rootAsm[cpu].rows.length} lines)`);
+    }
+  }
+  const r = rootAsm[cpu];
+  r.derived = derived;
+  if (!derived) return r;
+  const orig = imgBytes(cpu, root), img = imgBytes(cpu, path);
+  return { ...r, rows: orig && img ? patchListing(cpu, r.rows, orig, img) : r.rows };
+}
+// The listing of another image (GET /edits, compare): the loaded one's
+// root listing is reused when it is the same root
+function listingFor(cpu, path) {
+  const root = rootOf(path);
+  if (rootAsm[cpu]?.src === root) return listingOf(cpu, path).rows;
+  const rows = cpuListing(cpu, tablesFor(cpu, root) ?? CPU_ASM[cpu].dir);
+  if (resolve(root) === resolve(path)) return rows;
+  const orig = imgBytes(cpu, root), img = imgBytes(cpu, path);
+  return orig && img ? patchListing(cpu, rows, orig, img) : rows;
+}
+function patchRom(cpu, body) {
+  if (cpu !== 'dme' && cpu !== 'klr') return [400, 'cpu must be dme or klr'];
+  let b;
+  try { b = JSON.parse(body); } catch { return [400, 'body must be JSON {addr, bytes} or {revert: true}']; }
+  if (!sim) return [409, 'simulator not running'];
+  if (simState !== 'paused') return [409, 'pause the simulation before editing the ROM'];
+  const size = ROM_SIZE[cpu];
+  const base = patches[cpu]?.base ?? roms[cpu];
+  if (!base) return [409, `no ${cpu.toUpperCase()} image reported by the sim yet`];
+  const orig = patches[cpu]?.orig ?? imgBytes(cpu, base);
+  if (!orig) return [500, `can't read ${base}`];
+  const img = Buffer.from(patches[cpu]?.img ?? orig);
+  if (!b?.revert) {
+    const addr = b?.addr, bytes = b?.bytes;
+    if (!Number.isInteger(addr) || addr < 0 || addr >= size) return [400, `addr must be 0..${(size - 1).toString(16)}h`];
+    if (!Array.isArray(bytes) || !bytes.length || bytes.length > 16 || !bytes.every(v => Number.isInteger(v) && v >= 0 && v <= 255))
+      return [400, 'bytes must be 1 to 16 values 0..255'];
+    if (addr + bytes.length > size) return [400, `edit runs past the end of the ${size}-byte EPROM`];
+    img.set(bytes, addr);
+  }
+  let path;
+  if (b?.revert || img.equals(orig)) {
+    path = base;   // back to the image as loaded
+    patches[cpu] = null;
+  } else {
+    const sha = createHash('sha256').update(img).digest('hex').slice(0, 8);
+    path = join(PATCH_DIR, cpu, `${basename(base).replace(/\.mem$/i, '')}.patch-${sha}.mem`);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, Array.from(img, v => v.toString(16).toUpperCase().padStart(2, '0') + '\n').join(''));
+    writeFileSync(`${path}.base`, `${resolve(base)}\n`);   // what it was made from
+    patches[cpu] = { base, path, orig, img };
+  }
+  console.log(`bridge: ${cpu} ROM ${b?.revert ? 'edits reverted' : `edit at ${b.addr.toString(16)}h`} -> ${basename(path)}`);
+  if (!send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
+  const other = cpu === 'dme' ? 'klr' : 'dme';
+  unchanged[other] = roms[other] && resolve(roms[other]);
+  return [204, ''];
+}
+
+// GET /edits/<cpu>[?name=<file>]: what an edited image changed, against the
+// image it was made from: the loaded one, or an edited image by file name
+// (a snapshot's, an earlier one). { name, base, bytes, places, text }; text is
+// the list as plain text, for copying: each place's listing before and after.
+const isPatched = name => /\.patch-[0-9a-f]{8}\.mem$/i.test(name ?? '');
+function editsFor(cpu, name) {
+  const p = patches[cpu];
+  const path = !name || (p && basename(p.path) === name) ? p?.path : findImageByName(basename(name), cpu);
+  if (!path) return [200, { name: roms[cpu] ? basename(roms[cpu]) : null, base: null, bytes: 0, places: 0, text: '' }];
+  const base = p?.path === path ? p.base : baseOf(path);
+  if (!base || !path || !existsSync(path)) return [404, `no record of the edits in ${basename(name ?? path ?? '')}`];
+  const orig = imgBytes(cpu, base), img = imgBytes(cpu, path);
+  if (!orig || !img) return [404, `can't read ${basename(orig ? path : base)}`];
+  const rows = listingFor(cpu, base);
+  const now = patchListing(cpu, rows, orig, img);
+  // runs of edited rows, each with the rows it replaced
+  const runs = [];
+  for (const r of now) {
+    if (!r.patched) continue;
+    const last = runs.at(-1);
+    if (last && last.end === r.a) { last.now.push(r); last.end = r.a + rowBytes(r); }
+    else runs.push({ start: r.a, end: r.a + rowBytes(r), now: [r] });
+  }
+  // (rows of an image that was itself edited are marked too: only places this image changes)
+  for (let i = runs.length - 1; i >= 0; i--) {
+    let n = 0;
+    for (let a = runs[i].start; a < runs[i].end; a++) n += orig[a] !== img[a];
+    if (!n) runs.splice(i, 1);
+  }
+  const w = cpu === 'dme' ? 4 : 3;
+  const ax = a => a.toString(16).toUpperCase().padStart(w, '0');
+  const bx = v => v.toString(16).toUpperCase().padStart(2, '0');
+  const lw = Math.max(8, ...now.filter(r => r.patched).map(r => r.label.length), ...rows.map(r => r.label.length).filter(n => n < 24));
+  const line = r => `    ${ax(r.a)}  ${r.label.padEnd(lw)}  ${r.bytes.padEnd(9)}  ${r.instr.padEnd(5)} ${r.ops}`.trimEnd();
+  let bytes = 0;
+  const blocks = runs.map(run => {
+    const was = rows.filter(r => r.a >= run.start && r.a < run.end);
+    const changed = [];
+    for (let a = run.start; a < run.end; a++) if (orig[a] !== img[a]) changed.push(`${ax(a)}: ${bx(orig[a])} -> ${bx(img[a])}`);
+    bytes += changed.length;
+    return [`${ax(run.start)}-${ax(run.end - 1)}  ${changed.length} byte${changed.length !== 1 ? 's' : ''} changed: ${changed.join(', ')}`,
+            '  was:', ...was.map(line), '  now:', ...run.now.map(line)].join('\n');
+  });
   const CPU = cpu.toUpperCase();
-  const t = asmTables(cpu, path);
-  const dir = t.dir ?? dflt, workbook = t.dir ? t.workbook : '-', img = t.img;
-  if (!t.dir && img) console.error(`bridge: couldn't prepare the ${CPU} tables for ${img.name}; keeping ${dflt}`);
-  ASM[cpu] = cpuListing(cpu, dir);
-  console.log(`bridge: ${CPU} listing for ${basename(path)}: ${dir} (${img ? `${img.name}, matched by ${img.match}` : 'unknown image'}, ${ASM[cpu].length} lines)`);
-  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${img?.match ?? 'none'}`);
+  const text = [`${CPU} ROM ${basename(base)} (modified): ${bytes} byte${bytes !== 1 ? 's' : ''} changed in ${runs.length} place${runs.length !== 1 ? 's' : ''}`,
+                `edited image: ${path}`, '', ...blocks.flatMap(b => [b, ''])].join('\n');
+  return [200, { name: basename(path), base: basename(base), bytes, places: runs.length, text }];
+}
+
+// POST /edits/<cpu>/save  {name, from?, use?}: keep an edited image (the
+// loaded one, or one by file name) as an image of its own, <name>.mem among
+// the uploads (obj/roms/<cpu>/), with its list of edits beside it
+// (<name>.mem.edits.txt), and as a raw binary, <name>.bin, the EPROM's bytes
+// in order for programming a chip. It is then in every image list (LOAD, COMPARE,
+// RUN REGRESSIONS, setups). use: true also swaps it into the EPROM in place
+// of the edited image (paused only).
+const IMAGE_NAME = /^[\w.+-]{1,64}$/;
+function saveEdited(cpu, body) {
+  let b;
+  try { b = JSON.parse(body); } catch { return [400, 'body must be JSON {name, from, use}']; }
+  const name = String(b?.name ?? '').trim().replace(/\.mem$/i, '');
+  if (!IMAGE_NAME.test(name) || isPatched(`${name}.mem`)) return [400, 'name: letters, digits, _ . + - (up to 64)'];
+  const file = `${name}.mem`;
+  if (findImageByName(file, cpu) || findImageByName(`${name}.bin`, cpu)) return [409, `there is already a ${cpu.toUpperCase()} image named ${name}`];
+  const [code, edits] = editsFor(cpu, b?.from || null);
+  if (code !== 200) return [code, edits];
+  if (!edits.bytes) return [400, 'that image has no edits to save'];
+  const src = findImageByName(edits.name, cpu);
+  if (!src) return [404, `no image ${edits.name}`];
+  if (b?.use && simState !== 'paused') return [409, 'pause the simulation to switch the sim to the saved image'];
+  const dir = join(ROM_DIR, cpu);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, file);
+  writeFileSync(path, readFileSync(src));
+  // and as a raw binary, the EPROM's bytes in order, for programming a chip
+  const bin = `${name}.bin`;
+  writeFileSync(join(dir, bin), imgBytes(cpu, src));
+  writeFileSync(`${path}.edits.txt`, `${file}: ${edits.text}`);
+  writeFileSync(`${path}.base`, `${resolve(rootOf(findImageByName(edits.base, cpu) ?? src))}\n`);   // listed from that image's workbook
+  console.log(`bridge: ${cpu} edited image ${edits.name} saved as ${path}`);
+  if (b?.use && !send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
+  return [200, { name: file, bin }];
+}
+
+// GET /image/<cpu>.bin?name=<file>: an image (any the bridge knows, an edited
+// one too; default: the loaded one) as a raw binary for an EPROM programmer:
+// the whole EPROM (8192 bytes DME, 4096 KLR), unset bytes FF
+function imageBin(cpu, name) {
+  const path = name ? findImageByName(basename(name), cpu) : roms[cpu];
+  if (!path) return [404, `no ${cpu.toUpperCase()} image ${name ?? ''}`];
+  const img = /\.mem$/i.test(path) ? imgBytes(cpu, path)
+    : Buffer.concat([readFileSync(path), Buffer.alloc(ROM_SIZE[cpu], 0xFF)]).subarray(0, ROM_SIZE[cpu]);
+  if (!img) return [500, `can't read ${basename(path)}`];
+  const file = basename(path).replace(/\.patch-([0-9a-f]{8})\.mem$/i, '_modified_$1.mem').replace(/\.[^.]+$/, '.bin');
+  return [200, img, file];
+}
+
+// ── Image setups: a named DME + KLR pair ──────────────────────
+// Kept in obj/roms/setups.json, [{name, dme, klr}] (image file names). The
+// developer scripts' three pairs are built in. The live ROM IMAGES row loads
+// one into both EPROMs; RUN REGRESSIONS lists them as ROM pairs.
+//   GET /setups                     [{name, dme, klr, builtin, ok}] (ok: both images found)
+//   POST /setups                    {name, dme, klr}: add or replace one
+//   DELETE /setups/<name>
+//   POST /setups/<name>/load[?reset=1]  load both images (paused only); reset: restart at t=0
+const SETUPS = join(ROM_DIR, 'setups.json');
+const BUILTIN_SETUPS = [
+  { name: '1989 stock', dme: '89DME_951pin.mem', klr: '89KLR_951.mem' },
+  { name: '1986', dme: '28PIN_86DME.mem', klr: '86KLR_951.mem' },
+  { name: 'CarPokes performance', dme: '28PIN_DME_PERFORMANCE.mem', klr: '87KLR_951.mem' },
+];
+const customSetups = () => (readJson(SETUPS) ?? []).filter(x => x && IMAGE_NAME.test(x.dme ?? '') && IMAGE_NAME.test(x.klr ?? ''));
+const listSetups = () => [...BUILTIN_SETUPS.map(x => ({ ...x, builtin: true })), ...customSetups()]
+  .map(x => ({ ...x, ok: !!findImageByName(x.dme, 'dme') && !!findImageByName(x.klr, 'klr') }));
+function saveSetup(body) {
+  let b;
+  try { b = JSON.parse(body); } catch { return [400, 'body must be JSON {name, dme, klr}']; }
+  const name = String(b?.name ?? '').trim();
+  if (!/^[\w .+-]{1,64}$/.test(name)) return [400, 'name: letters, digits, spaces, _ . + - (up to 64)'];
+  if (BUILTIN_SETUPS.some(x => x.name === name)) return [409, `${name} is a built-in setup`];
+  for (const cpu of ['dme', 'klr'])
+    if (!IMAGE_NAME.test(b?.[cpu] ?? '') || !findImageByName(b[cpu], cpu)) return [400, `no ${cpu.toUpperCase()} image ${b?.[cpu] ?? ''}`];
+  const list = customSetups().filter(x => x.name !== name);
+  list.push({ name, dme: b.dme, klr: b.klr });
+  mkdirSync(ROM_DIR, { recursive: true });
+  writeFileSync(SETUPS, JSON.stringify(list, null, 2));
+  broadcast('SIM: [SETUPS] changed');
+  return [200, listSetups()];
+}
+function deleteSetup(name) {
+  const list = customSetups();
+  if (!list.some(x => x.name === name)) return [404, `no setup ${name}`];
+  writeFileSync(SETUPS, JSON.stringify(list.filter(x => x.name !== name), null, 2));
+  broadcast('SIM: [SETUPS] changed');
+  return [200, listSetups()];
+}
+function loadSetup(name, reset) {
+  const x = listSetups().find(y => y.name === name);
+  if (!x) return [404, `no setup ${name}`];
+  const paths = { dme: findImageByName(x.dme, 'dme'), klr: findImageByName(x.klr, 'klr') };
+  for (const cpu of ['dme', 'klr']) if (!paths[cpu]) return [404, `no ${cpu.toUpperCase()} image ${x[cpu]}`];
+  if (simState === 'running') return [409, 'pause the simulation before loading a setup'];
+  console.log(`bridge: setup ${name}: ${x.dme} + ${x.klr}${reset ? ' (restart)' : ''}`);
+  if (reset) { Object.assign(roms, paths); restartSim(); return [204, '']; }
+  if (!send(`rom dme ${paths.dme}\nrom klr ${paths.klr}`)) return [409, 'simulator not running'];
+  return [204, ''];
 }
 
 // ── ROM image compare ────────────────────────────────────────
@@ -480,7 +753,7 @@ function followRom(cpu, path) {
 const ROM_COMPARE = join(HERE, 'rom_compare.py');
 function compareImages(cpu) {
   const out = [];
-  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload']]) {
+  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload'], [join(PATCH_DIR, cpu), 'edited']]) {
     let names = [];
     try { names = readdirSync(dir); } catch { continue; }
     for (const n of names.sort()) {
@@ -510,6 +783,8 @@ function memWords(file) {
 const tablesCache = new Map();   // `${cpu}:${path}:${mtime}` -> dir
 function tablesFor(cpu, path) {
   if (!/\.mem$/i.test(path)) return null;
+  // an edited image is listed with the tables of the image it was made from
+  path = rootOf(path);
   let k;
   try { k = `${cpu}:${path}:${statSync(path).mtimeMs}`; } catch { return null; }
   if (!tablesCache.has(k)) tablesCache.set(k, asmTables(cpu, path).dir);
@@ -924,7 +1199,7 @@ function findImage(sha, cpu) {
 
 // The same by file name, for a log that names its image but has no hash
 function findImageByName(name, cpu) {
-  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu)]) {
+  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu), join(PATCH_DIR, cpu)]) {
     const p = join(dir, name);
     if (existsSync(p)) return p;
   }
@@ -1086,8 +1361,11 @@ const regressHost = makeRegressHost({ REPO, TMP_ROOT, PY });
 const runAll = makeRunAll({
   REPO, HERE, TMP_ROOT, PY,
   // the whole .mem images, from bin_images/<cpu> and the uploads
-  romImages: cpu => compareImages(cpu).filter(i => /\.mem$/i.test(i.name))
+  // (not the scratch images of byte edits: SAVE AS in the list of edits keeps one)
+  romImages: cpu => compareImages(cpu).filter(i => /\.mem$/i.test(i.name) && i.src !== 'edited')
     .map(i => ({ name: i.name, src: i.src, dir: i.src === 'repo' ? IMAGES[cpu] : join(ROM_DIR, cpu) })),
+  // the image setups saved from the dashboard, offered as ROM pairs
+  setups: customSetups,
 });
 
 const ALLOWED = [
@@ -1250,6 +1528,53 @@ createServer((req, res) => {
     if (!ASM[cpu]) { res.writeHead(404, CORS); return res.end(); }
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(ASM[cpu]));
+  }
+  const readBody = (max, done) => {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > max) req.destroy(); });
+    req.on('end', () => done(body));
+  };
+  const reply = ([code, body]) => {
+    const isJson = code === 200 && typeof body !== 'string';
+    res.writeHead(code, { ...CORS, 'Content-Type': isJson ? 'application/json' : 'text/plain', 'Cache-Control': 'no-cache' });
+    res.end(isJson ? JSON.stringify(body) : body);
+  };
+  const saveAs = url.pathname.match(/^\/edits\/(dme|klr)\/save$/);
+  if (req.method === 'POST' && saveAs) return readBody(4096, b => reply(saveEdited(saveAs[1], b)));
+  if (url.pathname === '/setups') {
+    if (req.method === 'GET') return reply([200, listSetups()]);
+    if (req.method === 'POST') return readBody(4096, b => reply(saveSetup(b)));
+  }
+  const setup = url.pathname.match(/^\/setups\/([^/]+)(\/load)?$/);
+  if (setup) {
+    let name;
+    try { name = decodeURIComponent(setup[1]); } catch { return reply([400, 'bad setup name']); }
+    if (req.method === 'DELETE' && !setup[2]) return reply(deleteSetup(name));
+    if (req.method === 'POST' && setup[2]) return reply(loadSetup(name, url.searchParams.get('reset') === '1'));
+  }
+  const bin = url.pathname.match(/^\/image\/(dme|klr)\.bin$/);
+  if (req.method === 'GET' && bin) {
+    const [code, body, file] = imageBin(bin[1], url.searchParams.get('name'));
+    if (code !== 200) return reply([code, body]);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-cache',
+                         'Content-Disposition': `attachment; filename="${file}"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
+    return res.end(body);
+  }
+  const edits = url.pathname.match(/^\/edits\/(dme|klr)$/);
+  if (req.method === 'GET' && edits) {
+    const [code, body] = editsFor(edits[1], url.searchParams.get('name'));
+    res.writeHead(code, { ...CORS, 'Content-Type': code === 200 ? 'application/json' : 'text/plain', 'Cache-Control': 'no-cache' });
+    return res.end(code === 200 ? JSON.stringify(body) : body);
+  }
+  if (req.method === 'POST' && url.pathname === '/patch') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
+    req.on('end', () => {
+      const [code, text] = patchRom(url.searchParams.get('cpu'), body);
+      res.writeHead(code, CORS);
+      res.end(text);
+    });
+    return;
   }
   if (req.method === 'POST' && (url.pathname === '/cmd' || url.pathname === '/restart' || url.pathname === '/rom')) {
     const chunks = [];

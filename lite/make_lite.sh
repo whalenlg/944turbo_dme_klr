@@ -191,7 +191,7 @@ cp "$LITE_DIR/run_tests.py" "$PKG/"
 # the same srchash a developer install of this tree reports
 node "$REPO/dme_klr/live/regress_host.mjs" version-txt "$REPO" "$VERSION" > "$PKG/VERSION.txt" \
     || { echo "make_lite.sh: couldn't write VERSION.txt" >&2; exit 1; }
-for f in bridge.mjs runall.mjs regress_host.mjs remote_test.mjs logdirs.mjs test_groups.json map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
+for f in bridge.mjs runall.mjs regress_host.mjs remote_test.mjs logdirs.mjs disasm.mjs test_groups.json map_graphs.py klr_map_graphs.py rom_compare.py asm_full.json; do
     cp "$REPO/dme_klr/live/$f" "$PKG/dme_klr/live/"
 done
 printf '%s\n' "$TABLES_JSON" > "$PKG/dme_klr/live/asm_tables.json"

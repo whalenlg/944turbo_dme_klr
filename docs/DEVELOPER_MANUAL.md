@@ -1138,6 +1138,68 @@ Hover a row for the workbook's description of that line.
 * A hex address followed by **GO** goes to that address.
 * **PC** returns to the program counter. Every stop also returns there.
 
+### Editing the ROM bytes
+
+The bytes column on the right of each row can be edited, while the sim is
+paused, to change an opcode, an operand or an address in the image the sim
+is running:
+
+1. **Click the bytes** of a row (not the rest of the row, which sets a
+   breakpoint). They open as a text box.
+2. Type the new bytes in hex, with or without spaces (`02 10 08`,
+   `021008`). **Enter** writes them, **Esc** cancels. Fewer bytes than the
+   instruction has change only its first bytes; more bytes run on over the
+   instructions after it (up to 16).
+3. The edit applies **live**: the bridge loads the edited image into the
+   EPROM in place, so the CPU keeps its PC and RAM and runs the new code from
+   its next instruction. Nothing restarts.
+
+The listing is decoded again from the edited instruction, so the mnemonic and
+operands follow the new bytes, and when the instruction gets longer or
+shorter the rows after it re-flow until the code lines up with the listing
+again. Edited rows are marked with an amber **✎**, and their bytes are amber
+where they differ from the image as loaded; hover them for the original
+bytes. Decoded rows use the workbook's labels and register names where it
+has them, and plain addresses (`0x1008`) elsewhere. A KLR `call`/`jmp` is
+decoded in the 2K bank it sits in.
+
+Edits add up and stay through **↺ RESTART** (the sim boots on the edited
+image). **↶** on an edited row puts that row's original bytes back;
+**REVERT ALL** in the listing header puts back the image as it was loaded.
+Loading another image (**LOAD .mem**, a setup or a snapshot) drops the edits.
+
+**Modified images.** While an image has edits, its name shows in **red with
+(modified)** everywhere an image name appears: the ROM IMAGES row, the code
+window header, the snapshot list and its INFO, COMPARE IMAGES, the map graphs
+and a log's ROM line. **Click the red name** (or **✎ N bytes edited** in the
+code window header) for the list of edits: each changed place with the bytes
+and the code before (**was**) and after (**now**). **COPY** puts the list on
+the clipboard as plain text, for a text editor. **⬇ .bin** downloads the edited image as a raw
+binary, and **⬇ .bin** in the ROM IMAGES row does the same for the image in
+either EPROM.
+
+**Saving the edits as an image.** At the bottom of the list of edits:
+
+1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image is kept as
+   `<name>.mem` with the uploaded images (`obj/roms/<cpu>/`), with the list of
+   edits beside it (`<name>.mem.edits.txt`), and as **`<name>.bin`**, the raw
+   EPROM contents (8192 bytes DME, 4096 KLR, in address order) for an EPROM
+   programmer. **⬇ \<name\>.bin** downloads it. With **run it now** ticked the
+   sim switches to it in place (paused). It is then in every image list:
+   **LOAD .mem**, **COMPARE IMAGES**, **RUN REGRESSIONS** and setups. Its
+   debug listing is the original image's, with the edited places decoded again
+   (`<name>.mem.base` names the original; `asm_select.sh` uses its tables).
+2. **MAKE A SETUP**: name a DME + KLR pair (the saved image and an image for
+   the other CPU) and **SAVE SETUP**.
+
+**Setups.** The **SETUP** picker in the ROM IMAGES row lists the three
+developer pairs and the saved setups. **LOAD SETUP** (paused) loads both
+images, restarting at t=0 when **RESTART AFTER LOAD** is ticked; **✕** deletes a
+saved setup (the images stay). In **RUN REGRESSIONS** a saved setup is in the
+ROM pair list as `<name> (setup)`: picking it runs every test on those two
+images (`DME_ROM_FILE` / `KLR_ROM_FILE`), with the logs in the DME image's
+folder, `tmp/dme_klr/<image name>`. Setups are kept in `obj/roms/setups.json`.
+
 ### Breakpoints
 
 * **Click any row** in the listing to set a breakpoint there, and click it
