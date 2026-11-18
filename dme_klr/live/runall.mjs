@@ -60,6 +60,23 @@
 //                         rel}]}}}}], differing, total}]}; only the tests
 //                         that differ unless all=1
 //    POST /runall/stop    stop the run and every test it started
+//    POST /runall/threads JSON {host: 'local' | <host id>, threads}: while
+//                         the run goes, how many tests at a time here
+//                         (1 up to maxLocal) or on that regression host (0
+//                         up to 64; 0: no more tests there). It applies as
+//                         tests start: a test already running ends as it
+//                         would have. run.threads: {local, maxLocal,
+//                         hosts: {<id>: n}}
+//    POST /runall/cancel  JSON {sim: 'vl' | 'iv' (default both), rom: <folder>
+//                         (default every pair), tests: [names] (default
+//                         all)}: the matching tests not started yet never
+//                         start (state 'cancelled'; not in the verdicts);
+//                         running ones end as they would have. Answers
+//                         {cancelled: <tests marked>}. run.cancels lists them.
+//  Both go to the runners through $DMEKLR_RUN_CONTROL, a folder of two
+//  files they read before starting each test (run_dashboard_parallel.sh,
+//  run_tests.py): threads ("local <n>", "host <id> <n>") and cancel
+//  ("<vl|iv|*> <rom|*> <test|*>" lines).
 //    GET  /runall/diff?rom=<folder>&test=<name>&ecu=DME|KLR
 //                         the run's step 5 plot of where that test's
 //                         iverilog and Verilator logs differ
@@ -96,7 +113,7 @@
 // ============================================================
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { dirname, join } from 'node:path';
 import { softwareVersion } from './regress_host.mjs';
@@ -383,6 +400,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       writeFileSync(f, JSON.stringify(useHosts.map(h => ({ name: h.id, url: hostUrl(h), token: h.token, threads: h.threads }))), { mode: 0o600 });
       env.DMEKLR_REGRESS_HOSTS = f;
     } else delete env.DMEKLR_REGRESS_HOSTS;
+    // RUN CONTROL: the thread counts and cancels the panel changes as the
+    // run goes, in a folder the runners read before starting each test
+    const control = join(TMP_ROOT, 'run_all', 'control');
+    rmSync(control, { recursive: true, force: true });
+    mkdirSync(control, { recursive: true });
+    env.DMEKLR_RUN_CONTROL = control;
     run = {
       id: Date.now().toString(36), mode: MODE, rom, roms: romList, logs: logsDir(TMP_ROOT, rom),
       startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
@@ -391,7 +414,11 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
               roms: multi ? { pairs } : { dme: roms.dme.name, klr: roms.klr.name },
               hosts: useHosts.map(h => ({ name: h.id, threads: h.threads })) },
       steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes], diffs: {},
+      control, threads: { local: workers, maxLocal: MODE === 'dev' ? Math.max(8, cpus().length) : 64,
+                          hosts: Object.fromEntries(useHosts.map(h => [h.id, h.threads])) },
+      cancels: [],
     };
+    writeControl(run);
     if (MODE === 'lite') { steps[0].state = 'running'; suites.vl.startedAt = Date.now(); }
     console.log(`bridge: RUN REGRESSIONS: ${run.command}  (${multi ? `ROM pairs ${pairs.join(', ')}` : `DME ${roms.dme.name}, KLR ${roms.klr.name}`})`);
     proc = spawn(cmd, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -412,6 +439,61 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     });
     timer = setInterval(() => poll(mine), POLL_MS);
     return [202, ''];
+  }
+
+  // ── RUN CONTROL ($DMEKLR_RUN_CONTROL) ────────────────────────
+  // Whole files, written to a temporary name and renamed, so a runner
+  // never reads half a line
+  function writeCtl(r, name, text) {
+    const f = join(r.control, name);
+    writeFileSync(`${f}.tmp`, text);
+    renameSync(`${f}.tmp`, f);
+  }
+  function writeControl(r) {
+    writeCtl(r, 'threads', [`local ${r.threads.local}`, ...Object.entries(r.threads.hosts).map(([id, n]) => `host ${id} ${n}`)].join('\n') + '\n');
+    writeCtl(r, 'cancel', r.cancels.flatMap(c => (c.tests ?? ['*']).map(t => `${c.sim ?? '*'} ${c.rom ?? '*'} ${t}`)).join('\n') + '\n');
+  }
+  // a cancel that names this suite's test
+  const cancelled = (r, su, name) => r.cancels.some(c => (!c.sim || c.sim === su.sim) && (!c.rom || c.rom === su.rom)
+                                                       && (!c.tests || c.tests.includes(name)));
+  function setThreads(o) {
+    if (!proc || !run) return [409, 'no run is going'];
+    const n = Math.floor(+o.threads);
+    if (!Number.isFinite(n)) return [400, 'threads: a number'];
+    if (o.host === 'local' || o.host == null) {
+      if (n < 1 || n > run.threads.maxLocal) return [400, `here: 1 to ${run.threads.maxLocal}`];
+      run.threads.local = n;
+    } else {
+      if (!Object.hasOwn(run.threads.hosts, o.host)) return [404, `${o.host} isn't in this run`];
+      if (n < 0 || n > 64) return [400, 'a host: 0 to 64'];
+      run.threads.hosts[o.host] = n;
+    }
+    writeControl(run);
+    onLine(run, `RUN REGRESSIONS: ${o.host && o.host !== 'local' ? o.host : 'here'}: ${n} test${n === 1 ? '' : 's'} at a time from now on`);
+    return [200, ''];
+  }
+  function cancel(o) {
+    if (!proc || !run) return [409, 'no run is going'];
+    const sim = o.sim == null || o.sim === '*' ? null : o.sim;
+    if (sim && sim !== 'vl' && sim !== 'iv') return [400, "sim: 'vl' or 'iv'"];
+    const rom = o.rom == null || o.rom === '*' ? null : String(o.rom);
+    if (rom && (!/^[\w.+-]+$/.test(rom) || rom.startsWith('.'))) return [400, 'not a ROM folder'];
+    let tests = null;
+    if (o.tests != null) {
+      if (!Array.isArray(o.tests) || !o.tests.length || o.tests.some(t => typeof t !== 'string' || !NAME.test(t))) return [400, 'tests: test names'];
+      tests = [...new Set(o.tests)];
+    }
+    // with one ROM pair the suites' folder is the run's: no need to name it
+    const c = { sim, rom: (run.roms?.length ?? 1) > 1 ? rom : null, tests };
+    run.cancels.push(c);
+    writeControl(run);
+    let k = 0;
+    for (const su of Object.values(run.suites))
+      for (const [name, t] of Object.entries(su.tests))
+        if (t.state === 'queued' && cancelled(run, su, name)) { t.state = 'cancelled'; k++; }
+    onLine(run, `RUN REGRESSIONS: cancelled ${k} test${k === 1 ? '' : 's'} not started yet (${sim ? sim.toUpperCase() : 'both simulators'}`
+                + `${rom && c.rom ? `, ROM pair ${rom}` : ''}${tests ? `, ${tests.length > 3 ? `${tests.length} tests` : tests.join(' ')}` : ', every test'})`);
+    return [200, k];
   }
 
   function curSuite(r) {
@@ -476,7 +558,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     if (/Building the shared testbench/.test(line)) { su.building = true; return; }
     if (/^\s*built in \d+ s/.test(line) || /Shared build FAILED/.test(line)) { su.building = false; return; }
     if ((m = line.match(/^\s*\[REQUEUE\]\s+([A-Za-z0-9_]+)/)) && su.tests[m[1]]) {
-      Object.assign(su.tests[m[1]], { state: 'queued', t_s: 0, host: null });
+      // (a cancel since it started: the runner drops it from its queue)
+      Object.assign(su.tests[m[1]], { state: cancelled(r, su, m[1]) ? 'cancelled' : 'queued', t_s: 0, host: null });
+      return;
+    }
+    if ((m = line.match(/^\s*\[CANCEL\]\s+([A-Za-z0-9_]+)/)) && su.tests[m[1]]) {
+      Object.assign(su.tests[m[1]], { state: 'cancelled', t_s: 0 });
       return;
     }
     if ((m = line.match(/^\s*\[START\]\s+([A-Za-z0-9_]+)(?:\s+@(\S+))?/)) && su.tests[m[1]]) {
@@ -582,11 +669,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
     const suites = {};
     for (const [k, su] of Object.entries(run.suites)) {
       let d = 0, tot = 0;
-      const counts = { queued: 0, running: 0, done: 0, stopped: 0, PASS: 0, WARN: 0, FAIL: 0 };
+      const counts = { queued: 0, running: 0, done: 0, stopped: 0, cancelled: 0, PASS: 0, WARN: 0, FAIL: 0 };
       for (const t of Object.values(su.tests)) {
+        counts[t.state]++;
+        if (t.state === 'cancelled') continue;   // not in the run's total any more
         tot += t.len_s;
         d += t.state === 'done' ? t.len_s : t.t_s;
-        counts[t.state]++;
         if (t.verdict && counts[t.verdict] != null) counts[t.verdict]++;
       }
       done += d; total += tot;
@@ -608,6 +696,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       elapsed_s: (now - run.startedAt) / 1000, done_s: done, total_s: total,
       eta_s: proc && rate ? (total - done) / rate : null,
       steps, cur: run.cur, suites, out: run.out, diffs: run.diffs,
+      threads: run.threads, cancels: run.cancels,
     };
   }
 
@@ -701,6 +790,21 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [] }) {
       return true;
     }
     if (req.method === 'POST' && url.pathname === '/runall/stop') return text(stop() ? 204 : 409, ''), true;
+    if (req.method === 'POST' && (url.pathname === '/runall/threads' || url.pathname === '/runall/cancel')) {
+      const chunks = [];
+      let size = 0;
+      req.on('data', d => { chunks.push(d); size += d.length; if (size > 1e5) req.destroy(); });
+      req.on('end', () => {
+        let o;
+        try { o = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { return text(400, 'body is not JSON'); }
+        try {
+          if (url.pathname === '/runall/threads') { const [code, msg] = setThreads(o); return text(code, msg); }
+          const [code, k] = cancel(o);
+          return code === 200 ? json(200, { cancelled: k }) : text(code, k);
+        } catch (e) { return text(500, e.message); }
+      });
+      return true;
+    }
     if (req.method === 'POST' && url.pathname === '/runall/hosttest/stop') return text(hostTestStop() ? 204 : 409, ''), true;
     if (req.method === 'POST' && url.pathname === '/runall/hosttest') {
       const chunks = [];

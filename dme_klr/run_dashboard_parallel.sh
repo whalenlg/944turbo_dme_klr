@@ -358,15 +358,100 @@ POOL="${DMEKLR_SLOT_POOL:-}"
 declare -a SLOT_TOKEN=()
 for i in "${!SLOT_PID[@]}"; do SLOT_TOKEN+=(""); done
 pool_take() {  # pool_take <key> <count>: prints the token taken; 1 if none is free
-    local k
-    for ((k = 0; k < $2; k++)); do
-        mkdir "$POOL/$1.$k" 2>/dev/null && { echo "$POOL/$1.$k"; return 0; }
+    # Fewer than <count> of that key's tokens taken, by every suite: the
+    # count can go down while tokens above it are held (RUN CONTROL below),
+    # so it counts them rather than trying only token numbers below it.
+    # Under a short lock, so two suites can't both take the last one.
+    local k n tries=0 tok=""
+    until mkdir "$POOL/lock" 2>/dev/null; do
+        tries=$((tries + 1))
+        # a suite killed while it held the lock: take it over
+        [ $tries -gt 100 ] && { rmdir "$POOL/lock" 2>/dev/null; tries=0; }
+        sleep 0.02
     done
+    n=$(ls -d "$POOL/$1".* 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$n" -lt "$2" ]; then
+        for ((k = 0; k < 256; k++)); do
+            mkdir "$POOL/$1.$k" 2>/dev/null && { tok="$POOL/$1.$k"; break; }
+        done
+    fi
+    rmdir "$POOL/lock" 2>/dev/null
+    [ -n "$tok" ] && { echo "$tok"; return 0; }
     return 1
 }
 pool_give() {  # pool_give <slot>
     [ -n "${SLOT_TOKEN[$1]}" ] && rmdir "${SLOT_TOKEN[$1]}" 2>/dev/null
     SLOT_TOKEN[$1]=""
+}
+
+# ── Run control: thread counts and cancels while the run goes ───────────────
+# DMEKLR_RUN_CONTROL=<dir> (the RUN REGRESSIONS panel, live/runall.mjs):
+# read before each scheduling pass (once a second), so a change takes
+# effect on the next test that would start; a test already running ends
+# as it would have.
+#   <dir>/threads  "local <n>" (tests at a time here) and "host <name> <n>"
+#                  (a regression host's threads, 0: no more tests there)
+#                  lines; a line that isn't there keeps the count it had.
+#                  With DMEKLR_SLOT_POOL these are the counts every suite
+#                  shares, not each suite's.
+#   <dir>/cancel   "<sim> <rom> <test>" lines (shell patterns: * for any),
+#                  sim iv or vl, rom this ROM pair's folder name
+#                  (dmeklr_rom_variant): a queued test that matches never
+#                  starts ("[CANCEL] <test>"), and isn't in the verdicts.
+CONTROL="${DMEKLR_RUN_CONTROL:-}"
+[ -n "$CONTROL" ] && [ -d "$CONTROL" ] || CONTROL=""
+SUITE_SIM=iv; [ "$USE_VERILATOR" = "1" ] && SUITE_SIM=vl
+SUITE_ROM="$(dmeklr_rom_variant)"
+LIM_LOCAL="${DMEKLR_SLOT_POOL_N:-$WORKERS}"; [ -n "$POOL" ] || LIM_LOCAL="$WORKERS"
+declare -a H_LIM=(${H_THREADS[@]+"${H_THREADS[@]}"})
+declare -a CANCELLED=()
+is_cancelled() {   # is_cancelled <test>: a cancel line names it
+    local s r t
+    while read -r s r t; do
+        [ -n "$t" ] || continue
+        # (unquoted right sides: shell patterns)
+        [[ "$SUITE_SIM" == $s && "$SUITE_ROM" == $r && "$1" == $t ]] && return 0
+    done < "$CONTROL/cancel"
+    return 1
+}
+read_control() {
+    [ -n "$CONTROL" ] || return 0
+    local kind a b h q _keep=()
+    if [ -f "$CONTROL/threads" ]; then
+        while read -r kind a b; do
+            case "$kind" in
+                local) [[ "$a" =~ ^[0-9]+$ ]] && [ "$a" -ge 1 ] && LIM_LOCAL="$a" ;;
+                host)  [[ "$b" =~ ^[0-9]+$ ]] || continue
+                       for h in "${!H_NAME[@]}"; do [ "${H_NAME[$h]}" = "$a" ] && H_LIM[$h]="$b"; done ;;
+            esac
+        done < "$CONTROL/threads"
+    fi
+    if [ -f "$CONTROL/cancel" ] && [ ${#QUEUE[@]} -gt 0 ]; then
+        for q in "${QUEUE[@]}"; do
+            if is_cancelled "$q"; then
+                CANCELLED+=("$q")
+                # (the RUN REGRESSIONS panel marks the test cancelled from this line)
+                printf "  [CANCEL] %s\n" "$q"
+            else
+                _keep+=("$q")
+            fi
+        done
+        QUEUE=(${_keep[@]+"${_keep[@]}"})
+    fi
+    # Slots for counts above the ones the run started with
+    local n_loc=0 n_h=()
+    for h in "${!H_NAME[@]}"; do n_h[$h]=0; done
+    for h in "${SLOT_HOST[@]}"; do
+        if [ -z "$h" ]; then n_loc=$((n_loc + 1)); else n_h[$h]=$((n_h[$h] + 1)); fi
+    done
+    while [ $n_loc -lt "$LIM_LOCAL" ]; do
+        SLOT_HOST+=(""); SLOT_PID+=(""); SLOT_TEST+=(""); SLOT_TOKEN+=(""); n_loc=$((n_loc + 1))
+    done
+    for h in "${!H_NAME[@]}"; do
+        while [ "${n_h[$h]}" -lt "${H_LIM[$h]}" ]; do
+            SLOT_HOST+=("$h"); SLOT_PID+=(""); SLOT_TEST+=(""); SLOT_TOKEN+=(""); n_h[$h]=$((n_h[$h] + 1))
+        done
+    done
 }
 
 # Ctrl-C / kill: stop the running tests too. Background jobs in a script
@@ -417,7 +502,7 @@ reap_finished() {
         fi
         validate_one "$name"
         COMPLETED=$(( COMPLETED + 1 ))
-        printf "  [%d of %d completed]\n" "$COMPLETED" "$TOTAL"
+        printf "  [%d of %d completed]\n" "$COMPLETED" "$(( TOTAL - ${#CANCELLED[@]} ))"
     done
 }
 
@@ -452,11 +537,22 @@ _sim=iverilog; [ "$USE_VERILATOR" = "1" ] && _sim=verilator
 _pt=(); [ "$PER_TEST_BUILD" = "1" ] && _pt=(--per-test-build)
 while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
     reap_finished
+    read_control
+    # running now here and on each host, against their counts (RUN CONTROL)
+    _run_loc=0; _run_h=()
+    for h in "${!H_NAME[@]}"; do _run_h[$h]=0; done
+    for i in "${!SLOT_PID[@]}"; do
+        [ -n "${SLOT_PID[$i]}" ] || continue
+        h="${SLOT_HOST[$i]}"
+        if [ -z "$h" ]; then _run_loc=$((_run_loc + 1)); else _run_h[$h]=$((_run_h[$h] + 1)); fi
+    done
     for i in "${!SLOT_PID[@]}"; do
         [ ${#QUEUE[@]} -gt 0 ] || break
         [ -z "${SLOT_PID[$i]}" ] || continue
         h="${SLOT_HOST[$i]}"
         [ -z "$h" ] || [ "${H_OFF[$h]}" = 0 ] || continue
+        if [ -z "$h" ]; then [ "$_run_loc" -lt "$LIM_LOCAL" ] || continue
+        else [ "${_run_h[$h]}" -lt "${H_LIM[$h]}" ] || continue; fi
         # a host takes the first queued test without debug flags (those stay here)
         _qi=0
         if [ -n "$h" ]; then
@@ -465,8 +561,8 @@ while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
         fi
         # sharing threads with other suites: wait for a free one
         if [ -n "$POOL" ]; then
-            if [ -z "$h" ]; then _tok=$(pool_take local "${DMEKLR_SLOT_POOL_N:-$WORKERS}") || continue
-            else _tok=$(pool_take "h_${H_NAME[$h]//[^A-Za-z0-9_.-]/_}" "${H_THREADS[$h]}") || continue; fi
+            if [ -z "$h" ]; then _tok=$(pool_take local "$LIM_LOCAL") || continue
+            else _tok=$(pool_take "h_${H_NAME[$h]//[^A-Za-z0-9_.-]/_}" "${H_LIM[$h]}") || continue; fi
             SLOT_TOKEN[$i]="$_tok"
         fi
         test="${QUEUE[$_qi]}"
@@ -488,6 +584,7 @@ while [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ]; do
         fi
         SLOT_PID[$i]=$!
         SLOT_TEST[$i]="$test"
+        if [ -z "$h" ]; then _run_loc=$((_run_loc + 1)); else _run_h[$h]=$((_run_h[$h] + 1)); fi
     done
     [ ${#QUEUE[@]} -gt 0 ] || [ "$(running_count)" -gt 0 ] && sleep 1
 done
@@ -504,8 +601,9 @@ N_FAIL=$(grep -c "^FAIL" "$VALIDATION_LOG" 2>/dev/null); N_FAIL=$(echo "${N_FAIL
 
 echo ""
 echo "============================================================"
-printf "  Complete — %dm %ds   PASS=%d  WARN=%d  FAIL=%d\n" \
-       "$MINS" "$SECS" "$N_PASS" "$N_WARN" "$N_FAIL"
+printf "  Complete — %dm %ds   PASS=%d  WARN=%d  FAIL=%d%s\n" \
+       "$MINS" "$SECS" "$N_PASS" "$N_WARN" "$N_FAIL" \
+       "$( [ ${#CANCELLED[@]} -gt 0 ] && echo "  CANCELLED=${#CANCELLED[@]}" )"
 echo "============================================================"
 echo ""
 echo "  Validation detail (FAIL first, then WARN, then PASS):"
@@ -525,8 +623,11 @@ fi
 # ── Plain-text parallel_summary.log (no ANSI codes) ──────────────────────────
 {
     echo "89 DME 951 Parallel Test Run — $(date '+%Y-%m-%d %H:%M:%S')"
-    printf "Wall time: %dm%ds   Total: %d   PASS: %d   WARN: %d   FAIL: %d\n" \
-           "$MINS" "$SECS" "$TOTAL" "$N_PASS" "$N_WARN" "$N_FAIL"
+    # (a cancelled test isn't in the total: it never ran)
+    printf "Wall time: %dm%ds   Total: %d   PASS: %d   WARN: %d   FAIL: %d%s\n" \
+           "$MINS" "$SECS" "$(( TOTAL - ${#CANCELLED[@]} ))" "$N_PASS" "$N_WARN" "$N_FAIL" \
+           "$( [ ${#CANCELLED[@]} -gt 0 ] && echo "   CANCELLED: ${#CANCELLED[@]}" )"
+    [ ${#CANCELLED[@]} -gt 0 ] && echo "Cancelled (never started): ${CANCELLED[*]}"
     echo ""
     # FAIL first, WARN second, PASS third — all plain text
     for prefix in FAIL WARN PASS; do

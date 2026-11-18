@@ -300,6 +300,13 @@ the time left estimated from the rate so far). The run goes on when the panel
 is closed (the button shows its %) and stops with **STOP RUN** or when the
 bridge stops.
 
+**Changing a run as it goes.** While a run is going, **−** / **+** on the
+**THREADS** row change how many tests run at a time here and on each
+regression host (a host can go down to 0: no more tests there), and the
+**CANCEL QUEUED** buttons (all of them, or one test group's, on the group's
+line) stop tests that haven't started from ever starting; a cancelled test
+isn't in the verdicts. A test already running ends as it would have.
+
 **Regression hosts.** Other machines on the same LAN can take some of the
 tests. On each one, unpack the same lite package (or a developer install of
 the same software) and start it with
