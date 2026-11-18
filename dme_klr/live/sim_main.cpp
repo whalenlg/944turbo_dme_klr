@@ -48,6 +48,14 @@
 //                              across snapshot loads
 //    quit
 //
+//  Log replay (+stim=<file.stim.csv> [+warmup_ms=<ms>]): the inputs come
+//  from a stimulus file made by replay/xlsx_to_stim.py, as in
+//  replay/replay_main.cpp: the first row from t=0, held for warmup_ms
+//  (default 3000), then each row at its log time. This is how the bridge
+//  opens a snapshot of a log-replay test (replay_wot_60s ...) on this
+//  same build, no separate binary. Like a regression test's build, set /
+//  save / load are refused while it plays.
+//
 //  Snapshots: a warning or error line from the model ([WARN], WARNING or
 //  ERROR in its text, seen through live_printf.h) makes the driver save
 //  <snapdir>/<date>-t<ms>ms-<warning>/ (+snapdir=<dir>, default
@@ -211,6 +219,13 @@ public:
         if (*ctx_->commandArgsPlusMatch("autosnap=0")) auto_snap_ = false;
         if (*ctx_->commandArgsPlusMatch("breakonwarn=1")) break_on_warn_ = true;
         if (*ctx_->commandArgsPlusMatch("loadpin=0")) pin_on_load_ = false;
+        std::string stim = ctx_->commandArgsPlusMatch("stim=");
+        if (!stim.empty()) {
+            stim_path_ = stim.substr(stim.find('=') + 1);
+            std::string wu = ctx_->commandArgsPlusMatch("warmup_ms=");
+            if (!wu.empty()) warmup_ms_ = std::strtod(wu.c_str() + wu.find('=') + 1, nullptr);
+            scripted_ = replay_ = true;
+        }
         if (scripted_) auto_snap_ = false;
         g_onModelLine = [this](const std::string& l) { modelLine(l); };
     }
@@ -218,6 +233,10 @@ public:
     int run() {
         // Evaluate time 0 so initial blocks run and inputs hold their defaults
         top_->eval();
+        if (replay_ && !loadStim()) {
+            state("paused", "stim");
+            return 2;
+        }
         rom_[0] = widePath(TB(live_dme_rom_path));
         rom_[1] = widePath(TB(live_klr_rom_path));
         // Images from +dme_rom= / +klr_rom= replace the compiled-in ones
@@ -369,6 +388,102 @@ private:
         if (!afm_.empty()) applyAfm();
         if (!ref_.ready() && tNs() >= LiveReference::kStartNs) ref_.sample(liveDelays(dly()));
         if (save_) stepSave();
+        if (replay_) stepStim();
+    }
+
+    // ── log replay (+stim=) ─────────────────────────────────
+    struct StimRow { double t_ms; std::vector<long> vals; };
+    std::string stim_path_;
+    double warmup_ms_ = 3000;
+    bool replay_ = false;
+    std::vector<Input*> stim_cols_;
+    std::vector<StimRow> stim_rows_;
+    size_t stim_next_ = 0;
+    double stim_offset_ns_ = 0;
+
+    // The stimulus file's format is replay_main.cpp's: t_ms, then one
+    // column per input (decimal, 0x-hex, or "auto")
+    bool loadStim() {
+        auto fail = [this](const std::string& m) { error("replay " + stim_path_ + ": " + m); return false; };
+        std::ifstream f(stim_path_);
+        if (!f) return fail("cannot open");
+        auto split = [](const std::string& line) {
+            std::vector<std::string> out;
+            std::stringstream ss(line);
+            std::string c;
+            while (std::getline(ss, c, ',')) {
+                while (!c.empty() && (c.back() == '\r' || c.back() == ' ')) c.pop_back();
+                while (!c.empty() && c.front() == ' ') c.erase(0, 1);
+                out.push_back(c);
+            }
+            return out;
+        };
+        std::string line;
+        if (!std::getline(f, line)) return fail("empty");
+        auto hdr = split(line);
+        if (hdr.empty() || hdr[0] != "t_ms") return fail("first column must be t_ms");
+        for (size_t i = 1; i < hdr.size(); ++i) {
+            auto it = std::find_if(inputs_.begin(), inputs_.end(), [&](const Input& in) { return hdr[i] == in.name; });
+            if (it == inputs_.end()) return fail("unknown input column " + hdr[i]);
+            stim_cols_.push_back(&*it);
+        }
+        int lineno = 1;
+        while (std::getline(f, line)) {
+            ++lineno;
+            if (line.empty() || line[0] == '#') continue;
+            auto cells = split(line);
+            if (cells.size() != hdr.size()) return fail("line " + std::to_string(lineno) + ": wrong number of columns");
+            StimRow r;
+            r.t_ms = std::strtod(cells[0].c_str(), nullptr);
+            for (size_t i = 1; i < cells.size(); ++i) {
+                const Input& in = *stim_cols_[i - 1];
+                long v;
+                if (cells[i] == "auto" && in.can_auto) v = 0xFFFF;
+                else {
+                    char* end = nullptr;
+                    v = std::strtol(cells[i].c_str(), &end, 0);
+                    if (cells[i].empty() || *end || v < 0 || v > (in.bits == 8 ? 0xFF : 0xFFFF))
+                        return fail("line " + std::to_string(lineno) + ": bad " + hdr[i] + " value " + cells[i]);
+                }
+                r.vals.push_back(v);
+            }
+            if (!stim_rows_.empty() && r.t_ms < stim_rows_.back().t_ms)
+                return fail("line " + std::to_string(lineno) + ": t_ms goes backwards");
+            stim_rows_.push_back(std::move(r));
+        }
+        if (stim_rows_.empty()) return fail("no rows");
+        stim_offset_ns_ = warmup_ms_ * 1e6 - stim_rows_[0].t_ms * 1e6;
+        printf("SIM: [REPLAY] rows=%zu warmup_ms=%.0f log_ms=%.3f..%.3f end_ns=%.0f\n", stim_rows_.size(), warmup_ms_,
+               stim_rows_[0].t_ms, stim_rows_.back().t_ms, stim_rows_.back().t_ms * 1e6 + stim_offset_ns_);
+        applyStim(0);
+        stim_next_ = 1;
+        return true;
+    }
+
+    // Each row at its time (the first held through the warm-up); rows the
+    // sim has passed in one slot collapse to the latest
+    void stepStim() {
+        if (stim_next_ >= stim_rows_.size()) return;
+        double now = static_cast<double>(tNs());
+        if (now < stim_rows_[stim_next_].t_ms * 1e6 + stim_offset_ns_) return;
+        while (stim_next_ + 1 < stim_rows_.size() && now >= stim_rows_[stim_next_ + 1].t_ms * 1e6 + stim_offset_ns_)
+            ++stim_next_;
+        applyStim(stim_next_++);
+        if (stim_next_ == stim_rows_.size())
+            printf("SIM: [REPLAY] done t_ns=%llu rows_played=%zu (inputs now held at the last row)\n",
+                   static_cast<unsigned long long>(tNs()), stim_rows_.size());
+    }
+
+    void applyStim(size_t idx) {
+        const StimRow& r = stim_rows_[idx];
+        for (size_t i = 0; i < stim_cols_.size(); ++i) {
+            long v = r.vals[i];
+            // A logged knock only where the KLR could have counted one
+            // (ram 3Ah > 48h, its knock check at 0x0D3A), as replay_main.cpp
+            if (stim_cols_[i]->ptr == &TB(live_knock) && v == 1 && TB(live_klr_ram3a) <= TB(live_klr_ram48)) v = 0;
+            if (stim_cols_[i]->bits == 8) *static_cast<uint8_t*>(stim_cols_[i]->ptr) = static_cast<uint8_t>(v);
+            else *static_cast<uint16_t*>(stim_cols_[i]->ptr) = static_cast<uint16_t>(v);
+        }
     }
 
     // Advance one time slot while paused (save / load find their moment
@@ -428,8 +543,10 @@ private:
         std::string cmd;
         if (!(in >> cmd)) return;
         if (scripted_ && (cmd == "save" || cmd == "load" || cmd == "set" || (cmd == "autosnap" && line.find(" on") != std::string::npos)))
-            return error(cmd + " isn't available while running a regression test (build_live.sh --test): its "
-                         "inputs come from the test's script and its state can't be saved. RESTART goes back to the live simulator");
+            return error(cmd + (replay_ ? " isn't available while a log replay plays: its inputs come from the log, row by row. "
+                                          "RESTART goes back to the live simulator"
+                                        : " isn't available while running a regression test (build_live.sh --test): its "
+                                          "inputs come from the test's script and its state can't be saved. RESTART goes back to the live simulator"));
         if (cmd == "run") {
             resume("run");
         } else if (cmd == "pause") {
@@ -1289,7 +1406,7 @@ private:
         for (auto& in : inputs_) {
             long v = in.bits == 8 ? *static_cast<uint8_t*>(in.ptr) : *static_cast<uint16_t*>(in.ptr);
             std::string val = in.can_auto && v == 0xFFFF ? "auto" : std::to_string(v);
-            if (scripted_) {
+            if (scripted_ && !replay_) {
                 // The test's script drives the engine, not these controls:
                 // show what rpm / afm / boost read now, "script" for the rest
                 std::string n = in.name;

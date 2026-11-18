@@ -27,6 +27,13 @@
 #    test_snap.py defines <test> [--script <runner.sh>]
 #        print the test's -D flags, one per line (used by build_live.sh)
 #
+#  Log-replay tests (run_replay_test in the runner, e.g. replay_wot_60s)
+#  have no -D flags of their own: they run on the live simulator's own
+#  build, their inputs played from the log (sim_main.cpp +stim=). Their
+#  requests carry "replay": {"args": [run_replay.sh window args],
+#  "warmup_ms": n} instead, and LOAD makes the stimulus file
+#  (replay/xlsx_to_stim.py) and plays it to the chosen time.
+#
 #  Env: DMEKLR_SNAPDIR (default $DMEKLR_TMP/dme_klr/snapshots, as the
 #       bridge uses; see paths.sh), DME_ROM_DIR / DME_ROM_FILE /
 #       KLR_ROM_DIR / KLR_ROM_FILE, DASH_INTERVAL_MS
@@ -91,6 +98,33 @@ def test_defines(name, script):
     if args and args[0].isdigit():   # optional interval override
         args = args[1:]
     return [a for a in args if a.startswith('-D') and a not in ('-DKLR_DEBUG', '-DDME_DEBUG', '-DDME_DEEP_DEBUG')]
+
+
+def replay_spec(name, script):
+    """A log-replay test's run_replay.sh window args ({"args": [...],
+    "warmup_ms": n}), from its `<name>) run_replay_test <name> ...;;` line
+    in the runner script, else None"""
+    if not Path(script).exists():
+        return None
+    text = re.sub(r'\\\n', ' ', Path(script).read_text())
+    m = re.search(rf'^\s*{re.escape(name)}\)\s+run_replay_test\s+{re.escape(name)}\b(.*?);;', text, re.M)
+    if not m:
+        return None
+    return {'args': shlex.split(m.group(1), comments=True),
+            'warmup_ms': int(float(os.environ.get('WARMUP_MS', '3000')))}
+
+
+def replay_end_ns(replay):
+    """Where a replay's run ends (warm-up plus the window), if its args say"""
+    a = replay['args']
+    try:
+        start = float(a[a.index('--start-s') + 1]) if '--start-s' in a else 0.0
+        end = float(a[a.index('--end-s') + 1]) if '--end-s' in a else None
+    except (IndexError, ValueError):
+        return None
+    if end is None or '--segment' in a or '--all' in a:
+        return None
+    return (replay['warmup_ms'] + (end - start) * 1000) * 1e6
 
 
 def roms():
@@ -204,13 +238,14 @@ def scan(name, log, fail, script, verdict='FAIL'):
         return 0   # this verdict is already recorded
 
     defines = test_defines(name, script) or []
+    replay = None if defines else replay_spec(name, script)
     for t_ms, reason, line, k in hits:
         write_request(name, script, defines, t_ms, max(0, t_ms - LEAD_MS) * 1_000_000, reason, line, k,
-                      'log' if fail is None else 'validator', str(Path(log).resolve()))
+                      'log' if fail is None else 'validator', str(Path(log).resolve()), replay)
     return 0
 
 
-def write_request(name, script, defines, t_ms, t_ns, reason, line, k, source, log):
+def write_request(name, script, defines, t_ms, t_ns, reason, line, k, source, log, replay=None):
     SNAPDIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d-%H%M%S')
     d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}'[:120]
@@ -219,14 +254,17 @@ def write_request(name, script, defines, t_ms, t_ns, reason, line, k, source, lo
         d = SNAPDIR / f'{stamp}-t{t_ms}ms-{name}-{k}-{n}'[:120]
         n += 1
     d.mkdir(parents=True)
-    (d / 'request.json').write_text(json.dumps({
+    req = {
         'format': 'dme-klr-test-snapshot', 'version': 1,
         'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'test': name, 'script': str(Path(script).resolve()), 'defines': defines,
         'roms': roms(), 'interval_ms': int(os.environ.get('DASH_INTERVAL_MS', '100')),
         'source': source, 't_ms': t_ms, 't_ns': t_ns, 'reason': reason, 'trigger': line,
         'log': log,
-    }, indent=1) + '\n')
+    }
+    if replay:
+        req['replay'] = replay
+    (d / 'request.json').write_text(json.dumps(req, indent=1) + '\n')
     print(f'  SNAP: {name} t={t_ms} ms {reason}: {d}')
     return d
 
@@ -236,15 +274,18 @@ def add(name, ms, script, label, event=False):
     with event, ms is an event's time and the request opens LEAD_MS
     before it"""
     defines = test_defines(name, script)
-    if defines is None:
+    replay = replay_spec(name, script) if defines is None else None
+    if defines is None and replay is None:
         sys.exit(f'test_snap.py: no test "{name}" in {script}')
+    defines = defines or []
     t_ns = int(round(max(0, ms - LEAD_MS) * 1e6)) if event else int(round(ms * 1e6))
-    sim = next((int(d.split('=', 1)[1]) for d in defines if d.startswith('-DSIM_TIME=')), None)
+    sim = (replay_end_ns(replay) if replay
+           else next((int(d.split('=', 1)[1]) for d in defines if d.startswith('-DSIM_TIME=')), None))
     if sim is not None and t_ns > sim:
         sys.exit(f'test_snap.py: {name} only runs to {sim / 1e6:g} ms')
     tag = re.sub(r'[^\w.+-]+', '-', label).strip('-')[:40] if label else 'manual'
     write_request(name, script, defines, int(ms), t_ns, 'manual',
-                  f'{label or "chosen time"} ({ms:g} ms)', tag, 'manual', None)
+                  f'{label or "chosen time"} ({ms:g} ms)', tag, 'manual', None, replay)
     return 0
 
 
@@ -282,6 +323,9 @@ def main(argv):
         return add(name, ms, script, ' '.join(pos[1:]), event)
     if cmd == 'defines':
         d = test_defines(name, script)
+        if d is None and replay_spec(name, script):
+            sys.exit(f'test_snap.py: {name} is a log replay: it has no -D flags of its own and '
+                     'runs on the live build (sim_main.cpp +stim=), not build_live.sh --test')
         if d is None:
             sys.exit(f'test_snap.py: no test "{name}" in {script}')
         print('\n'.join(d))
