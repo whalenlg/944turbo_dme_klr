@@ -12,6 +12,14 @@ node bridge.mjs          # starts the sim, serves http://127.0.0.1:8951 (this Ma
 
 Then open the dashboard and press **LIVE**.
 
+`build_live.sh` records the Verilator it built with (`obj/.verilator_version`,
+the binary's path and `verilator --version`). After an upgrade the old
+build's make dependencies name the old version's include files (`No rule to
+make target .../verilator/<old>/.../verilated.h`), so a different Verilator
+clears the old build's files in `obj/` (only this build's: the `tests/`,
+`tests_rt/` and `lite/` builds in its subfolders are left) and builds from
+clean.
+
 For how to use the dashboard (log review, live mode, the code debugger and
 opening a regression test at a chosen time), see the
 [developer manual](../../docs/DEVELOPER_MANUAL.md).
@@ -310,9 +318,20 @@ The sim takes one command per line on stdin, so it also works straight from
 a terminal (`obj/dme_klr_live +vcd=/dev/null`). See the header of
 `sim_main.cpp` for the full list: `run`, `pause`, `step dme|klr [N]`,
 `until <ms>`, `set`, `bp add|del dme|klr <hex> [if <mem>[.<bit>] <op> <val>]`, `bp clear`, `snap`, `rom`,
-`trace dme|klr [N]`, `save [label]`, `load <dir>`, `autosnap on|off|max <n>`,
+`trace dme|klr [N]`, `interval <ms>|default`, `save [label]`, `load <dir>`, `autosnap on|off|max <n>`,
 `breakonwarn on|off`, `status`, `quit`. From a terminal, `+snapdir=<dir>`
 picks where snapshots go and `+load=<dir>` starts from one.
+
+`interval <ms>` (1 to 10000, or `default`) sets the simulated time between
+DS snapshots, the points of the dashboard's live stats and charts; the
+dashboard's **RESOLUTION** box on the run bar sends it. The sim answers
+`SIM: [INTERVAL] ms=<n> default=<n>` (the default is the build's
+`DASH_INTERVAL_MS`), at start too, and `+dash_ms=<ms>` sets it from the
+command line. A shorter interval takes effect at once. It is kept across
+snapshot loads (it is the dashboard's setting, not part of the saved run),
+and the bridge passes it again as `+dash_ms=` after a restart. A sim built
+before this command reports no `[INTERVAL]`, and the dashboard greys the
+box out until `build_live.sh` is run again.
 
 The build uses `-DLIVE`, which swaps the compile-time `TEST_*` stimulus for
 registers in `dme_klr_dashboard_tb.v`. Without `-DLIVE` the testbenches are
