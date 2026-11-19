@@ -10,7 +10,12 @@
 //  logs; validation, snapshots and the summary stay on that machine.
 //
 //    GET    /regress/info          {mode, version, srchash, commit, sims,
-//                                   verilator, cpus, jobs}
+//                                   verilator, cpus, jobs, restart, ondisk}
+//                                   version / srchash: the software this
+//                                   bridge started with (what it runs);
+//                                   restart: the files have changed since
+//                                   (a git pull without a restart), ondisk:
+//                                   their {version, srchash}
 //    POST   /regress/run           JSON {test, sim: verilator|iverilog,
 //                                   interval_ms, sim_ms, per_test_build,
 //                                   srchash, roms: {dme|klr: {name, mem}}}
@@ -113,8 +118,11 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   const DMEKLR = join(REPO, 'dme_klr');
   const MODE = existsSync(join(DMEKLR, 'run_all.sh')) ? 'dev' : existsSync(join(REPO, 'run_tests.py')) ? 'lite' : null;
   const has = c => spawnSync('sh', ['-c', `command -v ${c}`]).status === 0;
+  // The software this bridge runs: as it was when it started. The files
+  // can change under it (git pull) and then a restart is needed
+  const running = softwareVersion(REPO);
   let ver = null, verAt = 0;
-  const version = () => {
+  const version = () => {   // as the files are now
     if (!ver || Date.now() - verAt > 30000) { ver = softwareVersion(REPO); verAt = Date.now(); }
     return ver;
   };
@@ -149,7 +157,9 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
 
   function info() {
     const py = python();
-    return { ...version(), sims, verilator, cpus: cpus().length, python: py ? `missing: ${py}` : 'ok',
+    const disk = version();
+    const restart = disk.srchash !== running.srchash;
+    return { ...running, restart, ondisk: restart ? { version: disk.version, srchash: disk.srchash } : null, sims, verilator, cpus: cpus().length, python: py ? `missing: ${py}` : 'ok',
              jobs: [...jobs.values()].filter(j => j.state !== 'done').length };
   }
 
@@ -181,6 +191,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (!sims[sim]) return [422, `this host has no ${sim}`];
     if (python()) return [422, `this host's Python packages aren't installed (${python()})`];
     const v = version();
+    if (v.srchash !== running.srchash) return [409, `this host's files changed (${v.version}) since its bridge started (${running.version}): restart its bridge`];
     if (!o.srchash || o.srchash !== v.srchash) return [409, `different software here: ${v.version} (srchash ${v.srchash})`];
     const id = randomBytes(6).toString('hex');
     // The ROM images, sent with the request: kept by content hash
@@ -297,7 +308,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     return send(404, 'no log', 'text/plain'), true;
   }
 
-  return { handle, info, mode: MODE, stopAll: () => {
+  return { handle, info, mode: MODE, running, stopAll: () => {
     for (const j of jobs.values()) kill(j);
     try { rmSync(JOBS_DIR, { recursive: true, force: true }); } catch { /* next start */ }
   } };

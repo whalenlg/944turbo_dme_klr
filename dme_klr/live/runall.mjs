@@ -96,6 +96,11 @@
 //    GET    /runall/hosts[?probe=1]  {local, hosts: [{id, host, port,
 //                                     threads, enabled, token: bool,
 //                                     status: {ok, why, info}}]}
+//                                     local: {version, srchash (the files
+//                                     here), running (what this bridge
+//                                     started with), restart}; a host whose
+//                                     info says restart (pulled, its bridge
+//                                     not restarted) isn't used
 //    POST   /runall/hosts            JSON {host, port, threads, token,
 //                                     enabled}: add, or change (same
 //                                     host:port; a blank token keeps it)
@@ -230,6 +235,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     if (!me || Date.now() - meAt > 30000) { me = softwareVersion(REPO); meAt = Date.now(); }
     return me;
   };
+  // what this bridge started with: its own code is that, whatever the files are now
+  const startedAs = softwareVersion(REPO);
   async function probe(h) {
     let st;
     try {
@@ -240,8 +247,11 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
         const info = await r.json();
         const same = !!info.srchash && info.srchash === local().srchash;
         const pyBad = info.python && info.python !== 'ok';
-        st = { ok: same && !pyBad, info,
-               why: !same ? `different software: ${info.version} there, ${local().version} here`
+        // info.restart: its files were updated (git pull) but its bridge
+        // still runs the old ones (an older bridge doesn't say)
+        st = { ok: same && !pyBad && !info.restart, info,
+               why: info.restart ? `its bridge is out of date: it runs ${info.version} but its files are ${info.ondisk?.version ?? 'newer'} (pulled, not restarted): restart its bridge`
+                  : !same ? `different software: ${info.version} there, ${local().version} here`
                   : pyBad ? `its Python packages aren't installed (${info.python}); run its installer or pip install -r requirements.txt` : '' };
       }
     } catch (e) {
@@ -255,7 +265,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   async function hostsView(force) {
     await Promise.all(hosts.filter(h => force || !hostStatus.has(h.id) || Date.now() - hostStatus.get(h.id).at > 15000).map(probe));
     const v = local();
-    return { local: { version: v.version, mode: v.mode, cpus: cpus().length }, hosts: hosts.map(hostView) };
+    return { local: { version: v.version, mode: v.mode, cpus: cpus().length, srchash: v.srchash,
+                      running: startedAs.version, restart: startedAs.srchash !== v.srchash }, hosts: hosts.map(hostView) };
   }
   function setHost(o) {
     const host = String(o.host ?? '').trim().replace(/^https?:\/\//, '').replace(/^\[|\]$/g, '');
