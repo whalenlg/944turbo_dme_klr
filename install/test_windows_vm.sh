@@ -32,7 +32,8 @@
 #    - Parallels Desktop Pro or Business edition (for the prlctl command)
 #    - a Windows VM with Parallels Tools installed, set to sign its user in
 #      automatically (Settings > Accounts, or netplwiz), and a snapshot of
-#      it taken in that clean state. Commands run in the VM as that
+#      it taken in that clean state, with the VM shut down (Parallels makes
+#      linked clones only from such snapshots). Commands run in the VM as that
 #      signed-in user (prlctl exec --current-user), so winget works as it
 #      does for a person.
 #
@@ -221,7 +222,10 @@ vm_ps() {  # vm_ps <log> <<'PS' ... PS
 step "Cloning $SRC (snapshot $SNAP_ID) as $VM"
 tic
 prlctl clone "$SRC" --name "$VM" --linked --id "$SNAP_ID" > "$OUT/clone.log" 2>&1 \
-    || { cat "$OUT/clone.log"; die "prlctl clone failed (see $OUT/clone.log)"; }
+    || { cat "$OUT/clone.log"
+         grep -qi 'created when the virtual machine was shut down' "$OUT/clone.log" &&
+             die "the snapshot was taken with the VM running or suspended: shut Windows down (Start > Power > Shut down), delete the snapshot and take it again with the VM off"
+         die "prlctl clone failed (see $OUT/clone.log)"; }
 CLONED=1
 prlctl start "$VM" >> "$OUT/clone.log" 2>&1 || die "couldn't start $VM (see $OUT/clone.log)"
 info "waiting for Windows to start and sign its user in"
