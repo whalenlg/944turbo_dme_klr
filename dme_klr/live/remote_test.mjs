@@ -81,16 +81,19 @@ async function call(method, path, body, ms = 30_000) {
 function getOnce(path) {
   return new Promise((res, rej) => {
     const u = new URL(HOST + path);
+    // how far a try got, for the message when it stalls
+    let stage = 'no answer', got = 0;
     const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close' }, agent: false }, r => {
       if (r.statusCode !== 200) { r.resume(); return res({ status: r.statusCode, body: null }); }
+      stage = `headers${r.headers['content-length'] ? ` (${r.headers['content-length']} bytes to come)` : ''}`;
       const parts = [];
-      r.on('data', d => parts.push(d));
+      r.on('data', d => { parts.push(d); got += d.length; stage = `${got} bytes`; });
       r.on('end', () => (r.complete ? res({ status: 200, body: Buffer.concat(parts) }) : rej(new Error('connection closed mid-transfer'))));
       r.on('error', rej);
       r.on('aborted', () => rej(new Error('connection closed mid-transfer')));
     });
     // no bytes either way for STALL_MS: give this try up
-    req.setTimeout(STALL_MS, () => req.destroy(new Error(`stalled ${STALL_MS / 1000} s`)));
+    req.setTimeout(STALL_MS, () => req.destroy(new Error(`stalled ${STALL_MS / 1000} s after ${stage}`)));
     req.on('error', rej);
     req.end();
   });
