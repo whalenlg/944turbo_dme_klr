@@ -727,7 +727,14 @@ Set up the VM to clone from once:
    Settings > Accounts > Sign-in options. The test runs its commands as
    the signed-in user (`prlctl exec --current-user`), so that winget works
    as it does for a person.
-3. Nothing of this project installed, and no Node.js or Python. Then shut
+3. So that nothing waits for a click during a run: User Account Control
+   set to *Never notify* (Control Panel > User Accounts > Change User
+   Account Control settings; the Node.js installer asks for administrator
+   rights), and Teams turned off at startup (Settings > Apps > Startup).
+   Optionally, Parallels' *Share Mac applications with Windows* off
+   (the VM's Configuration > Options > Applications). Only on this test VM:
+   don't turn UAC off on a PC you use.
+4. Nothing of this project installed, and no Node.js or Python. Then shut
    Windows down (Start > Power > Shut down; suspended isn't enough) and,
    with the VM off, take a snapshot (Actions > Take Snapshot, e.g. named
    *Clean*). Parallels makes linked clones only from snapshots taken while
