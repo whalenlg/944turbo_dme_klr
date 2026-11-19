@@ -82,7 +82,10 @@
 //                         iverilog and Verilator logs differ
 //                         (compare_sim_logs.py --plot, a JPEG in that
 //                         pair's iverilog dash_logs); run.diffs lists them as
-//                         {<rom>: {<test>: ['DME', 'KLR']}}
+//                         {<rom>: {<test>: ['DME', 'KLR']}}, and
+//                         run.plotNotes what step 5 plotted, per pair
+//                         ({<rom>: "nothing to plot, ..."}: run_all.sh's
+//                         "Plot Differences (<rom>): ..." line)
 //
 //  Progress is simulated time: a running test's share is the newest
 //  "t=<ms> ms" or "[DS] <ms>," in its log against the test's length,
@@ -422,6 +425,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       startedAt: Date.now(), endedAt: null, exit: null, stopping: false,
       command: [MODE === 'dev' ? 'run_all.sh' : 'run_tests.py', ...args.slice(1)].join(' '),
       opts: { workers, interval_ms: interval, sim_ms: simMs, tests: subset ? subset.length : 'all',
+              plot: MODE === 'dev' && o.plot !== false,
               roms: multi ? { pairs } : { dme: roms.dme.name, klr: roms.klr.name },
               hosts: useHosts.map(h => ({ name: h.id, threads: h.threads })) },
       steps, suites, cur: MODE === 'lite' ? 1 : 0, out: [...hostNotes], diffs: {},
@@ -555,6 +559,11 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       const rom = m[2].replace(/\\/g, '/').match(/([^/]+)\/dash_logs\/$/)?.[1] ?? r.rom;
       const l = ((r.diffs[rom] ??= {})[m[3]] ??= []);
       if (!l.includes(m[1])) l.push(m[1]);
+      return;
+    }
+    // run_all.sh's one line per ROM pair on what Plot Differences did
+    if (r.mode === 'dev' && (m = line.match(/\[run_all\] Plot Differences \(([^)]+)\): (.*)$/))) {
+      (r.plotNotes ??= {})[m[1]] = m[2].trim();
       return;
     }
     const step = r.steps[(tagged ?? r.cur) - 1];
@@ -706,7 +715,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       startedAt: run.startedAt, endedAt: run.endedAt, exit: run.exit, stopping: run.stopping, running: !!proc,
       elapsed_s: (now - run.startedAt) / 1000, done_s: done, total_s: total,
       eta_s: proc && rate ? (total - done) / rate : null,
-      steps, cur: run.cur, suites, out: run.out, diffs: run.diffs,
+      steps, cur: run.cur, suites, out: run.out, diffs: run.diffs, plotNotes: run.plotNotes ?? {},
       threads: run.threads, cancels: run.cancels,
     };
   }

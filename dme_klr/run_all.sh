@@ -20,8 +20,8 @@
 #  every test stays on this machine (no regression hosts; large dumps).
 #  --test-debug=TEST:DME_DEBUG+KLR_DEBUG does that for one test only
 #  (repeatable; the dashboard panel's per-test switches).
-#  Step 5 plots each test whose iverilog and Verilator logs differ
-#  (compare_sim_logs.py --plot: <test>_DME_diff.jpg / <test>_KLR_diff.jpg
+#  Step 5 plots each test whose iverilog and Verilator logs differ, DIFF
+#  or NOTE (compare_sim_logs.py --plot: <test>_DME_diff.jpg / <test>_KLR_diff.jpg
 #  in the iverilog dash_logs); --no-plot skips the plots (the panel's
 #  Plot Differences box off).
 #  --roms runs steps 3-5 for each of those ROM pairs (89: the 1989 images,
@@ -381,11 +381,14 @@ compare_pair() {
     IV_DASH_DIR="$DMEKLR_LOGS/dash_logs"
     VL_DASH_DIR="$DMEKLR_LOGS/v_dash_logs"
     DIFF_TESTS=$(awk '$1=="DIFF" || $1=="ERROR" {print $2}' "$PRUN/compare.log" | sort -u)
+    # NOTE tests (X-init differences) differ too: they get the report and,
+    # with plots on, a plot as well, but don't count as DIFF
+    NOTE_TESTS=$(awk '$1=="NOTE" {print $2}' "$PRUN/compare.log" | sort -u)
     PLOT_OPT=(--plot --plot-dir "$IV_DASH_DIR")
     [ "$PLOT" = 1 ] || { PLOT_OPT=(); log "No plots (--no-plot)"; }
-    if [ -n "$DIFF_TESTS" ]; then
+    if [ -n "$DIFF_TESTS$NOTE_TESTS" ]; then
         > "$PRUN/compare_detail.log"
-        for t in $DIFF_TESTS; do
+        for t in $DIFF_TESTS $NOTE_TESTS; do
             iv_log="$IV_DASH_DIR/${t}.dash.log"
             vl_log="$VL_DASH_DIR/${t}.dash.log"
             if [ -f "$iv_log" ] && [ -f "$vl_log" ]; then
@@ -405,6 +408,20 @@ compare_pair() {
         log "Per-test detail: $PRUN/compare_detail.log${PLOT_OPT[0]+   Plots: $IV_DASH_DIR}"
     else
         log "No differing tests — skipping detailed compare_sim_logs.py reports"
+    fi
+    # one line on what Plot Differences did, for the RUN REGRESSIONS panel
+    # (live/runall.mjs: "Plot Differences (<rom>): ...")
+    local PD="Plot Differences ($(dmeklr_rom_variant)):" N_D N_N N_PLOTS
+    N_D=$(echo $DIFF_TESTS | wc -w | tr -d ' '); N_N=$(echo $NOTE_TESTS | wc -w | tr -d ' ')
+    if [ "$PLOT" != 1 ]; then
+        log "$PD off (--no-plot)"
+    elif [ "$N_D" = 0 ] && [ "$N_N" = 0 ]; then
+        log "$PD nothing to plot, no test differed between iverilog and Verilator"
+    elif grep -q -- "--plot requires matplotlib" "$PRUN/compare_detail.log" 2>/dev/null; then
+        log "$PD no plots, matplotlib is not installed (pip install matplotlib)"
+    else
+        N_PLOTS=$(grep -cE "^(DME|KLR) plot written to " "$PRUN/compare_detail.log" 2>/dev/null)
+        log "$PD ${N_PLOTS:-0} plot(s) of $N_D DIFF and $N_N NOTE (X-init) test(s)"
     fi
 
     log "Running FQS analysis ..."

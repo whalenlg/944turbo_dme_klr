@@ -868,13 +868,18 @@ tests finish and other suites still have tests waiting. Each suite still
 starts its own tests longest first. The run goes on
 when the panel is closed (the button shows its %) and stops with **STOP RUN**
 or when the bridge stops. With **Plot Differences** ticked (the default),
-step 5 plots each test whose iverilog and Verilator logs differ
+step 5 plots each test whose iverilog and Verilator logs differ, the
+**DIFF** tests and the **NOTE** ones (X-init differences, which don't count as
+DIFF but still differ)
 (`compare_sim_logs.py --plot`: `<test>_DME_diff.jpg` and `<test>_KLR_diff.jpg`
 in the run's iverilog `dash_logs`, one subplot per field that differs, iverilog
 against Verilator over simulated time), and the test's iverilog line gets a
 **◪ DME** / **◪ KLR** icon that opens its plot in a new tab (the bridge's
 `GET /runall/diff?rom=<rom>&test=<test>&ecu=DME`). Only this run's plots get an icon;
-step 5 deletes a test's older plot before it makes a new one. Unticked, step 5
+step 5 deletes a test's older plot before it makes a new one. A
+**◪ PLOT DIFFERENCES** line under the steps says what step 5 plotted for each
+ROM pair: how many plots of how many DIFF and NOTE tests, *nothing to plot*
+when every test matched, or that matplotlib is missing. Unticked, step 5
 still writes its per-test comparison report (`$DMEKLR_TMP/dme_klr/<rom>/run_all/compare_detail.log`)
 but no plots. The plots need matplotlib. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
 FQS analysis) on the iverilog and Verilator dash logs of the ROM pair picked
