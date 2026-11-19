@@ -65,9 +65,34 @@ function Invoke-Msys([string]$cmd, [string]$dir = (Get-Location).Path) {
     try { & $Bash -lc $cmd | Out-Host; return $LASTEXITCODE } finally { Pop-Location }
 }
 
+# Deletes a file, retrying while something still holds it open (Windows
+# Defender often scans a freshly run .exe for a few seconds). Never fatal:
+# a leftover file in %TEMP% is not worth stopping the install for.
+function Remove-Leftover([string]$path) {
+    for ($i = 0; $i -lt 10; $i++) {
+        try { if (Test-Path $path) { Remove-Item $path -Recurse -Force -ErrorAction Stop }; return }
+        catch { Start-Sleep -Seconds 2 }
+    }
+    Write-Host "note: couldn't delete $path (still in use); delete it later if you like" -ForegroundColor Yellow
+}
+
+# MSYS2's first start: the first login shell sets up /etc and pacman's keys,
+# the first -Syuu updates MSYS2's core (and may end the shell), the second
+# the rest. A marker file records that it finished, so a run that stopped
+# part way (after unpacking, before this) does it on the next run.
+$InitMarker = Join-Path $MsysRoot 'var\lib\dmeklr-msys2-initialised'
+function Initialize-Msys {
+    Step 'MSYS2 first start (sets up the keyring) and core update'
+    $null = Invoke-Msys 'echo MSYS2 initialised'
+    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
+    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
+    New-Item -ItemType File -Force -Path $InitMarker | Out-Null
+}
+
 # ── MSYS2 ─────────────────────────────────────────────────────────────────
 if (Test-Path $Bash) {
     Step "MSYS2 found at $MsysRoot"
+    if (-not (Test-Path $InitMarker)) { Initialize-Msys }
 } else {
     Step "Installing MSYS2 into $MsysRoot"
     $parent = Split-Path $MsysRoot -Parent
@@ -83,15 +108,10 @@ if (Test-Path $Bash) {
     & $sfx -y "-o$tmpOut" | Out-Null
     if ($LASTEXITCODE -ne 0) { Die "unpacking MSYS2 failed (exit $LASTEXITCODE)" }
     Move-Item (Join-Path $tmpOut 'msys64') $MsysRoot
-    Remove-Item $tmpOut -Recurse -Force
-    Remove-Item $sfx -Force
+    Remove-Leftover $tmpOut
+    Remove-Leftover $sfx
 
-    Step 'MSYS2 first start (sets up the keyring) and core update'
-    # The first login shell initialises /etc and pacman's keys
-    $null = Invoke-Msys 'echo MSYS2 initialised'
-    # The first -Syuu updates MSYS2's core (and may end the shell); the second the rest
-    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
-    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
+    Initialize-Msys
 
     # Start-menu-like shortcut for the UCRT64 terminal on the desktop
     try {
