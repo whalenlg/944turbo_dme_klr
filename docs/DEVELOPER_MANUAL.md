@@ -663,9 +663,9 @@ the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
 `$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
 it running). The first run downloads the macOS image, about 25 GB; a run
 takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
-`run_all.sh` runs it as step 6 only when asked (`--macos-test install`,
-`lite` or `both`; the RUN REGRESSIONS panel's **MACOS INSTALL TEST**), and
-skips it by default.
+`run_all.sh` runs it as step 6 only when asked (`--install-tests
+"macos-install macos-lite"`; the RUN REGRESSIONS panel's **INSTALL TESTS**
+boxes), and skips it by default.
 
 `install/test_regress_hosts.sh` checks RUN REGRESSIONS' regression hosts
 across two machines: this install and a macOS VM on this Mac (made with
@@ -753,7 +753,11 @@ then checks that the checkout is clean and that
 branch or tag instead of `main`. Push a branch first to test it before
 merging. `--version` picks the lite release, and `--keep` leaves the clone
 running to look around in. Logs go to `$DMEKLR_TMP/windows_vm_test/`.
-See `install/test_windows_vm.sh --help`.
+See `install/test_windows_vm.sh --help`. `run_all.sh` runs it as step 6
+when asked (`--install-tests "windows-lite windows-dev"`, or the RUN
+REGRESSIONS panel's **INSTALL TESTS** boxes), with the VM named by
+`DMEKLR_WIN_VM` (default `Windows 11`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
+(default `clean`), set where the bridge starts.
 
 ### Dependencies
 
@@ -861,7 +865,7 @@ version's include files. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
-| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (step 6, only with `--macos-test install\|lite\|both`; the default is `none`). See `--help`. `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the install tests in clean VMs (step 6, only those named by `--install-tests`: `macos-install`, `macos-lite`, `windows-lite`, `windows-dev`, `arch-install`; none by default). See `--help`. `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
 | `python3 rom_variant_diff.py <rom> <rom> [...]` | prints | Two or more ROM folders' tests side by side: verdicts, and each DME / KLR `[STATUS]` field whose settled mean differs from the first folder's (`--sim`, `--test`, `--all`, `--json`) |
 | `./validate_all.sh [--verilator] [test ...]` | prints | Validates the logs already in the ROM pair's folder (`validate_dash_log.py` on each test). For a run on another image, set the same `DME_ROM_FILE` (`DME_ROM_FILE=my_edit.mem ./validate_all.sh --verilator`): it picks that image's log folder and its expected values. An image saved from the code windows' byte editor (with a `<image>.base`) is checked against its base image's expected values, as is a log whose `[ROM]` line names such an image |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
@@ -873,8 +877,10 @@ smaller value gives finer playback and larger logs.
 and **BROWSE…**) opens a panel
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
-(Verilator, iverilog or both, workers, per-test build, the macOS VM test
-(**MACOS INSTALL TEST**: none by default, or install, lite or both),
+(Verilator, iverilog or both, workers, per-test build, the install tests
+(**INSTALL TESTS**: a box for each of macOS developer and lite, Windows lite
+and developer, and Arch, none ticked by default; one this machine can't run
+is grayed with the reason),
 update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or

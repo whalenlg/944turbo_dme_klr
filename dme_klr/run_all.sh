@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  Runs: i8048 regression, i8051 regression, Verilator suite, iverilog suite,
-#        iverilog/Verilator comparison, FQS analysis, macOS install test (VM)
+#        iverilog/Verilator comparison, FQS analysis, install tests (clean VMs)
 #        iverilog/Verilator comparison, FQS analysis
 #
 #  Usage:
 #    ./run_all.sh [--verilator | --iverilog] [--per-test-build]
-#                 [--macos-test install|lite|both|none] [--no-pull]
+#                 [--install-tests "TEST ..."] [--no-pull]
 #                 [--tests "NAME|GROUP ..."] [--DME_DEBUG] [--DME_DEEP_DEBUG]
 #                 [--KLR_DEBUG] [--test-debug=TEST:FLAG[+FLAG] ...]
 #                 [--no-plot] [--roms "89 86 carpokes"] [workers 1-8, default 8]
@@ -45,11 +45,19 @@
 #  With both simulators, their lines start with [VL] / [IV].
 #  Each suite builds the testbench once and runs every test on that build;
 #  --per-test-build builds every test on its own instead.
-#  Step 6 (macOS with Tart only) then tests the install in a clean macOS
-#  VM (install/test_macos_vm.sh), when steps 1-5 had no FAIL and neither
-#  dashboard suite had more than 5 WARN tests. --macos-test picks the
-#  developer install, the lite package (built here), both, or none
-#  (default: none, skipped).
+#  Step 6 then runs the install tests named by --install-tests (default
+#  none), one after another, when steps 1-5 had no FAIL and neither
+#  dashboard suite had more than 5 WARN tests:
+#    macos-install  developer install, clean macOS VM (test_macos_vm.sh; Tart)
+#    macos-lite     lite package built here, clean macOS VM (Tart)
+#    windows-lite   the lite one-liner, clean Windows VM (test_windows_vm.sh;
+#                   Parallels: the VM $DMEKLR_WIN_VM, default "Windows 11",
+#                   snapshot $DMEKLR_WIN_SNAPSHOT, default "clean")
+#    windows-dev    install_windows.ps1, the same Windows VM
+#    arch-install   developer install, clean Arch container
+#                   (test_arch_install.sh; Docker or Podman)
+#  A test whose tool isn't on this machine is skipped. --macos-test
+#  install|lite|both|none is the older form for the two macOS ones.
 # =============================================================================
 set -uo pipefail
 
@@ -61,9 +69,17 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 _want_verilator=0
 _want_iverilog=0
 ARGS=()
-usage() { sed -n '3,42s/^# \{0,2\}//p' "$0"; }
+usage() { sed -n '3,/^# =====/{ /^# =====/d; s/^# \{0,2\}//; p; }' "$0"; }
 PT_OPT=()
-MACOS_TEST=none
+INSTALL_TESTS=()
+ALL_INSTALL_TESTS=(macos-install macos-lite windows-lite windows-dev arch-install)
+add_macos_test() {   # the older --macos-test install|lite|both|none
+    case "$1" in
+        install) INSTALL_TESTS+=(macos-install) ;; lite) INSTALL_TESTS+=(macos-lite) ;;
+        both) INSTALL_TESTS+=(macos-install macos-lite) ;; none) ;;
+        *) echo "run_all.sh: --macos-test wants install, lite, both or none (got '$1')" >&2; exit 2 ;;
+    esac
+}
 SUITE_TESTS=()
 PULL=1
 IV_DEBUG=()
@@ -71,11 +87,14 @@ PLOT=1
 ROMS=()
 _next=""
 for arg in "$@"; do
-    if [ "$_next" = macos ]; then MACOS_TEST="$arg"; _next=""; continue; fi
+    if [ "$_next" = macos ]; then add_macos_test "$arg"; _next=""; continue; fi
+    if [ "$_next" = itests ]; then read -r -a _it <<< "$(echo "$arg" | tr ',' ' ')"; INSTALL_TESTS+=(${_it[@]+"${_it[@]}"}); _next=""; continue; fi
     if [ "$_next" = tests ]; then read -r -a SUITE_TESTS <<< "$arg"; _next=""; continue; fi
     if [ "$_next" = roms ]; then read -r -a ROMS <<< "$(echo "$arg" | tr ',' ' ')"; _next=""; continue; fi
     case "$arg" in
         --macos-test) _next=macos ;;
+        --install-tests) _next=itests ;;
+        --install-tests=*) read -r -a _it <<< "$(echo "${arg#*=}" | tr ',' ' ')"; INSTALL_TESTS+=(${_it[@]+"${_it[@]}"}) ;;
         --tests) _next=tests ;;
         --roms) _next=roms ;;
         --roms=*) read -r -a ROMS <<< "$(echo "${arg#*=}" | tr ',' ' ')" ;;
@@ -83,7 +102,7 @@ for arg in "$@"; do
         --no-pull) PULL=0 ;;
         --no-plot) PLOT=0 ;;
         --plot) PLOT=1 ;;
-        --macos-test=*) MACOS_TEST="${arg#*=}" ;;
+        --macos-test=*) add_macos_test "${arg#*=}" ;;
         --verilator) _want_verilator=1 ;;
         --iverilog)  _want_iverilog=1 ;;
         --per-test-build) PT_OPT=(--per-test-build) ;;
@@ -99,9 +118,11 @@ else
     RUN_VERILATOR="$_want_verilator"
     RUN_IVERILOG="$_want_iverilog"
 fi
-case "$MACOS_TEST" in install|lite|both|none) ;; *)
-    echo "run_all.sh: --macos-test wants install, lite, both or none (got '$MACOS_TEST')" >&2; exit 2 ;;
-esac
+for _t in ${INSTALL_TESTS[@]+"${INSTALL_TESTS[@]}"}; do
+    case " ${ALL_INSTALL_TESTS[*]} " in *" $_t "*) ;; *)
+        echo "run_all.sh: --install-tests takes ${ALL_INSTALL_TESTS[*]} (got '$_t')" >&2; exit 2 ;;
+    esac
+done
 for _r in ${ROMS[@]+"${ROMS[@]}"}; do
     case "$_r" in 89|86|carpokes) ;; *)
         echo "run_all.sh: --roms takes 89, 86 and carpokes (got '$_r')" >&2; exit 2 ;;
@@ -418,29 +439,57 @@ for _r in "${ROMS[@]}"; do
     compare_pair
 done
 
-# ── 6. macOS install test in a clean VM ───────────────────────────────────────
-hdr "6/6  macOS Install Test (clean VM)"
+# ── 6. Install tests in clean VMs ─────────────────────────────────────────
+hdr "6/6  Install Tests (clean VMs)"
 MAX_SUITE_WARN=5
 SUITE_WARN=$SUITE_WARN_MAX
-if [ "$MACOS_TEST" = none ]; then
-    log "Skipped (--macos-test none)"
-elif [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then
-    log "Skipped (needs macOS with Tart: brew install cirruslabs/cli/tart)"
+WIN_VM="${DMEKLR_WIN_VM:-Windows 11}"
+WIN_SNAP="${DMEKLR_WIN_SNAPSHOT:-clean}"
+if [ ${#INSTALL_TESTS[@]} = 0 ]; then
+    log "Skipped (no --install-tests picked)"
 elif [ "$FAIL" -gt 0 ] || [ "$SUITE_WARN" -gt "$MAX_SUITE_WARN" ]; then
     log "Skipped: steps 1-5 had $FAIL FAIL and up to $SUITE_WARN WARN tests in a suite (runs only with no FAIL and <= $MAX_SUITE_WARN WARN)"
 else
-    MODES=("$MACOS_TEST"); [ "$MACOS_TEST" = both ] && MODES=(install lite)
-    for m in "${MODES[@]}"; do
-        VM_OUT="$RUNLOG/macos_vm_$m"
-        VMARGS=(--name "dmeklr-runall-$m" --replace --out "$VM_OUT")
-        [ "$m" = lite ] && VMARGS+=(--lite build)
-        log "Running: install/test_macos_vm.sh ${VMARGS[*]}"
-        bash "$ROOT/install/test_macos_vm.sh" "${VMARGS[@]}" 2>&1 | tee "$RUNLOG/macos_vm_$m.log"
+    _branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    [ -z "$_branch" ] || [ "$_branch" = HEAD ] && _branch=main
+    _seen=" "
+    for t in "${INSTALL_TESTS[@]}"; do
+        case "$_seen" in *" $t "*) continue ;; esac; _seen+="$t "
+        T_OUT="$RUNLOG/install_$t"
+        why=""; CMD=()
+        case "$t" in
+            macos-install|macos-lite)
+                if [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then
+                    why="needs macOS with Tart (brew install cirruslabs/cli/tart)"
+                fi
+                CMD=(bash "$ROOT/install/test_macos_vm.sh" --name "dmeklr-runall-${t#macos-}" --replace --out "$T_OUT")
+                [ "$t" = macos-lite ] && CMD+=(--lite build) ;;
+            windows-lite|windows-dev)
+                if ! command -v prlctl >/dev/null 2>&1; then
+                    why="needs Parallels Desktop Pro or Business (prlctl)"
+                elif ! prlctl list -a -o name 2>/dev/null | tail -n +2 | sed 's/ *$//' | grep -qxF "$WIN_VM"; then
+                    why="no Parallels VM called '$WIN_VM' (set DMEKLR_WIN_VM; see install/test_windows_vm.sh --help)"
+                fi
+                CMD=(bash "$ROOT/install/test_windows_vm.sh" --vm "$WIN_VM" --snapshot "$WIN_SNAP"
+                     --name "dmeklr-runall-$t" --replace --ref "$_branch" --out "$T_OUT")
+                [ "$t" = windows-dev ] && CMD+=(--dev) ;;
+            arch-install)
+                if ! command -v docker >/dev/null 2>&1 && ! command -v podman >/dev/null 2>&1; then
+                    why="needs Docker or Podman"
+                fi
+                CMD=(bash "$ROOT/install/test_arch_install.sh") ;;
+        esac
+        if [ -n "$why" ]; then
+            log "$t: skipped ($why)"
+            continue
+        fi
+        log "Running ($t): ${CMD[*]}"
+        "${CMD[@]}" 2>&1 | tee "$RUNLOG/install_$t.log"
         rc=${PIPESTATUS[0]}
         if [ "$rc" = 0 ]; then
-            ok "macOS VM, $m — all steps passed"
+            ok "install test $t — all steps passed"
         else
-            fail "macOS VM, $m — exit $rc (see $VM_OUT/summary.txt and $RUNLOG/macos_vm_$m.log)"
+            fail "install test $t — exit $rc (see $RUNLOG/install_$t.log)"
         fi
     done
 fi
