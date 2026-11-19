@@ -26,6 +26,8 @@
 //    GET    /regress/run/<id>/dash the test's .dash.log
 //    GET    /regress/run/<id>/log  its whole log, gzipped
 //    GET    /regress/run/<id>/fst  its waveform (iverilog: fst/<test>.fst)
+//    GET    /regress/run/<id>/report      a log replay's <test>.report.txt
+//    GET    /regress/run/<id>/mismatches  and its <test>.mismatches.xlsx
 //    DELETE /regress/run/<id>      stop it (if running), forget it and
 //                                  delete its folder
 //  Each job runs with its own DMEKLR_TMP, $DMEKLR_TMP/dme_klr/remote_jobs/<id>,
@@ -274,7 +276,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       });
       return true;
     }
-    const m = url.pathname.match(/^\/regress\/run\/([0-9a-f]{12})(?:\/(dash|log|fst))?$/);
+    const m = url.pathname.match(/^\/regress\/run\/([0-9a-f]{12})(?:\/(dash|log|fst|report|mismatches))?$/);
     if (!m) return false;
     const job = jobs.get(m[1]);
     if (!job) return send(404, 'no such job', 'text/plain'), true;
@@ -333,6 +335,14 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (m[2] === 'fst') {
       // iverilog runs leave a waveform, fst/<test>.fst, beside the logs
       return (file(join(job.logdir, 'fst', `${job.test}.fst`), 'application/octet-stream') || send(404, 'no fst', 'text/plain')), true;
+    }
+    // log replays (replay/run_replay.sh): the comparison's report, which the
+    // validator reads for the verdict, and its out-of-tolerance samples
+    if (m[2] === 'report') {
+      return (file(join(job.logdir, `${job.test}.report.txt`), 'text/plain') || send(404, 'no report', 'text/plain')), true;
+    }
+    if (m[2] === 'mismatches') {
+      return (file(join(job.logdir, `${job.test}.mismatches.xlsx`), 'application/octet-stream') || send(404, 'no mismatches', 'text/plain')), true;
     }
     if (m[2] === 'dash') {
       return (file(join(job.logdir, `${job.test}.dash.log`), 'text/plain') || send(404, 'no dash.log', 'text/plain')), true;
