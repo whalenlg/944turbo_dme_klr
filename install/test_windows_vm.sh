@@ -138,7 +138,7 @@ snap_table() {
     fi
     local _id
     for _id in $(snap_ids); do
-        printf '%s\t%s\n' "$_id" "$(prlctl snapshot-list "$SRC" -i "$_id" 2>/dev/null | tr -d '\r' \
+        printf '%s\t%s\n' "$_id" "$(prlctl snapshot-list "$SRC" -i "$_id" 2>/dev/null | LC_ALL=C tr -d '\r' \
             | sed -n 's/^[[:space:]]*[Nn]ame[[:space:]]*:[[:space:]]*//p' | head -1)"
     done
 }
@@ -150,10 +150,10 @@ elif [[ "$SNAP" =~ ^\{?[0-9a-fA-F-]{36}\}?$ ]]; then
 else
     SNAP_ID=""
     # Names match ignoring case and outer spaces: "clean" finds "Clean"
-    want="$(printf %s "$SNAP" | sed 's/^ *//; s/ *$//' | tr A-Z a-z)"
+    want="$(printf %s "$SNAP" | sed 's/^ *//; s/ *$//' | LC_ALL=C tr A-Z a-z)"
     while IFS="$(printf '\t')" read -r _id _n; do
         [ -n "$_id" ] || continue
-        [ "$(printf %s "$_n" | sed 's/^ *//; s/ *$//' | tr A-Z a-z)" = "$want" ] && { SNAP_ID="$_id"; break; }
+        [ "$(printf %s "$_n" | sed 's/^ *//; s/ *$//' | LC_ALL=C tr A-Z a-z)" = "$want" ] && { SNAP_ID="$_id"; break; }
     done <<EOT
 $(snap_table)
 EOT
@@ -211,10 +211,21 @@ T0=0; tic() { T0=$SECONDS; }; toc() { echo $((SECONDS - T0)); }
 # UTF-16LE) carries the script through prlctl without any quoting.
 vm_ps() {  # vm_ps <log> <<'PS' ... PS
     local log="$OUT/$1" enc
-    enc="$( { printf '$ErrorActionPreference = "Stop"; $ProgressPreference = "SilentlyContinue"\n'; cat; } \
-            | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')"
-    prlctl exec "$VM" --current-user powershell.exe -NoProfile -ExecutionPolicy Bypass \
-        -EncodedCommand "$enc" 2>&1 | tr -d '\r' | tee "$log"
+    enc="$( { printf '$ErrorActionPreference = "Stop"; $ProgressPreference = "SilentlyContinue"\n'
+              printf '[Console]::OutputEncoding = [Text.Encoding]::UTF8; $env:PYTHONIOENCODING = "utf-8"\n'
+              cat; } \
+            | iconv -f UTF-8 -t UTF-16LE | base64 | LC_ALL=C tr -d '\n')"
+    # The output can have bytes that aren't UTF-8 (BSD tr stops on them with
+    # "Illegal byte sequence", losing the rest), and Windows PowerShell adds
+    # a CLIXML copy of its Write-Host lines on stderr: perl, byte-wise, drops
+    # CRs and the CLIXML (<Objs ...> ... </Objs>, which can span lines)
+    prlctl exec "$VM" --current-user powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+        -EncodedCommand "$enc" 2>&1 | LC_ALL=C perl -pe '
+            BEGIN { $| = 1 }
+            s/\r//g; s/^#< CLIXML\n//;
+            if ($in) { if (s/^.*?<\/Objs>//) { $in = 0 } else { $_ = "" } }
+            while (s/<Objs\b.*?<\/Objs>//) { }
+            if (s/<Objs\b.*//s) { $in = 1; $_ .= "\n" if length }' | tee "$log"
     return "${PIPESTATUS[0]}"
 }
 
