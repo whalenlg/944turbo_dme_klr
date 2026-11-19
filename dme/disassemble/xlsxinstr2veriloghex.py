@@ -16,6 +16,16 @@ def parse_addr(addr_str):
     except:
         return None
 
+# Excel keeps a one-byte opcode made only of digits (93, 22, 13...) as a
+# number, sometimes with float noise (93.00000000000001), which str() would
+# write out as "93.00000000000001". Write a whole number as such, and an
+# opcode as two hex digits.
+def cell_text(col, val):
+    if isinstance(val, (int, float)) and not isinstance(val, bool) and abs(val - round(val)) < 1e-6:
+        n = int(round(val))
+        return f"{n:02d}" if col == 'Opcode Ins' else str(n)
+    return str(val).strip()
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: xlsxinstr2veriloghex.py <input.xlsx> [array_size]")
@@ -73,7 +83,7 @@ def main():
                 if pd.isna(val) or str(val).strip().lower() == 'nan':
                     content_str = " " * WIDTH
                 else:
-                    content_str = str(val).strip().ljust(WIDTH)[:WIDTH]
+                    content_str = cell_text(col, val).ljust(WIDTH)[:WIDTH]
                 
                 # Convert string to hex without spaces
                 hex_content = "".join(f"{ord(c):02x}" for c in content_str)
