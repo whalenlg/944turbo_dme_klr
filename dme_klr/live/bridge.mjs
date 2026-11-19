@@ -1677,7 +1677,7 @@ createServer((req, res) => {
 }).listen(PORT, LISTEN, () => {
   console.log(`bridge: http://127.0.0.1:${PORT}  sim=${SIM}`);
   if (!loopback(LISTEN) && LISTEN !== 'localhost')
-    console.log(`bridge: regression host for other machines on the LAN at ${LISTEN}:${PORT} (token required)`);
+    console.log(`bridge: regression host for other machines on the LAN at ${LISTEN}:${PORT} (token required), software ${regressHost.running.version} (srchash ${regressHost.running.srchash})`);
   if (DASH) console.log(`bridge: dashboard (offline copy) at http://127.0.0.1:${PORT}/?live`);
   console.log(`bridge: asm listings dme=${ASM.dme.length} klr=${ASM.klr.length} lines`);
   startSim();
