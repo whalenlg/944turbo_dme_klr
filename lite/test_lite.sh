@@ -154,15 +154,37 @@ if [ -z "${CHROME:-}" ]; then
     done
 fi
 if [ -n "${CHROME:-}" ]; then
-    # No DNS for anything but 127.0.0.1: as on a machine with no connection
+    # No DNS for anything but 127.0.0.1: as on a machine with no connection.
+    # Headless Chrome now and then hangs on a CI runner and prints nothing
+    # (a pass takes ~10 s), so a hung one is killed, with its child
+    # processes, after 60 s and the check is tried once more with a fresh
+    # profile before it fails.
     DOM="$WORK/dom.html"
-    "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
-        --user-data-dir="$(cygpath -w "$WORK/chrome-profile" 2>/dev/null || echo "$WORK/chrome-profile")" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" \
-        --timeout=8000 --dump-dom "http://127.0.0.1:$PORT/?live" > "$DOM" 2>/dev/null &
-    cpid=$!
-    for _ in $(seq 60); do kill -0 "$cpid" 2>/dev/null || break; sleep 1; done
-    kill "$cpid" 2>/dev/null
-    grep -q 'SIMULATION DEBUG CONSOLE' "$DOM"; check $? "the dashboard renders offline in $(basename "$CHROME")"
+    chrome_kill() {   # $1: the pid $! gave
+        local wpid
+        wpid="$(cat "/proc/$1/winpid" 2>/dev/null)"
+        if [ -n "$wpid" ] && command -v taskkill >/dev/null 2>&1; then
+            MSYS2_ARG_CONV_EXCL='*' taskkill /T /F /PID "$wpid" >/dev/null 2>&1
+        fi
+        pkill -P "$1" 2>/dev/null
+        kill "$1" 2>/dev/null
+    }
+    chrome_dom() {    # $1: attempt number
+        local prof="$WORK/chrome-profile-$1" cpid
+        : > "$DOM"
+        "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
+            --user-data-dir="$(cygpath -w "$prof" 2>/dev/null || echo "$prof")" --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1" \
+            --timeout=8000 --dump-dom "http://127.0.0.1:$PORT/?live" > "$DOM" 2>/dev/null &
+        cpid=$!
+        for _ in $(seq 60); do kill -0 "$cpid" 2>/dev/null || break; sleep 1; done
+        if kill -0 "$cpid" 2>/dev/null; then
+            echo "    $(basename "$CHROME") still running after 60 s (attempt $1): killed"
+            chrome_kill "$cpid"
+        fi
+        wait "$cpid" 2>/dev/null
+        grep -q 'SIMULATION DEBUG CONSOLE' "$DOM"
+    }
+    chrome_dom 1 || chrome_dom 2; check $? "the dashboard renders offline in $(basename "$CHROME")"
 else
     echo "  (no Chrome or Edge found: skipped the browser check; set CHROME to run it)"
 fi
