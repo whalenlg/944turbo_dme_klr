@@ -22,10 +22,21 @@
 //  failed there, 75 the host can't take it (unreachable, different
 //  software, no such simulator, missing Python packages, no dash.log,
 //  dropped mid-run): the runner puts the
-//  test back in the queue and stops using that host.
+//  test back in the queue and stops using that host. 76: the test ran
+//  there but its logs wouldn't come back (every try stalled): the test
+//  goes back in the queue, and the host keeps getting tests (the runner
+//  stops using it after a few of these).
+//
+//  The logs come back over a new connection each try (node:http, no
+//  keep-alive), and a try that receives nothing for STALL_MS is dropped
+//  and made again: a download that stalls part way (seen between two
+//  Macs on a LAN, while short requests went through) no longer holds
+//  the test at 99% for the 5-minute timeout and then runs it again here.
 // ============================================================
 
-import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +53,9 @@ const OUT = arg('out', '');
 const SIM = arg('sim', 'verilator');
 const LOGMODE = arg('log', 'gz');
 const TEMPFAIL = 75;
+const GIVEBACK = 76;       // ran there, but its logs wouldn't come back
+const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 30_000;   // a download that receives nothing this long is tried again
+const TRIES = 5;
 const DROP_MS = 90_000;    // no answer this long: the host has dropped
 const REFUSED_MS = 15_000; // refused this long: the bridge has stopped
 const POLL_MS = 2000;
@@ -58,6 +72,49 @@ async function call(method, path, body, ms = 30_000) {
   const r = await fetch(HOST + path, { method, headers: { ...H, ...(body ? { 'Content-Type': 'application/json' } : {}) },
                                        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms) });
   return r;
+}
+
+// GET <path> of the job into a Buffer, on a connection of its own; a
+// stall (no bytes for STALL_MS) or a dropped connection is tried again,
+// up to TRIES times. {status, body} (body null when status isn't 200);
+// throws when every try failed.
+function getOnce(path) {
+  return new Promise((res, rej) => {
+    const u = new URL(HOST + path);
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close' }, agent: false }, r => {
+      if (r.statusCode !== 200) { r.resume(); return res({ status: r.statusCode, body: null }); }
+      const parts = [];
+      r.on('data', d => parts.push(d));
+      r.on('end', () => (r.complete ? res({ status: 200, body: Buffer.concat(parts) }) : rej(new Error('connection closed mid-transfer'))));
+      r.on('error', rej);
+      r.on('aborted', () => rej(new Error('connection closed mid-transfer')));
+    });
+    // no bytes either way for STALL_MS: give this try up
+    req.setTimeout(STALL_MS, () => req.destroy(new Error(`stalled ${STALL_MS / 1000} s`)));
+    req.on('error', rej);
+    req.end();
+  });
+}
+async function download(what, path) {
+  let last;
+  for (let i = 1; i <= TRIES; i++) {
+    const t0 = Date.now();
+    try {
+      const r = await getOnce(path);
+      if (r.body) say(`${what}: ${r.body.length} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s${i > 1 ? ` (try ${i})` : ''}`);
+      return r;
+    } catch (e) {
+      last = e;
+      say(`${what}: try ${i} of ${TRIES} failed after ${((Date.now() - t0) / 1000).toFixed(0)} s (${e.code ?? e.message})`);
+      if (i < TRIES) await sleep(1000 * 2 ** (i - 1));
+    }
+  }
+  throw last;
+}
+// write via a temporary name, so a half file never stands for the real one
+function save(file, buf) {
+  writeFileSync(`${file}.part`, buf);
+  renameSync(`${file}.part`, file);
 }
 
 let jobId = null;
@@ -111,31 +168,35 @@ async function main() {
   for (const l of st.out ?? []) console.log(`  [${who}] ${l}`);
   if (st.exit === 'build') { say('the host could not build the testbench'); await forget(); return TEMPFAIL; }
   // Its logs, here, where the runner looks for them
+  writeFileSync(progress, `remote ${who}: fetching the logs\n`, { flag: 'a' });
   try {
-    const d = await call('GET', `/regress/run/${jobId}/dash`, null, 300_000);
+    const d = await download('dash.log', `/regress/run/${jobId}/dash`);
     // no dash.log: the host couldn't run it (its setup, not the test); run it elsewhere
-    if (!d.ok) { say('the host made no dash.log; giving the test back'); await forget(); return TEMPFAIL; }
-    writeFileSync(join(OUT, `${TEST}.dash.log`), Buffer.from(await d.arrayBuffer()));
-    const l = await call('GET', `/regress/run/${jobId}/log`, null, 300_000);
+    if (!d.body) { say(`the host made no dash.log (${d.status}); giving the test back`); await forget(); return TEMPFAIL; }
+    save(join(OUT, `${TEST}.dash.log`), d.body);
+    const l = await download('log', `/regress/run/${jobId}/log`);
     rmSync(progress, { force: true });
-    if (l.ok) {
-      const gz = Buffer.from(await l.arrayBuffer());
-      if (LOGMODE === 'raw') writeFileSync(progress, gunzipSync(gz)); else writeFileSync(`${progress}.gz`, gz);
+    if (l.body) {
+      if (LOGMODE === 'raw') save(progress, gunzipSync(l.body)); else save(`${progress}.gz`, l.body);
     }
     // iverilog's waveform, where run_dashboard_tests.sh leaves it here
     // (a test whose waveform doesn't arrive still counts)
     if (SIM === 'iverilog') {
       try {
-        const w = await call('GET', `/regress/run/${jobId}/fst`, null, 600_000);
-        if (w.ok) {
+        const w = await download('waveform', `/regress/run/${jobId}/fst`);
+        if (w.body) {
           mkdirSync(join(OUT, 'fst'), { recursive: true });
-          writeFileSync(join(OUT, 'fst', `${TEST}.fst`), Buffer.from(await w.arrayBuffer()));
+          save(join(OUT, 'fst', `${TEST}.fst`), w.body);
         }
-      } catch (e) { say(`no waveform (${e.cause?.code ?? e.message})`); }
+      } catch (e) { say(`no waveform (${e.code ?? e.message})`); }
     }
   } catch (e) {
-    say(`dropped while sending the logs (${e.cause?.code ?? e.message})`);
-    return TEMPFAIL;
+    // the test ran; only its logs didn't come back: run it again
+    // elsewhere, but the host itself may be fine (the runner decides)
+    say(`its logs wouldn't come back (${e.code ?? e.message}); giving the test back`);
+    rmSync(join(OUT, `${TEST}.dash.log`), { force: true });
+    await forget();
+    return GIVEBACK;
   }
   await forget();
   say(`done, exit ${st.exit}`);
