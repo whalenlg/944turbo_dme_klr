@@ -161,7 +161,9 @@ cd "$DMEKLR_DIR"
 _vlver="$(command -v verilator) $(verilator --version 2>/dev/null)"
 if [ -d "$OBJ" ] && [ "$(cat "$OBJ/.verilator_version" 2>/dev/null)" != "$_vlver" ]; then
     echo "$_vlver is not the Verilator the old build in $OBJ used: clearing it"
-    rm -rf "$OBJ"
+    # this build's own files only: $LIVE_DIR/obj also holds the tests/,
+    # tests_rt/ and lite/ builds, each with its own check
+    find "$OBJ" -maxdepth 1 -type f -delete
 fi
 mkdir -p "$OBJ"
 echo "$_vlver" > "$OBJ/.verilator_version"
