@@ -13,7 +13,7 @@
  or, with options, from a downloaded copy:
      powershell -ExecutionPolicy Bypass -File install_lite_windows.ps1 [options]
 
-   -Version TAG   release to install, e.g. v1.0.1 (default: the latest)
+   -Version TAG   release to install, e.g. v1.0.2 (default: the latest)
    -Dir DIR       folder to unpack it in (default: your home folder)
    -NoPython      skip Python and the venv (only the MAPS tabs' graphs need it)
    -NoStart       don't start it at the end
