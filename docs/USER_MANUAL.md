@@ -687,7 +687,9 @@ code window header) for the list of edits: each changed place with the bytes
 and the code before (**was**) and after (**now**). **COPY** puts the list on
 the clipboard as plain text, for a text editor. **⬇ .bin** downloads the edited image as a raw
 binary, and **⬇ .bin** in the ROM IMAGES row does the same for the image in
-either EPROM.
+either EPROM. Both are for edits not yet saved: the ROM IMAGES row's button
+is grayed unless that EPROM holds such edits. Once you **SAVE AS**, download
+the saved image with **⬇ \<name\>.bin** instead (step 1 below).
 
 **Saving the edits as an image.** At the bottom of the list of edits:
 
@@ -1001,6 +1003,31 @@ KLR OVERVIEW includes the boost-control view: the target from the KLR boost
 map (by throttle from ram 43h and RPM) against the measured `ram[52h]`, in
 psi / inHg.
 
+### DME DIAG: serial diagnostics
+
+The **SERIAL DIAGNOSTICS** pane at the bottom of DME DIAG shows the DME's
+diagnostic serial port (RXD/TXD), from the `DME: [SER]` lines the testbench
+writes once there is serial traffic, in a log or live:
+
+* the firmware's serial mode, from iram 23h / 25h: waiting for an answer
+  to its boot hello, streaming, peek mode (the tester answered EE), or off
+  until reset because no tester answered, when TXD carries the O2 bit instead;
+* each frame's four bytes decoded: RPM (37h), advance (31h), fuel and the
+  peek byte, RAM[7Ah];
+* the six slot bytes, and where a reply to each is stored (the table at
+  11DAh, the code at 0x1EA7).
+
+In live mode it also has a **TESTER ON RXD** switch, which connects the testbench's
+diagnostic tester to the DME's RXD, and a **peek** field: the internal RAM
+address (00-7F, hex; Enter or **SET**) the tester writes into 7Ah, so each
+frame's fourth byte becomes that RAM byte, shown beside it. The stock ROM only
+listens for a tester at boot, so turn it on and press **↺ RESTART**; the
+bridge keeps both settings across restarts. If the switch and field are
+grayed with an amber note, the live sim was built before these inputs
+existed: rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge.
+The `cl_serial_peek_*` regressions (Appendix A) walk the peek address and
+check every byte that comes back.
+
 ---
 
 ## 10. ROM images
@@ -1038,7 +1065,8 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
   and the edited image downloaded as a `.bin` or saved as a new image
   (section 6, [Editing the ROM bytes](#editing-the-rom-bytes)). An edited
   image's name shows in red with **(modified)**; **⬇ .bin** in this row
-  downloads either EPROM's image as a raw binary.
+  downloads either EPROM's image as a raw binary while it holds edits not yet
+  saved with SAVE AS (grayed otherwise).
 * The bridge refuses a KLR image loaded into the DME.
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
@@ -1125,7 +1153,7 @@ per line:
 | `run`, `pause` | Free-run, stop |
 | `step dme\|klr [N]` | Run N instructions of that CPU |
 | `until <ms>` | Run to that simulated time, then pause |
-| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N |
+| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart), `ser_peek <hex>` is the address it writes into 7Ah |
 | `bp add\|del dme\|klr <hex>` | PC breakpoint |
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |
@@ -1157,6 +1185,7 @@ answers this machine only.
 | A map title shows no graph | The bridge isn't running, matplotlib is missing, or the log's ROM isn't in `bin_images/` or the uploaded images |
 | Snapshot LOAD refused (red under the list) | It was saved by a different build. Reproduce it from its INFO |
 | `No map lookups in this log` | The log predates the `[LKUP]` lines. Re-run the test |
+| SERIAL DIAGNOSTICS: tester switch and peek field grayed, with an amber note | The live sim was built before the `ser_tester` / `ser_peek` inputs. Rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge |
 
 ---
 

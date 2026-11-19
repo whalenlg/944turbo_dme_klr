@@ -51,7 +51,9 @@ so the change is live (PC and RAM kept). Edits stay through restarts and are
 dropped when another image is loaded. The listing is the loaded image's,
 decoded again where it was edited (`disasm.mjs`, the 8051/8048 decoders of
 `dis8051.py` / `dis8048.py` in JavaScript); edited rows carry `patched` and
-`orig`, and the `SIM: [ASM]` line gets `patched=<bytes edited>`.
+`orig`, and the `SIM: [ASM]` line gets `patched=<bytes edited>`, then
+`saved=<name>.mem` once those edits are kept with SAVE AS (the dashboard
+grays its ROM IMAGES **⬇ .bin** unless there are edits not yet saved).
 
 `GET /edits/<cpu>[?name=<file>]` lists what an edited image changed (text to
 copy: each place's code before and after). `POST /edits/<cpu>/save`
@@ -325,7 +327,15 @@ snapshot gets a line once there is serial traffic:
     DME: [SER] <ms>,<tester on>,<peek addr asked>,<frames>,<rpm><adv><fuel><peek>,<7Ah for that peek>,<next slot>,<slot 0..5 bytes>,<hellos>,<replies>
 
 The dashboard shows it in the **SERIAL DIAGNOSTICS** pane at the bottom of
-DME DIAG, with the tester switch and the peek address.
+DME DIAG, with the tester switch and the peek address. A live sim built
+before these inputs existed reports no `ser_peek`; the pane then grays the
+switch and the field and says to rebuild (`./build_live.sh`, then restart
+the bridge, which doesn't rebuild it). That rebuild also picks up the 8051
+core's mode-2 UART fix: a bit is 64 oscillator clocks (32 with SMOD), where
+before it took 1024, holding the boot's serial hello about 1.9 ms instead of
+0.12 ms. The i8051 regression (`dme/run_dme_regression`) has UART tests
+(37-46) for mode 2 with the 9th bit, SM2 filtering, REN off, back-to-back
+frames and Timer-1 baud in modes 1 and 3.
 
 The `SER_PEEK_WALK` test option (the `cl_serial_peek_idle`, `_3000` and
 `_6000` regressions) turns the tester on from boot and, once
