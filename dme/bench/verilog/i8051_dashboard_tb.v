@@ -91,6 +91,14 @@ end
 wire [15:0] ext_addr;
 wire        write, write_uart;
 wire        rxd, int_uart, bit_out;
+// RXD: the serial diagnostic tester model in the combined testbench
+// (dme_klr_dashboard_tb, live_ser_tester), which idles it high when off.
+// Standalone: idle high, nothing on the diagnostic connector.
+`ifdef DME_KLR_COMBINED
+assign rxd = dme_klr_dashboard_tb.ser_rxd_line;
+`else
+assign rxd = 1'b1;
+`endif
 wire        reference_sensor, speed_sensor;
 wire        reference_sensor_gen;   // generator's raw pulse output — see
                                      // TEST_REF_SENSOR_LOSS override below,

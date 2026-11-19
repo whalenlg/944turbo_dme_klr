@@ -292,9 +292,52 @@ throttle opens, and the KLR boost-target table takes over from boost onset
 | `boost` | pin KLR MAP ADC ch4 instead of the MAP-table model (`auto` = model); values above 0xF5 are held at 0xF5 (~+16 psi), since the KLR adds 10 to the reading and anything higher wraps ram[52h] to near-zero (deep vacuum) | auto |
 | `fuel_qual` | DME ADC ch7 (FQS); also sets the model's fuel energy like the `*_FQS0..7` tests | 0x00 |
 | `coolant`, `airtemp`, `battery`, `altitude` | DME ADC ch3, ch2, ch1, ch4 raw bytes | warm-idle values |
+| `ser_tester` | 1 = connect the serial diagnostic tester to the DME's RXD (see below) | 0 |
+| `ser_peek` | the RAM address (00-7F) the tester writes into 7Ah | 0x37 |
 
 RPM is held at 840 until the firmware first reports EngineSync, as in the
 closed-loop tests.
+
+### Serial diagnostic tester
+
+The DME's diagnostic serial port (RXD/TXD, UART mode 2, 9-bit, fosc/64) is
+served by a polled routine at 0x1E6D that the main loop calls through
+0x101A. `init_serial` (0x1E53) sends FF with the 9th bit set; if a tester
+answers FF before the first poll, the DME streams a frame on every poll:
+RPM (37h), advance (31h), fuel (4B:4A >> 5, 0 in fuel cut), RAM[7Ah], and a
+slot byte with the 9th bit set (slot 29h = 0..5 sends 13h 12h 11h 49h 2Fh
+10h, then FF). A byte sent back after slot k is stored on the next poll at
+11DAh[k] = 7Ah 26h 28h 7Ah 26h 28h (0x1EA7). With no answer, 23h.7 is set
+and TXD carries the lambda bit until reset.
+
+`dme_klr_dashboard_tb.v` has a tester model for this. `ser_tester 1`
+connects it to RXD: it answers every FF, and slots 0 and 3 with
+`ser_peek`, so the fourth byte of each frame becomes RAM[`ser_peek`]. It
+never answers slots 1, 2, 4 and 5, so 26h and 28h are left alone. The stock
+ROM only listens for it at boot, so turn it on and press RESTART; the
+bridge keeps both settings across restarts (`+ser_tester=1`,
+`+ser_peek=<hex>`, which also work on any run of the testbench). Off,
+RXD idles high.
+
+Whether or not the tester is on, the frames on TXD are decoded and each
+snapshot gets a line once there is serial traffic:
+
+    DME: [SER] <ms>,<tester on>,<peek addr asked>,<frames>,<rpm><adv><fuel><peek>,<7Ah for that peek>,<next slot>,<slot 0..5 bytes>,<hellos>,<replies>
+
+The dashboard shows it in the **SERIAL DIAGNOSTICS** pane at the bottom of
+DME DIAG, with the tester switch and the peek address.
+
+The `SER_PEEK_WALK` test option (the `cl_serial_peek_idle`, `_3000` and
+`_6000` regressions) turns the tester on from boot and, once
+`SER_PEEK_WALK_MS` has passed, walks the peek address through internal
+RAM 10h to 62h, then 7Ah to 7Fh. For each address the peek byte decoded from TXD is checked
+against the RAM byte the firmware read (sampled when the PC is at 0x1EC8,
+`mov A,@R1`):
+
+    DME: [SERPEEK] <ms>,<addr>,<byte from TXD>,<RAM>,<ok|BAD>
+    DME: [SERPEEK] DONE pass=<n> fail=<n> 10-62=<bytes read> 7A-7F=<bytes read>
+
+The validator needs `pass=89 fail=0`.
 
 ## Conditional breakpoints
 

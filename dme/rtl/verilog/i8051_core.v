@@ -593,21 +593,30 @@ module i8051_core (
     // ================================================================
 
     // ── Baud clock: Timer 1 overflow (modes 1 & 3) ───────────────────
-    // Pulse on TL1 wrap 0xFF→0x00 while TR1 runs in timer mode.
-    // Independent of TF1 sticky flag.
-    reg [7:0] tl1_dly;
-    wire baud_t1 = (tcon[6] && !tmod[6] &&
-                    tl1_dly == 8'hFF && tl1 == 8'h00);
-    always @(posedge clk) tl1_dly <= tl1;
+    // Bit time = 32 Timer-1 overflows (16 with SMOD); the engines take 16
+    // ticks per bit, so the tick is every overflow with SMOD and every
+    // second one without. The overflow is t1_overflow_now, the same event
+    // that sets TF1 in any timer mode (independent of the sticky flag).
+    // (It used to be a TL1 wrap FF->00, which never happens in the usual
+    // auto-reload mode with TH1 != 0, and ignored SMOD.)
+    reg t1_half;
+    always @(posedge clk or negedge res_n)
+        if (!res_n)               t1_half <= 1'b0;
+        else if (t1_overflow_now) t1_half <= ~t1_half;
+    wire baud_t1 = t1_overflow_now && !tmod[6] && (pcon[7] || t1_half);
 
     // ── Baud clock: fixed fosc/64 or fosc/32 (mode 2) ────────────────
-    reg [5:0] m2_cnt;
+    // The TX and RX engines below take 16 ticks per bit, so for a bit
+    // time of 64 oscillator clocks (SMOD=0) or 32 (SMOD=1) the tick comes
+    // every 4 or 2 clocks. (It used to come every 64 / 32, which made a
+    // mode-2 bit 16x too long: 1024 clocks, and init_serial's one byte
+    // held the boot for ~1.9 ms instead of ~0.12 ms.)
+    reg [1:0] m2_cnt;
     wire      baud_m2_pulse;
-    // SMOD=0 → divide by 64; SMOD=1 → divide by 32
-    assign baud_m2_pulse = pcon[7] ? (m2_cnt == 6'd31) : (m2_cnt == 6'd63);
+    assign baud_m2_pulse = pcon[7] ? m2_cnt[0] : (m2_cnt == 2'd3);
     always @(posedge clk or negedge res_n)
-        if (!res_n) m2_cnt <= 6'd0;
-        else        m2_cnt <= baud_m2_pulse ? 6'd0 : m2_cnt + 1'b1;
+        if (!res_n) m2_cnt <= 2'd0;
+        else        m2_cnt <= m2_cnt + 1'b1;
 
     // Select baud source based on mode
     wire [1:0] uart_mode = {scon[7], scon[6]};
@@ -731,7 +740,20 @@ module i8051_core (
                             // Validate start bit; abort if already high
                             if (rxd_s) rx_active <= 1'b0;
                         end else if (rx_bit_cnt == rx_stop_bit) begin
-                            // Stop bit period — do not shift; validate at cnt==15
+                            // Middle of the stop bit: the frame is complete
+                            // here, as on the 8051, and the receiver goes back
+                            // to watching for a start bit, so a frame sent
+                            // right after this one is not lost. RI is set
+                            // (and SBUF / RB8 loaded) only if RI is clear and
+                            // either SM2=0, or in modes 2/3 the 9th bit is 1,
+                            // or in mode 1 the stop bit is valid.
+                            rx_active <= 1'b0;
+                            if (!scon[0] && (!scon[5] || (rx_9bit ? rx_9th : rxd_s))) begin
+                                sbuf_rx  <= rx_shift;
+                                scon_set_rb8_req <= 1'b1;   // request RB8
+                                scon_rb8_val     <= rx_9bit ? rx_9th : rxd_s;
+                                scon_set_ri_req <= 1'b1;    // request RI set
+                            end
                         end else if (rx_9bit && rx_bit_cnt == 4'd9) begin
                             rx_9th <= rxd_s;           // 9th data bit → RB8
                         end else begin
@@ -739,20 +761,8 @@ module i8051_core (
                         end
                     end
 
-                    if (rx_baud_cnt == 4'd15) begin
+                    if (rx_baud_cnt == 4'd15)
                         rx_bit_cnt <= rx_bit_cnt + 1'b1;
-                        if (rx_bit_cnt == rx_stop_bit) begin   // end of stop bit
-                            rx_active <= 1'b0;
-                            if (rxd_s && !scon[0]) begin       // valid stop + RI clear
-                                sbuf_rx  <= rx_shift;
-                                if (rx_9bit) begin
-                                    scon_set_rb8_req <= 1'b1;   // request RB8
-                                    scon_rb8_val     <= rx_9th;
-                                end
-                                scon_set_ri_req <= 1'b1;        // request RI set
-                            end
-                        end
-                    end
                 end
             end
         end

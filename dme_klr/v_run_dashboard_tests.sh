@@ -336,7 +336,7 @@ compile_and_run_klr() {
     # Also capture bare [DS] from u_dme's internal scheduler (runs in parallel).
     # Which ROM images the run used (name + content hash), first, for the dashboard
     python3 "$SCRIPT_DIR/rom_stamp.py" "$log" > "$LOGDIR/${name}.dash.log" || true
-    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^KLR: \[SPARK\]|^DME: \[SEED\]|^DME: \[WARN\]|^DME: \[LKUP\]|^KLR: \[LKUP\]" "$log" >> "$LOGDIR/${name}.dash.log"
+    grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^KLR: \[SPARK\]|^DME: \[SEED\]|^DME: \[WARN\]|^DME: \[LKUP\]|^KLR: \[LKUP\]|^DME: \[SER\]|^DME: \[SERPEEK\]" "$log" >> "$LOGDIR/${name}.dash.log"
     local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
     local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
@@ -578,6 +578,26 @@ run_test cl_condition_cycle_idle \
 
 run_test cl_ramp_to_6000 \
     -DTEST_CL_RAMP_TO_6000 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
+
+# --- Serial diagnostic peek walk (SER_PEEK_WALK) ---
+# The closed-loop idle / 3000 / 6000 rpm runs with the serial tester on
+# from boot. Once SER_PEEK_WALK_MS has passed (the engine settled), the
+# tester's peek address (7Ah) is walked through iram 10h-62h, then 7Ah-7Fh, and each byte
+# the DME sends back on TXD is checked against RAM ([SERPEEK] lines).
+run_test cl_serial_peek_idle \
+    -DTEST_WARM_IDLE -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 \
+    -DRPMRAMP -DCL_MODE -DBOOST \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_serial_peek_3000 \
+    -DTEST_CL_RAMP_TO_3000 -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 \
+    -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'h72 \
+    -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000
+
+run_test cl_serial_peek_6000 \
+    -DTEST_CL_RAMP_TO_6000 -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 \
     -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP -DAFM_CL_TARGET=8\'hD8 \
     -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000
 
@@ -1040,6 +1060,9 @@ if [ -n "$1" ]; then
         cl_condition_cycle) run_test cl_condition_cycle $IARG -DTEST_CL_CONDITION_CYCLE -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=73000000000 ;;
         cl_condition_cycle_idle) run_test cl_condition_cycle_idle $IARG -DTEST_CL_CONDITION_CYCLE_IDLE -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=47000000000 ;;
         cl_ramp_to_6000)  run_test cl_ramp_to_6000  $IARG -DTEST_CL_RAMP_TO_6000  -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
+        cl_serial_peek_idle) run_test cl_serial_peek_idle $IARG -DTEST_WARM_IDLE -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 -DRPMRAMP -DCL_MODE -DBOOST -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_serial_peek_3000) run_test cl_serial_peek_3000 $IARG -DTEST_CL_RAMP_TO_3000 -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'h72" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=30000000000 ;;
+        cl_serial_peek_6000) run_test cl_serial_peek_6000 $IARG -DTEST_CL_RAMP_TO_6000 -DSER_PEEK_WALK -DSER_PEEK_WALK_MS=20000 -DRPMRAMP -DCL_MODE -DBOOST -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_ramp_to_6000_BOOST) run_test cl_ramp_to_6000_BOOST $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=40000000000 ;;
         cl_wot_3000_BOOST_ZERO) run_test cl_wot_3000_BOOST_ZERO $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_ZERO -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DCL_RPM_MAX=3000 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=12000000000 ;;
         cl_ramp_to_6000_BOOST_LOW) run_test cl_ramp_to_6000_BOOST_LOW $IARG -DTEST_CL_RAMP_TO_6000 -DBOOST -DBOOST_LOW -DRPMRAMP -DCL_MODE -DAFM_CL_RAMP "-DAFM_CL_TARGET=8'hD8" -DAFM_CL_STEP_NS=28409091 -DSKIP_LAMBDA_WARMUP -DSIM_TIME=20000000000 ;;

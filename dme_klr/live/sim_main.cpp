@@ -202,6 +202,10 @@ public:
             {"cat",       &TB(live_cat),        8, false},   // DME T0: 0 = cat fitted, 1 = none
             // knock on the next N revolutions; the testbench counts it down
             {"knock_revs", &TB(live_knock_revs), 16, false},
+            // serial diagnostic tester on the DME's RXD (dme_klr_dashboard_tb):
+            // 1 = connected; ser_peek = the RAM address it asks for in 7Ah
+            {"ser_tester", &TB(live_ser_tester), 8, false},
+            {"ser_peek",  &TB(live_ser_peek),   8, false},
         };
         liveFields(root->vlSymsp, fields_);
         layout_ = liveLayoutHash(fields_);

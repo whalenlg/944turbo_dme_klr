@@ -872,6 +872,22 @@ TESTS = {
     'cl_ramp_to_6000':   {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
                           'notes':'CL: AFM steps to 6000RPM target at t=2s; RPM should approach 6000 in 40s',
                           'dwell_cap':96},
+    # Serial diagnostic peek walk (SER_PEEK_WALK): the same closed-loop
+    # runs with the serial tester on from boot. After SER_PEEK_WALK_MS the
+    # tester walks the peek address (7Ah) through iram 10h-62h then 7Ah-7Fh, and the
+    # testbench checks each peek byte the DME sends on TXD against the RAM
+    # byte the firmware read (a [SERPEEK] line per address). The pattern
+    # needs all 89 addresses read and every one matching.
+    'cl_serial_peek_idle': {'rpm_target':  840, 'fuel_range':(1.5, 3.5),   'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_log_pattern':r'\[SERPEEK\] DONE pass=89 fail=0 ',
+                          'notes':'cl_warm_idle (30 s) with the serial tester on; walks the peek through iram 10-62h and 7A-7Fh from t=20 s'},
+    'cl_serial_peek_3000': {'rpm_target': 3000, 'fuel_range':(1.5, 10.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_log_pattern':r'\[SERPEEK\] DONE pass=89 fail=0 ',
+                          'notes':'cl_ramp_to_3000 with the serial tester on; walks the peek through iram 10-62h and 7A-7Fh from t=20 s'},
+    'cl_serial_peek_6000': {'expect_o2':'rich_or_disconnected', 'rpm_target': 6000, 'fuel_range':(1.5, 14.0),  'expect_ase':True,  'expect_fuelcut':True,
+                          'expect_log_pattern':r'\[SERPEEK\] DONE pass=89 fail=0 ',
+                          'notes':'cl_ramp_to_6000 with the serial tester on; walks the peek through iram 10-62h and 7A-7Fh from t=20 s',
+                          'dwell_cap':96},
 
     # --- Boost model tests (klr_tb.v -DBOOST) — same base CL checks as
     #     cl_ramp_to_3000/cl_ramp_to_6000, plus DTC checks for the fault-
@@ -1158,6 +1174,7 @@ DME_FILE_OVERRIDES = {
         # barely scrape by" approach as the fuel_range widenings above.
         'cl_ramp_to_3000':                 {'rpm_tolerance_pct': 13},
         'cl_ramp_to_3000_BOOST':           {'rpm_tolerance_pct': 13},
+        'cl_serial_peek_3000':             {'rpm_tolerance_pct': 13},
         'cl_ramp_to_3000_KLR_KNOCK_BLOCKED': {'rpm_tolerance_pct': 13},
 
         # Idle-family ISV (idle speed valve) PID integral term —

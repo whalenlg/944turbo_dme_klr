@@ -138,8 +138,8 @@ i8051_core dut (
     .t0         ( 1'b0      ),
     .t1         ( 1'b0      ),
 
-    // UART: idle
-    .rxd        ( 1'b1      ),
+    // UART: driven by the UART tests (uart_send); idle high otherwise
+    .rxd        ( rxd_tb    ),
     .txd        ( txd       ),
 
     // Program memory (combinatorial byte-wide ROM)
@@ -167,6 +167,112 @@ i8051_core dut (
     .pc         ( pc_mon    ),
     .ir         ( ir_mon    )
 );
+
+// ---------------------------------------------------------------------------
+// UART line models (tests 37-46)
+//   cyc counts oscillator clocks. The TX monitor, armed by a test with the
+//   bit time it expects (mon_p, in oscillator clocks), decodes one frame
+//   off TXD: it samples the middle of each of mon_nbits bits after the start
+//   bit's falling edge, and times the first rising edge after it. uart_send
+//   drives one frame onto RXD with a given bit time.
+// ---------------------------------------------------------------------------
+reg        rxd_tb = 1'b1;
+integer    cyc = 0;
+always @(posedge clk) cyc = cyc + 1;
+
+reg        mon_arm  = 1'b0;
+reg        mon_busy = 1'b0;
+reg        mon_done = 1'b0;
+integer    mon_p     = 64;   // expected bit time, oscillator clocks
+integer    mon_nbits = 11;   // start + 8 data + [9th] + stop
+integer    mon_rise  = -1;   // clocks from the start edge to the next rising edge
+reg [10:0] mon_bits  = 11'd0;
+
+always @(negedge txd) begin : uart_mon
+    integer k, t0;
+    if (mon_arm && !mon_busy && res_n) begin
+        mon_busy = 1'b1;
+        t0 = cyc;
+        mon_rise = -1;
+        fork
+            begin @(posedge txd); mon_rise = cyc - t0; end
+            begin
+                repeat (mon_p / 2) @(posedge clk);
+                for (k = 0; k < mon_nbits; k = k + 1) begin
+                    mon_bits[k] = txd;
+                    if (k < mon_nbits - 1) repeat (mon_p) @(posedge clk);
+                end
+            end
+        join
+        mon_done = 1'b1;
+        mon_arm  = 1'b0;
+        mon_busy = 1'b0;
+    end
+end
+
+// Send one frame on RXD: start, D0..D7, [9th bit if nine], stop
+task uart_send;
+    input [7:0] data;
+    input       b9;
+    input       nine;
+    input integer p;
+    integer k;
+    begin
+        rxd_tb = 1'b0;                              // start
+        repeat (p) @(posedge clk);
+        for (k = 0; k < 8; k = k + 1) begin
+            rxd_tb = data[k];
+            repeat (p) @(posedge clk);
+        end
+        if (nine) begin
+            rxd_tb = b9;
+            repeat (p) @(posedge clk);
+        end
+        rxd_tb = 1'b1;                              // stop
+        repeat (p) @(posedge clk);
+    end
+endtask
+
+// Arm the TX monitor for the next frame
+task mon_start;
+    input integer p;
+    input integer nbits;
+    begin
+        mon_p = p; mon_nbits = nbits;
+        mon_done = 1'b0; mon_arm = 1'b1; mon_bits = 11'd0; mon_rise = -1;
+    end
+endtask
+
+// After run_test: check what the TX monitor saw. exp_bits are the frame's
+// bits LSB first (start bit 0 at [0]); exp_rise is where the first rising
+// edge after the start edge should be (the bit time times the number of
+// leading zero bits).
+task mon_check;
+    input [255:0] tname;
+    input [10:0]  exp_bits;
+    input integer exp_rise;
+    reg   [10:0]  mask;
+    integer       w;
+    begin
+        // TI comes at the start of the stop bit, so the program can report
+        // before the monitor has sampled the stop bit: give it two bit times
+        w = 0;
+        while (!mon_done && w < 2 * mon_p) begin @(posedge clk); w = w + 1; end
+        mask = (11'd1 << mon_nbits) - 11'd1;
+        if (!mon_done) begin
+            $display("FAIL     [%0s]  no frame seen on TXD", tname);
+            fail_count = fail_count + 1;
+        end else if ((mon_bits & mask) !== (exp_bits & mask) || mon_rise != exp_rise) begin
+            $display("FAIL     [%0s]  frame bits=%b (want %b), first rise after %0d clocks (want %0d)",
+                     tname, mon_bits & mask, exp_bits & mask, mon_rise, exp_rise);
+            fail_count = fail_count + 1;
+        end else begin
+            $display("PASS     [%0s]", tname);
+            pass_count = pass_count + 1;
+        end
+        mon_arm = 1'b0;
+    end
+endtask
 
 // ===========================================================================
 // TASK LIBRARY
@@ -1137,6 +1243,168 @@ initial begin
     check(8'hA5, 8'h39);                // PASS=0xA5, FAIL=0x39
 
     run_test("36_TF1_SURVIVES_TCON_ORL_RMW", 5000);
+
+    // =========================================================================
+    // UART TESTS (37-46)
+    //   SCON 98h: SM0 SM1 SM2 REN TB8 RB8 TI RI; SBUF 99h; PCON 87h (SMOD=bit7)
+    //   Mode 2: 9-bit, bit time 64 oscillator clocks (32 with SMOD).
+    //   Mode 1 / 3: 8-bit / 9-bit, bit time 32 (16 with SMOD) Timer-1
+    //   overflows. The DME runs mode 2 (SCON=90h, then B0h).
+    //   Each program reports PASS through A as usual; the TX tests also
+    //   check the frame the monitor decoded off TXD (a second PASS/FAIL line).
+    // =========================================================================
+
+    // TEST 37: mode 2 TX, TB8=1: frame A5 + 9th bit 1, 64-clock bits
+    //   A5 = 1010_0101, LSB first: D0=1, so TXD rises one bit after the start
+    clear_rom;
+    wb(8'h75); wb(8'h98); wb(8'h88);   // MOV SCON,#88h  mode 2, TB8=1
+    wb(8'h75); wb(8'h99); wb(8'hA5);   // MOV SBUF,#A5h
+    wb(8'h30); wb(8'h99); wb(8'hFD);   // JNB TI,$
+    wb(8'h74); wb(8'h00);              // MOV A,#0
+    check(8'h00, 8'h37);
+    mon_start(64, 11);
+    run_test("37_UART_M2_TX", 3000);
+    mon_check("37_UART_M2_TX_FRAME_64CLK", {1'b1, 1'b1, 8'hA5, 1'b0}, 64);
+
+    // TEST 38: mode 2 TX with SMOD=1, TB8=0: frame 3C + 9th bit 0, 32-clock bits
+    //   3C = 0011_1100: D0=D1=0, so TXD rises three bits after the start
+    clear_rom;
+    wb(8'h75); wb(8'h87); wb(8'h80);   // MOV PCON,#80h  SMOD=1
+    wb(8'h75); wb(8'h98); wb(8'h80);   // MOV SCON,#80h  mode 2, TB8=0
+    wb(8'h75); wb(8'h99); wb(8'h3C);   // MOV SBUF,#3Ch
+    wb(8'h30); wb(8'h99); wb(8'hFD);   // JNB TI,$
+    wb(8'h74); wb(8'h00);              // MOV A,#0
+    check(8'h00, 8'h38);
+    mon_start(32, 11);
+    run_test("38_UART_M2_TX_SMOD", 3000);
+    mon_check("38_UART_M2_TX_SMOD_FRAME_32CLK", {1'b1, 1'b0, 8'h3C, 1'b0}, 96);
+
+    // TEST 39: mode 2 RX: 5A with 9th bit 1 → RI=1, RB8=1, SBUF=5A
+    //   (A is checked against SCON & 05h first, then SBUF)
+    clear_rom;
+    wb(8'h75); wb(8'h98); wb(8'h90);   // MOV SCON,#90h  mode 2, REN=1
+    wb(8'h30); wb(8'h98); wb(8'hFD);   // JNB RI,$
+    wb(8'hE5); wb(8'h98);              // MOV A,SCON
+    wb(8'h54); wb(8'h05);              // ANL A,#05h  RB8 | RI
+    wb(8'hB4); wb(8'h05); wb(8'h0F);   // CJNE A,#05h,fail (past MOV A,SBUF + check)
+    wb(8'hE5); wb(8'h99);              // MOV A,SBUF
+    check(8'h5A, 8'h39);
+    wb(8'h74); wb(8'h3A);              // fail: MOV A,#3Ah  (RI/RB8 wrong)
+    wb(8'h02); wb(8'h01); wb(8'h00);   // LJMP tail
+    fork
+        run_test("39_UART_M2_RX_RB8", 4000);
+        begin repeat (300) @(posedge clk); uart_send(8'h5A, 1'b1, 1'b1, 64); end
+    join
+
+    // TEST 40: mode 2 RX with SMOD=1: 96 at 32-clock bits
+    clear_rom;
+    wb(8'h75); wb(8'h87); wb(8'h80);   // MOV PCON,#80h  SMOD=1
+    wb(8'h75); wb(8'h98); wb(8'h90);   // MOV SCON,#90h
+    wb(8'h30); wb(8'h98); wb(8'hFD);   // JNB RI,$
+    wb(8'hE5); wb(8'h99);              // MOV A,SBUF
+    check(8'h96, 8'h40);
+    fork
+        run_test("40_UART_M2_RX_SMOD", 3000);
+        begin repeat (300) @(posedge clk); uart_send(8'h96, 1'b0, 1'b1, 32); end
+    join
+
+    // TEST 41: mode 2 RX, SM2=1 (multiprocessor, the DME's SCON=B0h):
+    //   a frame with 9th bit 0 sets no RI; the next, with 9th bit 1, does
+    clear_rom;
+    wb(8'h75); wb(8'h98); wb(8'hB0);   // MOV SCON,#B0h  mode 2, SM2=1, REN=1
+    wb(8'h30); wb(8'h98); wb(8'hFD);   // JNB RI,$
+    wb(8'hE5); wb(8'h99);              // MOV A,SBUF
+    check(8'h22, 8'h41);
+    fork
+        run_test("41_UART_M2_RX_SM2_FILTER", 6000);
+        begin
+            repeat (300) @(posedge clk); uart_send(8'h11, 1'b0, 1'b1, 64);
+            repeat (100) @(posedge clk); uart_send(8'h22, 1'b1, 1'b1, 64);
+        end
+    join
+
+    // TEST 42: REN=0: a frame on RXD sets no RI
+    //   (waits ~1900 clocks, longer than the frame, then reads SCON.RI)
+    clear_rom;
+    wb(8'h75); wb(8'h98); wb(8'h80);   // MOV SCON,#80h  mode 2, REN=0
+    wb(8'h7F); wb(8'h50);              // MOV R7,#80
+    wb(8'hDF); wb(8'hFE);              // DJNZ R7,$   (80 x 24 clocks)
+    wb(8'hE5); wb(8'h98);              // MOV A,SCON
+    wb(8'h54); wb(8'h01);              // ANL A,#01h  RI
+    check(8'h00, 8'h42);
+    fork
+        run_test("42_UART_RX_REN_OFF", 4000);
+        begin repeat (100) @(posedge clk); uart_send(8'hC3, 1'b1, 1'b1, 64); end
+    join
+
+    // TEST 43: RI stays set until software clears it: a second frame while
+    //   RI=1 is not loaded (SBUF keeps the first byte)
+    clear_rom;
+    wb(8'h75); wb(8'h98); wb(8'h90);   // MOV SCON,#90h
+    wb(8'h30); wb(8'h98); wb(8'hFD);   // JNB RI,$
+    wb(8'h7F); wb(8'h40);              // MOV R7,#64
+    wb(8'hDF); wb(8'hFE);              // DJNZ R7,$   (wait out the 2nd frame)
+    wb(8'hE5); wb(8'h99);              // MOV A,SBUF
+    check(8'h81, 8'h43);
+    fork
+        run_test("43_UART_RX_OVERRUN_KEEPS_SBUF", 6000);
+        begin
+            repeat (300) @(posedge clk); uart_send(8'h81, 1'b0, 1'b1, 64);
+            uart_send(8'h7E, 1'b0, 1'b1, 64);
+        end
+    join
+
+    // TEST 44: mode 1 TX, Timer 1 mode 2 (auto-reload TH1=FEh: an overflow
+    //   every 2 machine cycles = 24 clocks), SMOD=0: 32 overflows per bit
+    //   = 768 clocks. 10-bit frame: start, 4D, stop. 4D = 0100_1101: D0=1.
+    clear_rom;
+    wb(8'h75); wb(8'h89); wb(8'h20);   // MOV TMOD,#20h  T1 mode 2
+    wb(8'h75); wb(8'h8D); wb(8'hFE);   // MOV TH1,#FEh
+    wb(8'h75); wb(8'h8B); wb(8'hFE);   // MOV TL1,#FEh
+    wb(8'hD2); wb(8'h8E);              // SETB TR1
+    wb(8'h75); wb(8'h98); wb(8'h40);   // MOV SCON,#40h  mode 1
+    wb(8'h75); wb(8'h99); wb(8'h4D);   // MOV SBUF,#4Dh
+    wb(8'h30); wb(8'h99); wb(8'hFD);   // JNB TI,$
+    wb(8'h74); wb(8'h00);              // MOV A,#0
+    check(8'h00, 8'h44);
+    mon_start(768, 10);
+    run_test("44_UART_M1_TX_T1", 12000);
+    mon_check("44_UART_M1_TX_T1_FRAME_768CLK", {1'b0, 1'b1, 8'h4D, 1'b0}, 768);
+
+    // TEST 45: mode 1 RX, same Timer 1 setup with SMOD=1: 16 overflows per
+    //   bit = 384 clocks
+    clear_rom;
+    wb(8'h75); wb(8'h89); wb(8'h20);   // MOV TMOD,#20h
+    wb(8'h75); wb(8'h8D); wb(8'hFE);   // MOV TH1,#FEh
+    wb(8'h75); wb(8'h8B); wb(8'hFE);   // MOV TL1,#FEh
+    wb(8'h75); wb(8'h87); wb(8'h80);   // MOV PCON,#80h  SMOD=1
+    wb(8'hD2); wb(8'h8E);              // SETB TR1
+    wb(8'h75); wb(8'h98); wb(8'h50);   // MOV SCON,#50h  mode 1, REN=1
+    wb(8'h30); wb(8'h98); wb(8'hFD);   // JNB RI,$
+    wb(8'hE5); wb(8'h99);              // MOV A,SBUF
+    check(8'hB2, 8'h45);
+    fork
+        run_test("45_UART_M1_RX_T1_SMOD", 8000);
+        begin repeat (400) @(posedge clk); uart_send(8'hB2, 1'b0, 1'b0, 384); end
+    join
+
+    // TEST 46: mode 3 TX (9-bit, Timer 1), TB8=1, SMOD=1, TH1=FFh: an
+    //   overflow every machine cycle = 12 clocks, 16 per bit = 192 clocks
+    //   E1 = 1110_0001: D0=1
+    clear_rom;
+    wb(8'h75); wb(8'h89); wb(8'h20);   // MOV TMOD,#20h
+    wb(8'h75); wb(8'h8D); wb(8'hFF);   // MOV TH1,#FFh
+    wb(8'h75); wb(8'h8B); wb(8'hFF);   // MOV TL1,#FFh
+    wb(8'h75); wb(8'h87); wb(8'h80);   // MOV PCON,#80h
+    wb(8'hD2); wb(8'h8E);              // SETB TR1
+    wb(8'h75); wb(8'h98); wb(8'hC8);   // MOV SCON,#C8h  mode 3, TB8=1
+    wb(8'h75); wb(8'h99); wb(8'hE1);   // MOV SBUF,#E1h
+    wb(8'h30); wb(8'h99); wb(8'hFD);   // JNB TI,$
+    wb(8'h74); wb(8'h00);              // MOV A,#0
+    check(8'h00, 8'h46);
+    mon_start(192, 11);
+    run_test("46_UART_M3_TX_T1", 5000);
+    mon_check("46_UART_M3_TX_T1_FRAME_192CLK", {1'b1, 1'b1, 8'hE1, 1'b0}, 192);
 
     // =========================================================================
     // Final summary
