@@ -397,7 +397,9 @@ UCRT64 terminal (leave out any you use for other work):
 pacman -Rns mingw-w64-ucrt-x86_64-{verilator,iverilog,gtkwave,nodejs,python-openpyxl,python-pandas,python-matplotlib,python-numpy}
 ```
 
-then delete the checkout as in step 3. The installer also leaves a marker
+(pacman stops at a name that isn't installed: drop `gtkwave` if you used
+`-NoGtkwave`, add `python-pip` if you used `-Venv`), then delete the
+checkout as in step 3. The installer also leaves a marker
 file, `C:\msys64\var\lib\dmeklr-msys2-initialised`; it can stay or go.
 
 ### The lite package (no Verilog source)
