@@ -491,7 +491,12 @@ lite/test_lite.sh "$DMEKLR_TMP"/lite/dmeklr-lite-*.tar.gz
 `test_lite.sh` takes a package folder or archive (`.tar.gz`, `.tar` or
 `.zip`); run with none in a folder that holds one package (as
 `~/lite-test` in the macOS VM test does), it finds it there:
-`./test_lite.sh`.
+`./test_lite.sh`. When it finds Chrome or Edge (or `CHROME` names one), it
+checks the dashboard renders offline in it, headless. Headless Chrome now
+and then hangs on a CI runner and prints nothing (a pass takes about 10 s),
+so one still running after 60 s is killed with its child processes
+(`taskkill /T` on Windows) and the check runs once more with a fresh
+profile before it fails.
 
 `make_lite.sh` makes the disassembly tables for every ROM that has a
 workbook, builds the simulator with `dme_klr/live/build_live.sh
@@ -769,6 +774,27 @@ dashboard's **INSTALLER TESTS** page on its own, with the VM named by
 `DMEKLR_WIN_VM` (default `Windows 11 951 Install Test`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
 (default `Clean`), set where the bridge starts.
 
+When it doesn't start:
+- **`prlctl` not found** from the dashboard: a bridge started from the
+  Finder, launchd or an IDE can have a short `PATH`. On macOS the bridge and
+  `run_all.sh` add `/opt/homebrew/bin`, `/usr/local/bin`, Parallels'
+  `Contents/MacOS` and Docker's `bin` folder when they exist, so `tart`,
+  `prlctl` and `docker` are found anyway.
+- **"needs Parallels Desktop Pro or Business (this is the Standard
+  edition)"**: Standard's `prlctl` lists VMs but can't snapshot, clone or run
+  commands in one. The INSTALLER TESTS page grays the Windows tests with
+  that reason.
+- **No snapshot named …**: names match ignoring case and outer spaces. The
+  script prints the snapshots it sees (ID and name); pass `--snapshot` with
+  one of those names or IDs.
+- **The clone is refused**: the snapshot was taken with Windows running or
+  suspended. Shut it down and take it again (step 4 above); the script says
+  so.
+
+The script reads the VM's output byte by byte (so a non-UTF-8 byte from
+Windows doesn't cut off the rest of the log) and drops the CLIXML copy of
+`Write-Host` lines that Windows PowerShell writes to stderr.
+
 ### Dependencies
 
 Everything the repo uses outside the standard tools every Unix system has
@@ -862,7 +888,12 @@ full-length operands after editing a disassembly workbook
 scripts in [section 1](#1-install) put all three in place.
 
 Rebuild with `./build_live.sh` after any change to the Verilog, the testbench
-or `sim_main.cpp`. After a Verilator upgrade (`brew upgrade verilator`)
+or `sim_main.cpp`. The bridge doesn't rebuild it. A build from before
+the serial diagnostic tester was added (2026-11-19) lacks its inputs (`ser_tester` / `ser_peek`;
+the SERIAL DIAGNOSTICS pane's switch is grayed) and still has the 8051
+core's slow mode-2 UART (a bit took 1024 clocks instead of 64, so the
+boot's serial hello held the DME about 1.9 ms instead of 0.12 ms), so
+rebuild after pulling. After a Verilator upgrade (`brew upgrade verilator`)
 `build_live.sh` and `replay/run_replay.sh` notice the different version and
 clear the old build first, since its make dependencies name the old
 version's include files. See `dme_klr/live/README.md` for the build details.
@@ -937,7 +968,11 @@ against Verilator over simulated time), and the test's iverilog line gets a
 step 5 deletes a test's older plot before it makes a new one. A
 **◪ PLOT DIFFERENCES** line under the steps says what step 5 plotted for each
 ROM pair: how many plots of how many DIFF and NOTE tests, *nothing to plot*
-when every test matched, or that matplotlib is missing. Unticked, step 5
+when every test matched, or that matplotlib is missing, and lists every plot
+it made as **◪ DME** / **◪ KLR** links. Step 5 compares every log in the
+pair's folder, so it can plot a test this run didn't run (logs from an
+earlier run); those have no line in the test list, so their links are only
+here, marked as from an earlier run. Unticked, step 5
 still writes its per-test comparison report (`$DMEKLR_TMP/dme_klr/<rom>/run_all/compare_detail.log`)
 but no plots. The plots need matplotlib. **FQS ANALYSIS** runs `fqs_analysis.py` (step 5's
 FQS analysis) on the iverilog and Verilator dash logs of the ROM pair picked
@@ -1036,7 +1071,11 @@ runner log says how far each stalled try got. If every try fails,
 `remote_test.mjs` exits 76: the test is requeued and the host keeps getting
 tests until that has happened 3 times (exit 75, the host couldn't take the
 test or dropped, stops using it at once). An iverilog test's waveform
-(`fst/<test>.fst`) comes back too, into this machine's `dash_logs/fst/`. If a host stops
+(`fst/<test>.fst`) comes back too, into this machine's `dash_logs/fst/`,
+and a log replay's `<test>.report.txt` (the validator's verdict comes from
+it) and `<test>.mismatches.xlsx` (the host's `GET /regress/run/<id>/report`
+and `/mismatches`); `remote_test.mjs` deletes any old ones here first, so a
+replay whose report doesn't arrive fails rather than passing on an old one. If a host stops
 answering (15 s when its bridge has stopped, 90 s otherwise), its test goes
 back in the queue and the host gets no more tests that run; one without
 iverilog drops out of the iverilog suite only. The hosts are remembered in
@@ -1379,7 +1418,9 @@ code window header) for the list of edits: each changed place with the bytes
 and the code before (**was**) and after (**now**). **COPY** puts the list on
 the clipboard as plain text, for a text editor. **⬇ .bin** downloads the edited image as a raw
 binary, and **⬇ .bin** in the ROM IMAGES row does the same for the image in
-either EPROM.
+either EPROM. Both are for edits not yet saved: the ROM IMAGES row's button
+is grayed unless that EPROM holds such edits. Once you **SAVE AS**, download
+the saved image with **⬇ \<name\>.bin** instead (step 1 below).
 
 **Saving the edits as an image.** At the bottom of the list of edits:
 
@@ -1720,6 +1761,31 @@ KLR OVERVIEW includes the boost-control view: the target from the KLR boost
 map (by throttle from ram 43h and RPM) against the measured `ram[52h]`, in
 psi / inHg.
 
+### DME DIAG: serial diagnostics
+
+The **SERIAL DIAGNOSTICS** pane at the bottom of DME DIAG shows the DME's
+diagnostic serial port (RXD/TXD), from the `DME: [SER]` lines the testbench
+writes once there is serial traffic, in a log or live:
+
+* the firmware's serial mode, from iram 23h / 25h: waiting for an answer
+  to its boot hello, streaming, peek mode (the tester answered EE), or off
+  until reset because no tester answered, when TXD carries the O2 bit instead;
+* each frame's four bytes decoded: RPM (37h), advance (31h), fuel and the
+  peek byte, RAM[7Ah];
+* the six slot bytes, and where a reply to each is stored (the table at
+  11DAh, the code at 0x1EA7).
+
+In live mode it also has a **TESTER ON RXD** switch, which connects the testbench's
+diagnostic tester to the DME's RXD, and a **peek** field: the internal RAM
+address (00-7F, hex; Enter or **SET**) the tester writes into 7Ah, so each
+frame's fourth byte becomes that RAM byte, shown beside it. The stock ROM only
+listens for a tester at boot, so turn it on and press **↺ RESTART**; the
+bridge keeps both settings across restarts. If the switch and field are
+grayed with an amber note, the live sim was built before these inputs
+existed: rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge.
+The `cl_serial_peek_*` regressions (Appendix A) walk the peek address and
+check every byte that comes back.
+
 ---
 
 ## 10. ROM images
@@ -1757,7 +1823,8 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
   and the edited image downloaded as a `.bin` or saved as a new image
   (section 6, [Editing the ROM bytes](#editing-the-rom-bytes)). An edited
   image's name shows in red with **(modified)**; **⬇ .bin** in this row
-  downloads either EPROM's image as a raw binary.
+  downloads either EPROM's image as a raw binary while it holds edits not yet
+  saved with SAVE AS (grayed otherwise).
 * The bridge refuses a KLR image loaded into the DME.
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
@@ -1850,7 +1917,7 @@ per line:
 | `run`, `pause` | Free-run, stop |
 | `step dme\|klr [N]` | Run N instructions of that CPU |
 | `until <ms>` | Run to that simulated time, then pause |
-| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N |
+| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart), `ser_peek <hex>` is the address it writes into 7Ah |
 | `bp add\|del dme\|klr <hex>` | PC breakpoint |
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |
@@ -1885,6 +1952,7 @@ answers this machine only.
 | Build stops with `No rule to make target …/verilator/<version>/…/verilated.h` | A build from before a Verilator upgrade. Current `build_live.sh` and `run_replay.sh` clear it themselves; with an older checkout, delete the old `obj` folder |
 | RESOLUTION greyed out | The simulator was built before the setting. Run `./build_live.sh` and restart the bridge |
 | `No map lookups in this log` | The log predates the `[LKUP]` lines. Re-run the test |
+| SERIAL DIAGNOSTICS: tester switch and peek field grayed, with an amber note | The live sim was built before the `ser_tester` / `ser_peek` inputs. Rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge |
 
 ---
 
