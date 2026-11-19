@@ -286,7 +286,8 @@ row already: `ramp_to_6000_knock` 200 ms before its first knock pulse
 (20009 ms), ready to LOAD without running the test.
 
 **From the dashboard.** With `run_lite.sh` running, the **RUN REGRESSIONS ▸**
-button in the header opens a panel that runs `run_tests.py` for you. Pick
+button in the header (and in the **LOAD LOG** window that opens at start, beside **LIVE SIM**
+and **BROWSE…**) opens a panel that runs `run_tests.py` for you. Pick
 the ROM images every test runs on (the 1989 pair by default, another pair,
 or any DME and KLR image in `bin_images/` or uploaded), and
 the tests by the groups of [Appendix A](#appendix-a-regression-tests) (whole
@@ -304,8 +305,10 @@ bridge stops.
 **THREADS** row change how many tests run at a time here and on each
 regression host (a host can go down to 0: no more tests there), and the
 **CANCEL QUEUED** buttons (all of them, or one test group's, on the group's
-line) stop tests that haven't started from ever starting; a cancelled test
-isn't in the verdicts. A test already running ends as it would have.
+line) and a test's own **✕ CANCEL** (on its line while it waits; press it
+again to confirm) stop tests that haven't started from ever starting; a
+cancelled test isn't in the verdicts. A test already running ends as it
+would have.
 
 **Regression hosts.** Other machines on the same LAN can take some of the
 tests. On each one, unpack the same lite package (or a developer install of
@@ -314,15 +317,25 @@ the same software) and start it with
 `run_lite.cmd --listen 0.0.0.0 --token <secret>`). Then, in the panel's
 **REGRESSION HOSTS** box, add it with **ADD REGRESSION HOST**: its host name
 or IP address, port (8951), the most tests it may run at once, and the
-token. The panel shows each host as ✓ (same software, its CPUs) or ✗ and
-why; the software check uses the package's `VERSION.txt`, so a different
-package is refused. The run spreads the tests over this machine and every ✓
+token. The panel shows each host as ✓ (same software, with its version, and
+its CPUs) or ✗ and why, and this machine's version beside *here*; the
+software check uses the package's `VERSION.txt`, so a different package is
+refused. The check is against the software the host's bridge is running, not
+the files on its disk: a host whose files were updated after its bridge
+started (a new package unpacked over it, or a `git pull`) shows ✗ *its bridge is out of date: it runs … but its files are …
+(pulled, not restarted): restart its bridge* and takes no tests until it is
+restarted. When it is this machine's bridge, the box says **⚠ this bridge
+still runs <version>: restart it**. The run spreads the tests over this machine and every ✓
 host (**spread the tests over these hosts too** turns that off for a run).
 A host's tests send their progress and logs back here, so the bars,
 verdicts, snapshots and summary are the same as for local ones, and each
 test shows the host it ran on. On the host, each test runs in its own folder,
 `$DMEKLR_TMP/dme_klr/remote_jobs/<id>`, deleted once its logs have been
-fetched, so the host's own logs are never overwritten. If a host stops answering, its test goes back
+fetched, so the host's own logs are never overwritten. The logs come back
+in 64 KB pieces, each on a new connection, and a piece that stalls is asked
+for again (up to 5 times). A test whose logs still won't come back is run
+again elsewhere; the host keeps getting tests until that has happened 3
+times. If a host stops answering, its test goes back
 in the queue and the host gets no more tests that run. The hosts and their
 tokens are remembered on this machine. A bridge started with `--listen`
 answers other machines only for running tests, only from private LAN
@@ -484,6 +497,7 @@ running you see **● OFFLINE** and a red note telling you how to start it.
 | **▶ RUN / ⏸ PAUSE** | Free-run and stop |
 | **↺ RESTART** | Kill the sim and start again at t=0 on the loaded ROM images |
 | **FOLLOW** | Keep every scrubber and chart cursor on the newest data. Untick it to look back while the sim runs on |
+| **RESOLUTION** *ms* | Simulated time between the snapshots that make the live stats and charts, 1 to 10000 ms (the build's own, normally 100 ms, until you change it). Type a value and press **Enter** (or click away); **Esc** cancels. Smaller is finer but slows the sim and keeps less history. It stays through restarts and snapshot loads. Greyed out on a simulator built before this setting: rebuild it (`./build_live.sh`) |
 | **✕ DISCONNECT** | Leave live mode. The sim keeps running in the bridge |
 
 Step, RUN TO and breakpoints are in the **DME CODE** and **KLR CODE** windows
@@ -564,6 +578,7 @@ instruction trace for that CPU.
 | **▶ RUN / ⏸ PAUSE** | As on the main page |
 | *N* + **STEP DME** / **STEP KLR** | Run until this CPU has executed *N* instructions, then pause the whole simulation. Both CPUs share one simulated clock, so the other CPU only advances over that same short interval (a few instructions at most) and stops at the same moment |
 | *ms* + **RUN TO** (or Enter) | Run until that simulated time, then pause |
+| **↺ RESTART** | As on the main page: kill the sim and start again at t=0 on the loaded ROM images (with any byte edits) |
 
 The window title also shows the state and time, so you can tell where the
 sim is from any window.
@@ -579,7 +594,10 @@ Each row shows, from left to right:
   disabled)
 * the address and its label
 * the instruction and its operands, with full-length names from the
-  disassembly workbooks
+  disassembly workbooks. A code label in the operands (a `call`, `jmp` or
+  branch target) is underlined: **click it** to go to the row that defines
+  it, with the search box set to that label so **◀ ▶** step through every
+  place that uses it
 * **values** (blue): the operands as this instruction saw them the last time
   it ran, before it executed, e.g. `A=E7 R3=19`, `DPTR=1138`, `R0=37
   A=@R0[37]=15`. It stays blank for instructions that are not in the recent
@@ -591,11 +609,83 @@ Hover a row for the workbook's description of that line.
 
 **Finding code.** Type in the **label or hex** box:
 
-* Part of a label highlights every matching label as you type. **Enter** or
-  **▶** goes to the next match and **Shift+Enter** or **◀** to the previous
-  one. The counter shows `3/12`.
+* Part of a name highlights every row whose label matches, and every row
+  whose operands use a matching name (a code label, a RAM or bit name, an
+  SFR; not the CPU's own registers such as `A` or `R0`, nor `#` immediates),
+  as you type. So `lambda` finds both the rows labelled `lambda…` and every
+  instruction that uses a `lambda…` name. **Enter** or **▶** goes to the
+  next match and **Shift+Enter** or **◀** to the previous one. The counter
+  shows `3/12`.
 * A hex address followed by **GO** goes to that address.
 * **PC** returns to the program counter. Every stop also returns there.
+
+**Hex / decimal.** The two small boxes beside the search convert between
+hex and decimal: type in either and the other follows (`hex h = dec`). A
+negative decimal shows as 8-bit (down to −128) or 16-bit two's complement.
+Hover them for the binary and, for a byte or word with the top bit set, its
+signed value. **×** clears them.
+
+### Editing the ROM bytes
+
+The bytes column on the right of each row can be edited, while the sim is
+paused, to change an opcode, an operand or an address in the image the sim
+is running:
+
+1. **Click the bytes** of a row (not the rest of the row, which sets a
+   breakpoint). They open as a text box.
+2. Type the new bytes in hex, with or without spaces (`02 10 08`,
+   `021008`). **Enter** writes them, **Esc** cancels. Fewer bytes than the
+   instruction has change only its first bytes; more bytes run on over the
+   instructions after it (up to 16).
+3. The edit applies **live**: the bridge loads the edited image into the
+   EPROM in place, so the CPU keeps its PC and RAM and runs the new code from
+   its next instruction. Nothing restarts.
+
+The listing is decoded again from the edited instruction, so the mnemonic and
+operands follow the new bytes, and when the instruction gets longer or
+shorter the rows after it re-flow until the code lines up with the listing
+again. Edited rows are marked with an amber **✎**, and their bytes are amber
+where they differ from the image as loaded; hover them for the original
+bytes. Decoded rows use the workbook's labels and register names where it
+has them, and plain addresses (`0x1008`) elsewhere. A KLR `call`/`jmp` is
+decoded in the 2K bank it sits in.
+
+Edits add up and stay through **↺ RESTART** (the sim boots on the edited
+image). **↶** on an edited row puts that row's original bytes back;
+**REVERT ALL** in the listing header puts back the image as it was loaded.
+Loading another image (**LOAD .mem**, a setup or a snapshot) drops the edits.
+
+**Modified images.** While an image has edits, its name shows in **red with
+(modified)** everywhere an image name appears: the ROM IMAGES row, the code
+window header, the snapshot list and its INFO, COMPARE IMAGES, the map graphs
+and a log's ROM line. **Click the red name** (or **✎ N bytes edited** in the
+code window header) for the list of edits: each changed place with the bytes
+and the code before (**was**) and after (**now**). **COPY** puts the list on
+the clipboard as plain text, for a text editor. **⬇ .bin** downloads the edited image as a raw
+binary, and **⬇ .bin** in the ROM IMAGES row does the same for the image in
+either EPROM.
+
+**Saving the edits as an image.** At the bottom of the list of edits:
+
+1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image is kept as
+   `<name>.mem` with the uploaded images (`obj/roms/<cpu>/`), with the list of
+   edits beside it (`<name>.mem.edits.txt`), and as **`<name>.bin`**, the raw
+   EPROM contents (8192 bytes DME, 4096 KLR, in address order) for an EPROM
+   programmer. **⬇ \<name\>.bin** downloads it. With **run it now** ticked the
+   sim switches to it in place (paused). It is then in every image list:
+   **LOAD .mem**, **COMPARE IMAGES**, **RUN REGRESSIONS** and setups. Its
+   debug listing is the original image's, with the edited places decoded again
+   (`<name>.mem.base` names the original; `asm_select.sh` uses its tables).
+2. **MAKE A SETUP**: name a DME + KLR pair (the saved image and an image for
+   the other CPU) and **SAVE SETUP**.
+
+**Setups.** The **SETUP** picker in the ROM IMAGES row lists the three
+developer pairs and the saved setups. **LOAD SETUP** (paused) loads both
+images, restarting at t=0 when **RESTART AFTER LOAD** is ticked; **✕** deletes a
+saved setup (the images stay). In **RUN REGRESSIONS** a saved setup is in the
+ROM pair list as `<name> (setup)`: picking it runs every test on those two
+images (`DME_ROM_FILE` / `KLR_ROM_FILE`), with the logs in the DME image's
+folder, `tmp/dme_klr/<image name>`. Setups are kept in `obj/roms/setups.json`.
 
 ### Breakpoints
 
@@ -913,6 +1003,11 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
   This needs bash and Python with pandas and openpyxl; without them an
   unknown image shows **ASM: no workbook** in amber, and the listing may not
   line up with the code.
+* The bytes of the loaded image can be edited in the code windows, live,
+  and the edited image downloaded as a `.bin` or saved as a new image
+  (section 6, [Editing the ROM bytes](#editing-the-rom-bytes)). An edited
+  image's name shows in red with **(modified)**; **⬇ .bin** in this row
+  downloads either EPROM's image as a raw binary.
 * The bridge refuses a KLR image loaded into the DME.
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
@@ -1004,6 +1099,7 @@ per line:
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |
 | `trace dme\|klr [N]` | Last N instruction addresses |
+| `interval <ms>\|default` | Simulated ms between DS snapshots (the RESOLUTION box), 1 to 10000; `default` goes back to the build's. Answers `SIM: [INTERVAL] ms=<n> default=<n>` |
 | `snap` | Dump a RAM snapshot now |
 | `rom dme\|klr <path>` | Load a `.mem` image (paused) |
 | `save [label]`, `load <dir>` | Save or restore a snapshot |

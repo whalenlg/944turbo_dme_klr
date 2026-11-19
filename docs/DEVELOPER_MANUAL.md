@@ -581,6 +581,9 @@ the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
 `$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
 it running). The first run downloads the macOS image, about 25 GB; a run
 takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
+`run_all.sh` runs it as step 6 only when asked (`--macos-test install`,
+`lite` or `both`; the RUN REGRESSIONS panel's **MACOS INSTALL TEST**), and
+skips it by default.
 
 `install/test_regress_hosts.sh` checks RUN REGRESSIONS' regression hosts
 across two machines: this install and a macOS VM on this Mac (made with
@@ -719,7 +722,10 @@ full-length operands after editing a disassembly workbook
 scripts in [section 1](#1-install) put all three in place.
 
 Rebuild with `./build_live.sh` after any change to the Verilog, the testbench
-or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
+or `sim_main.cpp`. After a Verilator upgrade (`brew upgrade verilator`)
+`build_live.sh` and `replay/run_replay.sh` notice the different version and
+clear the old build first, since its make dependencies name the old
+version's include files. See `dme_klr/live/README.md` for the build details.
 
 ### Making logs to review
 
@@ -729,17 +735,20 @@ or `sim_main.cpp`. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
-| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (`--help`). `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (step 6, only with `--macos-test install\|lite\|both`; the default is `none`). See `--help`. `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
 | `python3 rom_variant_diff.py <rom> <rom> [...]` | prints | Two or more ROM folders' tests side by side: verdicts, and each DME / KLR `[STATUS]` field whose settled mean differs from the first folder's (`--sim`, `--test`, `--all`, `--json`) |
+| `./validate_all.sh [--verilator] [test ...]` | prints | Validates the logs already in the ROM pair's folder (`validate_dash_log.py` on each test). For a run on another image, set the same `DME_ROM_FILE` (`DME_ROM_FILE=my_edit.mem ./validate_all.sh --verilator`): it picks that image's log folder and its expected values. An image saved from the code windows' byte editor (with a `<image>.base`) is checked against its base image's expected values, as is a log whose `[ROM]` line names such an image |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
 
 `DASH_INTERVAL_MS` (default 100) sets how often the testbench dumps RAM. A
 smaller value gives finer playback and larger logs.
 
-**From the dashboard.** The **RUN REGRESSIONS ▸** button in the header opens a panel
+**From the dashboard.** The **RUN REGRESSIONS ▸** button in the header (and in the **LOAD LOG** window that opens at start, beside **LIVE SIM**
+and **BROWSE…**) opens a panel
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
-(Verilator, iverilog or both, workers, per-test build, the macOS VM test,
+(Verilator, iverilog or both, workers, per-test build, the macOS VM test
+(**MACOS INSTALL TEST**: none by default, or install, lite or both),
 update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
@@ -804,12 +813,15 @@ tests). With several suites at once the counts are what they all share. The
 **CANCEL QUEUED** buttons stop tests that haven't started from ever starting:
 all of the Verilator suite's, all of the iverilog suite's, one suite's (on its
 bar, with several ROM pairs), or one test group's (on the group's line, in
-every suite). A cancelled test shows *cancelled*, isn't in the suite's
+every suite), and a single test's **✕ CANCEL** on its line while it waits
+(that suite only; press again to confirm). A cancelled test shows *cancelled*, isn't in the suite's
 verdicts or total (`parallel_summary.log` lists it under `Cancelled`), and
 the run goes on with the rest. Neither change stops a test that is already
 running: it ends as it would have. The panel writes both into
 `$DMEKLR_TMP/run_all/control/` (`$DMEKLR_RUN_CONTROL`), which
 `run_dashboard_parallel.sh` and `run_tests.py` read before starting each test.
+A run started by a bridge from before these controls shows a note instead:
+pull and restart `bridge.mjs` (restarting it stops that run).
 
 **ROM VARIANTS** compares the ROM pairs whose runs left logs (each pair's
 folder, `$DMEKLR_TMP/dme_klr/<rom>`): tick two or more folders (the first is
@@ -836,8 +848,16 @@ lite package made from them counts too), start the bridge with
 `node dme_klr/live/bridge.mjs --listen 0.0.0.0 --token <secret>`. Then, in
 the panel's **REGRESSION HOSTS** box, add it with **ADD REGRESSION HOST**:
 its host name or IP address, port (8951), the most tests it may run at once,
-and the token. The panel shows each host as ✓ (same software, its CPUs and
-simulators) or ✗ and why, and the run spreads its dashboard tests over this
+and the token. The panel shows each host as ✓ (same software, with its
+version, its CPUs and simulators) or ✗ and why, and this machine's version
+beside *here* (hover it for the srchash). "Same software" is the software
+each bridge is running, as it was when the bridge started, not the files on
+disk: after a `git pull` without a restart a host shows ✗ *its bridge is out of date: it runs … but its
+files are … (pulled, not restarted): restart its bridge* and refuses tests (409), and the box warns
+**⚠ this bridge still runs <version>: restart it** for this machine's bridge
+(`GET /runall/hosts`: `local.restart`; a host's `/regress/info` has
+`restart` and `ondisk`). Each bridge prints its version and srchash when it
+starts listening. The run spreads its dashboard tests over this
 machine's workers and every ✓ host's threads (**spread the tests over these
 hosts too** turns that off for a run). A host's tests write their progress
 and logs back here, so the bars, verdicts, snapshots and summary are the same
@@ -847,7 +867,14 @@ results can differ slightly between hosts with different versions. A host
 whose Python packages (pandas, openpyxl, numpy) don't import shows ✗ and gets
 no tests, and a test that a host can't run (no `dash.log`) runs elsewhere. On the host, each test runs in its own folder,
 `$DMEKLR_TMP/dme_klr/remote_jobs/<id>`, deleted once its logs have been
-fetched, so the host's own logs are never overwritten. An iverilog test's waveform
+fetched, so the host's own logs are never overwritten. The logs come back in
+64 KB pieces (`Range` requests, which the host answers with 206), each on a
+new connection; a piece that receives nothing for 15 s
+(`DMEKLR_REMOTE_STALL_MS`) is asked for again, up to 5 times, and the
+runner log says how far each stalled try got. If every try fails,
+`remote_test.mjs` exits 76: the test is requeued and the host keeps getting
+tests until that has happened 3 times (exit 75, the host couldn't take the
+test or dropped, stops using it at once). An iverilog test's waveform
 (`fst/<test>.fst`) comes back too, into this machine's `dash_logs/fst/`. If a host stops
 answering (15 s when its bridge has stopped, 90 s otherwise), its test goes
 back in the queue and the host gets no more tests that run; one without
@@ -1025,6 +1052,7 @@ running you see **● OFFLINE** and a red note telling you how to start it.
 | **▶ RUN / ⏸ PAUSE** | Free-run and stop |
 | **↺ RESTART** | Kill the sim and start again at t=0 on the loaded ROM images |
 | **FOLLOW** | Keep every scrubber and chart cursor on the newest data. Untick it to look back while the sim runs on |
+| **RESOLUTION** *ms* | Simulated time between the snapshots that make the live stats and charts, 1 to 10000 ms (the build's own, normally 100 ms, until you change it). Type a value and press **Enter** (or click away); **Esc** cancels. Smaller is finer but slows the sim and keeps less history. It stays through restarts and snapshot loads. Greyed out on a simulator built before this setting: rebuild it (`./build_live.sh`) |
 | **✕ DISCONNECT** | Leave live mode. The sim keeps running in the bridge |
 
 Step, RUN TO and breakpoints are in the **DME CODE** and **KLR CODE** windows
@@ -1105,6 +1133,7 @@ instruction trace for that CPU.
 | **▶ RUN / ⏸ PAUSE** | As on the main page |
 | *N* + **STEP DME** / **STEP KLR** | Run until this CPU has executed *N* instructions, then pause the whole simulation. Both CPUs share one simulated clock, so the other CPU only advances over that same short interval (a few instructions at most) and stops at the same moment |
 | *ms* + **RUN TO** (or Enter) | Run until that simulated time, then pause |
+| **↺ RESTART** | As on the main page: kill the sim and start again at t=0 on the loaded ROM images (with any byte edits) |
 
 The window title also shows the state and time, so you can tell where the
 sim is from any window.
@@ -1120,7 +1149,10 @@ Each row shows, from left to right:
   disabled)
 * the address and its label
 * the instruction and its operands, with full-length names from the
-  disassembly workbooks
+  disassembly workbooks. A code label in the operands (a `call`, `jmp` or
+  branch target) is underlined: **click it** to go to the row that defines
+  it, with the search box set to that label so **◀ ▶** step through every
+  place that uses it
 * **values** (blue): the operands as this instruction saw them the last time
   it ran, before it executed, e.g. `A=E7 R3=19`, `DPTR=1138`, `R0=37
   A=@R0[37]=15`. It stays blank for instructions that are not in the recent
@@ -1132,11 +1164,21 @@ Hover a row for the workbook's description of that line.
 
 **Finding code.** Type in the **label or hex** box:
 
-* Part of a label highlights every matching label as you type. **Enter** or
-  **▶** goes to the next match and **Shift+Enter** or **◀** to the previous
-  one. The counter shows `3/12`.
+* Part of a name highlights every row whose label matches, and every row
+  whose operands use a matching name (a code label, a RAM or bit name, an
+  SFR; not the CPU's own registers such as `A` or `R0`, nor `#` immediates),
+  as you type. So `lambda` finds both the rows labelled `lambda…` and every
+  instruction that uses a `lambda…` name. **Enter** or **▶** goes to the
+  next match and **Shift+Enter** or **◀** to the previous one. The counter
+  shows `3/12`.
 * A hex address followed by **GO** goes to that address.
 * **PC** returns to the program counter. Every stop also returns there.
+
+**Hex / decimal.** The two small boxes beside the search convert between
+hex and decimal: type in either and the other follows (`hex h = dec`). A
+negative decimal shows as 8-bit (down to −128) or 16-bit two's complement.
+Hover them for the binary and, for a byte or word with the top bit set, its
+signed value. **×** clears them.
 
 ### Editing the ROM bytes
 
@@ -1542,6 +1584,11 @@ the workbook its listing comes from (`ASM: disassemble1989.xlsx`).
   This needs bash and Python with pandas and openpyxl; without them an
   unknown image shows **ASM: no workbook** in amber, and the listing may not
   line up with the code.
+* The bytes of the loaded image can be edited in the code windows, live,
+  and the edited image downloaded as a `.bin` or saved as a new image
+  (section 6, [Editing the ROM bytes](#editing-the-rom-bytes)). An edited
+  image's name shows in red with **(modified)**; **⬇ .bin** in this row
+  downloads either EPROM's image as a raw binary.
 * The bridge refuses a KLR image loaded into the DME.
 * Uploaded images are reused on every restart until you load another or
   restart the bridge.
@@ -1602,7 +1649,11 @@ flowchart TB
 
 `asm_select.sh` runs automatically from the build and test scripts. It
 picks the workbook for the ROM in use and rebuilds the generated workbook and
-tables only when their source is newer. A custom image with no workbook
+tables only when their source is newer, or when one of the scripts that write
+the tables (`xlsxinstr2veriloghex.py`, `xlsx2veriloghex.py`, `asm_full.py`)
+is, so a pull that changes how they write a cell rebuilds them. An image
+saved from the code windows' byte editor is listed with its base image's
+tables (`<image>.base`). A custom image with no workbook
 still runs, but its listing shows **ASM: no workbook** and may not line up
 with the code.
 
@@ -1635,6 +1686,7 @@ per line:
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |
 | `trace dme\|klr [N]` | Last N instruction addresses |
+| `interval <ms>\|default` | Simulated ms between DS snapshots (the RESOLUTION box), 1 to 10000; `default` goes back to the build's. Answers `SIM: [INTERVAL] ms=<n> default=<n>` |
 | `snap` | Dump a RAM snapshot now |
 | `rom dme\|klr <path>` | Load a `.mem` image (paused) |
 | `save [label]`, `load <dir>` | Save or restore a snapshot |
@@ -1661,6 +1713,8 @@ answers this machine only.
 | A map title shows no graph | The bridge isn't running, matplotlib is missing, or the log's ROM isn't in `bin_images/` or the uploaded images |
 | Snapshot LOAD refused (red under the list) | It was saved by a different build. Reproduce it from its INFO |
 | TEST LOAD fails with a build error | Shown as `SIM: [ERROR] building test …`. Run `./build_live.sh --test <name>` in a terminal to see the whole message |
+| Build stops with `No rule to make target …/verilator/<version>/…/verilated.h` | A build from before a Verilator upgrade. Current `build_live.sh` and `run_replay.sh` clear it themselves; with an older checkout, delete the old `obj` folder |
+| RESOLUTION greyed out | The simulator was built before the setting. Run `./build_live.sh` and restart the bridge |
 | `No map lookups in this log` | The log predates the `[LKUP]` lines. Re-run the test |
 
 ---

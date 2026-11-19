@@ -26,6 +26,13 @@ own driver in `obj/`: `replay_main.cpp` for Verilator, or the
 and print the same output. Verilator runs at about 20 simulated ms per
 wall-clock second, iverilog at about 4.
 
+`run_replay.sh` rebuilds when the ROM images change, and also when the
+simulator does: the build's stamp (`<binary>.rom`) records the simulator
+version, and after a Verilator upgrade (`brew upgrade verilator`) the old
+Verilator build in `obj/` is deleted first, since its make dependencies
+name the old version's include files (`No rule to make target
+.../verilated.h`). The iverilog build (`*.vvp`) is left alone.
+
 ## In the dashboard test suites
 
 `replay_wot_60s` replays the first 60 s of the log (both 2nd/3rd-gear pulls
@@ -43,6 +50,14 @@ parallel runner's validation reads `<name>.report.txt`: PASS when every channel
 meets its pass rate, WARN naming the channels that don't (currently ign_adv,
 klr_retard and inj_ms), FAIL only if the replay didn't finish. Expect
 about an hour under Verilator and several hours under iverilog.
+
+The suite's replay can also be opened in the debugger at a chosen time
+(the live page's **TEST … at … ms** row, or a TEST snapshot from a run,
+`live/test_snap.py`). It has no build of its own there: the bridge makes the
+stimulus file once (`xlsx_to_stim.py`, into `live/obj/replay/`) and runs the
+live simulator with `+stim=<file> +warmup_ms=3000`, which plays the rows as
+`replay_main.cpp` does up to that time. Times are sim time, so log t=0 is
+at 3000 ms. See `live/README.md` (Snapshots).
 
 ## Pieces
 
