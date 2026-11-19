@@ -26,8 +26,9 @@
 //    GET  /edits/dme|klr[?name=<file>]  what an edited image changed (the
 //                     loaded one, or one by file name): {name, base, bytes,
 //                     places, text}; text lists each place's code before and after
-//    POST /edits/dme|klr/save  {name, from?, use?}: keep an edited image as
-//                     <name>.mem among the uploads, and <name>.bin (see saveEdited)
+//    POST /edits/dme|klr/save  {name, from?, use?}: keep an edited image in
+//                     bin_images/<cpu>/edited/<name>/: <name>.mem, <name>.bin and
+//                     its own workbook <name>.xlsx (see saveEdited)
 //    GET  /image/dme|klr.bin[?name=<file>]  an image as a raw binary for an
 //                     EPROM programmer (8192 / 4096 bytes; default the loaded one)
 //    GET|POST /setups, DELETE /setups/<name>, POST /setups/<name>/load[?reset=1]
@@ -391,6 +392,8 @@ const ASM = { dme: cpuListing('dme', DME_ASM), klr: cpuListing('klr', KLR_ASM) }
 // ── Listings that follow the loaded images ──────────────────
 // The images that have a workbook (dme_klr/asm_select.sh's table)
 const IMAGES = { dme: join(REPO, 'bin_images', 'dme'), klr: join(REPO, 'bin_images', 'klr') };
+// Edited images kept with SAVE AS, a folder each (see saveEdited)
+const SAVED = { dme: join(IMAGES.dme, 'edited'), klr: join(IMAGES.klr, 'edited') };
 const WORKBOOK = {
   dme: {
     '28PIN_DME_PERFORMANCE.mem': 'disassembleperformance.xlsx',
@@ -643,27 +646,80 @@ function editsFor(cpu, name) {
 }
 
 // POST /edits/<cpu>/save  {name, from?, use?}: keep an edited image (the
-// loaded one, or one by file name) as an image of its own, <name>.mem among
-// the uploads (obj/roms/<cpu>/), with its list of edits beside it
-// (<name>.mem.edits.txt), and as a raw binary, <name>.bin, the EPROM's bytes
-// in order for programming a chip. It is then in every image list (LOAD, COMPARE,
-// RUN REGRESSIONS, setups). use: true also swaps it into the EPROM in place
-// of the edited image (paused only).
+// loaded one, or one by file name) as an image of its own, in a folder of
+// its own beside the repo's images, bin_images/<cpu>/edited/<name>/:
+//   <name>.mem             the image
+//   <name>.bin             the EPROM's bytes in order, for programming a chip
+//   <name>.mem.base        the image it was made from (a path): it is listed
+//                          from that image's workbook (asm_select.sh, the
+//                          validator and the bridge follow it)
+//   <name>.mem.edits.txt   its list of edits
+//   <name>.xlsx            its own disassembly workbook, made from the base
+//                          image's workbook (build_variant.py /
+//                          build_klr_variant.py): the base's rows and
+//                          annotations, the edited code decoded again and
+//                          highlighted, a diff sheet of the bytes changed.
+//                          Written in the background, a few seconds later.
+// It is then in every image list (LOAD, COMPARE, RUN REGRESSIONS, setups).
+// use: true also swaps it into the EPROM in place of the edited image
+// (paused only). Images saved before this (obj/roms/<cpu>/) are still found.
 const IMAGE_NAME = /^[\w.+-]{1,64}$/;
+// The folders of saved images: bin_images/<cpu>/edited/<name>/
+function savedDirs(cpu) {
+  try {
+    return readdirSync(SAVED[cpu], { withFileTypes: true }).filter(e => e.isDirectory())
+      .map(e => join(SAVED[cpu], e.name)).sort();
+  } catch { return []; }
+}
+const DISASM = { dme: join(REPO, 'dme', 'disassemble'), klr: join(REPO, 'klr', 'disassemble') };
+const VARIANT_GEN = { dme: 'build_variant.py', klr: 'build_klr_variant.py' };
+// The hand-annotated workbook and the image it describes, for a base with
+// no workbook found
+const REF_WORKBOOK = { dme: ['disassembleperformance.xlsx', join(IMAGES.dme, '28PIN_DME_PERFORMANCE.mem')],
+                       klr: ['87KLR951.xlsx', join(IMAGES.klr, '87KLR_951.mem')] };
+// <name>.xlsx for a saved image: build_variant.py / build_klr_variant.py with
+// the base image's workbook as the source (in the background)
+function savedWorkbook(cpu, root, path, out) {
+  const t = asmTables(cpu, root);   // brings the base's workbook up to date
+  let src = t.dir && t.workbook !== '-' ? join(DISASM[cpu], t.workbook) : null, ref = root;
+  if (!src || !existsSync(src)) [src, ref] = [join(DISASM[cpu], REF_WORKBOOK[cpu][0]), REF_WORKBOOK[cpu][1]];
+  const bytes = imgBytes(cpu, ref);
+  if (!bytes) return console.error(`bridge: no workbook for ${basename(path)}: can't read ${ref}`);
+  // build_variant.py takes the reference as a raw binary, build_klr_variant.py as a .mem
+  const refArg = `${out}.ref.${cpu === 'dme' ? 'bin' : 'mem'}`;
+  writeFileSync(refArg, cpu === 'dme' ? bytes : Array.from(bytes, v => v.toString(16).toUpperCase().padStart(2, '0') + '\n').join(''));
+  const tag = n => basename(n).replace(/\.[^.]+$/, '').replace(/[^\w.-]/g, '_');
+  const tmp = `${out}.tmp.xlsx`;
+  const proc = spawn(PY, [join(DISASM[cpu], VARIANT_GEN[cpu]), src, path, refArg, tmp, tag(path), tag(ref)],
+                     { cwd: DISASM[cpu], stdio: ['ignore', 'ignore', 'pipe'] });
+  const err = [];
+  proc.stderr.on('data', d => err.push(d));
+  const done = ok => {
+    rmSync(refArg, { force: true });
+    if (ok) { renameSync(tmp, out); console.log(`bridge: ${cpu} saved image workbook ${out} (from ${basename(src)})`); }
+    else {
+      rmSync(tmp, { force: true });
+      console.error(`bridge: couldn't make ${basename(out)} from ${basename(src)}: ${Buffer.concat(err).toString('utf8').trim().split('\n').slice(-3).join(' | ')}`);
+    }
+  };
+  proc.on('error', e => { err.push(Buffer.from(e.message)); done(false); });
+  proc.on('close', code => { if (code !== null) done(code === 0 && existsSync(tmp)); });
+}
 function saveEdited(cpu, body) {
   let b;
   try { b = JSON.parse(body); } catch { return [400, 'body must be JSON {name, from, use}']; }
   const name = String(b?.name ?? '').trim().replace(/\.mem$/i, '');
-  if (!IMAGE_NAME.test(name) || isPatched(`${name}.mem`)) return [400, 'name: letters, digits, _ . + - (up to 64)'];
+  if (!IMAGE_NAME.test(name) || isPatched(`${name}.mem`) || /^\.+$/.test(name)) return [400, 'name: letters, digits, _ . + - (up to 64)'];
   const file = `${name}.mem`;
-  if (findImageByName(file, cpu) || findImageByName(`${name}.bin`, cpu)) return [409, `there is already a ${cpu.toUpperCase()} image named ${name}`];
+  const dir = join(SAVED[cpu], name);
+  if (findImageByName(file, cpu) || findImageByName(`${name}.bin`, cpu) || existsSync(dir))
+    return [409, `there is already a ${cpu.toUpperCase()} image named ${name}`];
   const [code, edits] = editsFor(cpu, b?.from || null);
   if (code !== 200) return [code, edits];
   if (!edits.bytes) return [400, 'that image has no edits to save'];
   const src = findImageByName(edits.name, cpu);
   if (!src) return [404, `no image ${edits.name}`];
   if (b?.use && simState !== 'paused') return [409, 'pause the simulation to switch the sim to the saved image'];
-  const dir = join(ROM_DIR, cpu);
   mkdirSync(dir, { recursive: true });
   const path = join(dir, file);
   writeFileSync(path, readFileSync(src));
@@ -671,10 +727,13 @@ function saveEdited(cpu, body) {
   const bin = `${name}.bin`;
   writeFileSync(join(dir, bin), imgBytes(cpu, src));
   writeFileSync(`${path}.edits.txt`, `${file}: ${edits.text}`);
-  writeFileSync(`${path}.base`, `${resolve(rootOf(findImageByName(edits.base, cpu) ?? src))}\n`);   // listed from that image's workbook
+  const root = resolve(rootOf(findImageByName(edits.base, cpu) ?? src));
+  writeFileSync(`${path}.base`, `${root}\n`);   // listed from that image's workbook
   console.log(`bridge: ${cpu} edited image ${edits.name} saved as ${path}`);
+  const xlsx = `${name}.xlsx`;
+  savedWorkbook(cpu, root, path, join(dir, xlsx));
   if (b?.use && !send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
-  return [200, { name: file, bin }];
+  return [200, { name: file, bin, xlsx, dir: resolve(dir) }];
 }
 
 // GET /image/<cpu>.bin?name=<file>: an image (any the bridge knows, an edited
@@ -753,7 +812,10 @@ function loadSetup(name, reset) {
 const ROM_COMPARE = join(HERE, 'rom_compare.py');
 function compareImages(cpu) {
   const out = [];
-  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload'], [join(PATCH_DIR, cpu), 'edited']]) {
+  // (images saved from edits, bin_images/<cpu>/edited/<name>/, are listed
+  // with the uploads, as the ones saved before were)
+  for (const [dir, src] of [[IMAGES[cpu], 'repo'], [join(ROM_DIR, cpu), 'upload'],
+                            ...savedDirs(cpu).map(d => [d, 'upload']), [join(PATCH_DIR, cpu), 'edited']]) {
     let names = [];
     try { names = readdirSync(dir); } catch { continue; }
     for (const n of names.sort()) {
@@ -768,7 +830,7 @@ function compareImages(cpu) {
         try { size = statSync(p).size; } catch { continue; }
         if (size !== ROM_BYTES[cpu] && size !== 8192) continue;
       }
-      out.push({ name: n, src, sha: imageSha(p) });
+      out.push({ name: n, src, sha: imageSha(p), dir });
     }
   }
   return out;
@@ -1254,7 +1316,7 @@ function imageSha(path) {
 // Images the bridge can draw for a log that names one by hash: the repo's
 // bin_images/<cpu> and the ones uploaded through /rom
 function findImage(sha, cpu) {
-  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu)]) {
+  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu), ...savedDirs(cpu)]) {
     let names = [];
     try { names = readdirSync(dir); } catch { continue; }
     for (const n of names) {
@@ -1267,8 +1329,11 @@ function findImage(sha, cpu) {
 }
 
 // The same by file name, for a log that names its image but has no hash
+// (a saved edited image: bin_images/<cpu>/edited/<name>/<name>.mem|.bin)
 function findImageByName(name, cpu) {
-  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu), join(PATCH_DIR, cpu)]) {
+  if (!name || name !== basename(name)) return null;
+  const saved = join(SAVED[cpu], name.replace(/\.(mem|bin)$/i, ''));
+  for (const dir of [IMAGES[cpu], join(ROM_DIR, cpu), join(PATCH_DIR, cpu), saved]) {
     const p = join(dir, name);
     if (existsSync(p)) return p;
   }
@@ -1432,7 +1497,7 @@ const runAll = makeRunAll({
   // the whole .mem images, from bin_images/<cpu> and the uploads
   // (not the scratch images of byte edits: SAVE AS in the list of edits keeps one)
   romImages: cpu => compareImages(cpu).filter(i => /\.mem$/i.test(i.name) && i.src !== 'edited')
-    .map(i => ({ name: i.name, src: i.src, dir: i.src === 'repo' ? IMAGES[cpu] : join(ROM_DIR, cpu) })),
+    .map(i => ({ name: i.name, src: i.src, dir: i.dir })),
   // the image setups saved from the dashboard, offered as ROM pairs
   setups: customSetups,
 });
@@ -1576,7 +1641,7 @@ createServer((req, res) => {
       res.end(body);
     };
     const nameOk = n => n && /^[\w.+-]+\.(mem|bin)$/i.test(n);
-    if (cmp[2] === '/images') return send(200, JSON.stringify(compareImages(cmp[1])), 'application/json');
+    if (cmp[2] === '/images') return send(200, JSON.stringify(compareImages(cmp[1]).map(({ dir, ...i }) => i)), 'application/json');
     if (cmp[2] === '/variants') {
       const ref = url.searchParams.get('ref');
       if (ref !== null && !nameOk(ref)) return send(400, 'ref must be an image file name');

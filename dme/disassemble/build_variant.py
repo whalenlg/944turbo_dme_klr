@@ -118,7 +118,11 @@ for lo, hi in REGIONS:
         ins86.append(dict(pc=pc, ln=ln, mn=mn, b=list(b), args=args, copied=False))
         pc += ln
 by_pc = {i['pc']: i for i in ins86}
-assert all(i['copied'] for i in ins86 if i['pc'] < 0x1000), 'lower 4K differs'
+# The lower 4K is the same in the 1986/1989 images: its rows stay in place
+# and only the upper half is written again. An image with edits down there
+# (one kept with SAVE AS in the dashboard's code windows) has every row
+# written again instead.
+SPLIT = 0x1000 if all(i['copied'] for i in ins86 if i['pc'] < 0x1000) else 0x0000
 
 # ---- align moved code (upper half) -------------------------------------------
 def key(mn, args, raw):
@@ -151,7 +155,7 @@ for blk in sm.get_matching_blocks():
 patched = {}
 for i in ins86:
     a = i['pc']
-    if i['copied'] or a in moved or a not in sheet or a < 0x1000:
+    if i['copied'] or a in moved or a not in sheet or a < SPLIT:
         continue
     mn89, ln89, _, _ = decode(ref, a)
     if b86[a] == ref[a] and ln89 == i['ln'] == slen[a] and sheet[a][1][3] == mn89:
@@ -261,11 +265,11 @@ for pc, v, status, note in rows_out:
 # ---- write ASM ----------------------------------------------------------------
 fill_changed = PatternFill('solid', fgColor='FFFFF2CC')   # yellow: new/different code or data
 fill_moved = PatternFill('solid', fgColor='FFDDEBF7')     # blue: same code as reference, moved
-first_upper = min(r for a, (r, _) in sheet.items() if a >= 0x1000)
+first_upper = min(r for a, (r, _) in sheet.items() if a >= SPLIT)
 ws.delete_rows(first_upper, ws.max_row - first_upper + 1)
 ws.cell(1, DIFFCOL, 'diff_vs_%s' % REF)
 for pc, v, status, note in rows_out:      # lower half: rows stay in place
-    if pc >= 0x1000:
+    if pc >= SPLIT:
         continue
     r = sheet[pc][0]
     for ci in (1, 4, 5):
@@ -274,7 +278,7 @@ for pc, v, status, note in rows_out:      # lower half: rows stay in place
 r = first_upper
 stats = Counter()
 for pc, v, status, note in rows_out:
-    if pc < 0x1000:
+    if pc < SPLIT:
         continue
     for ci, val in enumerate(v, 1):
         if val is not None:
@@ -313,7 +317,7 @@ for sname, acol, ncol in (('Constants', 3, 4), ('Numbered Maps', 4, 2), ('Direct
     for rr in range(2, s.max_row + 1):
         for m in re.findall(r'([0-9A-Fa-f]{4})h', str(s.cell(rr, acol).value or '')):
             named.append((int(m, 16), s.cell(rr, ncol).value, sname))
-named += [(a, l, 'ASM label') for a, l in label_at.items() if a >= 0x1000]
+named += [(a, l, 'ASM label') for a, l in label_at.items() if a >= SPLIT]
 named.sort()
 
 runs, s0 = [], None
