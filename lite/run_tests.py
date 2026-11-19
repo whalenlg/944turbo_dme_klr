@@ -65,7 +65,7 @@ LOGDIR = os.path.join(TMP, 'dme_klr', ROM_VARIANT, 'v_dash_logs')
 HEXDIR = os.path.join(TMP, 'dme_klr', 'lite_hex')
 # The lines the dashboard reads (as v_run_dashboard_tests.sh greps them)
 DASH = re.compile(r'^(DME: \[DS\]|\[DS\]|KLR: \[DS\]|DME: \[PHASE\]|DME: \[STATUS\]|KLR: \[STATUS\]|KLR: \[PHASE\]'
-                  r'|KLR: \[SPARK\]|DME: \[SEED\]|DME: \[WARN\]|DME: \[LKUP\]|KLR: \[LKUP\])')
+                  r'|KLR: \[SPARK\]|DME: \[SEED\]|DME: \[WARN\]|DME: \[LKUP\]|KLR: \[LKUP\]|DME: \[SER\]|DME: \[SERPEEK\])')
 fwd = lambda p: p.replace('\\', '/')
 _out = threading.Lock()
 

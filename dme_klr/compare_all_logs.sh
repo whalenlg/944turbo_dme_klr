@@ -132,6 +132,9 @@ DASH_TESTS=(
     cl_ramp_to_6000_KLR_ADC0_NOISE_LOW
     cl_ramp_to_6000_KLR_FULL_LOAD_STUCK_LOW
     cl_ramp_to_redline
+    cl_serial_peek_3000
+    cl_serial_peek_6000
+    cl_serial_peek_idle
     cl_tippy_in
     cl_warm_idle
     cold_start
