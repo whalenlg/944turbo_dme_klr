@@ -705,7 +705,10 @@ is at 2700 ms, so start at 2500 ms.
 **3. Add the test at that time.** Open the **SNAPSHOTS** list (click its
 title). In the **TEST** row type the test's name (as the scripts know it, e.g.
 `cl_ramp_to_3000`; [Appendix A](#appendix-a-regression-tests) lists them all) and the time in ms, optionally a label in the label box,
-then press **+ ADD**. A purple **TEST** row appears:
+then press **+ ADD**. A purple **TEST** row appears. It runs on the ROM images
+loaded in the simulator when you press + ADD, so for a log from a custom or
+edited image, load that image (or its setup) in the **ROM IMAGES** row first;
+**INFO** on the row shows the ROMs it will use:
 
 ![A TEST row added at 2500 ms, being built](manual/live-test-building.png)
 
