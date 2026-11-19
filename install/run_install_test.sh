@@ -74,6 +74,9 @@ case "$T" in
             why="needs Parallels Desktop Pro or Business (prlctl)"
         elif ! prlctl list -a -o name 2>/dev/null | tail -n +2 | sed 's/ *$//' | grep -qxF "$WIN_VM"; then
             why="no Parallels VM called '$WIN_VM' (set DMEKLR_WIN_VM; see install/test_windows_vm.sh --help)"
+        elif printf '%s' "$(prlctl snapshot-list "$WIN_VM" 2>&1)" | grep -Eqi 'only in Parallels Desktop.*(Pro|Business)'; then
+            # Standard edition: its prlctl lists VMs but can't snapshot, clone or exec
+            why="needs Parallels Desktop Pro or Business (this is the Standard edition)"
         fi
         CMD=(bash "$HERE/test_windows_vm.sh" --vm "$WIN_VM" --snapshot "$WIN_SNAP"
              --name "dmeklr-runall-$T" --replace --ref "$REF")
