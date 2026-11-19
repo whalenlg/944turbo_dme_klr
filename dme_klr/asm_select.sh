@@ -86,13 +86,27 @@ _asm_variant_stale() {   # <variant xlsx>   (uses _c_*)
 }
 
 # two workbooks hold the same content: every part of the .xlsx (zip) is
-# identical except docProps/core.xml, which holds the save time
+# the same except docProps/core.xml, which holds the save time. XML parts
+# are compared in canonical form (C14N), because openpyxl writes the same
+# workbook differently with and without lxml installed (<a/> or <a />,
+# namespace declarations, xml:space="preserve" on a blank cell's text):
+# MSYS2's Python has lxml, so on Windows a byte comparison found every
+# regenerated workbook different and the checkout showed them modified.
 _asm_xlsx_same() {   # <python> <a.xlsx> <b.xlsx>
     "$1" - "$2" "$3" <<'PY'
-import sys, zipfile
+import re, sys, zipfile
+import xml.etree.ElementTree as ET
 def parts(p):
+    out = {}
     with zipfile.ZipFile(p) as z:
-        return {n: z.read(n) for n in z.namelist() if n != "docProps/core.xml"}
+        for n in z.namelist():
+            if n == "docProps/core.xml":
+                continue
+            d = z.read(n)
+            if n.endswith((".xml", ".rels")):
+                d = re.sub(r' xml:space="preserve"', '', ET.canonicalize(d.decode("utf-8")))
+            out[n] = d
+    return out
 sys.exit(0 if parts(sys.argv[1]) == parts(sys.argv[2]) else 1)
 PY
 }
