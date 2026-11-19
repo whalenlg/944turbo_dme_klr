@@ -27,11 +27,11 @@
 //  goes back in the queue, and the host keeps getting tests (the runner
 //  stops using it after a few of these).
 //
-//  The logs come back over a new connection each try (node:http, no
-//  keep-alive), and a try that receives nothing for STALL_MS is dropped
-//  and made again: a download that stalls part way (seen between two
-//  Macs on a LAN, while short requests went through) no longer holds
-//  the test at 99% for the 5-minute timeout and then runs it again here.
+//  The logs come back in 64 KB pieces (Range requests), each over a
+//  new connection (node:http, no keep-alive): between two Macs on a LAN
+//  one transfer stopped for good after ~150 KB while short requests went
+//  through, so whole-file downloads held tests at 99%. A piece that
+//  receives nothing for STALL_MS is dropped and asked for again.
 // ============================================================
 
 import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
@@ -54,7 +54,8 @@ const SIM = arg('sim', 'verilator');
 const LOGMODE = arg('log', 'gz');
 const TEMPFAIL = 75;
 const GIVEBACK = 76;       // ran there, but its logs wouldn't come back
-const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 30_000;   // a download that receives nothing this long is tried again
+const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 15_000;   // a piece of a download that receives nothing this long is tried again
+const CHUNK = +process.env.DMEKLR_REMOTE_CHUNK || 65536;          // bytes per download request
 const TRIES = 5;
 const DROP_MS = 90_000;    // no answer this long: the host has dropped
 const REFUSED_MS = 15_000; // refused this long: the bridge has stopped
@@ -74,21 +75,26 @@ async function call(method, path, body, ms = 30_000) {
   return r;
 }
 
-// GET <path> of the job into a Buffer, on a connection of its own; a
-// stall (no bytes for STALL_MS) or a dropped connection is tried again,
-// up to TRIES times. {status, body} (body null when status isn't 200);
-// throws when every try failed.
-function getOnce(path) {
+// GET <path> of the job, bytes a..b, on a connection of its own:
+// {status, body, total} (body null unless 200/206; total from
+// Content-Range, or the body's length for a whole-file 200 from an older
+// host). Rejects when the connection drops or nothing moves for STALL_MS.
+function getOnce(path, a, b) {
   return new Promise((res, rej) => {
     const u = new URL(HOST + path);
     // how far a try got, for the message when it stalls
     let stage = 'no answer', got = 0;
-    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close' }, agent: false }, r => {
-      if (r.statusCode !== 200) { r.resume(); return res({ status: r.statusCode, body: null }); }
-      stage = `headers${r.headers['content-length'] ? ` (${r.headers['content-length']} bytes to come)` : ''}`;
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close', Range: `bytes=${a}-${b}` }, agent: false }, r => {
+      if (r.statusCode !== 200 && r.statusCode !== 206) { r.resume(); return res({ status: r.statusCode, body: null }); }
+      stage = 'headers';
       const parts = [];
       r.on('data', d => { parts.push(d); got += d.length; stage = `${got} bytes`; });
-      r.on('end', () => (r.complete ? res({ status: 200, body: Buffer.concat(parts) }) : rej(new Error('connection closed mid-transfer'))));
+      r.on('end', () => {
+        if (!r.complete) return rej(new Error('connection closed mid-transfer'));
+        const body = Buffer.concat(parts);
+        const total = r.statusCode === 206 ? +(/\/(\d+)$/.exec(r.headers['content-range'] ?? '')?.[1] ?? NaN) : body.length;
+        res({ status: r.statusCode, body, total });
+      });
       r.on('error', rej);
       r.on('aborted', () => rej(new Error('connection closed mid-transfer')));
     });
@@ -98,21 +104,37 @@ function getOnce(path) {
     req.end();
   });
 }
+// The whole file at <path>, CHUNK bytes per request: between some Macs
+// on a LAN a transfer stops for good after ~150 KB on one connection
+// (short requests go through), so a large dash.log never arrived in one
+// response. Each piece is tried up to TRIES times. {status, body}, body
+// null when the host has no such file; throws when a piece never came.
 async function download(what, path) {
-  let last;
-  for (let i = 1; i <= TRIES; i++) {
-    const t0 = Date.now();
-    try {
-      const r = await getOnce(path);
-      if (r.body) say(`${what}: ${r.body.length} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s${i > 1 ? ` (try ${i})` : ''}`);
-      return r;
-    } catch (e) {
-      last = e;
-      say(`${what}: try ${i} of ${TRIES} failed after ${((Date.now() - t0) / 1000).toFixed(0)} s (${e.code ?? e.message})`);
-      if (i < TRIES) await sleep(1000 * 2 ** (i - 1));
+  const t0 = Date.now(), parts = [];
+  let off = 0, total = Infinity, retried = 0;
+  while (off < total) {
+    let r, last;
+    for (let i = 1; i <= TRIES; i++) {
+      const t1 = Date.now();
+      try { r = await getOnce(path, off, off + CHUNK - 1); break; } catch (e) {
+        last = e;
+        retried++;
+        say(`${what}: bytes ${off}+ try ${i} of ${TRIES} failed after ${((Date.now() - t1) / 1000).toFixed(0)} s (${e.code ?? e.message})`);
+        if (i < TRIES) await sleep(1000 * 2 ** (i - 1));
+      }
     }
+    if (!r) throw last;
+    if (r.status === 416 && off === 0) { total = 0; break; }   // an empty file
+    if (!r.body) return { status: r.status, body: null };
+    if (r.status === 200) { parts.length = 0; parts.push(r.body); total = r.body.length; break; }   // an older host: the whole file
+    if (!Number.isFinite(r.total) || r.body.length === 0) throw new Error(`bad piece at ${off} (${r.body.length} bytes of ${r.total})`);
+    total = r.total;
+    parts.push(r.body);
+    off += r.body.length;
   }
-  throw last;
+  const body = Buffer.concat(parts);
+  say(`${what}: ${body.length} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s${retried ? ` (${retried} piece${retried > 1 ? 's' : ''} tried again)` : ''}`);
+  return { status: 200, body };
 }
 // write via a temporary name, so a half file never stands for the real one
 function save(file, buf) {
