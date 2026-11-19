@@ -61,6 +61,17 @@
 # =============================================================================
 set -uo pipefail
 
+# Run from the dashboard or a short-PATH shell on macOS: find Homebrew's and
+# Parallels' tools for the install tests (tart, prlctl, docker)
+if [ "$(uname -s)" = Darwin ]; then
+    for _d in /opt/homebrew/bin /usr/local/bin \
+              "/Applications/Parallels Desktop.app/Contents/MacOS" \
+              /Applications/Docker.app/Contents/Resources/bin; do
+        case ":$PATH:" in *":$_d:"*) ;; *) [ -d "$_d" ] && PATH="$PATH:$_d" ;; esac
+    done
+    export PATH
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 

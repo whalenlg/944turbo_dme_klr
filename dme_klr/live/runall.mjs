@@ -179,6 +179,19 @@ const DEFAULT_ROM = { dme: '89DME_951pin.mem', klr: '89KLR_951.mem' };
 
 // romImages(cpu): [{name, dir, src: 'repo'|'upload'}], the whole .mem
 // images the bridge knows for that CPU
+// A bridge started from the Finder, launchd or an IDE can have a short
+// PATH without Homebrew's or Parallels' folders: add them on macOS, so the
+// install tests' tools (tart, prlctl, docker) are found here and by
+// run_all.sh, which inherits this PATH
+if (process.platform === 'darwin') {
+  const dirs = (process.env.PATH ?? '').split(':');
+  for (const d of ['/opt/homebrew/bin', '/usr/local/bin',
+                   '/Applications/Parallels Desktop.app/Contents/MacOS',
+                   '/Applications/Docker.app/Contents/Resources/bin'])
+    if (!dirs.includes(d) && existsSync(d)) dirs.push(d);
+  process.env.PATH = dirs.filter(Boolean).join(':');
+}
+
 export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], setups = () => [] }) {
   const DMEKLR = join(REPO, 'dme_klr');
   const RUN_ALL = join(DMEKLR, 'run_all.sh');
