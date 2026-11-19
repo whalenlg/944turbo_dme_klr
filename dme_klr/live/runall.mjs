@@ -118,6 +118,15 @@
 //                            a saved host and its token); GET /runall has
 //                            its state as hosttest {step, results, out, ...}
 //    POST /runall/hosttest/stop
+//    POST /runall/installtests JSON {tests: ['macos-install', 'windows-lite', ...],
+//                            ref}: the INSTALLER TESTS page; runs each picked
+//                            OS installer test on its own (install/run_install_test.sh,
+//                            not run_all.sh), one after another; GET /runall
+//                            has installRun {tests: [{id, state, step, step_s,
+//                            results, last, quiet_s, verdict, ...}], out}, and
+//                            installTests the ones this machine can run
+//    POST /runall/installtests/stop  JSON {id}: stop that test (the next
+//                            starts) or drop it from the queue; {}: stop them all
 //  A run uses the enabled hosts whose software is the same as here
 //  (srchash) and that answer; the runners get them as
 //  $DMEKLR_REGRESS_HOSTS (a JSON file) and run their tests through
@@ -350,6 +359,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     if (!MODE) return [404, 'no run_all.sh or run_tests.py here'];
     if (proc || starting) return [409, 'a run is already going'];
     if (htProc) return [409, 'the network run test is going; stop it or wait for it'];
+    if (inst && !inst.endedAt) return [409, 'the installer tests are going; stop them or wait for them'];
     const cat = getCatalog();
     const o = body ?? {};
     const pick = Array.isArray(o.tests) ? [...new Set(o.tests)] : [];
@@ -438,7 +448,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
         { label: 'i8048 KLR regression' }, { label: 'i8051 DME regression' },
         { label: `Verilator dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'vl', suites: of('vl') },
         { label: `iverilog dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'iv', suites: of('iv') },
-        { label: 'iverilog vs Verilator comparison + FQS analysis' }, { label: itests.length ? `Install tests (${itests.join(', ')})` : 'Install tests (none picked)' },
+        { label: 'iverilog vs Verilator comparison + FQS analysis' }, { label: itests.length ? `Install tests (${itests.join(', ')})` : 'Install tests (none; see INSTALLER TESTS)' },
       ];
     } else {
       args = [RUN_TESTS, '-j', String(workers), '--interval', String(interval)];
@@ -678,6 +688,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     if (MODE !== 'dev' || !existsSync(HOSTTEST)) return [422, 'the network run test needs the developer install (install/test_regress_hosts.sh)'];
     if (htProc) return [409, 'the network run test is already going'];
     if (proc || starting) return [409, 'a regression run is going; try again when it ends'];
+    if (inst && !inst.endedAt) return [409, 'the installer tests are going; try again when they end'];
     const args = [HOSTTEST];
     const env = { ...process.env, DMEKLR_TMP: TMP_ROOT };
     delete env.DMEKLR_REGRESS_TOKEN;
@@ -731,6 +742,113 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   }
   const hostTestView = () => ht && { ...ht, running: !!htProc, elapsed_s: ((ht.endedAt ?? Date.now()) - ht.startedAt) / 1000,
                                      out: ht.out.slice(-400) };
+
+  // ── Installer tests (the dashboard's INSTALLER TESTS page) ───
+  // The OS install tests on their own, without steps 1-5 of run_all.sh:
+  // each picked one runs install/run_install_test.sh <id>, one after
+  // another. Not during a regression run or the network run test (and
+  // they can't start while this goes). Per test the panel gets its state,
+  // the step it is on (the scripts' "==> " lines) and since when, its
+  // PASS / FAIL / SKIP lines as they come, and its newest output line, so
+  // a long step (a VM booting, MSYS2 installing) still shows it is alive.
+  const INSTALL_ONE = join(REPO, 'install', 'run_install_test.sh');
+  let inst = null, instProc = null;
+  const instAvailable = () => MODE === 'dev' && existsSync(INSTALL_ONE);
+  function instLine(r, t, raw) {
+    const l = raw.replace(ANSI, '').replace(/\r/g, '');
+    r.out.push(t ? `[${t.id}] ${l}` : l); if (r.out.length > 2000) r.out.shift();
+    if (!t) return;
+    try { t.logFd != null && writeFileSync(t.logFd, l + '\n'); } catch { /* the log is a copy */ }
+    let m;
+    if ((m = l.match(/^==> (.*)/))) { t.step = m[1].trim(); t.stepAt = Date.now(); }
+    else if ((m = l.match(/^ {4}(PASS|FAIL|SKIP) {2}(.+?): ?(.*)$/))) t.results.push({ status: m[1], name: m[2], detail: m[3], at: Date.now() });
+    else if ((m = l.match(/^skipped: (.*)/))) t.why = m[1];
+    else if ((m = l.match(/^Logs?: (.*)/))) t.logs = m[1].trim();
+    if (l.trim()) { t.last = l.trim().slice(0, 300); t.lastAt = Date.now(); }
+  }
+  function instNext(r) {
+    if (r !== inst || instProc) return;
+    const t = r.tests.find(x => x.state === 'queued');
+    if (!t || r.stopping) {
+      for (const x of r.tests) if (x.state === 'queued') x.state = 'cancelled';
+      r.endedAt = Date.now();
+      instLine(r, null, `INSTALLER TESTS: ${r.stopping ? 'stopped' : 'finished'}`);
+      return;
+    }
+    t.state = 'running'; t.startedAt = Date.now(); t.step = 'starting'; t.stepAt = Date.now();
+    const dir = join(r.dir, t.id);
+    mkdirSync(dir, { recursive: true });
+    t.logFile = join(r.dir, `${t.id}.log`);
+    try { t.logFd = openSync(t.logFile, 'w'); } catch { t.logFd = null; }
+    const args = [INSTALL_ONE, t.id, '--out', dir, '--ref', r.ref];
+    t.command = ['install/run_install_test.sh', ...args.slice(1)].join(' ');
+    instLine(r, null, `INSTALLER TESTS: ${t.command}`);
+    console.log(`bridge: INSTALLER TESTS: ${t.command}`);
+    const env = { ...process.env, DMEKLR_TMP: TMP_ROOT, PYTHONUNBUFFERED: '1' };
+    const p = spawn('bash', args, { cwd: REPO, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+    instProc = p; t.pid = p.pid;
+    createInterface({ input: p.stdout }).on('line', l => instLine(r, t, l));
+    createInterface({ input: p.stderr }).on('line', l => instLine(r, t, l));
+    p.on('error', e => instLine(r, t, `couldn't start: ${e.message}`));
+    p.on('exit', (code, sig) => {
+      instProc = null;
+      t.endedAt = Date.now(); t.exit = sig ?? code;
+      if (t.logFd != null) { try { closeSync(t.logFd); } catch { /* closed */ } t.logFd = null; }
+      if (t.stopped) { t.state = 'stopped'; t.verdict = null; }
+      else if (code === 3) { t.state = 'skipped'; t.verdict = 'SKIP'; }
+      else { t.state = 'done'; t.verdict = code === 0 ? 'PASS' : 'FAIL'; }
+      t.step = t.state === 'stopped' ? 'stopped' : code === 0 ? 'all steps passed' : code === 3 ? `skipped: ${t.why ?? "can't run here"}`
+        : code === 1 ? 'some steps failed' : `ended (exit ${t.exit})`;
+      instLine(r, null, `INSTALLER TESTS: ${t.id}: ${t.step}`);
+      instNext(r);
+    });
+  }
+  function instStart(o) {
+    if (!instAvailable()) return [422, 'the installer tests need the developer install (install/run_install_test.sh)'];
+    if (inst && !inst.endedAt) return [409, 'the installer tests are already going'];
+    if (proc || starting) return [409, 'a regression run is going; try again when it ends'];
+    if (htProc) return [409, 'the network run test is going; try again when it ends'];
+    itAt = 0;                                      // look for the tools again
+    const list = installTests();
+    const ids = Array.isArray(o.tests) ? INSTALL_IDS.filter(t => o.tests.includes(t)) : [];
+    if (!ids.length) return [400, 'pick at least one installer test'];
+    let ref = typeof o.ref === 'string' && /^[\w.\/-]+$/.test(o.ref) && !o.ref.startsWith('-') ? o.ref : '';
+    if (!ref) {
+      const b = spawnSync('git', ['-C', REPO, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).stdout?.trim();
+      ref = b && b !== 'HEAD' ? b : 'main';
+    }
+    const id = Date.now().toString(36);
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    inst = { id, startedAt: Date.now(), endedAt: null, stopping: false, ref, dir: join(TMP_ROOT, 'install_tests', stamp), out: [],
+             tests: ids.map(x => ({ id: x, label: list.find(l => l.id === x)?.label ?? x, state: 'queued', step: null, stepAt: null,
+                                    last: null, lastAt: null, results: [], startedAt: null, endedAt: null, exit: null, verdict: null,
+                                    why: null, logs: null, logFile: null, command: null })) };
+    mkdirSync(inst.dir, { recursive: true });
+    instNext(inst);
+    return [202, ''];
+  }
+  // {id}: stop that test (running: the next one starts; queued: it never
+  // starts); no id: stop the running one and start no more
+  function instStop(o) {
+    if (!inst || inst.endedAt) return [409, 'no installer tests are going'];
+    const t = o.id ? inst.tests.find(x => x.id === o.id) : inst.tests.find(x => x.state === 'running');
+    if (!o.id) inst.stopping = true;
+    if (o.id && !t) return [404, `${o.id} isn't in this run`];
+    if (t?.state === 'queued') { t.state = 'cancelled'; return [204, '']; }
+    if (t?.state === 'running' && instProc) {
+      t.stopped = true; t.step = 'stopping (the VM or container is deleted)…';
+      try { process.kill(-instProc.pid, 'SIGTERM'); } catch { try { instProc.kill('SIGTERM'); } catch { /* gone */ } }
+    } else if (!instProc) instNext(inst);
+    return [204, ''];
+  }
+  const instView = () => inst && {
+    id: inst.id, ref: inst.ref, dir: inst.dir, startedAt: inst.startedAt, endedAt: inst.endedAt, stopping: inst.stopping,
+    running: !inst.endedAt, elapsed_s: ((inst.endedAt ?? Date.now()) - inst.startedAt) / 1000, out: inst.out.slice(-400),
+    tests: inst.tests.map(({ logFd, pid, stopped, ...t }) => ({
+      ...t, elapsed_s: t.startedAt ? ((t.endedAt ?? Date.now()) - t.startedAt) / 1000 : 0,
+      step_s: t.stepAt && t.state === 'running' ? (Date.now() - t.stepAt) / 1000 : null,
+      quiet_s: t.lastAt && t.state === 'running' ? (Date.now() - t.lastAt) / 1000 : null })),
+  };
 
   // What the panel shows: per test and per suite the simulated seconds
   // done of the total, and for the run as a whole an estimate of the
@@ -797,7 +915,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual, ivDisk,
                          roms: { images: imgs, presets, default: DEFAULT_ROM }, romFolders: romVariants(TMP_ROOT), run: view(),
                          hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST),
-                         installTests: MODE === 'dev' ? installTests() : [] }), true;
+                         installTests: MODE === 'dev' ? installTests() : [],
+                         installRun: instView(), installAvailable: instAvailable() }), true;
     }
     if (req.method === 'GET' && url.pathname === '/runall/fqs') {
       // The FQS analysis (fqs_analysis.py, run_all.sh's step 5) of the
@@ -882,6 +1001,17 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       });
       return true;
     }
+    if (req.method === 'POST' && (url.pathname === '/runall/installtests' || url.pathname === '/runall/installtests/stop')) {
+      const chunks = [];
+      req.on('data', d => { chunks.push(d); if (chunks.length > 100) req.destroy(); });
+      req.on('end', () => {
+        let o;
+        try { o = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { return text(400, 'body is not JSON'); }
+        const [code, msg] = url.pathname.endsWith('/stop') ? instStop(o) : instStart(o);
+        text(code, msg);
+      });
+      return true;
+    }
     if (req.method === 'POST' && url.pathname === '/runall/hosttest/stop') return text(hostTestStop() ? 204 : 409, ''), true;
     if (req.method === 'POST' && url.pathname === '/runall/hosttest') {
       const chunks = [];
@@ -930,5 +1060,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     return false;
   }
 
-  return { handle, stop, mode: MODE };
+  // the bridge stopping: the installer test going too (its VM or container is deleted)
+  const stopInstallTests = () => { if (inst && !inst.endedAt) instStop({}); };
+  return { handle, stop, stopInstallTests, mode: MODE };
 }

@@ -56,7 +56,9 @@
 #    windows-dev    install_windows.ps1, the same Windows VM
 #    arch-install   developer install, clean Arch container
 #                   (test_arch_install.sh; Docker or Podman)
-#  A test whose tool isn't on this machine is skipped. --macos-test
+#  A test whose tool isn't on this machine is skipped. Each runs through
+#  install/run_install_test.sh; the dashboard's INSTALLER TESTS page runs
+#  them on their own, without steps 1-5. --macos-test
 #  install|lite|both|none is the older form for the two macOS ones.
 # =============================================================================
 set -uo pipefail
@@ -471,50 +473,21 @@ done
 hdr "6/6  Install Tests (clean VMs)"
 MAX_SUITE_WARN=5
 SUITE_WARN=$SUITE_WARN_MAX
-WIN_VM="${DMEKLR_WIN_VM:-Windows 11 951 Install Test}"
-WIN_SNAP="${DMEKLR_WIN_SNAPSHOT:-Clean}"
 if [ ${#INSTALL_TESTS[@]} = 0 ]; then
     log "Skipped (no --install-tests picked)"
 elif [ "$FAIL" -gt 0 ] || [ "$SUITE_WARN" -gt "$MAX_SUITE_WARN" ]; then
     log "Skipped: steps 1-5 had $FAIL FAIL and up to $SUITE_WARN WARN tests in a suite (runs only with no FAIL and <= $MAX_SUITE_WARN WARN)"
 else
-    _branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-    [ -z "$_branch" ] || [ "$_branch" = HEAD ] && _branch=main
     _seen=" "
     for t in "${INSTALL_TESTS[@]}"; do
         case "$_seen" in *" $t "*) continue ;; esac; _seen+="$t "
-        T_OUT="$RUNLOG/install_$t"
-        why=""; CMD=()
-        case "$t" in
-            macos-install|macos-lite)
-                if [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then
-                    why="needs macOS with Tart (brew tap openai/tools && brew install openai/tools/tart)"
-                fi
-                CMD=(bash "$ROOT/install/test_macos_vm.sh" --name "dmeklr-runall-${t#macos-}" --replace --out "$T_OUT")
-                [ "$t" = macos-lite ] && CMD+=(--lite build) ;;
-            windows-lite|windows-dev)
-                if ! command -v prlctl >/dev/null 2>&1; then
-                    why="needs Parallels Desktop Pro or Business (prlctl)"
-                elif ! prlctl list -a -o name 2>/dev/null | tail -n +2 | sed 's/ *$//' | grep -qxF "$WIN_VM"; then
-                    why="no Parallels VM called '$WIN_VM' (set DMEKLR_WIN_VM; see install/test_windows_vm.sh --help)"
-                fi
-                CMD=(bash "$ROOT/install/test_windows_vm.sh" --vm "$WIN_VM" --snapshot "$WIN_SNAP"
-                     --name "dmeklr-runall-$t" --replace --ref "$_branch" --out "$T_OUT")
-                [ "$t" = windows-dev ] && CMD+=(--dev) ;;
-            arch-install)
-                if ! command -v docker >/dev/null 2>&1 && ! command -v podman >/dev/null 2>&1; then
-                    why="needs Docker or Podman"
-                fi
-                CMD=(bash "$ROOT/install/test_arch_install.sh") ;;
-        esac
-        if [ -n "$why" ]; then
-            log "$t: skipped ($why)"
-            continue
-        fi
-        log "Running ($t): ${CMD[*]}"
-        "${CMD[@]}" 2>&1 | tee "$RUNLOG/install_$t.log"
+        # install/run_install_test.sh: the test's command (the Windows ones
+        # get this checkout's branch as --ref), or exit 3 when the tool isn't here
+        bash "$ROOT/install/run_install_test.sh" "$t" --out "$RUNLOG/install_$t" 2>&1 | tee "$RUNLOG/install_$t.log"
         rc=${PIPESTATUS[0]}
-        if [ "$rc" = 0 ]; then
+        if [ "$rc" = 3 ]; then
+            log "$t: $(sed -n 's/^skipped: /skipped (/p' "$RUNLOG/install_$t.log" | head -1))"
+        elif [ "$rc" = 0 ]; then
             ok "install test $t — all steps passed"
         else
             fail "install test $t — exit $rc (see $RUNLOG/install_$t.log)"

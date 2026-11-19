@@ -1778,4 +1778,4 @@ createServer((req, res) => {
   startSim();
 });
 
-process.on('SIGINT', () => { runAll.stop(); regressHost.stopAll(); if (sim) sim.kill(); process.exit(0); });
+process.on('SIGINT', () => { runAll.stop(); runAll.stopInstallTests(); regressHost.stopAll(); if (sim) sim.kill(); process.exit(0); });

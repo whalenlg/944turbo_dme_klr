@@ -664,8 +664,8 @@ the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
 it running). The first run downloads the macOS image, about 25 GB; a run
 takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
 `run_all.sh` runs it as step 6 only when asked (`--install-tests
-"macos-install macos-lite"`; the RUN REGRESSIONS panel's **INSTALL TESTS**
-boxes), and skips it by default.
+"macos-install macos-lite"`), and skips it by default; the dashboard's
+**INSTALLER TESTS** page runs it on its own (see below).
 
 `install/test_regress_hosts.sh` checks RUN REGRESSIONS' regression hosts
 across two machines: this install and a macOS VM on this Mac (made with
@@ -754,8 +754,8 @@ branch or tag instead of `main`. Push a branch first to test it before
 merging. `--version` picks the lite release, and `--keep` leaves the clone
 running to look around in. Logs go to `$DMEKLR_TMP/windows_vm_test/`.
 See `install/test_windows_vm.sh --help`. `run_all.sh` runs it as step 6
-when asked (`--install-tests "windows-lite windows-dev"`, or the RUN
-REGRESSIONS panel's **INSTALL TESTS** boxes), with the VM named by
+when asked (`--install-tests "windows-lite windows-dev"`), or the
+dashboard's **INSTALLER TESTS** page on its own, with the VM named by
 `DMEKLR_WIN_VM` (default `Windows 11 951 Install Test`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
 (default `Clean`), set where the bridge starts.
 
@@ -877,10 +877,7 @@ smaller value gives finer playback and larger logs.
 and **BROWSE…**) opens a panel
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
-(Verilator, iverilog or both, workers, per-test build, the install tests
-(**INSTALL TESTS**: a box for each of macOS developer and lite, Windows lite
-and developer, and Arch, none ticked by default; one this machine can't run
-is grayed with the reason),
+(Verilator, iverilog or both, workers, per-test build,
 update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or
@@ -959,6 +956,23 @@ running: it ends as it would have. The panel writes both into
 `run_dashboard_parallel.sh` and `run_tests.py` read before starting each test.
 A run started by a bridge from before these controls shows a note instead:
 pull and restart `bridge.mjs` (restarting it stops that run).
+
+**INSTALLER TESTS ▶** in the panel's title bar opens a page of its own for
+the OS installer tests: macOS developer install and lite package (Tart),
+Windows lite one-liner and developer install (Parallels), and Arch
+(Docker or Podman). Tick the ones to run (one this machine can't run is
+grayed, with the reason beside it) and **START**: each installs from
+scratch in a clean VM or container, one after another, through
+`install/run_install_test.sh`, without the regression run's steps 1-5.
+For each test the page shows the step it is on and for how long, the
+newest output line (so a VM booting or MSYS2 installing still shows it is
+alive), and the PASS / FAIL lines as they come; **STOP** ends one (its VM
+or container is deleted and the next starts), **DROP** takes one off the
+queue. The Windows tests install from GitHub at the branch in the page's
+box (default: the bridge checkout's branch, which must be pushed). Logs go
+to `$DMEKLR_TMP/install_tests/<date-time>/`. They don't run while a
+regression run or the network run test goes, nor those while they do.
+`run_all.sh --install-tests` still runs them as step 6 from the command line.
 
 **ROM VARIANTS** compares the ROM pairs whose runs left logs (each pair's
 folder, `$DMEKLR_TMP/dme_klr/<rom>`): tick two or more folders (the first is
