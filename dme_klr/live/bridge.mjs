@@ -1501,8 +1501,11 @@ createServer((req, res) => {
       });
       return;
     }
-    // POST /snapshots/test  body {"test": name, "ms": time, "label": text}:
-    // a regression-test snapshot at a moment picked by hand (test_snap.py add)
+    // POST /snapshots/test  body {"test": name, "ms": time, "label": text, "roms": {dme, klr}}:
+    // a regression-test snapshot at a moment picked by hand (test_snap.py add).
+    // It runs on the images in roms (file names, as in the image lists), else
+    // on the ones loaded in the sim now (a custom image or setup loaded from
+    // the ROM IMAGES row), not the bridge's DME_ROM_FILE defaults
     if (req.method === 'POST' && rawId === 'test' && !action) {
       let body = '';
       req.on('data', d => { body += d; if (body.length > 4096) req.destroy(); });
@@ -1510,9 +1513,19 @@ createServer((req, res) => {
         let b;
         try { b = JSON.parse(body); } catch { return text(400, 'body must be JSON {test, ms, label}'); }
         if (!snapId(b?.test ?? '') || !(+b.ms >= 0)) return text(400, 'need a test name and a time in ms');
+        const env = { ...process.env, DMEKLR_SNAPDIR: SNAP_DIR };
+        for (const cpu of ['dme', 'klr']) {
+          const want = b.roms?.[cpu];
+          const p = want ? findImageByName(basename(String(want)), cpu) : roms[cpu];
+          if (want && !p) return text(400, `no ${cpu.toUpperCase()} image ${want}`);
+          if (p && existsSync(p)) {
+            env[`${cpu.toUpperCase()}_ROM_DIR`] = dirname(resolve(p)) + '/';
+            env[`${cpu.toUpperCase()}_ROM_FILE`] = basename(p);
+          }
+        }
         const r = spawnSync(PY, [join(HERE, 'test_snap.py'), 'add', b.test, String(+b.ms),
                                         ...String(b.label ?? '').split(/\s+/).filter(Boolean)],
-                            { env: { ...process.env, DMEKLR_SNAPDIR: SNAP_DIR }, encoding: 'utf8' });
+                            { env, encoding: 'utf8' });
         if (r.status !== 0) return text(400, (r.stderr || r.stdout || 'test_snap.py failed').trim());
         broadcast('SIM: [SNAP] ready id=- t_ns=0 reason=test');
         return text(204, '');

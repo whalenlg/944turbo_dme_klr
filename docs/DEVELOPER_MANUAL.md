@@ -1396,8 +1396,12 @@ Things to know:
   run. So after a regression run, the SNAPSHOTS list already holds a way into
   every warning. **INFO** on a row shows the test, the trigger line, the time
   it runs to, its flags, ROMs and whether it is built yet.
+* **Custom images:** a row added from the page runs on the images loaded in
+  the sim at + ADD (load the custom image or its setup in ROM IMAGES first);
+  `POST /snapshots/test` also takes `roms: {dme, klr}` by file name.
 * **The same from a terminal:** `dme_klr/live/test_snap.py add <test> <ms>
-  [label]` adds the row, and LOAD it in the page.
+  [label]` adds the row (ROMs from `DME_ROM_DIR`/`DME_ROM_FILE` and the KLR
+  ones), and LOAD it in the page.
 * **Use Verilator logs when you can.** The debugger runs Verilator. A log
   from `run_dashboard_tests.sh` (Icarus) usually matches, but in the first
   second some tests differ while the KLR branches on uninitialised RAM, which

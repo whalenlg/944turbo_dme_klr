@@ -264,7 +264,12 @@ the warm-up, so log t=0 is sim 3000 ms.
 To open a test at a moment of your choosing without running the
 regression, type the test's name and a time in the **TEST … at … ms** row
 under the snapshot list (or run `live/test_snap.py add <test> <ms>
-[label]`), then LOAD the row it adds.
+[label]`), then LOAD the row it adds. A row added from the dashboard
+(`POST /snapshots/test {test, ms, label, roms?}`) runs on the images loaded in
+the sim when you press + ADD, so a custom image or setup loaded from the ROM
+IMAGES row (a saved edit with its `.base`, say) is the one the test runs;
+`roms: {dme, klr}` (image file names) picks others. From a terminal,
+`test_snap.py add` uses `DME_ROM_DIR`/`DME_ROM_FILE` and the KLR ones.
 
 ## Inputs (`set <name> <value>`)
 
