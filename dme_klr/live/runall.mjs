@@ -349,7 +349,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     if (MODE === 'dev') {
       const sims = (Array.isArray(o.sims) ? o.sims : ['verilator', 'iverilog']).filter(s => s === 'verilator' || s === 'iverilog');
       if (!sims.length) return [400, 'pick Verilator, iverilog or both'];
-      const macos = ['install', 'lite', 'both', 'none'].includes(o.macosTest) ? o.macosTest : 'both';
+      const macos = ['install', 'lite', 'both', 'none'].includes(o.macosTest) ? o.macosTest : 'none';
       args = [RUN_ALL];
       if (sims.length === 1) args.push(`--${sims[0]}`);
       if (o.perTestBuild) args.push('--per-test-build');

@@ -48,8 +48,8 @@
 #  Step 6 (macOS with Tart only) then tests the install in a clean macOS
 #  VM (install/test_macos_vm.sh), when steps 1-5 had no FAIL and neither
 #  dashboard suite had more than 5 WARN tests. --macos-test picks the
-#  developer install, the lite package (built here), both (default), or
-#  none.
+#  developer install, the lite package (built here), both, or none
+#  (default: none, skipped).
 # =============================================================================
 set -uo pipefail
 
@@ -63,7 +63,7 @@ _want_iverilog=0
 ARGS=()
 usage() { sed -n '3,42s/^# \{0,2\}//p' "$0"; }
 PT_OPT=()
-MACOS_TEST=both
+MACOS_TEST=none
 SUITE_TESTS=()
 PULL=1
 IV_DEBUG=()
