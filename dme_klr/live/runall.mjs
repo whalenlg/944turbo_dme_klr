@@ -187,7 +187,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   // Each with whether this machine can run it, and why not; looked up
   // again at most once a minute (a VM made or Parallels installed meanwhile)
   const have = c => process.platform !== 'win32' && spawnSync('sh', ['-c', `command -v ${c}`], { encoding: 'utf8' }).status === 0;
-  const WIN_VM = process.env.DMEKLR_WIN_VM || 'Windows 11';
+  const WIN_VM = process.env.DMEKLR_WIN_VM || 'Windows 11 951 Install Test';
   const WIN_SNAP = process.env.DMEKLR_WIN_SNAPSHOT || 'clean';
   let itCache = null, itAt = 0;
   function installTests() {

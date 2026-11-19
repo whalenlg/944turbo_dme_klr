@@ -733,8 +733,8 @@ Set up the VM to clone from once:
 Then:
 
 ```sh
-install/test_windows_vm.sh --vm "Windows 11" --snapshot clean          # the lite one-liner
-install/test_windows_vm.sh --vm "Windows 11" --snapshot clean --dev    # install_windows.ps1
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot clean          # the lite one-liner
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot clean --dev    # install_windows.ps1
 ```
 
 The lite test runs the manual's one-line installer
@@ -756,7 +756,7 @@ running to look around in. Logs go to `$DMEKLR_TMP/windows_vm_test/`.
 See `install/test_windows_vm.sh --help`. `run_all.sh` runs it as step 6
 when asked (`--install-tests "windows-lite windows-dev"`, or the RUN
 REGRESSIONS panel's **INSTALL TESTS** boxes), with the VM named by
-`DMEKLR_WIN_VM` (default `Windows 11`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
+`DMEKLR_WIN_VM` (default `Windows 11 951 Install Test`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
 (default `clean`), set where the bridge starts.
 
 ### Dependencies
