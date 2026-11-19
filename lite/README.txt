@@ -29,7 +29,11 @@ SETTING UP (once)
        cd dmeklr-lite-<version>-<platform>
      (macOS may already have unpacked it, or left a .tar: tar -xf works
      for that. On Windows: right-click the .zip, Extract All.)
-  2. Install Node.js 18 or newer from https://nodejs.org.
+  2. Install Node.js 18 or newer from https://nodejs.org. On Windows,
+     winget does it (and Python for step 3), in a PowerShell window:
+       winget install OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements
+       winget install Python.Python.3.12 --source winget --accept-source-agreements --accept-package-agreements
+     then open a new window, so it finds node and py.
   3. Install the Python packages into a virtual environment (.venv) in
      this folder:
        macOS / Linux:   python3 -m venv .venv
