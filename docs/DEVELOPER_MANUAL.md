@@ -309,6 +309,7 @@ dashboard in any Windows browser connects to it the same way.
 |---|---|
 | `-MsysRoot DIR` | Where MSYS2 is, or goes (default `C:\msys64`) |
 | `-Clone DIR` | Clone the repo into `DIR` first and install from there |
+| `-Ref REF` | With `-Clone`: the branch or tag to check out |
 | `-Venv` | Also make `944venv/`, a venv that sees the pacman packages (`--venv` for `install_msys2.sh`) |
 | `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and build it (`install/build_dashboard.sh`), so `bridge.mjs` serves it at http://127.0.0.1:8951/?live |
 | `-NoGtkwave` | Skip GTKWave |
@@ -662,9 +663,9 @@ the KLR waveform. It prints PASS or FAIL for each step, saves the logs in
 `$DMEKLR_TMP/macos_vm_test/<date-time>/` and deletes the VM (`--keep` leaves
 it running). The first run downloads the macOS image, about 25 GB; a run
 takes about 20 to 40 minutes. See `install/test_macos_vm.sh --help`.
-`run_all.sh` runs it as step 6 only when asked (`--macos-test install`,
-`lite` or `both`; the RUN REGRESSIONS panel's **MACOS INSTALL TEST**), and
-skips it by default.
+`run_all.sh` runs it as step 6 only when asked (`--install-tests
+"macos-install macos-lite"`; the RUN REGRESSIONS panel's **INSTALL TESTS**
+boxes), and skips it by default.
 
 `install/test_regress_hosts.sh` checks RUN REGRESSIONS' regression hosts
 across two machines: this install and a macOS VM on this Mac (made with
@@ -709,6 +710,54 @@ screenshots are in the workflow's uploaded logs. It runs with and without `-Venv
 touch `install/`, and by hand from the Actions tab. You can run
 `install/test_windows_install.sh` on your own Windows install too, after
 the installer.
+
+### Testing the Windows install on a clean VM (Parallels)
+
+`install/test_windows_vm.sh` runs on a Mac with Parallels Desktop (Pro or
+Business edition, for the `prlctl` command). It makes a linked clone of a
+Windows VM from a clean snapshot, runs an installer in it as a new user
+would, checks the result, copies the logs back and deletes the clone. The
+VM you clone from and its snapshot stay as they are.
+
+Set up the VM to clone from once:
+
+1. A Windows 11 VM with **Parallels Tools** installed.
+2. Its user signed in automatically at startup. In Windows, run
+   `netplwiz`, untick *Users must enter a user name and password*, or use
+   Settings > Accounts > Sign-in options. The test runs its commands as
+   the signed-in user (`prlctl exec --current-user`), so that winget works
+   as it does for a person.
+3. Nothing of this project installed, and no Node.js or Python, then a
+   snapshot (Actions > Take Snapshot, e.g. named *Clean*).
+
+Then:
+
+```sh
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot Clean          # the lite one-liner
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot Clean --dev    # install_windows.ps1
+```
+
+The lite test runs the manual's one-line installer
+(`install_lite_windows.ps1`), then checks:
+- the package, its venv and the desktop shortcut are in place;
+- `run_lite.cmd`'s bridge serves `http://127.0.0.1:8951/?live`;
+- the bridge offers RUN REGRESSIONS;
+- one regression test passes (`--test`, by default `warm_idle_5s`).
+
+It takes about 10 minutes. `--dev` runs
+`install_windows.ps1 -Clone C:\dmeklr\944turbo_dme_klr -Ref <ref> -Yes`,
+then checks that the checkout is clean and that
+`install/test_windows_install.sh` passes. It takes 30 to 60 minutes.
+
+`--ref` takes the installer (and, with `--dev`, the checkout) from a
+branch or tag instead of `main`. Push a branch first to test it before
+merging. `--version` picks the lite release, and `--keep` leaves the clone
+running to look around in. Logs go to `$DMEKLR_TMP/windows_vm_test/`.
+See `install/test_windows_vm.sh --help`. `run_all.sh` runs it as step 6
+when asked (`--install-tests "windows-lite windows-dev"`, or the RUN
+REGRESSIONS panel's **INSTALL TESTS** boxes), with the VM named by
+`DMEKLR_WIN_VM` (default `Windows 11 951 Install Test`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
+(default `Clean`), set where the bridge starts.
 
 ### Dependencies
 
@@ -816,7 +865,7 @@ version's include files. See `dme_klr/live/README.md` for the build details.
 | `./v_run_dashboard_tests.sh <test>` | `$DMEKLR_TMP/dme_klr/<rom>/v_dash_logs/<test>.dash.log` | Verilator, the same tests. Best for logs you plan to debug in the simulator (section 7) |
 | `./run_dashboard_parallel.sh <jobs> [group]` | the same folders | Several tests at once, plus validation |
 | `replay/run_replay.sh` | `$DMEKLR_TMP/dme_klr/<rom>/replay/{v_,}dash_logs/` | Replays a recorded car log, see `dme_klr/replay/README.md` |
-| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the macOS VM test (step 6, only with `--macos-test install\|lite\|both`; the default is `none`). See `--help`. `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
+| `./run_all.sh [options] [workers]` | the same folders, and `$DMEKLR_TMP/run_all/` | The whole check: both CPU regressions, both dashboard suites, the comparison and FQS analysis, the install tests in clean VMs (step 6, only those named by `--install-tests`: `macos-install`, `macos-lite`, `windows-lite`, `windows-dev`, `arch-install`; none by default). See `--help`. `--tests "..."` runs only some dashboard tests, `--no-pull` skips the `git checkout main` / `git pull`, `--no-plot` skips step 5's difference plots, `--roms "89 86 carpokes"` runs steps 3-5 for each of those ROM pairs (see RUN REGRESSIONS) |
 | `python3 rom_variant_diff.py <rom> <rom> [...]` | prints | Two or more ROM folders' tests side by side: verdicts, and each DME / KLR `[STATUS]` field whose settled mean differs from the first folder's (`--sim`, `--test`, `--all`, `--json`) |
 | `./validate_all.sh [--verilator] [test ...]` | prints | Validates the logs already in the ROM pair's folder (`validate_dash_log.py` on each test). For a run on another image, set the same `DME_ROM_FILE` (`DME_ROM_FILE=my_edit.mem ./validate_all.sh --verilator`): it picks that image's log folder and its expected values. An image saved from the code windows' byte editor (with a `<image>.base`) is checked against its base image's expected values, as is a log whose `[ROM]` line names such an image |
 | `./iv_disk_usage.sh [options]` | `$DMEKLR_TMP/iv_disk_usage/` | Measures the disk space and time of the iverilog tests under each combination of the debug flags (5 FQS tests by default, each configuration in its own folder) and estimates the whole suite. `--sim-s 1` for a quick measurement, `--save-rates` to update `iv_disk_rates.json`, which the RUN REGRESSIONS panel's estimates come from (`--help`) |
@@ -828,8 +877,10 @@ smaller value gives finer playback and larger logs.
 and **BROWSE…**) opens a panel
 that runs `run_all.sh` through the bridge (`node dme_klr/live/bridge.mjs`
 must be running; `live/runall.mjs`). It has every `run_all.sh` option
-(Verilator, iverilog or both, workers, per-test build, the macOS VM test
-(**MACOS INSTALL TEST**: none by default, or install, lite or both),
+(Verilator, iverilog or both, workers, per-test build, the install tests
+(**INSTALL TESTS**: a box for each of macOS developer and lite, Windows lite
+and developer, and Arch, none ticked by default; one this machine can't run
+is grayed with the reason),
 update first or `--no-pull`, **Plot Differences** or `--no-plot`), the snapshot interval and
 the ROM images every test runs on (the 1989 pair by default, the `run86.sh`
 and `run_carpokes.sh` pairs, or any DME and KLR image in `bin_images/` or

@@ -23,7 +23,11 @@
 //                         the iverilog debug runs' MB per simulated
 //                         second; run: the current or last run
 //    POST /runall/start   JSON body: {sims: ['verilator','iverilog'],
-//                         workers, perTestBuild, macosTest, pull,
+//                         workers, perTestBuild, installTests, pull,
+//                         (installTests: the ids of step 6's install tests,
+//                         ['macos-install', 'windows-lite', ...]; none by
+//                         default; macosTest: install|lite|both|none, the
+//                         older form for the two macOS ones)
 //                         debug: {<test>: ['DME_DEBUG'|'DME_DEEP_DEBUG'|
 //                         'KLR_DEBUG']} (that test in the iverilog suite,
 //                         built on its own, always here),
@@ -181,6 +185,36 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   const RUN_TESTS = join(REPO, 'run_tests.py');
   const MODE = existsSync(RUN_ALL) ? 'dev' : existsSync(RUN_TESTS) ? 'lite' : null;
   const tart = process.platform === 'darwin' && spawnSync('sh', ['-c', 'command -v tart'], { encoding: 'utf8' }).status === 0;
+
+  // ── Step 6's install tests (run_all.sh --install-tests) ──────
+  // Each with whether this machine can run it, and why not; looked up
+  // again at most once a minute (a VM made or Parallels installed meanwhile)
+  const have = c => process.platform !== 'win32' && spawnSync('sh', ['-c', `command -v ${c}`], { encoding: 'utf8' }).status === 0;
+  const WIN_VM = process.env.DMEKLR_WIN_VM || 'Windows 11 951 Install Test';
+  const WIN_SNAP = process.env.DMEKLR_WIN_SNAPSHOT || 'Clean';
+  let itCache = null, itAt = 0;
+  function installTests() {
+    if (itCache && Date.now() - itAt < 60000) return itCache;
+    const mac = tart ? '' : 'needs macOS with Tart';
+    let win = '';
+    if (!have('prlctl')) win = 'needs Parallels Desktop Pro or Business (prlctl)';
+    else {
+      const r = spawnSync('prlctl', ['list', '-a', '-o', 'name'], { encoding: 'utf8' });
+      const names = (r.stdout ?? '').split('\n').slice(1).map(x => x.trim());
+      if (!names.includes(WIN_VM)) win = `no Parallels VM called "${WIN_VM}" (DMEKLR_WIN_VM; snapshot DMEKLR_WIN_SNAPSHOT, now "${WIN_SNAP}")`;
+    }
+    const arch = have('docker') || have('podman') ? '' : 'needs Docker or Podman';
+    itCache = [
+      { id: 'macos-install', label: 'macOS, developer install (clean VM)', why: mac },
+      { id: 'macos-lite',    label: 'macOS, lite package built here (clean VM)', why: mac },
+      { id: 'windows-lite',  label: `Windows, lite one-liner (Parallels: ${WIN_VM})`, why: win },
+      { id: 'windows-dev',   label: `Windows, developer install (Parallels: ${WIN_VM})`, why: win },
+      { id: 'arch-install',  label: 'Arch Linux, developer install (container)', why: arch },
+    ].map(t => ({ ...t, available: !t.why }));
+    itAt = Date.now();
+    return itCache;
+  }
+  const INSTALL_IDS = ['macos-install', 'macos-lite', 'windows-lite', 'windows-dev', 'arch-install'];
 
   // ── The tests, their lengths and the manuals' groups ─────────
   let catalog = null;
@@ -352,11 +386,17 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
     if (MODE === 'dev') {
       const sims = (Array.isArray(o.sims) ? o.sims : ['verilator', 'iverilog']).filter(s => s === 'verilator' || s === 'iverilog');
       if (!sims.length) return [400, 'pick Verilator, iverilog or both'];
-      const macos = ['install', 'lite', 'both', 'none'].includes(o.macosTest) ? o.macosTest : 'none';
+      // step 6: installTests, or the older macosTest
+      let itests = Array.isArray(o.installTests) ? INSTALL_IDS.filter(t => o.installTests.includes(t)) : [];
+      if (!Array.isArray(o.installTests)) {
+        const m = o.macosTest;
+        if (m === 'install' || m === 'both') itests.push('macos-install');
+        if (m === 'lite' || m === 'both') itests.push('macos-lite');
+      }
       args = [RUN_ALL];
       if (sims.length === 1) args.push(`--${sims[0]}`);
       if (o.perTestBuild) args.push('--per-test-build');
-      args.push('--macos-test', macos);
+      if (itests.length) args.push('--install-tests', itests.join(' '));
       if (o.pull === false) args.push('--no-pull');
       if (o.plot === false) args.push('--no-plot');
       // iverilog debug output, per test (step 4 only; each builds on its
@@ -385,7 +425,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
         { label: 'i8048 KLR regression' }, { label: 'i8051 DME regression' },
         { label: `Verilator dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'vl', suites: of('vl') },
         { label: `iverilog dashboard suite${multi ? 's' : ''}`, suite: multi ? null : 'iv', suites: of('iv') },
-        { label: 'iverilog vs Verilator comparison + FQS analysis' }, { label: 'macOS install test (clean VM)' },
+        { label: 'iverilog vs Verilator comparison + FQS analysis' }, { label: itests.length ? `Install tests (${itests.join(', ')})` : 'Install tests (none picked)' },
       ];
     } else {
       args = [RUN_TESTS, '-j', String(workers), '--interval', String(interval)];
@@ -743,7 +783,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       const ivDisk = MODE === 'dev' ? readJson(join(DMEKLR, 'iv_disk_rates.json')) : null;
       return json(200, { mode: MODE, platform: process.platform, tart, cpus: cpus().length, groups, manual, ivDisk,
                          roms: { images: imgs, presets, default: DEFAULT_ROM }, romFolders: romVariants(TMP_ROOT), run: view(),
-                         hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST) }), true;
+                         hosttest: hostTestView(), hosttestAvailable: MODE === 'dev' && existsSync(HOSTTEST),
+                         installTests: MODE === 'dev' ? installTests() : [] }), true;
     }
     if (req.method === 'GET' && url.pathname === '/runall/fqs') {
       // The FQS analysis (fqs_analysis.py, run_all.sh's step 5) of the
