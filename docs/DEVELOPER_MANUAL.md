@@ -727,8 +727,11 @@ Set up the VM to clone from once:
    Settings > Accounts > Sign-in options. The test runs its commands as
    the signed-in user (`prlctl exec --current-user`), so that winget works
    as it does for a person.
-3. Nothing of this project installed, and no Node.js or Python, then a
-   snapshot (Actions > Take Snapshot, e.g. named *Clean*).
+3. Nothing of this project installed, and no Node.js or Python. Then shut
+   Windows down (Start > Power > Shut down; suspended isn't enough) and,
+   with the VM off, take a snapshot (Actions > Take Snapshot, e.g. named
+   *Clean*). Parallels makes linked clones only from snapshots taken while
+   the VM was shut down.
 
 Then:
 
