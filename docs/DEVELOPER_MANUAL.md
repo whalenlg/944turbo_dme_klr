@@ -355,6 +355,51 @@ Things to know on Windows:
   installer inside an Arch Linux WSL distribution, as on a Linux PC. That
   path isn't tested here; the MSYS2 one is.
 
+#### Uninstalling on Windows
+
+Nothing is registered with Windows' *Apps* list: MSYS2 is unpacked from
+its archive (it has no uninstaller), and the rest is folders. To remove
+it all, in PowerShell:
+
+```powershell
+# 1. Stop anything still running from MSYS2 or the repo (bridge, live sim,
+#    pacman's gpg-agent), and close every MSYS2 terminal
+Get-Process | Where-Object { $_.Path -like 'C:\msys64\*' -or $_.Name -eq 'dme_klr_live' } | Stop-Process -Force
+
+# 2. MSYS2 and everything pacman installed in it (gcc, Verilator, Icarus
+#    Verilog, GTKWave, Node.js, Python and its packages)
+Remove-Item C:\msys64 -Recurse -Force
+Remove-Item "$([Environment]::GetFolderPath('Desktop'))\MSYS2 UCRT64.lnk" -ErrorAction SilentlyContinue
+
+# 3. The checkout (with 944venv\ and dashboard\ if you made them) and the
+#    build/log output folder beside it ($DMEKLR_TMP, by default ..\tmp)
+Remove-Item C:\dmeklr -Recurse -Force
+
+# 4. Leftovers of an interrupted install, if any
+Remove-Item "$env:TEMP\msys2-base-x86_64.sfx.exe" -ErrorAction SilentlyContinue
+Get-ChildItem C:\ -Directory -Filter 'msys2-unpack-*' | Remove-Item -Recurse -Force
+
+# 5. Only if you installed the Windows Node.js for the dashboard build
+winget uninstall OpenJS.NodeJS.LTS
+```
+
+Use your own paths if you gave `-MsysRoot` or `-Clone` other folders, or
+set `DMEKLR_TMP` elsewhere. Copy anything you want to keep out of the
+checkout and the output folder first (snapshots, logs, edited ROM images):
+step 3 deletes them. If `Remove-Item` says a file is in use, something from
+step 1 is still running; sign out or restart, then run it again.
+
+**MSYS2 you already had.** If MSYS2 was there before (the installer said
+*MSYS2 found*), keep it and remove only the packages this repo added, in a
+UCRT64 terminal (leave out any you use for other work):
+
+```sh
+pacman -Rns mingw-w64-ucrt-x86_64-{verilator,iverilog,gtkwave,nodejs,python-openpyxl,python-pandas,python-matplotlib,python-numpy}
+```
+
+then delete the checkout as in step 3. The installer also leaves a marker
+file, `C:\msys64\var\lib\dmeklr-msys2-initialised`; it can stay or go.
+
 ### The lite package (no Verilog source)
 
 The lite package is for people who want the dashboard's live mode and the
