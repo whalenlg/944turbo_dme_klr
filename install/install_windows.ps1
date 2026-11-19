@@ -15,7 +15,8 @@
    -Clone DIR       no checkout yet: clone the repo into DIR first (with
                     MSYS2's git) and install from there
    -Venv            also make a Python venv at <repo>\944venv
-   -WithDashboard   also clone whalenlg/dme-dashboard and npm install it
+   -WithDashboard   also clone whalenlg/dme-dashboard and build it, so the
+                    bridge serves it at http://127.0.0.1:8951/?live
    -NoGtkwave       skip GTKWave
    -SkipTests       don't run the smoke tests at the end
    -Yes             don't ask pacman to confirm
@@ -162,3 +163,10 @@ Write-Host ''
 Write-Host 'Installed. To use it, open "MSYS2 UCRT64" (Start menu, or' (Join-Path $MsysRoot 'ucrt64.exe') ') and run:'
 $u = (& (Join-Path $MsysRoot 'usr\bin\cygpath.exe') -u $Repo)
 Write-Host "    cd '$u' && source setup"
+Write-Host 'For the live debugger:'
+Write-Host "    cd '$u/dme_klr/live' && ./build_live.sh && node bridge.mjs"
+if (Test-Path (Join-Path $Repo 'dashboard\dist-lite\index.html')) {
+    Write-Host 'then open http://127.0.0.1:8951/?live in a browser.'
+} else {
+    Write-Host 'then open https://whalenlg.github.io/dme-dashboard/ and press LIVE.'
+}

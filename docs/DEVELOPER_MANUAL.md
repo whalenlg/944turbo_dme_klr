@@ -143,8 +143,19 @@ cd 944turbo_dme_klr
 ```
 
 The install scripts' `--with-dashboard` also clones the dashboard
-(whalenlg/dme-dashboard) into `dashboard/`, for working on it; it isn't
-needed to use it (it is published at https://whalenlg.github.io/dme-dashboard/).
+(whalenlg/dme-dashboard) into `dashboard/` and builds its offline copy
+(`dashboard/dist-lite/`), which `bridge.mjs` then serves at
+http://127.0.0.1:8951/?live. It isn't needed to use the dashboard: it is
+published at https://whalenlg.github.io/dme-dashboard/, and its **LIVE**
+button connects to your bridge. Without `--with-dashboard` the bridge
+serves no page, so http://127.0.0.1:8951/ answers 404; that is expected.
+
+`install/build_dashboard.sh` does the build (and can be run again on its
+own): `npm install`, then `npm run build:lite`. If the build stops with
+*Cannot find native binding*, npm left out the bundler's (rolldown's)
+native add-on for this platform ([npm/cli#4828](https://github.com/npm/cli/issues/4828));
+the script reads the package it wanted from the error, installs it with
+`--no-save` and builds again.
 `git pull` later brings the checkout up to date.
 
 ### Before installing
@@ -192,7 +203,7 @@ It installs, in order:
 | Option | Effect |
 |---|---|
 | `--upgrade` | `brew upgrade` the formulae that are already installed |
-| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and run `npm install` there |
+| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` (git-ignored) and build it (`install/build_dashboard.sh`), so `bridge.mjs` serves it at http://127.0.0.1:8951/?live |
 | `--no-gtkwave` | Skip GTKWave |
 | `--rebuild-gtkwave` | Build GTKWave again even if it is already there |
 | `--skip-tests` | Don't run the smoke tests at the end |
@@ -254,7 +265,7 @@ runs `install/check_toolchain.sh` and the same smoke tests as on macOS.
 | Option | Effect |
 |---|---|
 | `--venv` | Install the Python packages with pip into `944venv/` instead of from pacman (then `source 944venv/bin/activate` as on macOS) |
-| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
+| `--with-dashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and build it (`install/build_dashboard.sh`), so `bridge.mjs` serves it at http://127.0.0.1:8951/?live |
 | `--no-gtkwave` | Skip GTKWave |
 | `--skip-tests` | Don't run the smoke tests at the end |
 | `-y`, `--yes` | Pass `--noconfirm` to pacman |
@@ -299,7 +310,7 @@ dashboard in any Windows browser connects to it the same way.
 | `-MsysRoot DIR` | Where MSYS2 is, or goes (default `C:\msys64`) |
 | `-Clone DIR` | Clone the repo into `DIR` first and install from there |
 | `-Venv` | Also make `944venv/`, a venv that sees the pacman packages (`--venv` for `install_msys2.sh`) |
-| `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and run `npm install` there |
+| `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and build it (`install/build_dashboard.sh`), so `bridge.mjs` serves it at http://127.0.0.1:8951/?live |
 | `-NoGtkwave` | Skip GTKWave |
 | `-SkipTests` | Don't run the smoke tests at the end |
 | `-Yes` | Don't ask pacman to confirm |
@@ -317,6 +328,29 @@ Things to know on Windows:
 - **Paths.** Under MSYS2, `source setup` sets `DMEKLR_REPO` and
   `DMEKLR_TMP` as `C:/...` paths, which both bash and the native Windows
   tools understand.
+- **Use the UCRT64 terminal.** Every tool is installed for MSYS2's
+  UCRT64 environment only. In the other MSYS2 terminals (MSYS, MINGW64,
+  ...) `python3`, `verilator` and the rest are "command not found";
+  `echo $MSYSTEM` should print `UCRT64`.
+- **An install that stopped part way.** Run `install_windows.ps1` again
+  with the same options. It finds MSYS2 and finishes its first start (the
+  keyring and core update) if the earlier run didn't, then installs the
+  rest; `pacman --needed` skips what is already there. If pacman updates
+  MSYS2's core and asks to close the terminal, do, then run it again.
+- **The local dashboard and Node.js.** MSYS2's Node.js is a MinGW build,
+  and rolldown (the dashboard's bundler) may not load in it. Then
+  `build_dashboard.sh` builds with the regular Windows Node.js from
+  `C:\Program Files\nodejs` instead, if it is installed. To install it
+  (in PowerShell; the flags skip winget's Store-terms question):
+  `winget install OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements`,
+  then run `install/build_dashboard.sh` again in UCRT64. To use that
+  `npm` in PowerShell itself, call it `npm.cmd`: PowerShell's default
+  execution policy blocks `npm.ps1` (or run
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once).
+- **ARM64 Windows.** MSYS2's UCRT64 tools are x64 builds that run under
+  Windows' x64 emulation, which works. The Windows Node.js is a native
+  ARM64 build there, so its dashboard build needs
+  `@rolldown/binding-win32-arm64-msvc`, which `build_dashboard.sh` fetches.
 - **WSL instead.** On Windows 10/11 with WSL2 you can also run the Arch
   installer inside an Arch Linux WSL distribution, as on a Linux PC. That
   path isn't tested here; the MSYS2 one is.
