@@ -155,7 +155,18 @@ if [ "$RELOCATABLE" = 1 ]; then
 fi
 
 cd "$DMEKLR_DIR"
+# A build left by another Verilator version names that version's include
+# paths in its make dependencies (*.d, *.mk): after an upgrade (brew
+# upgrade) make stops on a header that is gone, so start afresh. Only this
+# build's own files (Verilator's --Mdir is flat): the other builds keep
+# their folders below obj/ and check for themselves.
+_vver="$(verilator --version 2>&1 | head -1)"
+if [ -d "$OBJ" ] && [ "$(cat "$OBJ/.verilator_version" 2>/dev/null)" != "$_vver" ]; then
+    echo "build_live.sh: $OBJ was built by another Verilator version: building it afresh"
+    find "$OBJ" -maxdepth 1 -type f -delete
+fi
 mkdir -p "$OBJ"
+echo "$_vver" > "$OBJ/.verilator_version"
 # Empty stand-in for the first build; gen_state.py writes the real one
 printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, LiveFieldList&) {}\n' \
     > "$OBJ/live_fields.cpp"

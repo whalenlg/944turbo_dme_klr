@@ -156,8 +156,10 @@ else
     FST=0; KEEP_VCD=0     # see the Output note above
     DRIVER="$REPLAY_DIR/replay_main.cpp"
 fi
-# The ROM choice is baked in, so a different one forces a rebuild too
-ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE ${DME_ASM_SEL:-} ${KLR_ASM_SEL:-}"
+# The ROM choice is baked in, so a different one forces a rebuild too, and
+# so does another simulator version (e.g. after brew upgrade)
+if [ "$SIM" = "iverilog" ]; then SIM_VER="$(iverilog -V 2>&1 | head -1)"; else SIM_VER="$(verilator --version 2>&1 | head -1)"; fi
+ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE ${DME_ASM_SEL:-} ${KLR_ASM_SEL:-} $SIM_VER"
 if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
    [ "$(cat "$BIN.rom" 2>/dev/null)" != "$ROM_STAMP" ] || \
    [ -n "$(find "$DRIVER" "$DMEKLR_DIR/bench" "$REPO_DIR/dme/bench" "$REPO_DIR/dme/rtl" \
@@ -171,6 +173,14 @@ if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
             "${DEFINES[@]}" "$DRIVER" > "$OUT_DIR/build.log" 2>&1 \
             || { tail -30 "$OUT_DIR/build.log"; echo "  BUILD FAILED (see $OUT_DIR/build.log)"; exit 1; }
     else
+    # A Verilator build left by another version names that version's
+    # include paths in its make dependencies (Vdme_klr_dashboard_tb*.d, .mk):
+    # after an upgrade, make then stops on a header that is gone. Start
+    # those files afresh (the iverilog .vvp builds here stay).
+    if [ "$(cat "$REPLAY_DIR/obj/.verilator_version" 2>/dev/null)" != "$SIM_VER" ]; then
+        find "$REPLAY_DIR/obj" -maxdepth 1 -type f ! -name '*.vvp' ! -name '*.vvp.rom' -delete
+        echo "$SIM_VER" > "$REPLAY_DIR/obj/.verilator_version"
+    fi
     # VL_TIME_CONTEXT: no sc_time_stamp() needed (its weak default doesn't link on Windows)
     verilator --cc --exe --build --timing -j 0 \
         -O3 --x-assign fast --x-initial fast --noassert \
