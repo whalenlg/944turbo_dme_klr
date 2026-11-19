@@ -178,17 +178,21 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run_lite.sh
 ```
 
-**Windows** (PowerShell, a normal window, not *Run as administrator*:
-that one starts in `C:\WINDOWS\system32`, where downloads are refused).
-On a PC without Node.js and Python, install them first, then open a new
-PowerShell window so it finds `node` and `py`:
+**Windows** (PowerShell, a normal window, not *Run as administrator*):
+one command installs Node.js and Python if they are missing (with
+winget), downloads the latest release, unpacks it in your home folder,
+makes its Python venv, puts a **DME+KLR lite** shortcut on the desktop,
+and starts it with the dashboard open in the browser:
 
 ```powershell
-winget install OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements
-winget install Python.Python.3.12 --source winget --accept-source-agreements --accept-package-agreements
+irm https://raw.githubusercontent.com/whalenlg/944turbo_dme_klr/main/install/install_lite_windows.ps1 | iex
 ```
 
-Then:
+Run it again to update. Afterwards, start it with the desktop shortcut.
+For a particular release or folder, download
+`install/install_lite_windows.ps1` and run
+`powershell -ExecutionPolicy Bypass -File install_lite_windows.ps1 -Version v1.0.1 -Dir C:\dmeklr`
+(`-Help` lists the options). By hand, the same steps are:
 
 ```powershell
 cd $HOME
@@ -200,6 +204,10 @@ cd dmeklr-lite-$V-windows-x86_64
 py -m venv .venv; .venv\Scripts\pip install -r requirements.txt
 .\run_lite.cmd
 ```
+
+(with Node.js and Python installed first, e.g.
+`winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12`,
+then a new PowerShell window).
 
 With the [GitHub CLI](https://cli.github.com) (`gh`) installed, this
 downloads the latest release's archive for one platform on any system

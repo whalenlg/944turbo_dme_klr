@@ -22,6 +22,13 @@ NEEDS
                                   listings are used
 
 SETTING UP (once)
+  Windows, in one go: in PowerShell (a normal window, not "Run as
+  administrator") run
+    irm https://raw.githubusercontent.com/whalenlg/944turbo_dme_klr/main/install/install_lite_windows.ps1 | iex
+  It installs Node.js and Python if they are missing, downloads and unpacks
+  the latest release in your home folder, does step 3, puts a "DME+KLR
+  lite" shortcut on the desktop and starts it. Otherwise, by hand:
+
   1. Unpack the download and open a terminal in the folder it makes,
      dmeklr-lite-<version>-<platform> (this README's folder; on Windows a
      Command Prompt):
