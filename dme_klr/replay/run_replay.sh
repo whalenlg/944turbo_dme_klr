@@ -158,6 +158,17 @@ else
 fi
 # The ROM choice is baked in, so a different one forces a rebuild too
 ROM_STAMP="$DME_ROM_DIR$DME_ROM_FILE $KLR_ROM_DIR$KLR_ROM_FILE ${DME_ASM_SEL:-} ${KLR_ASM_SEL:-}"
+# So is the simulator: after an upgrade (brew upgrade verilator) the old
+# build's make dependencies name the old version's include files, and make
+# stops with "No rule to make target .../verilator/<old>/.../verilated.h".
+# A different version clears the old Verilator build and rebuilds.
+if [ "$SIM" = "iverilog" ]; then SIM_VER=$(iverilog -V 2>&1 | head -1)
+else SIM_VER="$(command -v verilator) $(verilator --version 2>/dev/null)"; fi
+ROM_STAMP="$ROM_STAMP | $SIM_VER"
+if [ "$SIM" = "verilator" ] && [ -e "$BIN" ] && [ "$(sed -n 's/.* | //p' "$BIN.rom" 2>/dev/null)" != "$SIM_VER" ]; then
+    echo "  $SIM_VER is not the Verilator the old build used: clearing it"
+    find "$REPLAY_DIR/obj" -maxdepth 1 -type f ! -name '*.vvp' ! -name '*.vvp.rom' -delete 2>/dev/null
+fi
 if [ "${REBUILD:-0}" = "1" ] || [ ! -e "$BIN" ] || \
    [ "$(cat "$BIN.rom" 2>/dev/null)" != "$ROM_STAMP" ] || \
    [ -n "$(find "$DRIVER" "$DMEKLR_DIR/bench" "$REPO_DIR/dme/bench" "$REPO_DIR/dme/rtl" \
