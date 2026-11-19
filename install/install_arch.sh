@@ -18,7 +18,8 @@
 #    --venv             put the Python packages in a venv at <repo>/944venv
 #                       (pip, install/requirements.txt) instead of pacman
 #    --with-dashboard   also clone whalenlg/dme-dashboard into <repo>/dashboard
-#                       and run npm install there (to run the page locally)
+#                       and build it there (npm install, npm run build:lite;
+#                       the bridge then serves it at 127.0.0.1:8951/?live)
 #    --no-gtkwave       skip GTKWave (only needed to view waveforms)
 #    --skip-tests       don't run the smoke tests at the end (they take a
 #                       few minutes, mostly the Verilator compile)
@@ -116,8 +117,11 @@ if [ "$DASHBOARD" = 1 ]; then
     else
         run git clone "$DASHBOARD_URL" "$REPO_DIR/dashboard"
     fi
-    if [ "$DRY" = 1 ]; then echo "+ (cd $REPO_DIR/dashboard && npm install)"
-    else (cd "$REPO_DIR/dashboard" && npm install); fi
+    # npm install, plus the bundler's native add-on npm tends to leave out,
+    # then npm run build:lite (dist-lite/, which bridge.mjs serves). A failed
+    # build only warns: the published dashboard works with the bridge too.
+    if [ "$DRY" = 1 ]; then echo "+ $INSTALL_DIR/build_dashboard.sh $REPO_DIR/dashboard"
+    else "$INSTALL_DIR/build_dashboard.sh" "$REPO_DIR/dashboard" || DASH_FAILED=1; fi
 fi
 
 # ── Check ─────────────────────────────────────────────────────────────────
@@ -149,3 +153,11 @@ For example:
     cd $REPO_DIR/dme_klr && ./v_run_dashboard_tests.sh warm_idle
     cd $REPO_DIR/dme_klr/live && ./build_live.sh && node bridge.mjs
 EOF
+# Which page to open for live mode
+if [ -f "$REPO_DIR/dashboard/dist-lite/index.html" ]; then
+    echo "With bridge.mjs running, open http://127.0.0.1:8951/?live (the local dashboard)."
+else
+    echo "With bridge.mjs running, open https://whalenlg.github.io/dme-dashboard/ and press LIVE."
+fi
+[ "${DASH_FAILED:-0}" = 1 ] && warn "the local dashboard didn't build (see above); install/build_dashboard.sh tries again"
+true
