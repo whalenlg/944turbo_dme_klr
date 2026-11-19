@@ -7,7 +7,8 @@
 //  test to that host's bridge, writes its progress to <out>/<test>.log
 //  as "t=<ms> ms" lines (so the RUN REGRESSIONS panel's bars move), and
 //  when it ends fetches <test>.dash.log and the whole log into <out>
-//  (and, for iverilog, the waveform into <out>/fst/<test>.fst),
+//  (and, for iverilog, the waveform into <out>/fst/<test>.fst; for a
+//  log replay, its <test>.report.txt and <test>.mismatches.xlsx),
 //  where the runner validates it as if it had run here.
 //
 //  Usage:
@@ -158,7 +159,9 @@ function rom(cpu) {
 async function main() {
   mkdirSync(OUT, { recursive: true });
   const progress = join(OUT, `${TEST}.log`);
-  for (const f of [progress, `${progress}.gz`, join(OUT, `${TEST}.dash.log`)]) rmSync(f, { force: true });
+  // (a replay's report too: an old one here would stand for this run's)
+  for (const f of [progress, `${progress}.gz`, join(OUT, `${TEST}.dash.log`),
+                   join(OUT, `${TEST}.report.txt`), join(OUT, `${TEST}.mismatches.xlsx`)]) rmSync(f, { force: true });
   let r;
   try {
     r = await call('POST', '/regress/run', {
@@ -203,6 +206,18 @@ async function main() {
     rmSync(progress, { force: true });
     if (l.body) {
       if (LOGMODE === 'raw') save(progress, gunzipSync(l.body)); else save(`${progress}.gz`, l.body);
+    }
+    // A log replay's report (replay/run_replay.sh): the validator's verdict
+    // comes from it, so without it the test fails as "did not finish".
+    // Other tests have none (404). Its mismatches workbook is a nicety
+    if (/^replay_/.test(TEST)) {
+      const rep = await download('report', `/regress/run/${jobId}/report`);
+      if (rep.body) save(join(OUT, `${TEST}.report.txt`), rep.body);
+      else say(`no replay report (${rep.status})`);
+      try {
+        const mm = await download('mismatches', `/regress/run/${jobId}/mismatches`);
+        if (mm.body) save(join(OUT, `${TEST}.mismatches.xlsx`), mm.body);
+      } catch (e) { say(`no mismatches workbook (${e.code ?? e.message})`); }
     }
     // iverilog's waveform, where run_dashboard_tests.sh leaves it here
     // (a test whose waveform doesn't arrive still counts)
