@@ -108,10 +108,39 @@ command -v prlctl >/dev/null 2>&1 \
     || die "prlctl not found: it comes with Parallels Desktop Pro or Business edition"
 prlctl list -a -o name 2>/dev/null | tail -n +2 | sed 's/ *$//' | grep -qxF "$SRC" \
     || die "no VM called '$SRC' (prlctl list -a)"
+# Standard edition has prlctl, but only "list" works: snapshot-list, clone
+# and exec say "available only in ... Pro or Business Edition"
+if printf '%s' "$(prlctl snapshot-list "$SRC" 2>&1)" | grep -Eqi 'only in Parallels Desktop.*(Pro|Business)'; then
+    die "this Parallels Desktop is the Standard edition; its prlctl can't take snapshots, clone or run commands in a VM. The Windows install tests need Pro or Business edition"
+fi
 
 # The snapshot's ID: given as an ID, found by name, or the current one
 # (snapshot-list marks it with *)
 snap_ids() { prlctl snapshot-list "$SRC" 2>/dev/null | tail -n +2 | grep -o '{[0-9a-fA-F-]*}'; }
+# "ID<tab>name" for each snapshot: from prlctl's JSON (-j) when it has it,
+# otherwise from the "Name:" line of each snapshot's details (-i ID)
+snap_table() {
+    local js
+    js="$(prlctl snapshot-list "$SRC" -j 2>/dev/null)"
+    local rows=""
+    if [ -n "$js" ] && command -v node >/dev/null 2>&1; then
+        rows="$(printf %s "$js" | node -e '
+            let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+              let j; try { j = JSON.parse(s); } catch { process.exit(1); }
+              const rows = Array.isArray(j) ? j.map(v => [v.id ?? v.ID ?? v.uuid, v]) : Object.entries(j);
+              for (const [id, v] of rows) {
+                const name = v && typeof v === "object" ? (v.name ?? v.Name ?? "") : v;
+                if (id) console.log(`{${String(id).replace(/[{}]/g, "")}}\t${String(name).trim()}`);
+              }
+            });' 2>/dev/null)"
+        [ -n "$rows" ] && { printf '%s\n' "$rows"; return 0; }
+    fi
+    local _id
+    for _id in $(snap_ids); do
+        printf '%s\t%s\n' "$_id" "$(prlctl snapshot-list "$SRC" -i "$_id" 2>/dev/null | tr -d '\r' \
+            | sed -n 's/^[[:space:]]*[Nn]ame[[:space:]]*:[[:space:]]*//p' | head -1)"
+    done
+}
 if [ -z "$SNAP" ]; then
     SNAP_ID="$(prlctl snapshot-list "$SRC" 2>/dev/null | grep '\*' | grep -o '{[0-9a-fA-F-]*}' | tail -1)"
     [ -n "$SNAP_ID" ] || die "$SRC has no current snapshot; take one of the clean VM, or pass --snapshot"
@@ -119,14 +148,22 @@ elif [[ "$SNAP" =~ ^\{?[0-9a-fA-F-]{36}\}?$ ]]; then
     SNAP_ID="{${SNAP//[\{\}]/}}"
 else
     SNAP_ID=""
-    for _id in $(snap_ids); do
-        _n="$(prlctl snapshot-list "$SRC" -i "$_id" 2>/dev/null | sed -n 's/^ *Name: *//p' | head -1)"
-        # (names match ignoring case: "clean" finds "Clean")
-        [ "$(printf %s "$_n" | tr A-Z a-z)" = "$(printf %s "$SNAP" | tr A-Z a-z)" ] && { SNAP_ID="$_id"; break; }
-    done
-    [ -n "$SNAP_ID" ] || die "$SRC has no snapshot named '$SNAP' (prlctl snapshot-list $SRC)"
+    # Names match ignoring case and outer spaces: "clean" finds "Clean"
+    want="$(printf %s "$SNAP" | sed 's/^ *//; s/ *$//' | tr A-Z a-z)"
+    while IFS="$(printf '\t')" read -r _id _n; do
+        [ -n "$_id" ] || continue
+        [ "$(printf %s "$_n" | sed 's/^ *//; s/ *$//' | tr A-Z a-z)" = "$want" ] && { SNAP_ID="$_id"; break; }
+    done <<EOT
+$(snap_table)
+EOT
+    if [ -z "$SNAP_ID" ]; then
+        echo "Snapshots of $SRC that this script sees (ID, name):" >&2
+        snap_table | sed 's/^/    /' >&2
+        prlctl snapshot-list "$SRC" 2>&1 | sed 's/^/    | /' >&2
+        die "$SRC has no snapshot named '$SNAP' (pass --snapshot with one of the names or IDs above)"
+    fi
 fi
-snap_ids | grep -qxF "$SNAP_ID" || die "$SRC has no snapshot $SNAP_ID (prlctl snapshot-list $SRC)"
+snap_ids | grep -qixF "$SNAP_ID" || die "$SRC has no snapshot $SNAP_ID (prlctl snapshot-list $SRC)"
 
 if [ -z "$OUT" ]; then
     # shellcheck source=../paths.sh

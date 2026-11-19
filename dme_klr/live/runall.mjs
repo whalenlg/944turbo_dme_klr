@@ -224,6 +224,12 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
       const r = spawnSync('prlctl', ['list', '-a', '-o', 'name'], { encoding: 'utf8' });
       const names = (r.stdout ?? '').split('\n').slice(1).map(x => x.trim());
       if (!names.includes(WIN_VM)) win = `no Parallels VM called "${WIN_VM}" (DMEKLR_WIN_VM; snapshot DMEKLR_WIN_SNAPSHOT, now "${WIN_SNAP}")`;
+      else {
+        // Standard edition: its prlctl lists VMs but can't snapshot, clone or exec
+        const sl = spawnSync('prlctl', ['snapshot-list', WIN_VM], { encoding: 'utf8' });
+        if (/only in Parallels Desktop.*(Pro|Business)/i.test(`${sl.stdout ?? ''}${sl.stderr ?? ''}`))
+          win = 'needs Parallels Desktop Pro or Business (this is the Standard edition)';
+      }
     }
     const arch = have('docker') || have('podman') ? '' : 'needs Docker or Podman';
     itCache = [
