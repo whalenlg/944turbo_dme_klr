@@ -208,7 +208,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   let itCache = null, itAt = 0;
   function installTests() {
     if (itCache && Date.now() - itAt < 60000) return itCache;
-    const mac = tart ? '' : 'needs macOS with Tart';
+    const mac = tart ? '' : 'needs macOS with Tart (brew tap openai/tools && brew install openai/tools/tart)';
     let win = '';
     if (!have('prlctl')) win = 'needs Parallels Desktop Pro or Business (prlctl)';
     else {

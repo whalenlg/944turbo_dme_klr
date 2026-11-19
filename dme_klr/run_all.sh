@@ -488,7 +488,7 @@ else
         case "$t" in
             macos-install|macos-lite)
                 if [ "$(uname -s)" != Darwin ] || ! command -v tart >/dev/null 2>&1; then
-                    why="needs macOS with Tart (brew install cirruslabs/cli/tart)"
+                    why="needs macOS with Tart (brew tap openai/tools && brew install openai/tools/tart)"
                 fi
                 CMD=(bash "$ROOT/install/test_macos_vm.sh" --name "dmeklr-runall-${t#macos-}" --replace --out "$T_OUT")
                 [ "$t" = macos-lite ] && CMD+=(--lite build) ;;
