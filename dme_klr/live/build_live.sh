@@ -155,7 +155,18 @@ if [ "$RELOCATABLE" = 1 ]; then
 fi
 
 cd "$DMEKLR_DIR"
+# After a Verilator upgrade the old build's make dependencies name the old
+# version's include files ("No rule to make target .../verilated.h"): a
+# different Verilator than the last build's starts from a clean folder
+_vlver="$(command -v verilator) $(verilator --version 2>/dev/null)"
+if [ -d "$OBJ" ] && [ "$(cat "$OBJ/.verilator_version" 2>/dev/null)" != "$_vlver" ]; then
+    echo "$_vlver is not the Verilator the old build in $OBJ used: clearing it"
+    # this build's own files only: $LIVE_DIR/obj also holds the tests/,
+    # tests_rt/ and lite/ builds, each with its own check
+    find "$OBJ" -maxdepth 1 -type f -delete
+fi
 mkdir -p "$OBJ"
+echo "$_vlver" > "$OBJ/.verilator_version"
 # Empty stand-in for the first build; gen_state.py writes the real one
 printf '#include "live_fields.h"\nvoid liveFields(Vdme_klr_dashboard_tb__Syms*, LiveFieldList&) {}\n' \
     > "$OBJ/live_fields.cpp"
