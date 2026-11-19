@@ -667,11 +667,15 @@ either EPROM.
 
 **Saving the edits as an image.** At the bottom of the list of edits:
 
-1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image is kept as
-   `<name>.mem` with the uploaded images (`obj/roms/<cpu>/`), with the list of
-   edits beside it (`<name>.mem.edits.txt`), and as **`<name>.bin`**, the raw
-   EPROM contents (8192 bytes DME, 4096 KLR, in address order) for an EPROM
-   programmer. **⬇ \<name\>.bin** downloads it. With **run it now** ticked the
+1. **SAVE AS NEW IMAGE**: type a name and **SAVE**. The image gets a folder
+   of its own beside the repo's images, `bin_images/<cpu>/edited/<name>/`,
+   holding `<name>.mem`, the list of edits (`<name>.mem.edits.txt`),
+   **`<name>.bin`**, the raw EPROM contents (8192 bytes DME, 4096 KLR, in
+   address order) for an EPROM programmer, and **`<name>.xlsx`**, its own
+   disassembly workbook: the original image's workbook with the edited code
+   decoded again and highlighted, and a sheet of the bytes changed (written a
+   few seconds after the save). Images saved before this, in `obj/roms/<cpu>/`,
+   are still found. **⬇ \<name\>.bin** downloads it. With **run it now** ticked the
    sim switches to it in place (paused). It is then in every image list:
    **LOAD .mem**, **COMPARE IMAGES**, **RUN REGRESSIONS** and setups. Its
    debug listing is the original image's, with the edited places decoded again

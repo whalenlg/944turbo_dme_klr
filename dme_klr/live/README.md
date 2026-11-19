@@ -55,11 +55,12 @@ decoded again where it was edited (`disasm.mjs`, the 8051/8048 decoders of
 
 `GET /edits/<cpu>[?name=<file>]` lists what an edited image changed (text to
 copy: each place's code before and after). `POST /edits/<cpu>/save`
-`{name, use}` keeps it as `obj/roms/<cpu>/<name>.mem` and `<name>.bin` (raw,
-for an EPROM programmer; `GET /image/<cpu>.bin[?name=]` serves any image that
-way), with `.edits.txt`, and
-`.base` naming the original, whose workbook lists it here and in
-`asm_select.sh`). Setups are named DME + KLR pairs in `obj/roms/setups.json`:
+`{name, use}` keeps it in a folder of its own, `bin_images/<cpu>/edited/<name>/`:
+`<name>.mem` and `<name>.bin` (raw, for an EPROM programmer;
+`GET /image/<cpu>.bin[?name=]` serves any image that way), with `.edits.txt`,
+`.base` naming the original (whose workbook lists it here and in
+`asm_select.sh`), and `<name>.xlsx`, its own workbook made from the original's
+(`build_variant.py` / `build_klr_variant.py`, in the background). Setups are named DME + KLR pairs in `obj/roms/setups.json`:
 `GET|POST /setups`, `DELETE /setups/<name>`, `POST /setups/<name>/load[?reset=1]`;
 RUN REGRESSIONS lists the saved ones as ROM pairs.
 
