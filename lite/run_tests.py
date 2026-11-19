@@ -137,6 +137,7 @@ def step_clocks(sim_ns, pct):
 
 
 TEMPFAIL = 75   # remote_test.mjs: the host couldn't take the test
+GIVEBACK = 76   # remote_test.mjs: it ran there, but its logs didn't come back
 
 
 def run_remote(name, o, host):
@@ -155,6 +156,8 @@ def run_remote(name, o, host):
     secs = time.time() - t0
     if rc == TEMPFAIL:
         return None
+    if rc == GIVEBACK:
+        return 'giveback'
     # (its exit is 1 when it ran but the host's run_tests.py judged it FAIL:
     # the verdict is made here, from the logs it brought back)
     if not os.path.exists(os.path.join(LOGDIR, f'{name}.dash.log')):
@@ -318,6 +321,7 @@ def main():
     limit = {None: o['jobs'], **{h['name']: int(h['threads']) for h in hosts}}
     running = {k: 0 for k in limit}
     cancelled = []
+    gave = {}   # host → tests whose logs didn't come back
     by_name = {h['name']: h for h in hosts}
 
     def job(n, host):
@@ -331,6 +335,16 @@ def main():
                 off.add(host['name'])
                 queue.insert(0, n)
                 say(f'  [REQUEUE] {n}  {host["name"]} dropped out (see {n}.remote.log)')
+                return
+            if r == 'giveback':
+                # its logs didn't come back: run it again; the host keeps
+                # getting tests until this happens 3 times
+                gave[host['name']] = gave.get(host['name'], 0) + 1
+                if gave[host['name']] >= 3:
+                    off.add(host['name'])
+                queue.insert(0, n)
+                say(f'  [REQUEUE] {n}  {host["name"]} ran it but its logs didn\'t come back '
+                    f'({gave[host["name"]]} of 3; see {n}.remote.log)')
                 return
             name, v, detail, secs = r
             res.append((name, v, detail))

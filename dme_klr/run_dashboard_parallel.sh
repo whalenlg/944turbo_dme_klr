@@ -326,7 +326,7 @@ validate_one() {
 COMPLETED=0
 declare -a SIM_FAILED=()
 declare -a SLOT_HOST=() SLOT_PID=() SLOT_TEST=()
-declare -a H_NAME=() H_URL=() H_TOKEN=() H_OFF=() H_THREADS=()
+declare -a H_NAME=() H_URL=() H_TOKEN=() H_OFF=() H_THREADS=() H_GIVEBACK=()
 for ((i = 0; i < WORKERS; i++)); do SLOT_HOST+=(""); SLOT_PID+=(""); SLOT_TEST+=(""); done
 if [ -n "${DMEKLR_REGRESS_HOSTS:-}" ] && [ -f "$DMEKLR_REGRESS_HOSTS" ]; then
     if [ ${#EXTRA_FLAGS[@]} -gt 0 ] || [ "${VCD_ENABLE:-}" = "1" ]; then
@@ -494,6 +494,17 @@ reap_finished() {
             H_OFF[$h]=1
             QUEUE=("$name" ${QUEUE[@]+"${QUEUE[@]}"})
             printf "  [REQUEUE] %-22s %s dropped out (see %s)\n" "$name" "${H_NAME[$h]}" "$LOGDIR/${name}.runner.log"
+            continue
+        fi
+        if [ -n "$h" ] && [ "$status" -eq 76 ]; then
+            # it ran there but its logs wouldn't come back (remote_test.mjs
+            # tried several times): back in the queue; the host keeps
+            # getting tests until this happens 3 times
+            H_GIVEBACK[$h]=$(( ${H_GIVEBACK[$h]:-0} + 1 ))
+            [ "${H_GIVEBACK[$h]}" -ge 3 ] && H_OFF[$h]=1
+            QUEUE=("$name" ${QUEUE[@]+"${QUEUE[@]}"})
+            printf "  [REQUEUE] %-22s %s ran it but its logs didn't come back (%d of 3; see %s)\n" \
+                "$name" "${H_NAME[$h]}" "${H_GIVEBACK[$h]}" "$LOGDIR/${name}.runner.log"
             continue
         fi
         if [ $status -ne 0 ]; then
