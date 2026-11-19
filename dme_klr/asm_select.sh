@@ -97,10 +97,15 @@ sys.exit(0 if parts(sys.argv[1]) == parts(sys.argv[2]) else 1)
 PY
 }
 
-_asm_tables_stale() {    # <xlsx> <tables dir>   (uses _c_*)
-    local _f
+# A tables directory is stale when its workbook, or one of the scripts that
+# write the tables (a pull that fixes how they write a cell), is newer
+_asm_tables_stale() {    # <xlsx> <tables dir>   (uses _c_*, and _repo from _asm_select)
+    local _f _g
+    local _gens=("$_repo/dme/disassemble/xlsxinstr2veriloghex.py" "$_repo/dme/disassemble/xlsx2veriloghex.py"
+                 "$_repo/dme_klr/live/asm_full.py")
     for _f in "${_c_files[@]}"; do
         [ "$_c_dis/$1" -nt "$2/$_f" ] && return 0
+        for _g in "${_gens[@]}"; do [ "$_g" -nt "$2/$_f" ] && return 0; done
     done
     return 1
 }
