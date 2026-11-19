@@ -14,6 +14,8 @@
    -MsysRoot DIR    where MSYS2 is or goes (default C:\msys64)
    -Clone DIR       no checkout yet: clone the repo into DIR first (with
                     MSYS2's git) and install from there
+   -Ref REF         with -Clone: the branch or tag to check out (default:
+                    the default branch)
    -Venv            also make a Python venv at <repo>\944venv
    -WithDashboard   also clone whalenlg/dme-dashboard and build it, so the
                     bridge serves it at http://127.0.0.1:8951/?live
@@ -30,6 +32,7 @@
 param(
     [string]$MsysRoot = 'C:\msys64',
     [string]$Clone = '',
+    [string]$Ref = '',
     [switch]$Venv,
     [switch]$WithDashboard,
     [switch]$NoGtkwave,
@@ -135,7 +138,8 @@ if ($Clone) {
         Step "Cloning $RepoUrl into $Repo"
         $null = Invoke-Msys 'pacman -S --needed --noconfirm git'
         $unixRepo = (& (Join-Path $MsysRoot 'usr\bin\cygpath.exe') -u $Repo)
-        $rc = Invoke-Msys "git clone '$RepoUrl' '$unixRepo'"
+        $branch = if ($Ref) { "--branch '$Ref' " } else { '' }
+        $rc = Invoke-Msys "git clone $branch'$RepoUrl' '$unixRepo'"
         if ($rc -ne 0) { Die "git clone failed (exit $rc)" }
     }
 } else {

@@ -309,6 +309,7 @@ dashboard in any Windows browser connects to it the same way.
 |---|---|
 | `-MsysRoot DIR` | Where MSYS2 is, or goes (default `C:\msys64`) |
 | `-Clone DIR` | Clone the repo into `DIR` first and install from there |
+| `-Ref REF` | With `-Clone`: the branch or tag to check out |
 | `-Venv` | Also make `944venv/`, a venv that sees the pacman packages (`--venv` for `install_msys2.sh`) |
 | `-WithDashboard` | Also clone `whalenlg/dme-dashboard` into `dashboard/` and build it (`install/build_dashboard.sh`), so `bridge.mjs` serves it at http://127.0.0.1:8951/?live |
 | `-NoGtkwave` | Skip GTKWave |
@@ -709,6 +710,50 @@ screenshots are in the workflow's uploaded logs. It runs with and without `-Venv
 touch `install/`, and by hand from the Actions tab. You can run
 `install/test_windows_install.sh` on your own Windows install too, after
 the installer.
+
+### Testing the Windows install on a clean VM (Parallels)
+
+`install/test_windows_vm.sh` runs on a Mac with Parallels Desktop (Pro or
+Business edition, for the `prlctl` command). It makes a linked clone of a
+Windows VM from a clean snapshot, runs an installer in it as a new user
+would, checks the result, copies the logs back and deletes the clone. The
+VM you clone from and its snapshot stay as they are.
+
+Set up the VM to clone from once:
+
+1. A Windows 11 VM with **Parallels Tools** installed.
+2. Its user signed in automatically at startup. In Windows, run
+   `netplwiz`, untick *Users must enter a user name and password*, or use
+   Settings > Accounts > Sign-in options. The test runs its commands as
+   the signed-in user (`prlctl exec --current-user`), so that winget works
+   as it does for a person.
+3. Nothing of this project installed, and no Node.js or Python, then a
+   snapshot (Actions > Take Snapshot, e.g. named *clean*).
+
+Then:
+
+```sh
+install/test_windows_vm.sh --vm "Windows 11" --snapshot clean          # the lite one-liner
+install/test_windows_vm.sh --vm "Windows 11" --snapshot clean --dev    # install_windows.ps1
+```
+
+The lite test runs the manual's one-line installer
+(`install_lite_windows.ps1`), then checks:
+- the package, its venv and the desktop shortcut are in place;
+- `run_lite.cmd`'s bridge serves `http://127.0.0.1:8951/?live`;
+- the bridge offers RUN REGRESSIONS;
+- one regression test passes (`--test`, by default `warm_idle_5s`).
+
+It takes about 10 minutes. `--dev` runs
+`install_windows.ps1 -Clone C:\dmeklr\944turbo_dme_klr -Ref <ref> -Yes`,
+then checks that the checkout is clean and that
+`install/test_windows_install.sh` passes. It takes 30 to 60 minutes.
+
+`--ref` takes the installer (and, with `--dev`, the checkout) from a
+branch or tag instead of `main`. Push a branch first to test it before
+merging. `--version` picks the lite release, and `--keep` leaves the clone
+running to look around in. Logs go to `$DMEKLR_TMP/windows_vm_test/`.
+See `install/test_windows_vm.sh --help`.
 
 ### Dependencies
 
