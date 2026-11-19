@@ -22,6 +22,13 @@ NEEDS
                                   listings are used
 
 SETTING UP (once)
+  Windows, in one go: in PowerShell (a normal window, not "Run as
+  administrator") run
+    irm https://raw.githubusercontent.com/whalenlg/944turbo_dme_klr/main/install/install_lite_windows.ps1 | iex
+  It installs Node.js and Python if they are missing, downloads and unpacks
+  the latest release in your home folder, does step 3, puts a "DME+KLR
+  lite" shortcut on the desktop and starts it. Otherwise, by hand:
+
   1. Unpack the download and open a terminal in the folder it makes,
      dmeklr-lite-<version>-<platform> (this README's folder; on Windows a
      Command Prompt):
@@ -29,7 +36,11 @@ SETTING UP (once)
        cd dmeklr-lite-<version>-<platform>
      (macOS may already have unpacked it, or left a .tar: tar -xf works
      for that. On Windows: right-click the .zip, Extract All.)
-  2. Install Node.js 18 or newer from https://nodejs.org.
+  2. Install Node.js 18 or newer from https://nodejs.org. On Windows,
+     winget does it (and Python for step 3), in a PowerShell window:
+       winget install OpenJS.NodeJS.LTS --source winget --accept-source-agreements --accept-package-agreements
+       winget install Python.Python.3.12 --source winget --accept-source-agreements --accept-package-agreements
+     then open a new window, so it finds node and py.
   3. Install the Python packages into a virtual environment (.venv) in
      this folder:
        macOS / Linux:   python3 -m venv .venv

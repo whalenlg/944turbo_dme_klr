@@ -178,9 +178,25 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run_lite.sh
 ```
 
-**Windows** (PowerShell):
+**Windows** (PowerShell, a normal window, not *Run as administrator*):
+one command installs Node.js and Python if they are missing (with
+winget), downloads the latest release, unpacks it in your home folder,
+makes its Python venv, puts a **DME+KLR lite** shortcut on the desktop,
+and starts it with the dashboard open in the browser:
 
 ```powershell
+irm https://raw.githubusercontent.com/whalenlg/944turbo_dme_klr/main/install/install_lite_windows.ps1 | iex
+```
+
+Run it again to update. Afterwards, start it with the desktop shortcut.
+For a particular release or folder, download
+`install/install_lite_windows.ps1` and run
+`powershell -ExecutionPolicy Bypass -File install_lite_windows.ps1 -Version v1.0.1 -Dir C:\dmeklr`
+(`-Help` lists the options). By hand, the same steps are:
+
+```powershell
+cd $HOME
+$ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest is very slow without it
 $V = "v1.0.1"
 Invoke-WebRequest https://github.com/whalenlg/944turbo_dme_klr/releases/download/$V/dmeklr-lite-$V-windows-x86_64.zip -OutFile dmeklr-lite-$V-windows-x86_64.zip
 Expand-Archive dmeklr-lite-$V-windows-x86_64.zip -DestinationPath .
@@ -188,6 +204,10 @@ cd dmeklr-lite-$V-windows-x86_64
 py -m venv .venv; .venv\Scripts\pip install -r requirements.txt
 .\run_lite.cmd
 ```
+
+(with Node.js and Python installed first, e.g.
+`winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12`,
+then a new PowerShell window).
 
 With the [GitHub CLI](https://cli.github.com) (`gh`) installed, this
 downloads the latest release's archive for one platform on any system
@@ -209,6 +229,10 @@ Notes:
   of your platform's block.
 * `run_lite.sh` and `run_lite.cmd` use `.venv` by themselves when it is in
   the package folder; there is nothing to activate.
+* **Windows on ARM** (a Windows VM on an Apple Silicon Mac, for one): the
+  x86_64 package runs under Windows' x64 emulation. If `pip install` fails
+  there (a package without an ARM64 build), leave the venv out:
+  `run_lite.cmd` still runs, and only the MAPS tabs' graphs need Python.
 * **Debian / Ubuntu:** if `python3 -m venv` says *ensurepip is not
   available*, run `sudo apt install python3-venv` and repeat the line.
 
