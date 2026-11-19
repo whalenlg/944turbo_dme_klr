@@ -601,13 +601,17 @@ module i8051_core (
     always @(posedge clk) tl1_dly <= tl1;
 
     // ── Baud clock: fixed fosc/64 or fosc/32 (mode 2) ────────────────
-    reg [5:0] m2_cnt;
+    // The TX and RX engines below take 16 ticks per bit, so for a bit
+    // time of 64 oscillator clocks (SMOD=0) or 32 (SMOD=1) the tick comes
+    // every 4 or 2 clocks. (It used to come every 64 / 32, which made a
+    // mode-2 bit 16x too long: 1024 clocks, and init_serial's one byte
+    // held the boot for ~1.9 ms instead of ~0.12 ms.)
+    reg [1:0] m2_cnt;
     wire      baud_m2_pulse;
-    // SMOD=0 → divide by 64; SMOD=1 → divide by 32
-    assign baud_m2_pulse = pcon[7] ? (m2_cnt == 6'd31) : (m2_cnt == 6'd63);
+    assign baud_m2_pulse = pcon[7] ? m2_cnt[0] : (m2_cnt == 2'd3);
     always @(posedge clk or negedge res_n)
-        if (!res_n) m2_cnt <= 6'd0;
-        else        m2_cnt <= baud_m2_pulse ? 6'd0 : m2_cnt + 1'b1;
+        if (!res_n) m2_cnt <= 2'd0;
+        else        m2_cnt <= m2_cnt + 1'b1;
 
     // Select baud source based on mode
     wire [1:0] uart_mode = {scon[7], scon[6]};
