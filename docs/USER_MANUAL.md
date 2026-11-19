@@ -1232,9 +1232,9 @@ the same speed; the machine they were measured on has only 4.
 | `cl_ac_halfway` | 20 s | 14 min | Warm closed-loop idle with the AC switched on halfway through |
 | `cl_idle_controlled_by_isv` | 45 s | 31 min | As `cl_ac_halfway`, but with the idle valve's bypass air modelled so the firmware's idle control has to bring RPM back |
 | `overrun_cutoff` | 50 s | 35 min | Hold about 2100 rpm, then lift off: the firmware should cut fuel while coasting and bring it back near idle |
-| `cl_serial_peek_idle` | 30 s | 21 min | `cl_warm_idle` with the serial diagnostic tester connected from boot. From 20 s the tester's peek address (7Ah) is walked through internal RAM 00h to 1Fh, and each byte the DME sends back on its serial line must match RAM |
-| `cl_serial_peek_3000` | 30 s | 21 min | The same peek walk on the `cl_ramp_to_3000` run, from 24 s |
-| `cl_serial_peek_6000` | 40 s | 28 min | The same peek walk on the `cl_ramp_to_6000` run, from 34 s |
+| `cl_serial_peek_idle` | 30 s | 21 min | `cl_warm_idle` with the serial diagnostic tester connected from boot. From 20 s the tester's peek address (7Ah) is walked through internal RAM 10h to 62h, then 7Ah to 7Fh, and each byte the DME sends back on its serial line must match RAM |
+| `cl_serial_peek_3000` | 30 s | 21 min | The same peek walk on the `cl_ramp_to_3000` run, from 20 s |
+| `cl_serial_peek_6000` | 40 s | 28 min | The same peek walk on the `cl_ramp_to_6000` run, from 20 s |
 
 ### <a id="tests-open-loop-rpm-sweeps-ignition-and-idle-valve"></a>Open-loop RPM sweeps, ignition and idle valve
 

@@ -710,7 +710,7 @@ module dme_klr_dashboard_tb;
         if ($value$plusargs("ser_peek=%h", v))   live_ser_peek   = v[7:0];
         if (`OPT_SER_PEEK_WALK) begin      // see SER_PEEK_WALK below
             live_ser_tester = 8'd1;
-            live_ser_peek   = 8'h00;
+            live_ser_peek   = 8'h10;
         end
     end
     wire ser_clk  = u_dme.i8051_top.u_cpu.clk;
@@ -819,8 +819,8 @@ module dme_klr_dashboard_tb;
         end
     end
 
-    // ── SER_PEEK_WALK: read iram 00-1Fh through the tester's peek ──
-    // The tester is on from t=0 and its peek address starts at 00. The
+    // ── SER_PEEK_WALK: read iram 10h-62h and 7Ah-7Fh through the peek ──
+    // The tester is on from t=0 and its peek address starts at 10h. The
     // DME reads the peek byte at 0x1EC8 (mov A,@R1 with R1 = 7Ah), so
     // the testbench samples 7Ah and RAM[7Ah] on every cycle the PC sits
     // there (the last sample before it moves is the value the DME read;
@@ -829,15 +829,18 @@ module dme_klr_dashboard_tb;
     // wait for its target RPM) whose sample shows 7Ah = the address under test,
     // the peek byte decoded from TXD is checked against that sample:
     //   DME: [SERPEEK] <ms>,<addr>,<peek byte from TXD>,<RAM>,<ok|BAD>
-    // then the peek moves to the next address. After 1Fh:
-    //   DME: [SERPEEK] DONE pass=<n> fail=<n> bytes=<00h..1Fh read>
-    reg  [7:0] spw_addr = 8'h00;         // address under test
+    // then the peek moves to the next address: 10h..62h, then 7Ah..7Fh
+    // (at 7Ah the peek reads its own address back). After 7Fh:
+    //   DME: [SERPEEK] DONE pass=<n> fail=<n> 10-62=<bytes> 7A-7F=<bytes>
+    localparam [7:0] SPW_FIRST = 8'h10, SPW_GAP_LO = 8'h62, SPW_GAP_HI = 8'h7A,
+                     SPW_LAST  = 8'h7F;
+    reg  [7:0] spw_addr = SPW_FIRST;     // address under test
     reg  [7:0] spw_snap_a = 8'h00, spw_snap_v = 8'h00;
     reg        spw_done = 1'b0;
     integer    spw_pass = 0, spw_fail = 0;
-    reg  [7:0] spw_bytes [0:31];
-    reg [255:0] spw_dump;
+    reg  [7:0] spw_bytes [0:127];
     integer    spw_j;
+    wire [7:0] spw_next = (spw_addr == SPW_GAP_LO) ? SPW_GAP_HI : spw_addr + 8'd1;
     always @(posedge ser_clk) begin
         if (u_dme.i8051_top.u_cpu.pc == 16'h1EC8) begin
             spw_snap_a <= u_dme.i8051_top.u_cpu.iram[7'h7A];
@@ -852,18 +855,21 @@ module dme_klr_dashboard_tb;
             `DME_KLR_MS >= `VAL_SER_PEEK_WALK_MS) begin
             $display("DME: [SERPEEK] %0d,%02h,%02h,%02h,%0s", `DME_KLR_MS, spw_addr,
                      ser_buf[3], spw_snap_v, (ser_buf[3] == spw_snap_v) ? "ok" : "BAD");
-            spw_bytes[spw_addr[4:0]] = ser_buf[3];
+            spw_bytes[spw_addr[6:0]] = ser_buf[3];
             if (ser_buf[3] == spw_snap_v) spw_pass = spw_pass + 1;
             else                          spw_fail = spw_fail + 1;
-            if (spw_addr == 8'h1F) begin
+            if (spw_addr == SPW_LAST) begin
                 spw_done <= 1'b1;
-                for (spw_j = 0; spw_j < 32; spw_j = spw_j + 1)
-                    spw_dump[255 - spw_j*8 -: 8] = spw_bytes[spw_j];
-                $display("DME: [SERPEEK] DONE pass=%0d fail=%0d bytes=%064h",
-                         spw_pass, spw_fail, spw_dump);
+                $write("DME: [SERPEEK] DONE pass=%0d fail=%0d 10-62=", spw_pass, spw_fail);
+                for (spw_j = SPW_FIRST; spw_j <= SPW_GAP_LO; spw_j = spw_j + 1)
+                    $write("%02h", spw_bytes[spw_j]);
+                $write(" 7A-7F=");
+                for (spw_j = SPW_GAP_HI; spw_j <= SPW_LAST; spw_j = spw_j + 1)
+                    $write("%02h", spw_bytes[spw_j]);
+                $write("\n");
             end else begin
-                spw_addr      <= spw_addr + 8'd1;
-                live_ser_peek <= spw_addr + 8'd1;
+                spw_addr      <= spw_next;
+                live_ser_peek <= spw_next;
             end
         end
     end

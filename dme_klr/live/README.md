@@ -330,14 +330,14 @@ DME DIAG, with the tester switch and the peek address.
 The `SER_PEEK_WALK` test option (the `cl_serial_peek_idle`, `_3000` and
 `_6000` regressions) turns the tester on from boot and, once
 `SER_PEEK_WALK_MS` has passed, walks the peek address through internal
-RAM 00h to 1Fh. For each address the peek byte decoded from TXD is checked
+RAM 10h to 62h, then 7Ah to 7Fh. For each address the peek byte decoded from TXD is checked
 against the RAM byte the firmware read (sampled when the PC is at 0x1EC8,
 `mov A,@R1`):
 
     DME: [SERPEEK] <ms>,<addr>,<byte from TXD>,<RAM>,<ok|BAD>
-    DME: [SERPEEK] DONE pass=<n> fail=<n> bytes=<the 32 bytes read, 00h first>
+    DME: [SERPEEK] DONE pass=<n> fail=<n> 10-62=<bytes read> 7A-7F=<bytes read>
 
-The validator needs `pass=32 fail=0`.
+The validator needs `pass=89 fail=0`.
 
 ## Conditional breakpoints
 
