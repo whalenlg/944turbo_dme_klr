@@ -677,6 +677,141 @@ module dme_klr_dashboard_tb;
     assign full_load = `OPT_KLR_FULL_LOAD_STUCK_LOW  ? 1'b0 :
                        `OPT_KLR_FULL_LOAD_STUCK_HIGH ? 1'b1 : full_load_klr;
 
+    // ── Serial diagnostic tester (DME RXD/TXD) ───────────────
+    // A model of a tester on the DME's diagnostic serial port, for the
+    // firmware's polled serial routine (0x1E6D, reached from the main
+    // loop through 0x101A):
+    //   - init_serial (0x1E53) sends FF with the 9th bit set; a tester
+    //     that answers FF before the first poll selects streaming mode
+    //     (no answer: 23h.7 is set and TXD becomes the lambda output).
+    //   - Each poll then sends RPM (37h), advance (31h), fuel (4B:4A>>5
+    //     or 0 in fuel cut), the RAM byte at the address held in 7Ah,
+    //     and a slot byte with the 9th bit set: slot 29h = 0..5 sends the
+    //     byte at 13h 12h 11h 49h 2Fh 10h (table 11D4h), then FF.
+    //   - A byte received after slot k is stored on the next poll at
+    //     table 11DAh[k]: 7Ah 26h 28h 7Ah 26h 28h (the code at 0x1EA7).
+    // The tester answers only slots 0 and 3, with live_ser_peek, so the
+    // peek byte of the following frames is RAM[live_ser_peek]; 26h and 28h
+    // are never written. It also answers every FF (the hello, and the end
+    // marker, which the DME ignores since 29h = FF there).
+    // live_ser_tester[0] = 1 connects it (+ser_tester=1 at start: the
+    // stock ROM only listens for the answer to its hello at boot);
+    // +ser_peek=<hex> sets the first address. Off, RXD idles high.
+    // The frames the DME sends are decoded from TXD whether or not the
+    // tester is on, and summarised in each snapshot's DME: [SER] line.
+    reg  [7:0] live_ser_tester /*verilator public_flat_rw*/ = 8'h00;
+    reg  [7:0] live_ser_peek   /*verilator public_flat_rw*/ = 8'h37;
+    initial begin : ser_args
+        integer v;
+        if ($value$plusargs("ser_tester=%d", v)) live_ser_tester = v[7:0];
+        if ($value$plusargs("ser_peek=%h", v))   live_ser_peek   = v[7:0];
+    end
+    wire ser_clk  = u_dme.i8051_top.u_cpu.clk;
+    // the DME's mode-2 baud tick (16 per bit), so both ends run in step
+    wire ser_tick = u_dme.i8051_top.u_cpu.baud_m2_pulse;
+    wire ser_txd  = u_dme.txd;
+    reg  ser_rxd_line = 1'b1;          // drives u_dme.rxd (i8051_dashboard_tb)
+
+    // Receiver on TXD: start, D0..D7, 9th bit, stop
+    reg        ser_rx_act = 1'b0;
+    reg  [3:0] ser_rx_cnt = 4'd0, ser_rx_bit = 4'd0;
+    reg  [8:0] ser_rx_sh  = 9'd0;
+    // Frame decoder
+    reg  [7:0] ser_buf [0:3];
+    reg  [2:0] ser_nbuf   = 3'd0;
+    reg  [2:0] ser_slot   = 3'd0;      // slot the next slot byte is
+    reg  [7:0] ser_slotv [0:5];
+    reg [31:0] ser_frames = 32'd0;     // complete 4-byte frames seen
+    reg [31:0] ser_hellos = 32'd0;     // FF with no data bytes before it
+    reg [31:0] ser_replies = 32'd0;    // bytes the tester sent
+    reg  [7:0] ser_rpm = 8'd0, ser_adv = 8'd0, ser_fuel = 8'd0, ser_peekv = 8'd0;
+    reg  [7:0] ser_peek_addr = 8'd0;   // 7Ah when that frame's peek byte went out
+    reg  [7:0] ser_last_slot = 8'd0;
+    // Transmitter on RXD: 2 idle bits, start, D0..D7, 9th bit (0), stop
+    reg        ser_tx_go = 1'b0, ser_tx_busy = 1'b0;
+    reg  [7:0] ser_tx_byte = 8'd0;
+    reg  [3:0] ser_tx_cnt = 4'd0, ser_tx_bit = 4'd0;
+    reg [12:0] ser_tx_sh = 13'h1FFF;
+    integer    ser_i;
+    initial for (ser_i = 0; ser_i < 6; ser_i = ser_i + 1) ser_slotv[ser_i] = 8'd0;
+    initial for (ser_i = 0; ser_i < 4; ser_i = ser_i + 1) ser_buf[ser_i] = 8'd0;
+
+    always @(posedge ser_clk) begin
+        ser_tx_go <= 1'b0;
+        if (ser_tick) begin
+            if (!ser_rx_act) begin
+                if (!ser_txd) begin
+                    ser_rx_act <= 1'b1;
+                    ser_rx_cnt <= 4'd0;
+                    ser_rx_bit <= 4'd0;
+                end
+            end else begin
+                ser_rx_cnt <= ser_rx_cnt + 4'd1;
+                if (ser_rx_cnt == 4'd7) begin
+                    if (ser_rx_bit == 4'd0) begin
+                        if (ser_txd) ser_rx_act <= 1'b0;        // glitch, not a start bit
+                    end else if (ser_rx_bit <= 4'd9)
+                        ser_rx_sh <= {ser_txd, ser_rx_sh[8:1]};
+                end
+                if (ser_rx_cnt == 4'd15) begin
+                    ser_rx_bit <= ser_rx_bit + 4'd1;
+                    if (ser_rx_bit == 4'd10) begin               // end of the stop bit
+                        ser_rx_act <= 1'b0;
+                        if (!ser_rx_sh[8]) begin                 // data byte
+                            if (ser_nbuf < 3'd4) ser_buf[ser_nbuf[1:0]] <= ser_rx_sh[7:0];
+                            if (ser_nbuf == 3'd3) ser_peek_addr <= u_dme.i8051_top.u_cpu.iram[7'h7A];
+                            if (ser_nbuf != 3'd7) ser_nbuf <= ser_nbuf + 3'd1;
+                        end else begin                           // slot byte or FF
+                            if (ser_nbuf == 3'd4) begin
+                                ser_frames <= ser_frames + 32'd1;
+                                ser_rpm  <= ser_buf[0];
+                                ser_adv  <= ser_buf[1];
+                                ser_fuel <= ser_buf[2];
+                                ser_peekv <= ser_buf[3];
+                            end
+                            ser_last_slot <= ser_rx_sh[7:0];
+                            if (ser_rx_sh[7:0] == 8'hFF) begin
+                                if (ser_nbuf == 3'd0) ser_hellos <= ser_hellos + 32'd1;
+                                ser_slot <= 3'd0;
+                                if (live_ser_tester[0]) begin
+                                    ser_tx_byte <= 8'hFF;
+                                    ser_tx_go   <= 1'b1;
+                                end
+                            end else begin
+                                if (ser_slot < 3'd6) ser_slotv[ser_slot] <= ser_rx_sh[7:0];
+                                if (live_ser_tester[0] && (ser_slot == 3'd0 || ser_slot == 3'd3)) begin
+                                    ser_tx_byte <= live_ser_peek;
+                                    ser_tx_go   <= 1'b1;
+                                end
+                                if (ser_slot < 3'd6) ser_slot <= ser_slot + 3'd1;
+                            end
+                            ser_nbuf <= 3'd0;
+                        end
+                    end
+                end
+            end
+        end
+        // Transmitter: a request while busy is dropped
+        if (ser_tx_go && !ser_tx_busy) begin
+            ser_tx_busy <= 1'b1;
+            ser_tx_cnt  <= 4'd0;
+            ser_tx_bit  <= 4'd0;
+            ser_tx_sh   <= {1'b1, 1'b0, ser_tx_byte, 1'b0, 2'b11};
+            ser_replies <= ser_replies + 32'd1;
+        end else if (ser_tx_busy && ser_tick) begin
+            ser_tx_cnt <= ser_tx_cnt + 4'd1;
+            if (ser_tx_cnt == 4'd0) ser_rxd_line <= ser_tx_sh[0];
+            if (ser_tx_cnt == 4'd15) begin
+                ser_tx_sh  <= {1'b1, ser_tx_sh[12:1]};
+                ser_tx_bit <= ser_tx_bit + 4'd1;
+                if (ser_tx_bit == 4'd12) begin
+                    ser_tx_busy  <= 1'b0;
+                    ser_rxd_line <= 1'b1;
+                end
+            end
+        end
+    end
+
     // ── Snapshot-busy flag ───────────────────────────────────
     reg snapshot_busy;
     initial snapshot_busy = 1'b0;
@@ -703,6 +838,18 @@ module dme_klr_dashboard_tb;
             $write(",%02h%02h%02h%02h%02h%02h%02h%02h\n", u_dme.adc_ch0, u_dme.adc_ch1,
                    u_dme.adc_ch2, u_dme.adc_ch3, u_dme.adc_ch4, u_dme.adc_ch5,
                    u_dme.adc_ch6, u_dme.adc_ch7);
+
+            // ── [SER] — diagnostic serial frames (see the tester above)
+            // <ms>,<tester on>,<peek addr asked>,<frames>,<rpm><adv><fuel><peek>,
+            // <7Ah for that peek>,<next slot>,<slot 0..5 bytes>,<hellos>,<replies>
+            // Only once there is something to show, so logs without serial
+            // traffic are unchanged.
+            if (live_ser_tester[0] || ser_frames != 0 || ser_hellos > 1)
+                $write("DME: [SER] %0d,%0d,%02h,%0d,%02h%02h%02h%02h,%02h,%0d,%02h%02h%02h%02h%02h%02h,%0d,%0d\n",
+                    `DME_KLR_MS, live_ser_tester[0], live_ser_peek, ser_frames,
+                    ser_rpm, ser_adv, ser_fuel, ser_peekv, ser_peek_addr, ser_slot,
+                    ser_slotv[0], ser_slotv[1], ser_slotv[2], ser_slotv[3], ser_slotv[4], ser_slotv[5],
+                    ser_hellos, ser_replies);
 
             // ── KLR: [DS] — 8048 RAM (128 bytes) ─────────────────
             $write("KLR: [DS] %0d,", `DME_KLR_MS);

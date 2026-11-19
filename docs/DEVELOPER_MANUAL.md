@@ -922,7 +922,7 @@ the right map graphs.
 | **DME CHARTS** | RPM, load index, AFM, TPS, injector pulse, lambda correction, ignition advance and its target, ISV, ICV duty, dwell, coolant, FQS and the overload timer against time |
 | **DME RPM CHARTS** | The same series as scatter plots against engine speed |
 | **DME PHASE** | The DME's `[PHASE]` events (resets, sync, mode changes) as a list |
-| **DME DIAG** | The diagnostic stream the DME would send (`send_diag_p2` pages), as a table and a chart |
+| **DME DIAG** | The diagnostic stream the DME would send (`send_diag_p2` pages), as a table and a chart, and the serial diagnostics on RXD/TXD (a tester you switch on, and a peek address for 7Ah) |
 | **DME MAPS / DME RPM MAPS** | Every numbered map and directly addressed table lookup the firmware made, against time or against RPM (section 9) |
 | **KLR OVERVIEW** | KLR state and the boost-control view (target boost from the map compared with the measured value) |
 | **KLR PORTS / KLR IRAM** | The 8048's ports and its 64 bytes of RAM |
