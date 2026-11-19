@@ -728,13 +728,13 @@ Set up the VM to clone from once:
    the signed-in user (`prlctl exec --current-user`), so that winget works
    as it does for a person.
 3. Nothing of this project installed, and no Node.js or Python, then a
-   snapshot (Actions > Take Snapshot, e.g. named *clean*).
+   snapshot (Actions > Take Snapshot, e.g. named *Clean*).
 
 Then:
 
 ```sh
-install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot clean          # the lite one-liner
-install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot clean --dev    # install_windows.ps1
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot Clean          # the lite one-liner
+install/test_windows_vm.sh --vm "Windows 11 951 Install Test" --snapshot Clean --dev    # install_windows.ps1
 ```
 
 The lite test runs the manual's one-line installer
@@ -757,7 +757,7 @@ See `install/test_windows_vm.sh --help`. `run_all.sh` runs it as step 6
 when asked (`--install-tests "windows-lite windows-dev"`, or the RUN
 REGRESSIONS panel's **INSTALL TESTS** boxes), with the VM named by
 `DMEKLR_WIN_VM` (default `Windows 11 951 Install Test`) and its snapshot `DMEKLR_WIN_SNAPSHOT`
-(default `clean`), set where the bridge starts.
+(default `Clean`), set where the bridge starts.
 
 ### Dependencies
 

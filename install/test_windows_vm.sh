@@ -121,7 +121,8 @@ else
     SNAP_ID=""
     for _id in $(snap_ids); do
         _n="$(prlctl snapshot-list "$SRC" -i "$_id" 2>/dev/null | sed -n 's/^ *Name: *//p' | head -1)"
-        [ "$_n" = "$SNAP" ] && { SNAP_ID="$_id"; break; }
+        # (names match ignoring case: "clean" finds "Clean")
+        [ "$(printf %s "$_n" | tr A-Z a-z)" = "$(printf %s "$SNAP" | tr A-Z a-z)" ] && { SNAP_ID="$_id"; break; }
     done
     [ -n "$SNAP_ID" ] || die "$SRC has no snapshot named '$SNAP' (prlctl snapshot-list $SRC)"
 fi

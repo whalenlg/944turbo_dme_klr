@@ -52,7 +52,7 @@
 #    macos-lite     lite package built here, clean macOS VM (Tart)
 #    windows-lite   the lite one-liner, clean Windows VM (test_windows_vm.sh;
 #                   Parallels: the VM $DMEKLR_WIN_VM, default "Windows 11 951 Install Test",
-#                   snapshot $DMEKLR_WIN_SNAPSHOT, default "clean")
+#                   snapshot $DMEKLR_WIN_SNAPSHOT, default "Clean")
 #    windows-dev    install_windows.ps1, the same Windows VM
 #    arch-install   developer install, clean Arch container
 #                   (test_arch_install.sh; Docker or Podman)
@@ -444,7 +444,7 @@ hdr "6/6  Install Tests (clean VMs)"
 MAX_SUITE_WARN=5
 SUITE_WARN=$SUITE_WARN_MAX
 WIN_VM="${DMEKLR_WIN_VM:-Windows 11 951 Install Test}"
-WIN_SNAP="${DMEKLR_WIN_SNAPSHOT:-clean}"
+WIN_SNAP="${DMEKLR_WIN_SNAPSHOT:-Clean}"
 if [ ${#INSTALL_TESTS[@]} = 0 ]; then
     log "Skipped (no --install-tests picked)"
 elif [ "$FAIL" -gt 0 ] || [ "$SUITE_WARN" -gt "$MAX_SUITE_WARN" ]; then
