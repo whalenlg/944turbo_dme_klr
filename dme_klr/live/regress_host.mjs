@@ -285,21 +285,50 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       return send(200, JSON.stringify({ state: job.state, exit: job.exit, t_ms: t, out: job.out.slice(-30) })), true;
     }
     if (job.state !== 'done') return send(409, 'still running', 'text/plain'), true;
-    // The files are read whole and sent in one go (with a Content-Length),
-    // not streamed: a stream reads through libuv's small thread pool, and
-    // on the regression hosts those downloads never sent a byte (every try
-    // stalled, while the status calls, which read synchronously, answered
-    // at once). They are a few MB at most; the waveform can be more.
-    const file = (f, type) => {
-      let buf;
-      try { buf = readFileSync(f); } catch { return false; }
-      res.writeHead(200, { 'Content-Type': type, 'Content-Length': buf.length });
+    // Each file goes out in pieces, one request each: the machine asks for
+    // Range: bytes=a-b, 64 KB at a time (remote_test.mjs). Between some
+    // Macs on a LAN a transfer stops for good after ~150 KB on one
+    // connection while short requests go through, so a whole dash.log in
+    // one response never arrived. A request with no Range gets the whole
+    // file (older remote_test.mjs). Reads are synchronous (no thread pool).
+    // bytes(start, len) reads part of the file; size is its whole length.
+    const serve = (name, type, size, bytes) => {
+      const rg = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+      if (!rg || size === 0) {
+        const buf = bytes(0, size);
+        res.writeHead(200, { 'Content-Type': type, 'Content-Length': buf.length });
+        res.end(buf);
+        sent(name, buf.length);
+        return true;
+      }
+      const a = +rg[1], b = Math.min(rg[2] === '' ? size - 1 : +rg[2], size - 1);
+      if (a >= size || b < a) {
+        res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+        res.end();
+        return true;
+      }
+      const buf = bytes(a, b - a + 1);
+      res.writeHead(206, { 'Content-Type': type, 'Content-Length': buf.length, 'Content-Range': `bytes ${a}-${b}/${size}` });
       res.end(buf);
-      sent(f, buf.length);
+      if (b === size - 1) sent(name, size);
       return true;
     };
-    // one line per download in this bridge's console: when a machine says
-    // a download stalled and no line shows here, the request never got here
+    const file = (f, type) => {
+      let fd;
+      try { fd = openSync(f, 'r'); } catch { return false; }
+      try {
+        const size = fstatSync(fd).size;
+        return serve(f, type, size, (a, n) => {
+          const buf = Buffer.alloc(n);
+          let got = 0;
+          while (got < n) { const k = readSync(fd, buf, got, n - got, a + got); if (!k) break; got += k; }
+          return buf.subarray(0, got);
+        });
+      } finally { closeSync(fd); }
+    };
+    // one line per file sent in this bridge's console (when its last piece
+    // goes): when a machine says a download stalled and no line shows here,
+    // the requests never got here
     const sent = (f, n) => console.log(`bridge: regression host: sent ${f.split(/[\\/]/).pop()} (${n} bytes) to ${req.socket.remoteAddress}, job ${job.id}`);
     if (m[2] === 'fst') {
       // iverilog runs leave a waveform, fst/<test>.fst, beside the logs
@@ -309,15 +338,12 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       return (file(join(job.logdir, `${job.test}.dash.log`), 'text/plain') || send(404, 'no dash.log', 'text/plain')), true;
     }
     // the whole log, gzipped: the developer runners keep <test>.log.gz,
-    // run_tests.py the plain <test>.log
+    // run_tests.py the plain <test>.log (gzipped once, kept for the pieces)
     const gz = join(job.logdir, `${job.test}.log.gz`), raw = join(job.logdir, `${job.test}.log`);
     if (file(gz, 'application/gzip')) return true;
-    if (existsSync(raw)) {
-      const buf = gzipSync(readFileSync(raw));
-      res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': buf.length });
-      res.end(buf);
-      sent(raw, buf.length);
-      return true;
+    if (job.gzlog || existsSync(raw)) {
+      job.gzlog ??= gzipSync(readFileSync(raw));
+      return serve(raw, 'application/gzip', job.gzlog.length, (a, n) => job.gzlog.subarray(a, a + n));
     }
     return send(404, 'no log', 'text/plain'), true;
   }
