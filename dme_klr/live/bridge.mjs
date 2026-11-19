@@ -97,7 +97,8 @@
 //  are dropped when another image is loaded. The listing stays the one for
 //  the image as loaded, decoded again where bytes were edited (disasm.mjs):
 //  edited rows carry patched: true and orig (the bytes as loaded). The
-//  bridge then sends SIM: [ASM] ... patched=<bytes edited>.
+//  bridge then sends SIM: [ASM] ... patched=<bytes edited>, with saved=<name>.mem
+//  once those edits are kept with SAVE AS.
 //
 //  Snapshots: the sim saves one on every warning (and on "save" via
 //  /cmd) into <snapdir>/<id>/ and prints SIM: [SNAP] saved ... dir=.
@@ -497,8 +498,19 @@ function followRom(cpu, path) {
   const { rows, workbook, match } = listingOf(cpu, path, !p);
   if (!rows) return;   // a pinned listing (--dme-asm / --klr-asm) on an unedited image
   ASM[cpu] = rows;
+  asmLine(cpu, workbook, match);
+}
+// SIM: [ASM] <cpu> <workbook> match=... [patched=<bytes edited> [saved=<name>.mem]]:
+// saved names the image the loaded edits were kept as with SAVE AS (the
+// page's download button is only for edits not yet saved)
+const asmSaid = { dme: null, klr: null };   // the last line's workbook and match
+const savedAs = { dme: null, klr: null };   // { path: edited image loaded, name: saved as }
+function asmLine(cpu, workbook = asmSaid[cpu]?.workbook, match = asmSaid[cpu]?.match) {
+  asmSaid[cpu] = { workbook, match };
+  const p = patches[cpu];
   const n = p ? p.orig.reduce((c, v, i) => c + (v !== p.img[i]), 0) : 0;
-  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${match}${n ? ` patched=${n}` : ''}`);
+  const saved = n && savedAs[cpu]?.path === p.path ? ` saved=${savedAs[cpu].name}` : '';
+  broadcast(`SIM: [ASM] ${cpu} ${workbook} match=${match}${n ? ` patched=${n}${saved}` : ''}`);
 }
 
 // ── Byte edits (POST /patch) ─────────────────────────────────
@@ -732,6 +744,11 @@ function saveEdited(cpu, body) {
   console.log(`bridge: ${cpu} edited image ${edits.name} saved as ${path}`);
   const xlsx = `${name}.xlsx`;
   savedWorkbook(cpu, root, path, join(dir, xlsx));
+  // the edits in the EPROM are on disk now
+  if (patches[cpu] && basename(patches[cpu].path) === edits.name) {
+    savedAs[cpu] = { path: patches[cpu].path, name: file };
+    if (!b?.use && asmSaid[cpu]) asmLine(cpu);
+  }
   if (b?.use && !send(`rom ${cpu} ${path}`)) return [409, 'simulator not running'];
   return [200, { name: file, bin, xlsx, dir: resolve(dir) }];
 }
