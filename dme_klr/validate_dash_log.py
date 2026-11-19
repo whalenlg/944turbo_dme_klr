@@ -1229,16 +1229,46 @@ KLR_FILE_OVERRIDES = {
 
 def rom_files_from_log(lines):
     """(dme_file, klr_file) from the [ROM] lines rom_stamp.py puts at the
-    top of a dash.log; None for any not found."""
+    top of a dash.log; None for any not found. The full path= is returned
+    when the line has one (so an edited image's <image>.base can be
+    found next to it), else just the file name."""
     dme = klr = None
     for line in lines[:10]:
-        m = re.match(r'(DME|KLR): \[ROM\] (\S+)', line)
+        m = re.match(r'(DME|KLR): \[ROM\] (\S+)(?:.*\spath=(.+?))?\s*$', line)
         if m:
+            name = m.group(3) or m.group(2)
             if m.group(1) == 'DME':
-                dme = m.group(2)
+                dme = name
             else:
-                klr = m.group(2)
+                klr = name
     return dme, klr
+
+
+def rom_override_key(table, *candidates):
+    """The key in a *_FILE_OVERRIDES table that applies to a ROM, or None.
+
+    candidates are the ROM file as given (argument / env var, often just a
+    file name) and as stamped in the log (a full path when available). A
+    candidate whose file name is a key is used as is. Otherwise, an image
+    made by editing bytes in the dashboard's code windows (SAVE AS) names
+    the image it was made from in <image>.base, the same sidecar
+    asm_select.sh follows for its listing; that chain is followed (a few
+    levels, for an edit of an edit) so a derived image like
+    89DME_951pin_diag_enabled.mem is validated with its base image's
+    calibrated expectations instead of the 28PIN defaults."""
+    for cand in candidates:
+        path = cand
+        for _ in range(5):
+            if not path:
+                break
+            if os.path.basename(path) in table:
+                return os.path.basename(path)
+            try:
+                with open(path + '.base') as f:
+                    path = f.readline().strip()
+            except OSError:
+                break
+    return None
 
 
 # ─── Parsers ─────────────────────────────────────────────────────────────────
@@ -1699,14 +1729,19 @@ def validate(test_name, logpath, dme_file=None, klr_file=None):
     # a copy so TESTS itself is never mutated (important since this
     # function can run in a loop / be called multiple times).
     log_dme, log_klr = rom_files_from_log(lines)
-    dme_file = dme_file or log_dme
-    klr_file = klr_file or log_klr
-    if dme_file:
-        overrides = DME_FILE_OVERRIDES.get(os.path.basename(dme_file), {}).get(test_name)
+    # The log's stamp is only consulted for the same ROM: one given
+    # explicitly (argument / env var) wins, as before, and the stamp's
+    # full path just helps find that ROM's <image>.base.
+    def _same(given, logged):
+        return logged if not given or (logged and os.path.basename(given) == os.path.basename(logged)) else None
+    dme_key = rom_override_key(DME_FILE_OVERRIDES, dme_file, _same(dme_file, log_dme))
+    if dme_key:
+        overrides = DME_FILE_OVERRIDES[dme_key].get(test_name)
         if overrides:
             exp = {**exp, **overrides}
-    if klr_file:
-        overrides = KLR_FILE_OVERRIDES.get(os.path.basename(klr_file), {}).get(test_name)
+    klr_key = rom_override_key(KLR_FILE_OVERRIDES, klr_file, _same(klr_file, log_klr))
+    if klr_key:
+        overrides = KLR_FILE_OVERRIDES[klr_key].get(test_name)
         if overrides:
             exp = {**exp, **overrides}
 
