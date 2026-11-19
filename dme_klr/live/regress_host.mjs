@@ -44,11 +44,11 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync, createReadStream, openSync, readSync, fstatSync, closeSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync, openSync, readSync, fstatSync, closeSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGzip } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { romVariant } from './logdirs.mjs';
 
@@ -285,26 +285,40 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
       return send(200, JSON.stringify({ state: job.state, exit: job.exit, t_ms: t, out: job.out.slice(-30) })), true;
     }
     if (job.state !== 'done') return send(409, 'still running', 'text/plain'), true;
+    // The files are read whole and sent in one go (with a Content-Length),
+    // not streamed: a stream reads through libuv's small thread pool, and
+    // on the regression hosts those downloads never sent a byte (every try
+    // stalled, while the status calls, which read synchronously, answered
+    // at once). They are a few MB at most; the waveform can be more.
+    const file = (f, type) => {
+      let buf;
+      try { buf = readFileSync(f); } catch { return false; }
+      res.writeHead(200, { 'Content-Type': type, 'Content-Length': buf.length });
+      res.end(buf);
+      sent(f, buf.length);
+      return true;
+    };
+    // one line per download in this bridge's console: when a machine says
+    // a download stalled and no line shows here, the request never got here
+    const sent = (f, n) => console.log(`bridge: regression host: sent ${f.split(/[\\/]/).pop()} (${n} bytes) to ${req.socket.remoteAddress}, job ${job.id}`);
     if (m[2] === 'fst') {
       // iverilog runs leave a waveform, fst/<test>.fst, beside the logs
-      const f = join(job.logdir, 'fst', `${job.test}.fst`);
-      if (!existsSync(f)) return send(404, 'no fst', 'text/plain'), true;
-      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
-      createReadStream(f).pipe(res);
-      return true;
+      return (file(join(job.logdir, 'fst', `${job.test}.fst`), 'application/octet-stream') || send(404, 'no fst', 'text/plain')), true;
     }
     if (m[2] === 'dash') {
-      const f = join(job.logdir, `${job.test}.dash.log`);
-      if (!existsSync(f)) return send(404, 'no dash.log', 'text/plain'), true;
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      createReadStream(f).pipe(res);
-      return true;
+      return (file(join(job.logdir, `${job.test}.dash.log`), 'text/plain') || send(404, 'no dash.log', 'text/plain')), true;
     }
     // the whole log, gzipped: the developer runners keep <test>.log.gz,
     // run_tests.py the plain <test>.log
     const gz = join(job.logdir, `${job.test}.log.gz`), raw = join(job.logdir, `${job.test}.log`);
-    if (existsSync(gz)) { res.writeHead(200, { 'Content-Type': 'application/gzip' }); createReadStream(gz).pipe(res); return true; }
-    if (existsSync(raw)) { res.writeHead(200, { 'Content-Type': 'application/gzip' }); createReadStream(raw).pipe(createGzip()).pipe(res); return true; }
+    if (file(gz, 'application/gzip')) return true;
+    if (existsSync(raw)) {
+      const buf = gzipSync(readFileSync(raw));
+      res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': buf.length });
+      res.end(buf);
+      sent(raw, buf.length);
+      return true;
+    }
     return send(404, 'no log', 'text/plain'), true;
   }
 
