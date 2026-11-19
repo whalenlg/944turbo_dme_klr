@@ -187,7 +187,7 @@ result() {  # result PASS|FAIL|SKIP "name" "detail" seconds
     [ "$s" = FAIL ] && { c="$red"; FAILED=1; }
     [ "$s" = SKIP ] && c="$yellow"
     RESULTS+=("$(printf '%s%-4s%s  %-34s %6ss  %s' "$c" "$s" "$nc" "$2" "$4" "$3")")
-    printf '    %s%s%s  %s\n' "$c" "$s" "$nc" "$3"
+    printf '    %s%s%s  %s: %s\n' "$c" "$s" "$nc" "$2" "$3"   # (the INSTALLER TESTS page reads these)
 }
 T0=0; tic() { T0=$SECONDS; }; toc() { echo $((SECONDS - T0)); }
 

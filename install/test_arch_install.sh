@@ -225,10 +225,13 @@ check() {
     local rc=$?
     tail -n 40 "$log"
     local dt=$((SECONDS - t0))
+    # each step's line as it ends (the dashboard's INSTALLER TESTS page reads these)
     if [ $rc -eq 0 ]; then
         RESULTS+=("PASS  ${name}  (${dt}s)")
+        echo "    PASS  ${name}: ${dt}s"
     else
         RESULTS+=("FAIL  ${name}  (exit $rc, ${dt}s; log: $log)")
+        echo "    FAIL  ${name}: exit $rc, ${dt}s (log: $log)"
         FAILS=$((FAILS + 1))
     fi
     return $rc
