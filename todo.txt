@@ -1,6 +1,8 @@
-Fix replay compile
+Update docs
 
 Save log
+ 
+X Remote jobs just disappear and no new jobs scheduled
 
 Can't see data before 1st 100ms
 
@@ -9,18 +11,18 @@ building the shared test builds failed: %Error: 'make -C /Users/mike/coding_proj
  
 2 Scan logs looking for a bit set/cleared or memory address/value 
 
-2 Code search should include label names as operands
+X 2 Code search should include label names as operands
 
-2 Code window - click on. Label, move to that label
-
-
-2 Custom rom regression not appearing in dashboard 
+X 2 Code window - click on. Label, move to that label
 
 1 Add SBUF  to the trace
 
 2 Can't set breakpoints with a new ROM (from regression log).
+The recession load only looks at which directories?
 
 2 Add Idle Set Switch (ground to load signal)
+
+1 why do the compares work 8.023?
 
 3 Fix windows install
 
@@ -28,7 +30,9 @@ X 1 ROM Poke values
 
 3 Improve release process to include all logs
 
-Add hex to dec and dec to hex converter in code window
+X Add hex to dec and dec to hex converter in code window
+
+Default install testing to none
 
 
 
