@@ -1,39 +1,18 @@
-Update docs
+
+Test plot diffs
 
 Save log
  
-X Remote jobs just disappear and no new jobs scheduled
-
 Can't see data before 1st 100ms
-
-Got error loading a ref_sensor_stuck_low snapshot:
-building the shared test builds failed: %Error: 'make -C /Users/mike/coding_projects/944/DME_sim/dme_klr/live/obj/tests_rt/open -f Vdme_klr_dashboard_tb.mk -j 10' exited with 2 | %Error: Command Failed /opt/homebrew/Cellar/verilator/5.054/bin/verilator_bin --cc --exe --build --timing -j 0 -O3 --x-assign fast --x-initial fast --noassert -C
  
 2 Scan logs looking for a bit set/cleared or memory address/value 
 
-X 2 Code search should include label names as operands
-
-X 2 Code window - click on. Label, move to that label
-
-1 Add SBUF  to the trace
-
-2 Can't set breakpoints with a new ROM (from regression log).
-The recession load only looks at which directories?
-
 2 Add Idle Set Switch (ground to load signal)
-
-1 why do the compares work 8.023?
-
-3 Fix windows install
-
-X 1 ROM Poke values
 
 3 Improve release process to include all logs
 
-X Add hex to dec and dec to hex converter in code window
 
-Default install testing to none
-
+Add copy right and license info to all source files
 
 
 
