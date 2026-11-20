@@ -138,6 +138,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync,
 import { cpus } from 'node:os';
 import { dirname, join } from 'node:path';
 import { softwareVersion } from './regress_host.mjs';
+import { lanRequest } from './lan_http.mjs';
 import { createInterface } from 'node:readline';
 import { romVariant, romVariants, logsDir } from './logdirs.mjs';
 
@@ -305,7 +306,8 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
   async function probe(h) {
     let st;
     try {
-      const r = await fetch(`${hostUrl(h)}/regress/info`, { headers: { Authorization: `Bearer ${h.token}` }, signal: AbortSignal.timeout(5000) });
+      // (from this machine's other address on its subnet if one isn't answered: lan_http.mjs)
+      const r = await lanRequest(`${hostUrl(h)}/regress/info`, { headers: { Authorization: `Bearer ${h.token}` }, timeoutMs: 8000, connectMs: 3000, tries: 3 });
       if (r.status === 403) st = { ok: false, why: 'refused: wrong token, or this machine is not on its LAN' };
       else if (!r.ok) st = { ok: false, why: `answered ${r.status}: an older bridge, or not started with --listen` };
       else {
@@ -320,7 +322,7 @@ export function makeRunAll({ REPO, HERE, TMP_ROOT, PY, romImages = () => [], set
                   : pyBad ? `its Python packages aren't installed (${info.python}); run its installer or pip install -r requirements.txt` : '' };
       }
     } catch (e) {
-      st = { ok: false, why: `unreachable (${e.cause?.code ?? e.name}); start its bridge with --listen 0.0.0.0 --token <secret>` };
+      st = { ok: false, why: `unreachable (${e.message}); is it awake, and is its bridge started with --listen 0.0.0.0 --token <secret>?` };
     }
     hostStatus.set(h.id, { ...st, at: Date.now() });
     return st;

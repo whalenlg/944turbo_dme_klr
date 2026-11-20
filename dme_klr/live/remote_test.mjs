@@ -37,7 +37,8 @@
 //  A connection the host doesn't answer is given up after CONNECT_MS
 //  (the OS would wait 40-75 s). When this machine has more than one
 //  address on the host's subnet (wired and Wi-Fi both up), a failed try
-//  goes out from the next one, and the address that last worked is kept:
+//  goes out from the next one, and the address that last worked is kept
+//  (lan_http.mjs; the job's start, polls and stop do the same):
 //  a Mac on both saw most connections from its wired address go
 //  unanswered while every one from its Wi-Fi address got through, and its
 //  tests sat at 99% for half an hour fetching logs 64 KB at a time.
@@ -46,7 +47,7 @@
 import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { networkInterfaces } from 'node:os';
+import { lanRequest, sourceOrder, worked, CONNECT_MS } from './lan_http.mjs';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +67,6 @@ const TEMPFAIL = 75;
 const GIVEBACK = 76;       // ran there, but its logs wouldn't come back
 const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 15_000;   // a piece of a download that receives nothing this long is tried again
 const CHUNK = +process.env.DMEKLR_REMOTE_CHUNK || 65536;          // bytes per download request
-const CONNECT_MS = +process.env.DMEKLR_REMOTE_CONNECT_MS || 5_000; // a connection not answered this long is tried again
 const TRIES = 5;
 const DROP_MS = 90_000;    // no answer this long: the host has dropped
 const REFUSED_MS = 15_000; // refused this long: the bridge has stopped
@@ -80,30 +80,13 @@ const who = HOST.replace(/^https?:\/\//, '');
 const say = s => console.log(`remote ${who}: ${TEST}: ${s}`);
 const H = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function call(method, path, body, ms = 30_000) {
-  const r = await fetch(HOST + path, { method, headers: { ...H, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-                                       body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms) });
-  return r;
-}
+// (lan_http.mjs: a connection the host doesn't answer is tried again
+// from this machine's other address on its subnet)
+const call = (method, path, body, ms = 30_000) => lanRequest(HOST + path, { method, headers: H, body, timeoutMs: ms });
 
-// This machine's addresses on the host's subnet (IPv4 host given by
-// address only), so a try that fails can go out from another interface.
-// [] when there's only one, or the host is a name: the OS picks.
-function sourceAddresses() {
-  const h = new URL(HOST).hostname;
-  const n = a => a.split('.').reduce((v, x) => (v * 256 + +x), 0);
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(h)) return [];
-  const out = [];
-  for (const list of Object.values(networkInterfaces()))
-    for (const i of list ?? []) {
-      if (i.family !== 'IPv4' || i.internal || !i.netmask) continue;
-      const m = n(i.netmask);
-      if (m && (n(i.address) & m) >>> 0 === (n(h) & m) >>> 0 && !out.includes(i.address)) out.push(i.address);
-    }
-  return out.length > 1 ? out : [];
-}
-const SRC = sourceAddresses();
-let srcAt = 0;   // SRC[srcAt]: the one the next try uses (the last that worked)
+// this machine's addresses on the host's subnet, the one that last worked
+// first ([] when there's only one: the OS picks); a failed try moves on
+const HOSTNAME = new URL(HOST).hostname;
 
 // GET <path> of the job, bytes a..b, on a connection of its own:
 // {status, body, total} (body null unless 200/206; total from
@@ -114,7 +97,7 @@ function getOnce(path, a, b) {
     const u = new URL(HOST + path);
     // how far a try got, for the message when it stalls
     let stage = 'no answer', got = 0;
-    const src = SRC.length ? { localAddress: SRC[srcAt] } : {};
+    const src = sourceOrder(HOSTNAME).length ? { localAddress: sourceOrder(HOSTNAME)[0] } : {};
     const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close', Range: `bytes=${a}-${b}` }, agent: false, ...src }, r => {
       if (r.statusCode !== 200 && r.statusCode !== 206) { r.resume(); return res({ status: r.statusCode, body: null }); }
       stage = 'headers';
@@ -122,6 +105,7 @@ function getOnce(path, a, b) {
       r.on('data', d => { parts.push(d); got += d.length; stage = `${got} bytes`; });
       r.on('end', () => {
         if (!r.complete) return rej(new Error('connection closed mid-transfer'));
+        worked(HOSTNAME, src.localAddress);
         const body = Buffer.concat(parts);
         const total = r.statusCode === 206 ? +(/\/(\d+)$/.exec(r.headers['content-range'] ?? '')?.[1] ?? NaN) : body.length;
         res({ status: r.statusCode, body, total });
@@ -132,7 +116,7 @@ function getOnce(path, a, b) {
     // no bytes either way for STALL_MS: give this try up. (Node starts
     // that clock only once connected, so the connect has its own.)
     req.setTimeout(STALL_MS, () => req.destroy(new Error(`stalled ${STALL_MS / 1000} s after ${stage}`)));
-    const conn = setTimeout(() => req.destroy(new Error(`no answer to connect in ${CONNECT_MS / 1000} s${src.localAddress ? ` from ${src.localAddress}` : ''}`)), CONNECT_MS);
+    const conn = setTimeout(() => req.destroy(Object.assign(new Error(`no answer to connect in ${CONNECT_MS / 1000} s${src.localAddress ? ` from ${src.localAddress}` : ''}`), { code: 'ECONNECT_TIMEOUT' })), CONNECT_MS);
     req.on('socket', s => { if (!s.connecting) clearTimeout(conn); else s.once('connect', () => clearTimeout(conn)); });
     req.on('close', () => clearTimeout(conn));
     req.on('error', rej);
@@ -156,7 +140,8 @@ async function download(what, path) {
         retried++;
         say(`${what}: bytes ${off}+ try ${i} of ${TRIES} failed after ${((Date.now() - t1) / 1000).toFixed(0)} s (${e.code ?? e.message})`);
         // next try from this machine's next address on the host's subnet
-        if (SRC.length) { srcAt = (srcAt + 1) % SRC.length; say(`${what}: next try from ${SRC[srcAt]}`); }
+        const o = sourceOrder(HOSTNAME);
+        if (o.length) { worked(HOSTNAME, o[1]); say(`${what}: next try from ${o[1]}`); }
         if (i < TRIES) await sleep(1000 * 2 ** (i - 1));
       }
     }
@@ -205,10 +190,11 @@ async function main() {
       sim_ms: +arg('sim-ms', 0) || null, per_test_build: flag('per-test-build'),
       srchash: softwareVersion(REPO).srchash, roms: { dme: rom('dme'), klr: rom('klr') },
     });
-  } catch (e) { say(`unreachable (${e.cause?.code ?? e.message})`); return TEMPFAIL; }
+  } catch (e) { say(`unreachable (${e.message})`); return TEMPFAIL; }
   if (!r.ok) { say(`refused: ${r.status} ${(await r.text()).slice(0, 200)}`); return TEMPFAIL; }
   jobId = (await r.json()).id;
-  say(`started, job ${jobId}${SRC.length ? ` (logs come back from ${SRC.join(' or ')})` : ''}`);
+  const srcs = sourceOrder(HOSTNAME);
+  say(`started, job ${jobId}${srcs.length ? ` (from ${srcs[0]}; ${srcs.slice(1).join(', ')} if the host doesn't answer it)` : ''}`);
   writeFileSync(progress, `remote ${who}: started\n`);
   let lastOk = Date.now(), lastT = -1, st;
   for (;;) {
@@ -222,8 +208,8 @@ async function main() {
     } catch (e) {
       // a bridge that's gone (connection refused) is dropped sooner than a
       // slow or briefly unreachable one
-      const gone = e.cause?.code === 'ECONNREFUSED' && Date.now() - lastOk > REFUSED_MS;
-      if (gone || Date.now() - lastOk > DROP_MS) { say(`no answer for ${Math.round((Date.now() - lastOk) / 1000)} s: dropped (${e.cause?.code ?? e.message})`); return TEMPFAIL; }
+      const gone = e.code === 'ECONNREFUSED' && Date.now() - lastOk > REFUSED_MS;
+      if (gone || Date.now() - lastOk > DROP_MS) { say(`no answer for ${Math.round((Date.now() - lastOk) / 1000)} s: dropped (${e.code ?? e.message})`); return TEMPFAIL; }
       continue;
     }
     if (st.t_ms != null && st.t_ms !== lastT) { appendFileSync(progress, `t=${st.t_ms} ms (on ${who})\n`); lastT = st.t_ms; }
