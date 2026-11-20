@@ -28,11 +28,13 @@
 //  goes back in the queue, and the host keeps getting tests (the runner
 //  stops using it after a few of these).
 //
-//  The logs come back in 64 KB pieces (Range requests), each over a
-//  new connection (node:http, no keep-alive): between two Macs on a LAN
-//  one transfer stopped for good after ~150 KB while short requests went
-//  through, so whole-file downloads held tests at 99%. A piece that
-//  receives nothing for STALL_MS is dropped and asked for again.
+//  The logs come back in 64 KB pieces (Range requests): between two Macs
+//  on a LAN one transfer stopped for good after ~150 KB while short
+//  requests went through, so whole-file downloads held tests at 99%. The
+//  pieces and polls share one kept-open connection (lan_http.mjs: a new
+//  connection each piled up TIME_WAITs on the host until it answered
+//  nothing). A piece that receives nothing for STALL_MS is dropped, with
+//  its connection, and asked for again on a new one.
 //
 //  A connection the host doesn't answer is given up after CONNECT_MS
 //  (the OS would wait 40-75 s). When this machine has more than one
@@ -47,7 +49,7 @@
 import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { lanRequest, sourceOrder, worked, CONNECT_MS } from './lan_http.mjs';
+import { lanRequest, sourceOrder, worked, agentFor, closeAll, CONNECT_MS } from './lan_http.mjs';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,13 +100,12 @@ function getOnce(path, a, b) {
     // how far a try got, for the message when it stalls
     let stage = 'no answer', got = 0;
     const src = sourceOrder(HOSTNAME).length ? { localAddress: sourceOrder(HOSTNAME)[0] } : {};
-    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'keep-alive', Range: `bytes=${a}-${b}` }, agent: false, ...src }, r => {
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Range: `bytes=${a}-${b}` }, agent: agentFor(u.protocol, src.localAddress) }, r => {
       if (r.statusCode !== 200 && r.statusCode !== 206) { r.resume(); return res({ status: r.statusCode, body: null }); }
       stage = 'headers';
       const parts = [];
       r.on('data', d => { parts.push(d); got += d.length; stage = `${got} bytes`; });
       r.on('end', () => {
-        r.socket?.destroy();   // close from this side, so the TIME_WAIT stays here (lan_http.mjs)
         if (!r.complete) return rej(new Error('connection closed mid-transfer'));
         worked(HOSTNAME, src.localAddress);
         const body = Buffer.concat(parts);
@@ -169,7 +170,7 @@ let jobId = null;
 async function forget() {
   if (jobId) { try { await call('DELETE', `/regress/run/${jobId}`); } catch { /* host gone */ } }
 }
-for (const s of ['SIGTERM', 'SIGINT']) process.on(s, async () => { await forget(); process.exit(143); });
+for (const s of ['SIGTERM', 'SIGINT']) process.on(s, async () => { await forget(); closeAll(); process.exit(143); });
 
 function rom(cpu) {
   const CPU = cpu.toUpperCase();
@@ -266,4 +267,5 @@ async function main() {
   return st.exit === 0 ? 0 : 1;
 }
 
-main().then(code => process.exit(code), e => { console.error(e); process.exit(TEMPFAIL); });
+// (closing the kept-open connection from this side keeps its TIME_WAIT here)
+main().then(code => { closeAll(); process.exit(code); }, e => { console.error(e); closeAll(); process.exit(TEMPFAIL); });
