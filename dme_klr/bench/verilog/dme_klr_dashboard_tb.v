@@ -853,10 +853,14 @@ module dme_klr_dashboard_tb;
     always @(posedge ser_clk) begin
         if (`OPT_SER_PEEK_WALK && spw_frame && !spw_done && spw_snap_a == spw_addr &&
             `DME_KLR_MS >= `VAL_SER_PEEK_WALK_MS) begin
+            // === (not ==): a RAM byte the firmware never writes (7Ch on
+            // the 89 ROM) powers up X under Icarus (0 under Verilator's
+            // --x-initial), so the DME sends X and the RAM holds X. That
+            // is a correct read; == would make it X, i.e. a fail.
             $display("DME: [SERPEEK] %0d,%02h,%02h,%02h,%0s", `DME_KLR_MS, spw_addr,
-                     ser_buf[3], spw_snap_v, (ser_buf[3] == spw_snap_v) ? "ok" : "BAD");
+                     ser_buf[3], spw_snap_v, (ser_buf[3] === spw_snap_v) ? "ok" : "BAD");
             spw_bytes[spw_addr[6:0]] = ser_buf[3];
-            if (ser_buf[3] == spw_snap_v) spw_pass = spw_pass + 1;
+            if (ser_buf[3] === spw_snap_v) spw_pass = spw_pass + 1;
             else                          spw_fail = spw_fail + 1;
             if (spw_addr == SPW_LAST) begin
                 spw_done <= 1'b1;
