@@ -1563,8 +1563,13 @@ always @(posedge i8051_top.u_cpu.clk) begin : dead_code_check
         pc = i8051_top.u_cpu.pc;
         idx = 0; n = 0; lo = 0; hi = 0; desc = "";
 `define DEAD_CODE(l, h, d) n = n + 1; if (idx == 0 && pc >= l && pc <= h) begin idx = n; lo = l; hi = h; desc = d; end
+// dead only while the ljmp at j doesn't go to l (the ROM in use may call it)
+`define DEAD_CODE_UNLESS_LJMP(l, h, d, j) n = n + 1; if (idx == 0 && pc >= l && pc <= h && \
+    !(i8051_top.u_eprom.mem[j] == 8'h02 && i8051_top.u_eprom.mem[j + 1] == ((l) >> 8) && \
+      i8051_top.u_eprom.mem[j + 2] == ((l) & 16'h00FF))) begin idx = n; lo = l; hi = h; desc = d; end
 `include "dme_dead_code.vh"
 `undef DEAD_CODE
+`undef DEAD_CODE_UNLESS_LJMP
         if (idx != 0 && idx != deadchk_prev_idx) begin
             deadchk_n[idx] = deadchk_n[idx] + 1;
             if (deadchk_n[idx] <= `DEADCHK_MAX)
