@@ -472,7 +472,13 @@ def same(rev, script):
                        check=True, capture_output=True)
         try:
             bad = 0
+            # a test the base's script doesn't have is new: nothing to compare
+            base_script = os.path.join(tmp, os.path.relpath(os.path.abspath(script), REPO))
+            base_tests = set(test_names(base_script)) if os.path.exists(base_script) else set()
             for name in test_names(script):
+                if name not in base_tests:
+                    print(f'{name}: new test, not in {rev}')
+                    continue
                 args = test_defines(name, script)
                 a = events(os.path.join(tmp, 'dme_klr'), args)
                 b = events(HERE, args)
