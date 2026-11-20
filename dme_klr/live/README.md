@@ -357,10 +357,15 @@ engine held at 3000 rpm) has the tester write 26h and 28h from
 00h, 28h stepped 01h-FFh, 28h back to 00h, each step checked in RAM one
 frame after it was sent:
 
-    DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|BAD>
-    DME: [SERWR] DONE pass=<n> fail=<n>
+    DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|retry|BAD>
+    DME: [SERWR] <ms>,lost,<slot>,<byte>
+    DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
 
-The validator needs `pass=513 fail=0`; the run ends 1 s after the sweep.
+A `lost` line is a reply the DME cleared unread (an interrupt between its
+slot byte and its clr RI at 0x1EF3 outlasted the tester's answer); the
+step is then checked again after the next answer (`retry`), up to 4
+times. The validator needs `pass=513 fail=0`; the run ends 1 s after the
+sweep.
 The developer manual (DME DIAG: serial diagnostics) has the whole protocol.
 
 ## Conditional breakpoints

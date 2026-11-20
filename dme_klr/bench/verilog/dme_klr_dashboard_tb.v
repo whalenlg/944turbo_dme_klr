@@ -920,13 +920,21 @@ module dme_klr_dashboard_tb;
     // its next poll, 0x1EAE), once 26h and 28h are checked against what
     // was sent:
     //   DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|BAD>
+    // The DME can drop a reply: it clears RI (0x1EF3) a few instructions
+    // after its slot byte's TI, and if an interrupt lands in between and
+    // runs longer than the tester takes to answer, the answer arrives
+    // first and is cleared unread. The testbench flags each one:
+    //   DME: [SERWR] <ms>,lost,<slot>,<byte>
+    // A step that doesn't show in RAM is retried at the tester's next
+    // answer for that byte (up to SWW_TRIES checks), logged with "retry"
+    // in place of ok, so only a byte that never lands counts as BAD.
     // After the last step:
-    //   DME: [SERWR] DONE pass=<n> fail=<n>
+    //   DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
     // and the run ends 1 s later (SIM_TIME is only a backstop).
-    localparam integer SWW_LAST = 512;
+    localparam integer SWW_LAST = 512, SWW_TRIES = 4;
     integer    sww_step  = 0;
     reg        sww_on    = 1'b0, sww_done = 1'b0, sww_armed = 1'b0;
-    integer    sww_pass = 0, sww_fail = 0;
+    integer    sww_pass = 0, sww_fail = 0, sww_try = 0, sww_retries = 0, sww_lost = 0;
     reg [63:0] sww_end_ms = 64'd0;
     reg  [7:0] sww_r26, sww_r28;
     // the 26h / 28h bytes for a step
@@ -959,18 +967,31 @@ module dme_klr_dashboard_tb;
                 sww_armed = 1'b0;
                 sww_r26   = u_dme.i8051_top.u_cpu.iram[7'h26];
                 sww_r28   = u_dme.i8051_top.u_cpu.iram[7'h28];
-                $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,%0s", `DME_KLR_MS,
-                         live_ser_w26, live_ser_w28, sww_r26, sww_r28,
-                         (sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28) ? "ok" : "BAD");
-                if (sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28) sww_pass = sww_pass + 1;
-                else                                                      sww_fail = sww_fail + 1;
-                if (sww_step == SWW_LAST) begin
+                sww_try   = sww_try + 1;
+                if (sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28) begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,ok", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_pass = sww_pass + 1;
+                end else if (sww_try < SWW_TRIES) begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,retry", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_retries = sww_retries + 1;
+                end else begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,BAD", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_fail = sww_fail + 1;
+                end
+                if (sww_try < SWW_TRIES && !(sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28))
+                    ;                   // same step: re-armed at the next answer below
+                else if (sww_step == SWW_LAST) begin
                     sww_on     <= 1'b0;
                     sww_done   <= 1'b1;
                     sww_end_ms <= `DME_KLR_MS;
                     live_ser_tester <= live_ser_tester & ~8'h02;
-                    $display("DME: [SERWR] DONE pass=%0d fail=%0d", sww_pass, sww_fail);
+                    $display("DME: [SERWR] DONE pass=%0d fail=%0d retries=%0d lost=%0d",
+                             sww_pass, sww_fail, sww_retries, sww_lost);
                 end else begin
+                    sww_try  = 0;
                     sww_step = sww_step + 1;
                     {live_ser_w26, live_ser_w28} <= sww_vals(sww_step);
                 end
@@ -980,6 +1001,35 @@ module dme_klr_dashboard_tb;
     end
     always @(posedge ser_clk)
         if (sww_done && `DME_KLR_MS >= sww_end_ms + 1000) finish_sim;
+
+    // Lost replies: the tester finished sending after the DME's slot byte
+    // (0x1EEC) but before the DME's clr RI (0x1EF3) in the same poll.
+    // A reply normally finishes after 0x1EF3 and is read at 0x1E9D on
+    // the next poll.
+    reg        sww_txb_q = 1'b0, sww_in_win = 1'b0, sww_txd_win = 1'b0;
+    reg [15:0] sww_pc_q = 16'h0000;
+    reg  [2:0] sww_tx_slot = 3'd0;
+    reg  [7:0] sww_tx_val = 8'h00;
+    always @(posedge ser_clk) begin
+        sww_txb_q <= ser_tx_busy;
+        sww_pc_q  <= u_dme.i8051_top.u_cpu.pc;
+        if (ser_tx_go && !ser_tx_busy) begin
+            sww_tx_slot <= ser_slot - 3'd1;     // the slot it answers
+            sww_tx_val  <= ser_tx_byte;
+        end
+        if (u_dme.i8051_top.u_cpu.pc == 16'h1EEC && sww_pc_q != 16'h1EEC) begin
+            sww_in_win  <= 1'b1;
+            sww_txd_win <= 1'b0;
+        end else if (sww_txb_q && !ser_tx_busy && sww_in_win)
+            sww_txd_win <= 1'b1;                // reply done inside the window
+        if (u_dme.i8051_top.u_cpu.pc == 16'h1EF3 && sww_pc_q != 16'h1EF3) begin
+            sww_in_win <= 1'b0;
+            if (sww_txd_win && live_ser_tester[1]) begin
+                $display("DME: [SERWR] %0d,lost,%0d,%02h", `DME_KLR_MS, sww_tx_slot, sww_tx_val);
+                sww_lost = sww_lost + 1;
+            end
+        end
+    end
 
     // ── Snapshot-busy flag ───────────────────────────────────
     reg snapshot_busy;

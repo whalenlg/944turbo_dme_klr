@@ -1864,11 +1864,21 @@ Two test options drive it:
   from 01h to FFh, then sends 28h = 00h: 513 steps. Each step is checked
   one frame after its byte went out, against both RAM bytes:
 
-      DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|BAD>
-      DME: [SERWR] DONE pass=<n> fail=<n>
+      DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|retry|BAD>
+      DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
 
   and the run ends 1 s after the last step. `serial_write_sweep_3000`
   needs `pass=513 fail=0`.
+
+  The DME drops a reply now and then, and so would a real tester's: the
+  poll clears RI (0x1EF3) a few instructions after its slot byte's TI,
+  and when an interrupt lands in between and runs longer than the
+  tester's answer takes (about 13 bit times), the answer arrives first
+  and is cleared unread. The testbench flags each of these as
+  `DME: [SERWR] <ms>,lost,<slot>,<byte>`, and a step that isn't in RAM
+  is checked again after the tester's next answer for that byte (it
+  answers every cycle), logged `retry`. Only a byte still missing after
+  4 checks counts as `BAD`.
 
 ---
 
