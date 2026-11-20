@@ -33,11 +33,20 @@
 //  one transfer stopped for good after ~150 KB while short requests went
 //  through, so whole-file downloads held tests at 99%. A piece that
 //  receives nothing for STALL_MS is dropped and asked for again.
+//
+//  A connection the host doesn't answer is given up after CONNECT_MS
+//  (the OS would wait 40-75 s). When this machine has more than one
+//  address on the host's subnet (wired and Wi-Fi both up), a failed try
+//  goes out from the next one, and the address that last worked is kept:
+//  a Mac on both saw most connections from its wired address go
+//  unanswered while every one from its Wi-Fi address got through, and its
+//  tests sat at 99% for half an hour fetching logs 64 KB at a time.
 // ============================================================
 
 import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import { networkInterfaces } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +66,7 @@ const TEMPFAIL = 75;
 const GIVEBACK = 76;       // ran there, but its logs wouldn't come back
 const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 15_000;   // a piece of a download that receives nothing this long is tried again
 const CHUNK = +process.env.DMEKLR_REMOTE_CHUNK || 65536;          // bytes per download request
+const CONNECT_MS = +process.env.DMEKLR_REMOTE_CONNECT_MS || 5_000; // a connection not answered this long is tried again
 const TRIES = 5;
 const DROP_MS = 90_000;    // no answer this long: the host has dropped
 const REFUSED_MS = 15_000; // refused this long: the bridge has stopped
@@ -76,6 +86,25 @@ async function call(method, path, body, ms = 30_000) {
   return r;
 }
 
+// This machine's addresses on the host's subnet (IPv4 host given by
+// address only), so a try that fails can go out from another interface.
+// [] when there's only one, or the host is a name: the OS picks.
+function sourceAddresses() {
+  const h = new URL(HOST).hostname;
+  const n = a => a.split('.').reduce((v, x) => (v * 256 + +x), 0);
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(h)) return [];
+  const out = [];
+  for (const list of Object.values(networkInterfaces()))
+    for (const i of list ?? []) {
+      if (i.family !== 'IPv4' || i.internal || !i.netmask) continue;
+      const m = n(i.netmask);
+      if (m && (n(i.address) & m) >>> 0 === (n(h) & m) >>> 0 && !out.includes(i.address)) out.push(i.address);
+    }
+  return out.length > 1 ? out : [];
+}
+const SRC = sourceAddresses();
+let srcAt = 0;   // SRC[srcAt]: the one the next try uses (the last that worked)
+
 // GET <path> of the job, bytes a..b, on a connection of its own:
 // {status, body, total} (body null unless 200/206; total from
 // Content-Range, or the body's length for a whole-file 200 from an older
@@ -85,7 +114,8 @@ function getOnce(path, a, b) {
     const u = new URL(HOST + path);
     // how far a try got, for the message when it stalls
     let stage = 'no answer', got = 0;
-    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close', Range: `bytes=${a}-${b}` }, agent: false }, r => {
+    const src = SRC.length ? { localAddress: SRC[srcAt] } : {};
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close', Range: `bytes=${a}-${b}` }, agent: false, ...src }, r => {
       if (r.statusCode !== 200 && r.statusCode !== 206) { r.resume(); return res({ status: r.statusCode, body: null }); }
       stage = 'headers';
       const parts = [];
@@ -99,8 +129,12 @@ function getOnce(path, a, b) {
       r.on('error', rej);
       r.on('aborted', () => rej(new Error('connection closed mid-transfer')));
     });
-    // no bytes either way for STALL_MS: give this try up
+    // no bytes either way for STALL_MS: give this try up. (Node starts
+    // that clock only once connected, so the connect has its own.)
     req.setTimeout(STALL_MS, () => req.destroy(new Error(`stalled ${STALL_MS / 1000} s after ${stage}`)));
+    const conn = setTimeout(() => req.destroy(new Error(`no answer to connect in ${CONNECT_MS / 1000} s${src.localAddress ? ` from ${src.localAddress}` : ''}`)), CONNECT_MS);
+    req.on('socket', s => { if (!s.connecting) clearTimeout(conn); else s.once('connect', () => clearTimeout(conn)); });
+    req.on('close', () => clearTimeout(conn));
     req.on('error', rej);
     req.end();
   });
@@ -121,6 +155,8 @@ async function download(what, path) {
         last = e;
         retried++;
         say(`${what}: bytes ${off}+ try ${i} of ${TRIES} failed after ${((Date.now() - t1) / 1000).toFixed(0)} s (${e.code ?? e.message})`);
+        // next try from this machine's next address on the host's subnet
+        if (SRC.length) { srcAt = (srcAt + 1) % SRC.length; say(`${what}: next try from ${SRC[srcAt]}`); }
         if (i < TRIES) await sleep(1000 * 2 ** (i - 1));
       }
     }
@@ -172,7 +208,7 @@ async function main() {
   } catch (e) { say(`unreachable (${e.cause?.code ?? e.message})`); return TEMPFAIL; }
   if (!r.ok) { say(`refused: ${r.status} ${(await r.text()).slice(0, 200)}`); return TEMPFAIL; }
   jobId = (await r.json()).id;
-  say(`started, job ${jobId}`);
+  say(`started, job ${jobId}${SRC.length ? ` (logs come back from ${SRC.join(' or ')})` : ''}`);
   writeFileSync(progress, `remote ${who}: started\n`);
   let lastOk = Date.now(), lastT = -1, st;
   for (;;) {

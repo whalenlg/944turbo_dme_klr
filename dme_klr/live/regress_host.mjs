@@ -156,6 +156,22 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (job.proc) job.proc.once('exit', go); else go();
   };
   const builds = {};   // sim → Promise of the shared runtime dir (developer install)
+  // A Mac host stays awake while it holds any job, from the start until
+  // the job's machine has fetched the logs (DELETE) or the job is dropped:
+  // one that slept mid-run left the other machine's connections unanswered
+  // and its finished tests at 99% for half an hour. caffeinate -w ends with
+  // this bridge. (-s: no system sleep on AC power; -i: no idle sleep.)
+  let caf = null;
+  const awake = () => {
+    if (process.platform !== 'darwin') return;
+    if (jobs.size && !caf) {
+      try {
+        caf = spawn('caffeinate', ['-i', '-s', '-w', String(process.pid)], { stdio: 'ignore' });
+        caf.on('error', () => { caf = null; });
+        caf.on('exit', () => { caf = null; });
+      } catch { caf = null; }
+    } else if (!jobs.size && caf) { caf.kill(); caf = null; }
+  };
 
   function info() {
     const py = python();
@@ -219,6 +235,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     const logdir = join(tmp, 'dme_klr', romVariant(env.DME_ROM_FILE, env.KLR_ROM_FILE), sim === 'iverilog' ? 'dash_logs' : 'v_dash_logs');
     const job = { id, test: o.test, sim, tmp, logdir, state: 'starting', exit: null, out: [], proc: null, startedAt: Date.now(), killed: false };
     jobs.set(id, job);
+    awake();
     const keep = l => { job.out.push(l.replace(ANSI, '')); if (job.out.length > 40) job.out.shift(); };
     const launch = rtDir => {
       if (job.killed) return;
@@ -259,6 +276,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
   // logs and all, after an hour
   setInterval(() => {
     for (const [id, j] of jobs) if (j.state === 'done' && Date.now() - j.endedAt > 36e5) { jobs.delete(id); rmJob(j); }
+    awake();
   }, 6e5).unref();
 
   function handle(req, res, url) {
@@ -280,7 +298,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
     if (!m) return false;
     const job = jobs.get(m[1]);
     if (!job) return send(404, 'no such job', 'text/plain'), true;
-    if (req.method === 'DELETE' && !m[2]) { kill(job); jobs.delete(job.id); rmJob(job); return send(204, ''), true; }
+    if (req.method === 'DELETE' && !m[2]) { kill(job); jobs.delete(job.id); rmJob(job); awake(); return send(204, ''), true; }
     if (req.method !== 'GET') return false;
     if (!m[2]) {
       const t = job.state === 'running' ? logTimeMs(join(job.logdir, `${job.test}.log`)) : null;
@@ -360,6 +378,7 @@ export function makeRegressHost({ REPO, TMP_ROOT, PY }) {
 
   return { handle, info, mode: MODE, running, stopAll: () => {
     for (const j of jobs.values()) kill(j);
+    if (caf) { caf.kill(); caf = null; }
     try { rmSync(JOBS_DIR, { recursive: true, force: true }); } catch { /* next start */ }
   } };
 }
