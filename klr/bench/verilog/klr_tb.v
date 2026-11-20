@@ -156,16 +156,14 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // (The -DBOOST model is always built; with BOOST off (`OPT_BOOST) its
     // processes are idle and adc_ch4 reads the fixed 0x85 below.)
     // BOOST_COMB starts each combinational block of the model. With runtime
-    // options it is `always @(*) if (BOOST)`. In a fixed build it is a plain
-    // `always @(*)` with -DBOOST, or a generate `if (0)` without it, so the
-    // block isn't elaborated: an `always @(*) if (1'b0)` has nothing to be
-    // sensitive to, and iverilog warns about each one.
+    // options it is `always @(*) if (BOOST)`. In a fixed build `OPT_BOOST is
+    // the constant 1'b0 / 1'b1, so it is a generate `if` around the block:
+    // without BOOST the block isn't elaborated (an `always @(*) if (1'b0)`
+    // has nothing to be sensitive to, and iverilog warns about each one).
 `ifdef RUNTIME_OPTS
     `define BOOST_COMB always @(*) if (`OPT_BOOST)
-`elsif BOOST
-    `define BOOST_COMB always @(*)
 `else
-    `define BOOST_COMB if (0) always @(*)
+    `define BOOST_COMB if (`OPT_BOOST) always @(*)
 `endif
     // ── Turbo boost ADC input (ch4) — MAP-table based ──────────
     //  Modeled from the real KLR boost map (throttle% x RPM ->
