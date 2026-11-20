@@ -203,9 +203,13 @@ public:
             // knock on the next N revolutions; the testbench counts it down
             {"knock_revs", &TB(live_knock_revs), 16, false},
             // serial diagnostic tester on the DME's RXD (dme_klr_dashboard_tb):
-            // 1 = connected; ser_peek = the RAM address it asks for in 7Ah
+            // bit 0 = connected, bit 1 = also answer the slots stored in
+            // 26h / 28h; ser_peek = the RAM address it asks for in 7Ah;
+            // ser_w26 / ser_w28 = the bytes for 26h / 28h
             {"ser_tester", &TB(live_ser_tester), 8, false},
             {"ser_peek",  &TB(live_ser_peek),   8, false},
+            {"ser_w26",   &TB(live_ser_w26),    8, false},
+            {"ser_w28",   &TB(live_ser_w28),    8, false},
         };
         liveFields(root->vlSymsp, fields_);
         layout_ = liveLayoutHash(fields_);

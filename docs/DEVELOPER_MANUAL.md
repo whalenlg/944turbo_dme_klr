@@ -1783,6 +1783,13 @@ listens for a tester at boot, so turn it on and press **↺ RESTART**; the
 bridge keeps both settings across restarts. If the switch and field are
 grayed with an amber note, the live sim was built before these inputs
 existed: rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge.
+Below the peek, **WRITE 26h / 28h** has the tester also answer slots 1/4
+and 2/5 with the two bytes in its fields (hex, Enter or **SET**), so the
+DME stores them in 26h (advance trim) and 28h (fuel trim). This is
+probably ignored: on the 86 and 89 ROMs nothing reads either byte (see
+the protocol below), so expect RAM to follow and nothing else to change.
+It takes effect without a restart once the tester is streaming; it needs
+a live sim built with the `ser_w26` / `ser_w28` inputs.
 The `cl_serial_peek_*` regressions (Appendix A) walk the peek address and
 check every byte that comes back, and `serial_write_sweep_3000` sweeps the
 two bytes a tester can write, 26h and 28h.
@@ -1846,8 +1853,8 @@ not the tester is on:
 |---|---|
 | `live_ser_tester[0]` (`+ser_tester=1`, live `set ser_tester 1`) | Connects the tester. It answers every FFh (the hello and each end marker) with FFh, and slots 0 and 3 with `live_ser_peek` |
 | `live_ser_peek` (`+ser_peek=<hex>`, live `set ser_peek`) | The address written into 7Ah, so each frame's peek byte is RAM at that address. Default 37h |
-| `live_ser_tester[1]` (set by `+ser_w26` / `+ser_w28`) | Also answers slots 1 and 4 with `live_ser_w26` and slots 2 and 5 with `live_ser_w28`. Off, those slots go unanswered and 26h / 28h keep 00h / 80h |
-| `live_ser_w26`, `live_ser_w28` (`+ser_w26=<hex>`, `+ser_w28=<hex>`) | The bytes for 26h and 28h. Defaults 00h and 80h |
+| `live_ser_tester[1]` (`+ser_tester=3`, set by `+ser_w26` / `+ser_w28`, live **WRITE 26h / 28h** switch) | Also answers slots 1 and 4 with `live_ser_w26` and slots 2 and 5 with `live_ser_w28`. Off, those slots go unanswered and 26h / 28h keep 00h / 80h |
+| `live_ser_w26`, `live_ser_w28` (`+ser_w26=<hex>`, `+ser_w28=<hex>`, live `set ser_w26` / `set ser_w28`) | The bytes for 26h and 28h. Defaults 00h and 80h |
 
 The stock ROM only takes the tester at boot, so it has to be on from t=0
 (or turned on before a restart). A reply goes out one byte time after
@@ -2011,7 +2018,7 @@ per line:
 | `run`, `pause` | Free-run, stop |
 | `step dme\|klr [N]` | Run N instructions of that CPU |
 | `until <ms>` | Run to that simulated time, then pause |
-| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart), `ser_peek <hex>` is the address it writes into 7Ah |
+| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek ser_w26 ser_w28`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart; `3` also has it write 26h / 28h), `ser_peek <hex>` is the address it writes into 7Ah, `ser_w26` / `ser_w28 <hex>` the bytes it writes into 26h / 28h |
 | `bp add\|del dme\|klr <hex>` | PC breakpoint |
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |

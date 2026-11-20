@@ -296,6 +296,7 @@ throttle opens, and the KLR boost-target table takes over from boost onset
 | `coolant`, `airtemp`, `battery`, `altitude` | DME ADC ch3, ch2, ch1, ch4 raw bytes | warm-idle values |
 | `ser_tester` | 1 = connect the serial diagnostic tester to the DME's RXD (see below) | 0 |
 | `ser_peek` | the RAM address (00-7F) the tester writes into 7Ah | 0x37 |
+| `ser_w26`, `ser_w28` | the bytes the tester writes into 26h and 28h when `ser_tester` bit 1 is set (`ser_tester 3`); probably ignored, nothing in the 86/89 ROMs reads them | 0x00, 0x80 |
 
 RPM is held at 840 until the firmware first reports EngineSync, as in the
 closed-loop tests.
