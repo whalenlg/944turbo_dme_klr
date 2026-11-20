@@ -53,7 +53,16 @@ export function sourceOrder(hostname) {
 }
 export const worked = (hostname, addr) => { if (addr) preferred.set(hostname, addr); };
 
-// One request on a connection of its own (no keep-alive), from
+// Which side closes a connection first keeps its TIME_WAIT (30 s or
+// more). With `Connection: close` that was the host, and every request
+// (a 64 KB log piece, a 2 s poll) left one on the host's port: one host
+// held 21,296, more than this Mac's 16,384 ephemeral ports, so most new
+// connections reused a pair in TIME_WAIT there and got no answer, while
+// other ports on the host took every one. So the request asks for
+// keep-alive and this side closes the connection when the reply is in:
+// the TIME_WAIT stays here, on a port this side won't reuse for it.
+//
+// One request on a connection of its own, from
 // <localAddress> if given. Rejects with code ECONNECT_TIMEOUT when the
 // connection isn't answered in connectMs, and when the whole request
 // takes longer than timeoutMs. {status, ok, headers, body (Buffer)}.
@@ -61,13 +70,14 @@ export function lanRequestOnce(url, { method = 'GET', headers = {}, body, timeou
   return new Promise((res, rej) => {
     const u = new URL(url);
     const data = body == null ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
-    const h = { ...headers, Connection: 'close', ...(data ? { 'Content-Length': data.length } : {}) };
+    const h = { ...headers, Connection: 'keep-alive', ...(data ? { 'Content-Length': data.length } : {}) };
     if (data && !Object.keys(h).some(k => k.toLowerCase() === 'content-type')) h['Content-Type'] = 'application/json';
     const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method, headers: h, agent: false, ...(localAddress ? { localAddress } : {}) }, r => {
       const parts = [];
       r.on('data', d => parts.push(d));
       r.on('end', () => {
         clearTimeout(all);
+        r.socket?.destroy();   // this side closes first (see closeFirst below)
         const b = Buffer.concat(parts);
         res({ status: r.statusCode, ok: r.statusCode >= 200 && r.statusCode < 300, headers: r.headers, body: b,
               text: async () => b.toString('utf8'), json: async () => JSON.parse(b.toString('utf8')) });
