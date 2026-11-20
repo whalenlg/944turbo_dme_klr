@@ -98,12 +98,13 @@ function getOnce(path, a, b) {
     // how far a try got, for the message when it stalls
     let stage = 'no answer', got = 0;
     const src = sourceOrder(HOSTNAME).length ? { localAddress: sourceOrder(HOSTNAME)[0] } : {};
-    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'close', Range: `bytes=${a}-${b}` }, agent: false, ...src }, r => {
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method: 'GET', headers: { ...H, Connection: 'keep-alive', Range: `bytes=${a}-${b}` }, agent: false, ...src }, r => {
       if (r.statusCode !== 200 && r.statusCode !== 206) { r.resume(); return res({ status: r.statusCode, body: null }); }
       stage = 'headers';
       const parts = [];
       r.on('data', d => { parts.push(d); got += d.length; stage = `${got} bytes`; });
       r.on('end', () => {
+        r.socket?.destroy();   // close from this side, so the TIME_WAIT stays here (lan_http.mjs)
         if (!r.complete) return rej(new Error('connection closed mid-transfer'));
         worked(HOSTNAME, src.localAddress);
         const body = Buffer.concat(parts);
