@@ -15,10 +15,12 @@
 //  every one, so a request is tried TRIES times in all, each a fresh
 //  connection. A connection that's refused or answered is never sent
 //  again: the host is there, and a POST may have reached it.
+//
+//  Requests reuse one kept-open connection (see agentFor).
 // ============================================================
 
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
+import { request as httpRequest, Agent as HttpAgent } from 'node:http';
+import { request as httpsRequest, Agent as HttpsAgent } from 'node:https';
 import { networkInterfaces } from 'node:os';
 
 export const CONNECT_MS = +process.env.DMEKLR_REMOTE_CONNECT_MS || 5_000;
@@ -53,31 +55,45 @@ export function sourceOrder(hostname) {
 }
 export const worked = (hostname, addr) => { if (addr) preferred.set(hostname, addr); };
 
-// Which side closes a connection first keeps its TIME_WAIT (30 s or
-// more). With `Connection: close` that was the host, and every request
-// (a 64 KB log piece, a 2 s poll) left one on the host's port: one host
-// held 21,296, more than this Mac's 16,384 ephemeral ports, so most new
-// connections reused a pair in TIME_WAIT there and got no answer, while
-// other ports on the host took every one. So the request asks for
-// keep-alive and this side closes the connection when the reply is in:
-// the TIME_WAIT stays here, on a port this side won't reuse for it.
-//
-// One request on a connection of its own, from
-// <localAddress> if given. Rejects with code ECONNECT_TIMEOUT when the
-// connection isn't answered in connectMs, and when the whole request
-// takes longer than timeoutMs. {status, ok, headers, body (Buffer)}.
+// Requests share one kept-open connection (per host and source address)
+// instead of a new connection each. A connection per request (every
+// 64 KB log piece, every 2 s poll) left closed connections in TIME_WAIT
+// on the host: 192.168.1.41 held 21,296, then hours later still 4,385
+// from this Mac's address (they didn't expire). A new connection from a
+// client port with one of those got no answer, and once 128 of them were
+// half open, the bridge's listen queue was full and it answered nothing.
+// A test now uses one or two connections in all.
+const agents = new Map();   // 'http:<localAddress>' → keep-alive Agent
+export function agentFor(protocol, localAddress) {
+  const k = `${protocol}${localAddress ?? ''}`;
+  if (!agents.has(k)) {
+    const A = protocol === 'https:' ? HttpsAgent : HttpAgent;
+    agents.set(k, new A({ keepAlive: true, maxSockets: 1, ...(localAddress ? { localAddress } : {}) }));
+  }
+  return agents.get(k);
+}
+// close the kept-open connections from this side (before exiting)
+export const closeAll = () => { for (const a of agents.values()) a.destroy(); };
+
+// One request, on the kept-open connection from <localAddress> if given
+// (a new one when there's none). Rejects with code ECONNECT_TIMEOUT when
+// a new connection isn't answered in connectMs, and when the whole
+// request takes longer than timeoutMs; e.stale when a kept-open
+// connection turned out to be closed by the host before any reply (safe
+// to send again). {status, ok, headers, body (Buffer)}.
 export function lanRequestOnce(url, { method = 'GET', headers = {}, body, timeoutMs = 30_000, connectMs = CONNECT_MS, localAddress } = {}) {
   return new Promise((res, rej) => {
     const u = new URL(url);
     const data = body == null ? null : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
-    const h = { ...headers, Connection: 'keep-alive', ...(data ? { 'Content-Length': data.length } : {}) };
+    const h = { ...headers, ...(data ? { 'Content-Length': data.length } : {}) };
     if (data && !Object.keys(h).some(k => k.toLowerCase() === 'content-type')) h['Content-Type'] = 'application/json';
-    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method, headers: h, agent: false, ...(localAddress ? { localAddress } : {}) }, r => {
+    let answered = false;
+    const req = (u.protocol === 'https:' ? httpsRequest : httpRequest)(u, { method, headers: h, agent: agentFor(u.protocol, localAddress) }, r => {
+      answered = true;
       const parts = [];
       r.on('data', d => parts.push(d));
       r.on('end', () => {
         clearTimeout(all);
-        r.socket?.destroy();   // this side closes first (see closeFirst below)
         const b = Buffer.concat(parts);
         res({ status: r.statusCode, ok: r.statusCode >= 200 && r.statusCode < 300, headers: r.headers, body: b,
               text: async () => b.toString('utf8'), json: async () => JSON.parse(b.toString('utf8')) });
@@ -89,7 +105,11 @@ export function lanRequestOnce(url, { method = 'GET', headers = {}, body, timeou
     const all = setTimeout(() => fail('ETIMEOUT', `no reply in ${timeoutMs / 1000} s`), timeoutMs);
     req.on('socket', s => { if (!s.connecting) clearTimeout(conn); else s.once('connect', () => clearTimeout(conn)); });
     req.on('close', () => clearTimeout(conn));
-    req.on('error', e => { clearTimeout(conn); clearTimeout(all); rej(e); });
+    req.on('error', e => {
+      clearTimeout(conn); clearTimeout(all);
+      if (req.reusedSocket && !answered && e.code === 'ECONNRESET') e.stale = true;
+      rej(e);
+    });
     if (data) req.write(data);
     req.end();
   });
@@ -111,7 +131,7 @@ export async function lanRequest(url, opts = {}) {
       return r;
     } catch (e) {
       last = e;
-      if (!NO_CONNECTION.has(e.code)) throw e;
+      if (!NO_CONNECTION.has(e.code) && !e.stale) throw e;
       if (i + 1 < tries) await new Promise(r => setTimeout(r, 300));
     }
   }
