@@ -628,6 +628,9 @@ module dme_klr_dashboard_tb;
 `ifndef SER_PEEK_WALK_MS            // SER_PEEK_WALK: when the walk starts
   `define SER_PEEK_WALK_MS 0
 `endif
+`ifndef SER_WRITE_SWEEP_MS          // SER_WRITE_SWEEP: when the sweep starts
+  `define SER_WRITE_SWEEP_MS 0
+`endif
 `ifndef TRIGGER_LOSS_T_MS
   `define TRIGGER_LOSS_T_MS 3000
 `endif
@@ -693,25 +696,47 @@ module dme_klr_dashboard_tb;
     //     byte at 13h 12h 11h 49h 2Fh 10h (table 11D4h), then FF.
     //   - A byte received after slot k is stored on the next poll at
     //     table 11DAh[k]: 7Ah 26h 28h 7Ah 26h 28h (the code at 0x1EA7).
-    // The tester answers only slots 0 and 3, with live_ser_peek, so the
-    // peek byte of the following frames is RAM[live_ser_peek]; 26h and 28h
-    // are never written. It also answers every FF (the hello, and the end
-    // marker, which the DME ignores since 29h = FF there).
+    // The tester answers slots 0 and 3 with live_ser_peek, so the peek
+    // byte of the following frames is RAM[live_ser_peek]. With
+    // live_ser_tester[1] set it also answers slots 1 and 4 with
+    // live_ser_w26 and slots 2 and 5 with live_ser_w28, which the DME
+    // stores in 26h and 28h; otherwise those slots go unanswered and 26h
+    // and 28h keep init_serial's 00h and 80h. It also answers every FF
+    // (the hello, and the end marker, which the DME ignores since 29h =
+    // FF there).
     // live_ser_tester[0] = 1 connects it (+ser_tester=1 at start: the
     // stock ROM only listens for the answer to its hello at boot);
-    // +ser_peek=<hex> sets the first address. Off, RXD idles high.
+    // +ser_peek=<hex> sets the first address; +ser_w26=<hex> and
+    // +ser_w28=<hex> set the bytes for 26h and 28h and turn on
+    // live_ser_tester[1]. Off, RXD idles high.
+    // In the 89 ROM the code that would use them (0x1F21: 26h added to
+    // the ignition value in R5; 0x1F2D: 28h as a fuel multiplier through
+    // 0x1DF0) is bypassed: the hooks at 0x104A and 0x1050 jump straight
+    // past it, so the stored bytes have no effect on the engine there.
     // The frames the DME sends are decoded from TXD whether or not the
     // tester is on, and summarised in each snapshot's DME: [SER] line.
     reg  [7:0] live_ser_tester /*verilator public_flat_rw*/ = 8'h00;
     reg  [7:0] live_ser_peek   /*verilator public_flat_rw*/ = 8'h37;
+    reg  [7:0] live_ser_w26    /*verilator public_flat_rw*/ = 8'h00;
+    reg  [7:0] live_ser_w28    /*verilator public_flat_rw*/ = 8'h80;
     initial begin : ser_args
         integer v;
         if ($value$plusargs("ser_tester=%d", v)) live_ser_tester = v[7:0];
         if ($value$plusargs("ser_peek=%h", v))   live_ser_peek   = v[7:0];
+        if ($value$plusargs("ser_w26=%h", v)) begin
+            live_ser_w26    = v[7:0];
+            live_ser_tester = live_ser_tester | 8'h02;
+        end
+        if ($value$plusargs("ser_w28=%h", v)) begin
+            live_ser_w28    = v[7:0];
+            live_ser_tester = live_ser_tester | 8'h02;
+        end
         if (`OPT_SER_PEEK_WALK) begin      // see SER_PEEK_WALK below
             live_ser_tester = 8'd1;
             live_ser_peek   = 8'h10;
         end
+        if (`OPT_SER_WRITE_SWEEP)          // see SER_WRITE_SWEEP below
+            live_ser_tester = live_ser_tester | 8'h01;
     end
     wire ser_clk  = u_dme.i8051_top.u_cpu.clk;
     // the DME's mode-2 baud tick (16 per bit), so both ends run in step
@@ -788,6 +813,14 @@ module dme_klr_dashboard_tb;
                                 if (ser_slot < 3'd6) ser_slotv[ser_slot] <= ser_rx_sh[7:0];
                                 if (live_ser_tester[0] && (ser_slot == 3'd0 || ser_slot == 3'd3)) begin
                                     ser_tx_byte <= live_ser_peek;
+                                    ser_tx_go   <= 1'b1;
+                                end else if (live_ser_tester[0] && live_ser_tester[1] &&
+                                             (ser_slot == 3'd1 || ser_slot == 3'd4)) begin
+                                    ser_tx_byte <= live_ser_w26;
+                                    ser_tx_go   <= 1'b1;
+                                end else if (live_ser_tester[0] && live_ser_tester[1] &&
+                                             (ser_slot == 3'd2 || ser_slot == 3'd5)) begin
+                                    ser_tx_byte <= live_ser_w28;
                                     ser_tx_go   <= 1'b1;
                                 end
                                 if (ser_slot < 3'd6) ser_slot <= ser_slot + 3'd1;
@@ -874,6 +907,126 @@ module dme_klr_dashboard_tb;
             end else begin
                 spw_addr      <= spw_next;
                 live_ser_peek <= spw_next;
+            end
+        end
+    end
+
+    // ── SER_WRITE_SWEEP: sweep 26h, then 28h, through the tester ──
+    // From SER_WRITE_SWEEP_MS the tester answers slots 1/4 (26h) and 2/5
+    // (28h) too. It starts by sending 00h for both, steps 26h up from 01h
+    // to FFh with 28h at 00h, sends 26h = 00h, steps 28h up from 01h to
+    // FFh, then sends 28h = 00h: 513 steps. A step moves on one frame
+    // after the tester sent the stepped byte (the DME stores a reply on
+    // its next poll, 0x1EAE), once 26h and 28h are checked against what
+    // was sent:
+    //   DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|BAD>
+    // The DME can drop a reply: it clears RI (0x1EF3) a few instructions
+    // after its slot byte's TI, and if an interrupt lands in between and
+    // runs longer than the tester takes to answer, the answer arrives
+    // first and is cleared unread. The testbench flags each one:
+    //   DME: [SERWR] <ms>,lost,<slot>,<byte>
+    // A step that doesn't show in RAM is retried at the tester's next
+    // answer for that byte (up to SWW_TRIES checks), logged with "retry"
+    // in place of ok, so only a byte that never lands counts as BAD.
+    // After the last step:
+    //   DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
+    // and the run ends 1 s later (SIM_TIME is only a backstop).
+    localparam integer SWW_LAST = 512, SWW_TRIES = 4;
+    integer    sww_step  = 0;
+    reg        sww_on    = 1'b0, sww_done = 1'b0, sww_armed = 1'b0;
+    integer    sww_pass = 0, sww_fail = 0, sww_try = 0, sww_retries = 0, sww_lost = 0;
+    reg [63:0] sww_end_ms = 64'd0;
+    reg  [7:0] sww_r26, sww_r28;
+    // the 26h / 28h bytes for a step
+    function [15:0] sww_vals;
+        input integer st;
+        begin
+            if (st >= 1 && st <= 255)        sww_vals = {st[7:0], 8'h00};
+            else if (st >= 257 && st <= 511) sww_vals = {8'h00, st[7:0]};  // st-256 = st[7:0]
+            else                             sww_vals = 16'h0000;          // 0, 256, 512
+        end
+    endfunction
+    // a slot byte (not FF) has just been received: the same instant the
+    // receiver above decides its reply for slot ser_slot
+    wire sww_slot_ev = ser_tick && ser_rx_act && ser_rx_cnt == 4'd15 && ser_rx_bit == 4'd10 &&
+                       ser_rx_sh[8] && ser_rx_sh[7:0] != 8'hFF;
+    // the reply to this slot is the byte being stepped (step 0: 28h, sent
+    // after 26h in the same cycle)
+    wire sww_is26 = (ser_slot == 3'd1 || ser_slot == 3'd4);
+    wire sww_is28 = (ser_slot == 3'd2 || ser_slot == 3'd5);
+    wire sww_stepped = (sww_step >= 1 && sww_step <= 256) ? sww_is26 : sww_is28;
+    always @(posedge ser_clk) begin
+        if (`OPT_SER_WRITE_SWEEP && !sww_on && !sww_done &&
+            `DME_KLR_MS >= `VAL_SER_WRITE_SWEEP_MS) begin
+            sww_on          <= 1'b1;
+            live_ser_w26    <= 8'h00;
+            live_ser_w28    <= 8'h00;
+            live_ser_tester <= live_ser_tester | 8'h03;
+        end else if (sww_on && sww_slot_ev) begin
+            if (sww_armed) begin
+                sww_armed = 1'b0;
+                sww_r26   = u_dme.i8051_top.u_cpu.iram[7'h26];
+                sww_r28   = u_dme.i8051_top.u_cpu.iram[7'h28];
+                sww_try   = sww_try + 1;
+                if (sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28) begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,ok", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_pass = sww_pass + 1;
+                end else if (sww_try < SWW_TRIES) begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,retry", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_retries = sww_retries + 1;
+                end else begin
+                    $display("DME: [SERWR] %0d,%02h,%02h,%02h,%02h,BAD", `DME_KLR_MS,
+                             live_ser_w26, live_ser_w28, sww_r26, sww_r28);
+                    sww_fail = sww_fail + 1;
+                end
+                if (sww_try < SWW_TRIES && !(sww_r26 === live_ser_w26 && sww_r28 === live_ser_w28))
+                    ;                   // same step: re-armed at the next answer below
+                else if (sww_step == SWW_LAST) begin
+                    sww_on     <= 1'b0;
+                    sww_done   <= 1'b1;
+                    sww_end_ms <= `DME_KLR_MS;
+                    live_ser_tester <= live_ser_tester & ~8'h02;
+                    $display("DME: [SERWR] DONE pass=%0d fail=%0d retries=%0d lost=%0d",
+                             sww_pass, sww_fail, sww_retries, sww_lost);
+                end else begin
+                    sww_try  = 0;
+                    sww_step = sww_step + 1;
+                    {live_ser_w26, live_ser_w28} <= sww_vals(sww_step);
+                end
+            end else if (sww_stepped)
+                sww_armed = 1'b1;   // checked at the end of the next frame
+        end
+    end
+    always @(posedge ser_clk)
+        if (sww_done && `DME_KLR_MS >= sww_end_ms + 1000) finish_sim;
+
+    // Lost replies: the tester finished sending after the DME's slot byte
+    // (0x1EEC) but before the DME's clr RI (0x1EF3) in the same poll.
+    // A reply normally finishes after 0x1EF3 and is read at 0x1E9D on
+    // the next poll.
+    reg        sww_txb_q = 1'b0, sww_in_win = 1'b0, sww_txd_win = 1'b0;
+    reg [15:0] sww_pc_q = 16'h0000;
+    reg  [2:0] sww_tx_slot = 3'd0;
+    reg  [7:0] sww_tx_val = 8'h00;
+    always @(posedge ser_clk) begin
+        sww_txb_q <= ser_tx_busy;
+        sww_pc_q  <= u_dme.i8051_top.u_cpu.pc;
+        if (ser_tx_go && !ser_tx_busy) begin
+            sww_tx_slot <= ser_slot - 3'd1;     // the slot it answers
+            sww_tx_val  <= ser_tx_byte;
+        end
+        if (u_dme.i8051_top.u_cpu.pc == 16'h1EEC && sww_pc_q != 16'h1EEC) begin
+            sww_in_win  <= 1'b1;
+            sww_txd_win <= 1'b0;
+        end else if (sww_txb_q && !ser_tx_busy && sww_in_win)
+            sww_txd_win <= 1'b1;                // reply done inside the window
+        if (u_dme.i8051_top.u_cpu.pc == 16'h1EF3 && sww_pc_q != 16'h1EF3) begin
+            sww_in_win <= 1'b0;
+            if (sww_txd_win && live_ser_tester[1]) begin
+                $display("DME: [SERWR] %0d,lost,%0d,%02h", `DME_KLR_MS, sww_tx_slot, sww_tx_val);
+                sww_lost = sww_lost + 1;
             end
         end
     end
@@ -1036,15 +1189,21 @@ module dme_klr_dashboard_tb;
 
     // Hard simulation boundary — terminates at exactly SIM_TIME (the
     // run script's -DSIM_TIME / +SIM_TIME, else test_opts.vh's default).
+    // A test can also end early through finish_sim (SER_WRITE_SWEEP).
+    task finish_sim;
+        begin
+            // ── DME memory dumps ──────────────────────────────────
+            $writememh("dme_rom_out.hex", u_dme.i8051_top.u_eprom.mem);
+            $writememh("dme_ram_out.hex", u_dme.i8051_top.u_cpu.iram);
+            // ── KLR memory dumps ──────────────────────────────────
+            $writememh("klr_rom_out.hex", u_klr.top.rom_1.rom);
+            $writememh("klr_ram_out.hex", u_klr.top.i8048_core_1.ram);
+            $finish;
+        end
+    endtask
     initial begin
         #(`VAL_SIM_TIME);
-        // ── DME memory dumps ──────────────────────────────────
-        $writememh("dme_rom_out.hex", u_dme.i8051_top.u_eprom.mem);
-        $writememh("dme_ram_out.hex", u_dme.i8051_top.u_cpu.iram);
-        // ── KLR memory dumps ──────────────────────────────────
-        $writememh("klr_rom_out.hex", u_klr.top.rom_1.rom);
-        $writememh("klr_ram_out.hex", u_klr.top.i8048_core_1.ram);
-        $finish;
+        finish_sim;
     end
 
 endmodule

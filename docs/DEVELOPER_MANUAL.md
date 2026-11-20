@@ -1783,8 +1783,109 @@ listens for a tester at boot, so turn it on and press **↺ RESTART**; the
 bridge keeps both settings across restarts. If the switch and field are
 grayed with an amber note, the live sim was built before these inputs
 existed: rebuild it (`dme_klr/live/build_live.sh`) and restart the bridge.
+Below the peek, **WRITE 26h / 28h** has the tester also answer slots 1/4
+and 2/5 with the two bytes in its fields (hex, Enter or **SET**), so the
+DME stores them in 26h (advance trim) and 28h (fuel trim). This is
+probably ignored: on the 86 and 89 ROMs nothing reads either byte (see
+the protocol below), so expect RAM to follow and nothing else to change.
+It takes effect without a restart once the tester is streaming; it needs
+a live sim built with the `ser_w26` / `ser_w28` inputs.
 The `cl_serial_peek_*` regressions (Appendix A) walk the peek address and
-check every byte that comes back.
+check every byte that comes back, and `serial_write_sweep_3000` sweeps the
+two bytes a tester can write, 26h and 28h.
+
+#### The serial protocol (89 ROM)
+
+The port is the 8051 UART in mode 2: 9 data bits (8 data plus the 9th bit,
+TB8 / RB8), fosc/64 per bit (fosc/32 with SMOD). It is polled, not
+interrupt driven: the main loop calls 0x1E6D through 0x101A.
+
+**At boot**, `init_serial` (0x1E53) sets 28h = 80h, 26h = 00h and the slot
+counter 29h = FFh, sets 25h.3 ("first poll"), and sends one FFh with the
+9th bit set (the hello).
+
+**First poll** (25h.3 set; it is cleared here). What the DME does depends on
+what the tester sent back in the meantime:
+
+| Tester's answer | DME |
+|---|---|
+| nothing (RI clear) | 23h.7 set: the serial routine is off until reset and TXD carries the O2 (lambda) bit |
+| FFh | streaming, below |
+| EEh | 23h.6 set: sends FFh, sets SCON = B0h (receive on, SM2) and the polled routine returns at once from then on. The tester model never sends EEh |
+| anything else | 23h.7 set, as for no answer |
+
+**Each streaming poll**
+
+1. If a byte was received (RI) and 29h is not FFh, the byte is stored at
+   the address in the table at 11DAh, indexed by 29h (0x1EA7):
+
+   | 29h (the slot the reply followed) | 0 | 1 | 2 | 3 | 4 | 5 |
+   |---|---|---|---|---|---|---|
+   | reply stored in | 7Ah | 26h | 28h | 7Ah | 26h | 28h |
+
+2. Four data bytes (9th bit 0), from the table at 11D1h: RAM[37h] (RPM),
+   RAM[31h] (advance), the fuel byte (4Bh:4Ah >> 5, or 0 in fuel cut,
+   23h.5), and the **peek** byte RAM[RAM[7Ah]] (`mov A,@R1` at 0x1EC8).
+3. 29h is incremented, and one byte with the 9th bit set: for 29h = 0..5
+   the RAM byte at 13h, 12h, 11h, 49h, 2Fh, 10h (table 11D4h; an FFh value
+   is sent as FEh), and after slot 5 an FFh end marker, with 29h set back
+   to FFh. A reply to the end marker is not stored (29h = FFh).
+
+So one cycle is 7 frames (slots 0-5 and the end marker), about 130 ms at
+the ~54 frames/s the testbench sees. A reply after slot k is stored on
+the next poll, so it shows in RAM one frame later.
+
+**What 26h and 28h do.** The 89 code has a use for both, at 0x1F21 and
+0x1F2D, only while streaming (23h.7 and 23h.6 clear): 26h is added to the
+ignition value in R5 on the way into 0x1C8F, and 28h multiplies the fuel
+time R7:R6 through 0x1DF0 (the 16x8 multiply at 0x04D9). But the two hooks that
+would reach that code, `ljmp`s at 0x104A and 0x1050, jump straight to
+0x1C8F and 0x1DE0 past it, so on the stock 89 ROM the bytes are stored
+and nothing reads them. A ROM that points those hooks at 0x1F21 / 0x1F2D
+would get a tester-adjustable advance and fuel trim.
+
+#### The testbench's tester
+
+`dme_klr_dashboard_tb.v` models a tester on RXD and decodes TXD whether or
+not the tester is on:
+
+| Setting | Effect |
+|---|---|
+| `live_ser_tester[0]` (`+ser_tester=1`, live `set ser_tester 1`) | Connects the tester. It answers every FFh (the hello and each end marker) with FFh, and slots 0 and 3 with `live_ser_peek` |
+| `live_ser_peek` (`+ser_peek=<hex>`, live `set ser_peek`) | The address written into 7Ah, so each frame's peek byte is RAM at that address. Default 37h |
+| `live_ser_tester[1]` (`+ser_tester=3`, set by `+ser_w26` / `+ser_w28`, live **WRITE 26h / 28h** switch) | Also answers slots 1 and 4 with `live_ser_w26` and slots 2 and 5 with `live_ser_w28`. Off, those slots go unanswered and 26h / 28h keep 00h / 80h |
+| `live_ser_w26`, `live_ser_w28` (`+ser_w26=<hex>`, `+ser_w28=<hex>`, live `set ser_w26` / `set ser_w28`) | The bytes for 26h and 28h. Defaults 00h and 80h |
+
+The stock ROM only takes the tester at boot, so it has to be on from t=0
+(or turned on before a restart). A reply goes out one byte time after
+the DME's byte, well before the next poll.
+
+Two test options drive it:
+
+* `SER_PEEK_WALK` (`SER_PEEK_WALK_MS`): from that time, walks 7Ah through
+  10h-62h and 7Ah-7Fh and checks each peek byte against the RAM byte the
+  firmware read (`DME: [SERPEEK]` lines, then `DONE pass= fail=`). The
+  `cl_serial_peek_*` tests need `pass=89 fail=0`.
+* `SER_WRITE_SWEEP` (`SER_WRITE_SWEEP_MS`): from that time, sends 00h for
+  both 26h and 28h, steps 26h from 01h to FFh, sends 26h = 00h, steps 28h
+  from 01h to FFh, then sends 28h = 00h: 513 steps. Each step is checked
+  one frame after its byte went out, against both RAM bytes:
+
+      DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|retry|BAD>
+      DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
+
+  and the run ends 1 s after the last step. `serial_write_sweep_3000`
+  needs `pass=513 fail=0`.
+
+  The DME drops a reply now and then, and so would a real tester's: the
+  poll clears RI (0x1EF3) a few instructions after its slot byte's TI,
+  and when an interrupt lands in between and runs longer than the
+  tester's answer takes (about 13 bit times), the answer arrives first
+  and is cleared unread. The testbench flags each of these as
+  `DME: [SERWR] <ms>,lost,<slot>,<byte>`, and a step that isn't in RAM
+  is checked again after the tester's next answer for that byte (it
+  answers every cycle), logged `retry`. Only a byte still missing after
+  4 checks counts as `BAD`.
 
 ---
 
@@ -1917,7 +2018,7 @@ per line:
 | `run`, `pause` | Free-run, stop |
 | `step dme\|klr [N]` | Run N instructions of that CPU |
 | `until <ms>` | Run to that simulated time, then pause |
-| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart), `ser_peek <hex>` is the address it writes into 7Ah |
+| `set <input> <value\|auto>` | `tps rpm afm boost fuel_qual coolant airtemp battery altitude ac cat o2 knock knock_revs ser_tester ser_peek ser_w26 ser_w28`, plus `dme_tps klr_tps` (terminal only). `knock 1` knocks on every revolution, `knock_revs N` on the next N. `ser_tester 1` connects the serial diagnostic tester (then restart; `3` also has it write 26h / 28h), `ser_peek <hex>` is the address it writes into 7Ah, `ser_w26` / `ser_w28 <hex>` the bytes it writes into 26h / 28h |
 | `bp add\|del dme\|klr <hex>` | PC breakpoint |
 | `bp add dme\|klr <hex> if <mem>[.<bit>] <op> <val>` | Conditional breakpoint (`==`, `!=`, `<`, `>`; unsigned; hex) |
 | `bp clear` | Clear all breakpoints |
@@ -2062,6 +2163,7 @@ not in the lite package; its run time is estimated from its length.
 | `cl_serial_peek_idle` | 30 s | 21 min | `cl_warm_idle` with the serial diagnostic tester connected from boot. From 20 s the tester's peek address (7Ah) is walked through internal RAM 10h to 62h, then 7Ah to 7Fh, and each byte the DME sends back on its serial line must match RAM |
 | `cl_serial_peek_3000` | 30 s | 21 min | The same peek walk on the `cl_ramp_to_3000` run, from 20 s |
 | `cl_serial_peek_6000` | 40 s | 28 min | The same peek walk on the `cl_ramp_to_6000` run, from 20 s |
+| `serial_write_sweep_3000` | ~39 s | ~27 min | Engine held at 3000 rpm (open-loop RPM stimulus, reached at 3 s). From 5 s the serial tester also writes 26h and 28h: 00h for both, 26h stepped 01h-FFh, back to 00h, then 28h stepped 01h-FFh, back to 00h; each step must show up in RAM. Ends 1 s after the sweep (60 s cap) |
 
 ### <a id="tests-open-loop-rpm-sweeps-ignition-and-idle-valve"></a>Open-loop RPM sweeps, ignition and idle valve
 

@@ -880,6 +880,34 @@
   `endif
 `endif
 
+// TEST_SER_WRITE_SWEEP_3000: the serial tester writes 26h and 28h
+// (SER_WRITE_SWEEP, dme_klr_dashboard_tb.v) with the engine held at 3000
+// RPM: the ramp_to_3000 RPM stimulus, but reaching 3000 in 5% of SIM_TIME
+// (3 s of the 60 s backstop) instead of 50%. The sweep starts at 5 s and
+// takes about 33 s; the run ends 1 s after it.
+`ifdef TEST_SER_WRITE_SWEEP_3000
+  `define RPMRAMP
+  `define SKIP_LAMBDA_WARMUP
+  `define SER_WRITE_SWEEP
+  `undef  RPMEND
+  `define RPMEND    3000
+  `undef  RPM_RAMP_PCT
+  `define RPM_RAMP_PCT 5
+  `ifndef SER_WRITE_SWEEP_MS
+  `define SER_WRITE_SWEEP_MS 5000
+  `endif
+  `ifndef SIM_TIME
+  `define SIM_TIME  60000000000
+  `endif
+  `define _COOLANT_RAW  `WARM_COOLANT_RAW
+  `define _AIRTEMP_RAW  `WARM_AIRTEMP_RAW
+  `define _BATTERY      8'hD8
+  `define _ALTITUDE     8'hF8
+  `ifndef _FUEL_QUAL
+  `define _FUEL_QUAL    8'h00
+  `endif
+`endif
+
 `ifdef TEST_RAMP_TO_6000
   `define RPMRAMP
   `define SKIP_LAMBDA_WARMUP

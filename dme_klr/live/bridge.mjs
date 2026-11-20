@@ -221,6 +221,8 @@ function startSim(load = null) {
   if (dashMs) snapArgs.push(`+dash_ms=${dashMs}`);
   if (!test && serCfg.tester) snapArgs.push(`+ser_tester=${serCfg.tester}`);
   if (!test && serCfg.peek !== 0x37) snapArgs.push(`+ser_peek=${serCfg.peek.toString(16)}`);
+  // 26h / 28h writes (ser_tester bit 1): +ser_w26 / +ser_w28 turn that bit on
+  if (!test && (serCfg.tester & 2)) snapArgs.push(`+ser_w26=${serCfg.w26.toString(16)}`, `+ser_w28=${serCfg.w28.toString(16)}`);
   // The breakpoints set before a LOAD carry over (sim_main adds them once
   // the snapshot is in place)
   const keep = [...bpNow.dme.map(a => `dme:${a}`), ...bpNow.klr.map(a => `klr:${a}`)];
@@ -251,8 +253,8 @@ function startSim(load = null) {
     // The serial diag tester's switch and address, kept across restarts
     // (the stock ROM only listens for the tester at boot)
     const ser = /^SIM: \[(INPUTS|READY)\] /.test(line) && proc === sim && !load?.test
-      ? line.match(/ser_tester=(\d+),ser_peek=(\d+)/) : null;
-    if (ser) serCfg = { tester: +ser[1], peek: +ser[2] };
+      ? line.match(/ser_tester=(\d+),ser_peek=(\d+)(?:,ser_w26=(\d+),ser_w28=(\d+))?/) : null;
+    if (ser) serCfg = { tester: +ser[1], peek: +ser[2], w26: ser[3] == null ? 0x00 : +ser[3], w28: ser[4] == null ? 0x80 : +ser[4] };
     const saved = line.match(/^SIM: \[SNAP\] saved t_ns=(\d+) reason=(\S+) dir=(.+)$/);
     if (saved) {
       if (FORWARD.test(line)) broadcast(line);
@@ -971,7 +973,7 @@ const SNAP_HISTORY = 60_000;        // lines of the run kept with each snapshot
 const SNAP_UPLOAD_MAX = 64 << 20;
 let bpNow = { dme: [], klr: [] };   // the running sim's breakpoints, from SIM: [BP]
 const snapCfg = { auto: true, break: false };   // from SIM: [SNAPCFG]; kept across restarts
-let serCfg = { tester: 0, peek: 0x37 };   // serial diag tester, from SIM: [INPUTS]; kept across restarts (+ser_tester / +ser_peek)
+let serCfg = { tester: 0, peek: 0x37, w26: 0x00, w28: 0x80 };   // serial diag tester, from SIM: [INPUTS]; kept across restarts (+ser_tester / +ser_peek / +ser_w26 / +ser_w28)
 let dashMs = 0;   // DS snapshot interval the dashboard set, from SIM: [INTERVAL] (0 = the build's); kept across restarts
 const ROM_BYTES = { dme: 8192, klr: 4096 };
 const snapId = id => /^[\w.+-]+$/.test(id ?? '') && !id.startsWith('.') ? id : null;

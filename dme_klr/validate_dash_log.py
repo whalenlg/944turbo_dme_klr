@@ -888,6 +888,17 @@ TESTS = {
                           'expect_log_pattern':r'\[SERPEEK\] DONE pass=89 fail=0 ',
                           'notes':'cl_ramp_to_6000 with the serial tester on; walks the peek through iram 10-62h and 7A-7Fh from t=20 s',
                           'dwell_cap':96},
+    # Serial diagnostic writes (SER_WRITE_SWEEP): the engine is held at
+    # 3000 rpm by the open-loop RPM stimulus. From 5 s the tester also
+    # answers the slots the DME stores into 26h and 28h: 00h for both, 26h
+    # stepped 01h..FFh, 26h back to 00h, 28h stepped 01h..FFh, 28h back to
+    # 00h. The testbench checks both bytes in RAM after each step (a
+    # [SERWR] line per step). The pattern needs all 513 steps matching.
+    # In the 89 ROM nothing reads 26h/28h (the trim code at 0x1F21/0x1F2D
+    # is bypassed), so the engine checks are those of ramp_to_3000.
+    'serial_write_sweep_3000': {'rpm_target': 3000, 'fuel_range':(2.0, 5.0), 'expect_ase':True, 'expect_fuelcut':True,
+                          'expect_log_pattern':r'\[SERWR\] DONE pass=513 fail=0\b',
+                          'notes':'3000 rpm (open loop) with the serial tester writing 26h then 28h through 00-FF from t=5 s; ends 1 s after the sweep'},
 
     # --- Boost model tests (klr_tb.v -DBOOST) — same base CL checks as
     #     cl_ramp_to_3000/cl_ramp_to_6000, plus DTC checks for the fault-

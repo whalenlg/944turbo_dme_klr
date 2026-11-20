@@ -41,7 +41,8 @@
     "overrun_cutoff",
     "cl_serial_peek_idle",
     "cl_serial_peek_3000",
-    "cl_serial_peek_6000"
+    "cl_serial_peek_6000",
+    "serial_write_sweep_3000"
    ]
   },
   {

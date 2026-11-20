@@ -296,6 +296,7 @@ throttle opens, and the KLR boost-target table takes over from boost onset
 | `coolant`, `airtemp`, `battery`, `altitude` | DME ADC ch3, ch2, ch1, ch4 raw bytes | warm-idle values |
 | `ser_tester` | 1 = connect the serial diagnostic tester to the DME's RXD (see below) | 0 |
 | `ser_peek` | the RAM address (00-7F) the tester writes into 7Ah | 0x37 |
+| `ser_w26`, `ser_w28` | the bytes the tester writes into 26h and 28h when `ser_tester` bit 1 is set (`ser_tester 3`); probably ignored, nothing in the 86/89 ROMs reads them | 0x00, 0x80 |
 
 RPM is held at 840 until the firmware first reports EngineSync, as in the
 closed-loop tests.
@@ -315,7 +316,9 @@ and TXD carries the lambda bit until reset.
 `dme_klr_dashboard_tb.v` has a tester model for this. `ser_tester 1`
 connects it to RXD: it answers every FF, and slots 0 and 3 with
 `ser_peek`, so the fourth byte of each frame becomes RAM[`ser_peek`]. It
-never answers slots 1, 2, 4 and 5, so 26h and 28h are left alone. The stock
+answers slots 1, 2, 4 and 5 (26h and 28h) only when `+ser_w26=<hex>` or
+`+ser_w28=<hex>` is given on the command line, or during the
+`SER_WRITE_SWEEP` test option; otherwise 26h and 28h keep 00h and 80h. The stock
 ROM only listens for it at boot, so turn it on and press RESTART; the
 bridge keeps both settings across restarts (`+ser_tester=1`,
 `+ser_peek=<hex>`, which also work on any run of the testbench). Off,
@@ -348,6 +351,23 @@ against the RAM byte the firmware read (sampled when the PC is at 0x1EC8,
     DME: [SERPEEK] DONE pass=<n> fail=<n> 10-62=<bytes read> 7A-7F=<bytes read>
 
 The validator needs `pass=89 fail=0`.
+
+The `SER_WRITE_SWEEP` option (the `serial_write_sweep_3000` regression,
+engine held at 3000 rpm) has the tester write 26h and 28h from
+`SER_WRITE_SWEEP_MS`: 00h for both, 26h stepped 01h-FFh, 26h back to
+00h, 28h stepped 01h-FFh, 28h back to 00h, each step checked in RAM one
+frame after it was sent:
+
+    DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|retry|BAD>
+    DME: [SERWR] <ms>,lost,<slot>,<byte>
+    DME: [SERWR] DONE pass=<n> fail=<n> retries=<n> lost=<n>
+
+A `lost` line is a reply the DME cleared unread (an interrupt between its
+slot byte and its clr RI at 0x1EF3 outlasted the tester's answer); the
+step is then checked again after the next answer (`retry`), up to 4
+times. The validator needs `pass=513 fail=0`; the run ends 1 s after the
+sweep.
+The developer manual (DME DIAG: serial diagnostics) has the whole protocol.
 
 ## Conditional breakpoints
 
