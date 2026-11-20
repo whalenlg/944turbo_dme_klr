@@ -315,7 +315,9 @@ and TXD carries the lambda bit until reset.
 `dme_klr_dashboard_tb.v` has a tester model for this. `ser_tester 1`
 connects it to RXD: it answers every FF, and slots 0 and 3 with
 `ser_peek`, so the fourth byte of each frame becomes RAM[`ser_peek`]. It
-never answers slots 1, 2, 4 and 5, so 26h and 28h are left alone. The stock
+answers slots 1, 2, 4 and 5 (26h and 28h) only when `+ser_w26=<hex>` or
+`+ser_w28=<hex>` is given on the command line, or during the
+`SER_WRITE_SWEEP` test option; otherwise 26h and 28h keep 00h and 80h. The stock
 ROM only listens for it at boot, so turn it on and press RESTART; the
 bridge keeps both settings across restarts (`+ser_tester=1`,
 `+ser_peek=<hex>`, which also work on any run of the testbench). Off,
@@ -348,6 +350,18 @@ against the RAM byte the firmware read (sampled when the PC is at 0x1EC8,
     DME: [SERPEEK] DONE pass=<n> fail=<n> 10-62=<bytes read> 7A-7F=<bytes read>
 
 The validator needs `pass=89 fail=0`.
+
+The `SER_WRITE_SWEEP` option (the `serial_write_sweep_3000` regression,
+engine held at 3000 rpm) has the tester write 26h and 28h from
+`SER_WRITE_SWEEP_MS`: 00h for both, 26h stepped 01h-FFh, 26h back to
+00h, 28h stepped 01h-FFh, 28h back to 00h, each step checked in RAM one
+frame after it was sent:
+
+    DME: [SERWR] <ms>,<26h sent>,<28h sent>,<RAM 26h>,<RAM 28h>,<ok|BAD>
+    DME: [SERWR] DONE pass=<n> fail=<n>
+
+The validator needs `pass=513 fail=0`; the run ends 1 s after the sweep.
+The developer manual (DME DIAG: serial diagnostics) has the whole protocol.
 
 ## Conditional breakpoints
 

@@ -1288,6 +1288,7 @@ the same speed; the machine they were measured on has only 4.
 | `cl_serial_peek_idle` | 30 s | 21 min | `cl_warm_idle` with the serial diagnostic tester connected from boot. From 20 s the tester's peek address (7Ah) is walked through internal RAM 10h to 62h, then 7Ah to 7Fh, and each byte the DME sends back on its serial line must match RAM |
 | `cl_serial_peek_3000` | 30 s | 21 min | The same peek walk on the `cl_ramp_to_3000` run, from 20 s |
 | `cl_serial_peek_6000` | 40 s | 28 min | The same peek walk on the `cl_ramp_to_6000` run, from 20 s |
+| `serial_write_sweep_3000` | ~39 s | ~27 min | Engine held at 3000 rpm. From 5 s the serial tester also writes 26h and 28h: 00h for both, 26h stepped 01h-FFh, back to 00h, then 28h stepped 01h-FFh, back to 00h; each step must show up in RAM. Ends 1 s after the sweep |
 
 ### <a id="tests-open-loop-rpm-sweeps-ignition-and-idle-valve"></a>Open-loop RPM sweeps, ignition and idle valve
 

@@ -175,6 +175,7 @@ DASH_TESTS=(
     ref_sensor_loss
     ref_sensor_missing_at_start
     ref_sensor_stuck_low
+    serial_write_sweep_3000
     speed_sensor_loss
     speed_sensor_stuck_low
     tps_ch6_open_circuit

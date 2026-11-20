@@ -93,6 +93,7 @@ package test_opts;
   bit RPMRAMP = arg("RPMRAMP", 0) != 0;
   bit RPM_RAMP_DOWN = arg("RPM_RAMP_DOWN", 0) != 0;
   bit SER_PEEK_WALK = arg("SER_PEEK_WALK", 0) != 0;
+  bit SER_WRITE_SWEEP = arg("SER_WRITE_SWEEP", 0) != 0;
   bit SKIP_LAMBDA_WARMUP = arg("SKIP_LAMBDA_WARMUP", 0) != 0;
   bit SPEED_SENSOR_STUCK_LOW = arg("SPEED_SENSOR_STUCK_LOW", 0) != 0;
   bit TEST_AIRTEMP_FAIL = arg("TEST_AIRTEMP_FAIL", 0) != 0;
@@ -136,6 +137,7 @@ package test_opts;
   integer RPM_DOWN_TARGET = 32'(arg("RPM_DOWN_TARGET", 840));
   integer RPM_RAMP_PCT = 32'(arg("RPM_RAMP_PCT", 25));
   integer SER_PEEK_WALK_MS = 32'(arg("SER_PEEK_WALK_MS", 0));
+  integer SER_WRITE_SWEEP_MS = 32'(arg("SER_WRITE_SWEEP_MS", 0));
   longint SIM_TIME = arg("SIM_TIME", 10000000000);
   integer SPEED_LOSS_T_MS = 32'(arg("SPEED_LOSS_T_MS", 3500));
   logic [7:0] TPS_FIXED = 8'(arg("TPS_FIXED", 0));
@@ -194,6 +196,7 @@ endpackage
 `define OPT_RPMRAMP test_opts::RPMRAMP
 `define OPT_RPM_RAMP_DOWN test_opts::RPM_RAMP_DOWN
 `define OPT_SER_PEEK_WALK test_opts::SER_PEEK_WALK
+`define OPT_SER_WRITE_SWEEP test_opts::SER_WRITE_SWEEP
 `define OPT_SKIP_LAMBDA_WARMUP test_opts::SKIP_LAMBDA_WARMUP
 `define OPT_SPEED_SENSOR_STUCK_LOW test_opts::SPEED_SENSOR_STUCK_LOW
 `define OPT_TEST_AIRTEMP_FAIL test_opts::TEST_AIRTEMP_FAIL
@@ -236,6 +239,7 @@ endpackage
 `define VAL_RPM_DOWN_TARGET test_opts::RPM_DOWN_TARGET
 `define VAL_RPM_RAMP_PCT test_opts::RPM_RAMP_PCT
 `define VAL_SER_PEEK_WALK_MS test_opts::SER_PEEK_WALK_MS
+`define VAL_SER_WRITE_SWEEP_MS test_opts::SER_WRITE_SWEEP_MS
 `define VAL_SIM_TIME test_opts::SIM_TIME
 `define VAL_SPEED_LOSS_T_MS test_opts::SPEED_LOSS_T_MS
 `define VAL_TPS_FIXED test_opts::TPS_FIXED
@@ -322,6 +326,7 @@ module test_opts;
   reg RPMRAMP;
   reg RPM_RAMP_DOWN;
   reg SER_PEEK_WALK;
+  reg SER_WRITE_SWEEP;
   reg SKIP_LAMBDA_WARMUP;
   reg SPEED_SENSOR_STUCK_LOW;
   reg TEST_AIRTEMP_FAIL;
@@ -365,6 +370,7 @@ module test_opts;
   integer RPM_DOWN_TARGET;
   integer RPM_RAMP_PCT;
   integer SER_PEEK_WALK_MS;
+  integer SER_WRITE_SWEEP_MS;
   reg signed [63:0] SIM_TIME;
   integer SPEED_LOSS_T_MS;
   reg [7:0] TPS_FIXED;
@@ -446,6 +452,7 @@ module test_opts;
         RPMRAMP = $value$plusargs("RPMRAMP=%d", n) ? (n != 0) : 1'b0;
         RPM_RAMP_DOWN = $value$plusargs("RPM_RAMP_DOWN=%d", n) ? (n != 0) : 1'b0;
         SER_PEEK_WALK = $value$plusargs("SER_PEEK_WALK=%d", n) ? (n != 0) : 1'b0;
+        SER_WRITE_SWEEP = $value$plusargs("SER_WRITE_SWEEP=%d", n) ? (n != 0) : 1'b0;
         SKIP_LAMBDA_WARMUP = $value$plusargs("SKIP_LAMBDA_WARMUP=%d", n) ? (n != 0) : 1'b0;
         SPEED_SENSOR_STUCK_LOW = $value$plusargs("SPEED_SENSOR_STUCK_LOW=%d", n) ? (n != 0) : 1'b0;
         TEST_AIRTEMP_FAIL = $value$plusargs("TEST_AIRTEMP_FAIL=%d", n) ? (n != 0) : 1'b0;
@@ -489,6 +496,7 @@ module test_opts;
         RPM_DOWN_TARGET = $value$plusargs("RPM_DOWN_TARGET=%d", n) ? n : 840;
         RPM_RAMP_PCT = $value$plusargs("RPM_RAMP_PCT=%d", n) ? n : 25;
         SER_PEEK_WALK_MS = $value$plusargs("SER_PEEK_WALK_MS=%d", n) ? n : 0;
+        SER_WRITE_SWEEP_MS = $value$plusargs("SER_WRITE_SWEEP_MS=%d", n) ? n : 0;
         SIM_TIME = $value$plusargs("SIM_TIME=%d", n) ? n : 10000000000;
         SPEED_LOSS_T_MS = $value$plusargs("SPEED_LOSS_T_MS=%d", n) ? n : 3500;
         TPS_FIXED = $value$plusargs("TPS_FIXED=%d", n) ? n : 0;
@@ -552,6 +560,7 @@ endmodule
 `define OPT_RPMRAMP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPMRAMP : test_opts.RPMRAMP)
 `define OPT_RPM_RAMP_DOWN ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_RAMP_DOWN : test_opts.RPM_RAMP_DOWN)
 `define OPT_SER_PEEK_WALK ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SER_PEEK_WALK : test_opts.SER_PEEK_WALK)
+`define OPT_SER_WRITE_SWEEP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SER_WRITE_SWEEP : test_opts.SER_WRITE_SWEEP)
 `define OPT_SKIP_LAMBDA_WARMUP ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SKIP_LAMBDA_WARMUP : test_opts.SKIP_LAMBDA_WARMUP)
 `define OPT_SPEED_SENSOR_STUCK_LOW ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SPEED_SENSOR_STUCK_LOW : test_opts.SPEED_SENSOR_STUCK_LOW)
 `define OPT_TEST_AIRTEMP_FAIL ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TEST_AIRTEMP_FAIL : test_opts.TEST_AIRTEMP_FAIL)
@@ -594,6 +603,7 @@ endmodule
 `define VAL_RPM_DOWN_TARGET ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_DOWN_TARGET : test_opts.RPM_DOWN_TARGET)
 `define VAL_RPM_RAMP_PCT ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.RPM_RAMP_PCT : test_opts.RPM_RAMP_PCT)
 `define VAL_SER_PEEK_WALK_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SER_PEEK_WALK_MS : test_opts.SER_PEEK_WALK_MS)
+`define VAL_SER_WRITE_SWEEP_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SER_WRITE_SWEEP_MS : test_opts.SER_WRITE_SWEEP_MS)
 `define VAL_SIM_TIME ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SIM_TIME : test_opts.SIM_TIME)
 `define VAL_SPEED_LOSS_T_MS ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.SPEED_LOSS_T_MS : test_opts.SPEED_LOSS_T_MS)
 `define VAL_TPS_FIXED ((test_opts.ok === 1'b1 || test_opts.load(1'b0)) ? test_opts.TPS_FIXED : test_opts.TPS_FIXED)
@@ -854,6 +864,11 @@ endmodule
 `else
   `define OPT_SER_PEEK_WALK 1'b0
 `endif
+`ifdef SER_WRITE_SWEEP
+  `define OPT_SER_WRITE_SWEEP 1'b1
+`else
+  `define OPT_SER_WRITE_SWEEP 1'b0
+`endif
 `ifdef SKIP_LAMBDA_WARMUP
   `define OPT_SKIP_LAMBDA_WARMUP 1'b1
 `else
@@ -956,6 +971,7 @@ endmodule
 `define VAL_RPM_DOWN_TARGET `RPM_DOWN_TARGET
 `define VAL_RPM_RAMP_PCT `RPM_RAMP_PCT
 `define VAL_SER_PEEK_WALK_MS `SER_PEEK_WALK_MS
+`define VAL_SER_WRITE_SWEEP_MS `SER_WRITE_SWEEP_MS
 `define VAL_SIM_TIME `SIM_TIME
 `define VAL_SPEED_LOSS_T_MS `SPEED_LOSS_T_MS
 `define VAL_TRIGGER_LOSS_T_MS `TRIGGER_LOSS_T_MS
