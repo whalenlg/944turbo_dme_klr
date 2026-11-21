@@ -155,6 +155,16 @@ module klr_tb #(parameter EXT_STIM = 0) (
 
     // (The -DBOOST model is always built; with BOOST off (`OPT_BOOST) its
     // processes are idle and adc_ch4 reads the fixed 0x85 below.)
+    // BOOST_COMB starts each combinational block of the model. With runtime
+    // options it is `always @(*) if (BOOST)`. In a fixed build `OPT_BOOST is
+    // the constant 1'b0 / 1'b1, so it is a generate `if` around the block:
+    // without BOOST the block isn't elaborated (an `always @(*) if (1'b0)`
+    // has nothing to be sensitive to, and iverilog warns about each one).
+`ifdef RUNTIME_OPTS
+    `define BOOST_COMB always @(*) if (`OPT_BOOST)
+`else
+    `define BOOST_COMB if (`OPT_BOOST) always @(*)
+`endif
     // ── Turbo boost ADC input (ch4) — MAP-table based ──────────
     //  Modeled from the real KLR boost map (throttle% x RPM ->
     //  ADC "software units"), '89 table, from:
@@ -248,7 +258,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     // is what the real firmware actually feeds its own map lookups with,
     // so this is now the authoritative source rather than a reconstruction.
     real boost_thr_pct;
-    always @(*) if (`OPT_BOOST) begin
+    `BOOST_COMB begin
         boost_thr_pct = 58.0 + (top.i8048_core_1.ram[8'h43] - 1.0) * 30.0 / 27.0;
     end
 
@@ -257,7 +267,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     real    rpm_frac, thr_frac;
     real    v00, v01, v10, v11, v0, v1;
     integer bi, bj, rpm_lo, rpm_hi, thr_lo, thr_hi;
-    always @(*) if (`OPT_BOOST) begin
+    `BOOST_COMB begin
         boost_rpm_real = rpm_in;
         if (boost_rpm_real < boost_rpm_bp[0])
             boost_rpm_real = boost_rpm_bp[0];
@@ -341,7 +351,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     localparam real MAP_AFM_IDLE  = 40.0;   // AFM 0x28: closed throttle
     localparam real MAP_AFM_ONSET = 119.0;  // AFM 0x77: ram[43h] leaves 0 here
     real map_load_frac, map_rpm, map_kpa, map_target, map_target_fueled;
-    always @(*) if (`OPT_BOOST) begin
+    `BOOST_COMB begin
         map_load_frac = (tps_wiper - MAP_AFM_IDLE) / (MAP_AFM_ONSET - MAP_AFM_IDLE);
         if (map_load_frac < 0.0) map_load_frac = 0.0;
         if (map_load_frac > 1.0) map_load_frac = 1.0;
@@ -391,7 +401,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     real BOOST_CUT_TAU_NS;
     initial BOOST_CUT_TAU_NS = `VAL_BOOST_CUT_TAU_MS * 1_000_000.0;
     real boost_lag_tau_ns;
-    always @(*) if (`OPT_BOOST) boost_lag_tau_ns = (EXT_STIM && fuel_cut === 1'b1 && map_target < boost_map_filtered)
+    `BOOST_COMB boost_lag_tau_ns = (EXT_STIM && fuel_cut === 1'b1 && map_target < boost_map_filtered)
                                    ? BOOST_CUT_TAU_NS : BOOST_LAG_TAU_NS;
     always @(posedge clk) if (`OPT_BOOST) begin
         boost_map_filtered <= boost_map_filtered
@@ -415,7 +425,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
     reg  cut_spool = 1'b0;
     real cut_rpm_ref = 0.0, cut_map_ref = 0.0;
     real cut_rpm_now, cut_ratio;
-    always @(*) if (`OPT_BOOST) begin
+    `BOOST_COMB begin
         cut_rpm_now = rpm_in;
         if (cut_rpm_now < MAP_MIN_RPM) cut_rpm_now = MAP_MIN_RPM;
         cut_ratio = (cut_spool && cut_rpm_ref > 0.0)
@@ -440,7 +450,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         end else if (cut_ratio >= 0.99)
             cut_spool <= 1'b0;
     end
-    always @(*) if (`OPT_BOOST) begin
+    `BOOST_COMB begin
         if (cut_spool) begin
             afm_flow_ratio_x1000 = $rtoi(1000.0 * cut_ratio);
             if (afm_flow_ratio_x1000 > 1000) afm_flow_ratio_x1000 = 1000;
@@ -448,6 +458,7 @@ module klr_tb #(parameter EXT_STIM = 0) (
         end else
             afm_flow_ratio_x1000 = 1000;
     end
+`undef BOOST_COMB
 
     // Reverse the ADC-read routine's +10 offset (see header comment) —
     // we're driving the RAW ADC channel, not ram[52h] directly. (Briefly
