@@ -852,6 +852,40 @@ module dme_klr_dashboard_tb;
         end
     end
 
+    // ── Serial trace group (FST/VCD) ──
+    // In the serial tests (SER_PEEK_WALK, SER_WRITE_SWEEP) the trace gets a
+    // ser_trace scope with the iram bytes the frame and the tester touch,
+    // the UART pins and both SBUF halves, with or without the debug flags.
+    // $dumpvars can't name array elements, hence the wires.
+    generate if (1) begin : ser_trace
+        wire [7:0] r10 = u_dme.i8051_top.u_cpu.iram[7'h10];   // AFM (slot 5)
+        wire [7:0] r11 = u_dme.i8051_top.u_cpu.iram[7'h11];   // battery (slot 2)
+        wire [7:0] r12 = u_dme.i8051_top.u_cpu.iram[7'h12];   // air temp (slot 1)
+        wire [7:0] r13 = u_dme.i8051_top.u_cpu.iram[7'h13];   // coolant (slot 0)
+        wire [7:0] r1f = u_dme.i8051_top.u_cpu.iram[7'h1F];
+        wire [7:0] r26 = u_dme.i8051_top.u_cpu.iram[7'h26];   // SER_ADV_TRIM
+        wire [7:0] r28 = u_dme.i8051_top.u_cpu.iram[7'h28];   // SER_FUEL_TRIM
+        wire [7:0] r29 = u_dme.i8051_top.u_cpu.iram[7'h29];   // SER_SLOT
+        wire [7:0] r2f = u_dme.i8051_top.u_cpu.iram[7'h2F];   // slot 4
+        wire [7:0] r31 = u_dme.i8051_top.u_cpu.iram[7'h31];   // advance (frame byte 2)
+        wire [7:0] r37 = u_dme.i8051_top.u_cpu.iram[7'h37];   // RPM (frame byte 1)
+        wire [7:0] r49 = u_dme.i8051_top.u_cpu.iram[7'h49];   // load (slot 3)
+        wire [7:0] r7a = u_dme.i8051_top.u_cpu.iram[7'h7A];   // SER_PEEK_ADDR
+        wire       txd     = u_dme.txd;                       // DME TXD (P3.1)
+        wire       rxd     = u_dme.rxd;                       // DME RXD (P3.0), from the tester
+        wire [7:0] sbuf_tx = u_dme.i8051_top.u_cpu.sbuf_tx;
+        wire [7:0] sbuf_rx = u_dme.i8051_top.u_cpu.sbuf_rx;
+    end endgenerate
+    initial begin
+`ifdef VERILATOR
+        #1;                       // after vcd.v's $dumpfile (see above)
+`else
+        #0;
+`endif
+        if (`OPT_SER_PEEK_WALK || `OPT_SER_WRITE_SWEEP)
+            $dumpvars(1, ser_trace);
+    end
+
     // ── SER_PEEK_WALK: read iram 10h-62h and 7Ah-7Fh through the peek ──
     // The tester is on from t=0 and its peek address starts at 10h. The
     // DME reads the peek byte at 0x1EC8 (mov A,@R1 with R1 = 7Ah), so
