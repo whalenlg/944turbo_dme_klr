@@ -862,7 +862,6 @@ module dme_klr_dashboard_tb;
         wire [7:0] r11 = u_dme.i8051_top.u_cpu.iram[7'h11];   // battery (slot 2)
         wire [7:0] r12 = u_dme.i8051_top.u_cpu.iram[7'h12];   // air temp (slot 1)
         wire [7:0] r13 = u_dme.i8051_top.u_cpu.iram[7'h13];   // coolant (slot 0)
-        wire [7:0] r1f = u_dme.i8051_top.u_cpu.iram[7'h1F];
         wire [7:0] r26 = u_dme.i8051_top.u_cpu.iram[7'h26];   // SER_ADV_TRIM
         wire [7:0] r28 = u_dme.i8051_top.u_cpu.iram[7'h28];   // SER_FUEL_TRIM
         wire [7:0] r29 = u_dme.i8051_top.u_cpu.iram[7'h29];   // SER_SLOT
