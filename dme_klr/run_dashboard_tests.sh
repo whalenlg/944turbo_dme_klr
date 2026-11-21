@@ -143,11 +143,16 @@ compile_and_run_klr() {
     other=$(cat "$lock" 2>/dev/null)
     # The lock is never removed, so a stale pid can be reused by an
     # unrelated process (macOS wraps pids quickly): only treat it as a
-    # live run if that pid is still running this same script.
+    # live run if that pid is still running this same script, or a
+    # regression's remote_test.mjs fetching this test's logs from another
+    # host into this folder (it deletes and rewrites <name>.log and
+    # <name>.dash.log as it goes). Exit 77: the regression runner reports
+    # the test as skipped instead of validating the other run's dash.log.
     if [ -n "$other" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null \
-       && ps -p "$other" -o command= 2>/dev/null | grep -q "${0##*/}"; then
-        echo "  SKIPPED: $name is already running (pid $other) — stop it first: kill $other" | tee -a "$LOGDIR/summary.log"
-        return 1
+       && ps -p "$other" -o command= 2>/dev/null | grep -qE "${0##*/}|remote_test\.mjs"; then
+        echo "  SKIPPED: $name is already running in $LOGDIR (pid $other: $(ps -p "$other" -o command= 2>/dev/null | cut -c1-80))" | tee -a "$LOGDIR/summary.log"
+        echo "           stop it first (kill $other), or wait for it to finish" >&2
+        return 77
     fi
     echo $$ > "$lock"
 
@@ -260,6 +265,17 @@ compile_and_run_klr() {
         echo "  SIM FAILED: $name (exit $rc)" | tee -a "$LOGDIR/summary.log"
         return 1
     fi
+    # The sim ran but its log isn't here: something else deleted it while
+    # it ran (the sim kept writing to the deleted file). That is another run
+    # of this same test in this folder, e.g. a regression of the same ROM
+    # pair that sent this test to another host (live/remote_test.mjs clears
+    # and rewrites <name>.log there). Say so instead of reporting 0 lines.
+    if [ ! -f "$log" ]; then
+        echo "  SIM FAILED: $name (its log $log was deleted while the sim ran:" \
+             "another run of $name was writing to $LOGDIR, e.g. a regression of this ROM pair;" \
+             "run it again once that finishes)" | tee -a "$LOGDIR/summary.log"
+        return 1
+    fi
 
     # Move any stray VCD to the canonical location, then gzip.
     # klr_vcd_combined.v may write sim.vcd or 951klr_combined.vcd to hexdir
@@ -294,12 +310,12 @@ compile_and_run_klr() {
     # Which ROM images the run used (name + content hash), first, for the dashboard
     python3 "$SCRIPT_DIR/rom_stamp.py" "$log" > "$LOGDIR/${name}.dash.log" || true
     grep -E "^DME: \[DS\]|^\[DS\]|^KLR: \[DS\]|^DME: \[PHASE\]|^DME: \[STATUS\]|^KLR: \[STATUS\]|^KLR: \[PHASE\]|^KLR: \[SPARK\]|^DME: \[SEED\]|^DME: \[WARN\]|^KLR: \[XBRANCH\]|^DME: \[LKUP\]|^KLR: \[LKUP\]|^DME: \[SER\]|^DME: \[SERPEEK\]|^DME: \[SERWR\]" "$log" >> "$LOGDIR/${name}.dash.log"
-    local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklr=$(grep -c "^KLR: \[DS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log" || echo 0)
-    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log" || echo 0)
+    local nds=$(grep -cE "^DME: \[DS\]|^\[DS\]" "$LOGDIR/${name}.dash.log")
+    local nphase=$(grep -c "^DME: \[PHASE\]" "$LOGDIR/${name}.dash.log")
+    local nstatus=$(grep -c "^DME: \[STATUS\]" "$LOGDIR/${name}.dash.log")
+    local nklr=$(grep -c "^KLR: \[DS\]" "$LOGDIR/${name}.dash.log")
+    local nklrstatus=$(grep -c "^KLR: \[STATUS\]" "$LOGDIR/${name}.dash.log")
+    local nklrphase=$(grep -c "^KLR: \[PHASE\]" "$LOGDIR/${name}.dash.log")
     local vcdsize=$(du -sh "$vcdfile" 2>/dev/null | cut -f1 || echo "?")
     echo "  DONE: $name — ${nds} DME:DS / ${nphase} DME:PHASE / ${nstatus} DME:STATUS / ${nklr} KLR:DS / ${nklrstatus} KLR:STATUS / ${nklrphase} KLR:PHASE / VCD.gz ${vcdsize}" \
         | tee -a "$LOGDIR/summary.log"

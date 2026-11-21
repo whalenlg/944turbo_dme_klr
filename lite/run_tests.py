@@ -138,6 +138,7 @@ def step_clocks(sim_ns, pct):
 
 TEMPFAIL = 75   # remote_test.mjs: the host couldn't take the test
 GIVEBACK = 76   # remote_test.mjs: it ran there, but its logs didn't come back
+BUSY = 77       # remote_test.mjs: another run of this test is going in LOGDIR
 
 
 def run_remote(name, o, host):
@@ -158,6 +159,9 @@ def run_remote(name, o, host):
         return None
     if rc == GIVEBACK:
         return 'giveback'
+    if rc == BUSY:
+        # (its dash.log is that other run's, so it isn't validated)
+        return name, 'FAIL', f'skipped: another run of {name} is going in this folder (see {name}.remote.log)', secs
     # (its exit is 1 when it ran but the host's run_tests.py judged it FAIL:
     # the verdict is made here, from the logs it brought back)
     if not os.path.exists(os.path.join(LOGDIR, f'{name}.dash.log')):

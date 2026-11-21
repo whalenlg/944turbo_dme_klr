@@ -508,6 +508,17 @@ reap_finished() {
                 "$name" "${H_NAME[$h]}" "${H_GIVEBACK[$h]}" "$LOGDIR/${name}.runner.log"
             continue
         fi
+        if [ "$status" -eq 77 ]; then
+            # another run of this test is writing to $LOGDIR (its .pid lock,
+            # e.g. a developer's own debug run of it): its dash.log isn't
+            # this run's, so it isn't validated
+            printf "  [SKIPPED] %-22s another run of it is going in %s (see %s)\n" "$name" "$LOGDIR" "$LOGDIR/${name}.runner.log"
+            printf "FAIL\t%-22s\tskipped: another run of this test was going in this folder\n" "$name" >> "$VALIDATION_LOG"
+            SIM_FAILED+=("$name")
+            COMPLETED=$(( COMPLETED + 1 ))
+            printf "  [%d of %d completed]\n" "$COMPLETED" "$(( TOTAL - ${#CANCELLED[@]} ))"
+            continue
+        fi
         if [ $status -ne 0 ]; then
             printf "  [SIM ERR] %-22s exit=%d\n" "$name" "$status"
             SIM_FAILED+=("$name")

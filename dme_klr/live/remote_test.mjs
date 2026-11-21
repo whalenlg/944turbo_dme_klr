@@ -27,6 +27,9 @@
 //  there but its logs wouldn't come back (every try stalled): the test
 //  goes back in the queue, and the host keeps getting tests (the runner
 //  stops using it after a few of these).
+//  77: another run of this test is going in <out> (the .<test>.pid lock
+//  run_dashboard_tests.sh takes, e.g. a developer's debug run of it):
+//  nothing is sent or deleted, and the runner reports the test skipped.
 //
 //  The logs come back in 64 KB pieces (Range requests): between two Macs
 //  on a LAN one transfer stopped for good after ~150 KB while short
@@ -47,6 +50,7 @@
 // ============================================================
 
 import { readFileSync, writeFileSync, appendFileSync, rmSync, mkdirSync, renameSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { lanRequest, sourceOrder, worked, agentFor, closeAll, CONNECT_MS } from './lan_http.mjs';
@@ -67,6 +71,7 @@ const SIM = arg('sim', 'verilator');
 const LOGMODE = arg('log', 'gz');
 const TEMPFAIL = 75;
 const GIVEBACK = 76;       // ran there, but its logs wouldn't come back
+const BUSY = 77;           // another run of this test is writing to <out> (its .<test>.pid)
 const STALL_MS = +process.env.DMEKLR_REMOTE_STALL_MS || 15_000;   // a piece of a download that receives nothing this long is tried again
 const CHUNK = +process.env.DMEKLR_REMOTE_CHUNK || 65536;          // bytes per download request
 const TRIES = 5;
@@ -179,9 +184,30 @@ function rom(cpu) {
   return { name, mem: readFileSync(join(dir, name), 'utf8') };
 }
 
+// The lock run_dashboard_tests.sh takes (<out>/.<test>.pid): a run of this
+// test going in <out> (a developer's own ./run_dashboard_tests.sh <test>)
+// whose log and dash.log this would delete and rewrite. Its pid if it is
+// live, else null. A stale pid reused by an unrelated process doesn't count.
+function busyRun(lock) {
+  let pid;
+  try { pid = parseInt(readFileSync(lock, 'utf8'), 10); } catch { return null; }
+  if (!pid || pid === process.pid) return null;
+  try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return null; }
+  let cmd = '';
+  try { cmd = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim(); } catch { return null; }
+  return /run_dashboard_tests\.sh|remote_test\.mjs/.test(cmd) ? { pid, cmd } : null;
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   const progress = join(OUT, `${TEST}.log`);
+  const lock = join(OUT, `.${TEST}.pid`);
+  const busy = busyRun(lock);
+  if (busy) {
+    say(`skipped: another run of it is going in ${OUT} (pid ${busy.pid}: ${busy.cmd.slice(0, 80)}); its logs are left alone`);
+    return BUSY;
+  }
+  writeFileSync(lock, `${process.pid}\n`);
   // (a replay's report too: an old one here would stand for this run's)
   for (const f of [progress, `${progress}.gz`, join(OUT, `${TEST}.dash.log`),
                    join(OUT, `${TEST}.report.txt`), join(OUT, `${TEST}.mismatches.xlsx`)]) rmSync(f, { force: true });
